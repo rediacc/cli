@@ -95,7 +95,7 @@ function docker_dev() {
 function docker_prod() {
   echo "Building and starting Docker container for production..."
   docker build -t $PROJECT_NAME:$VERSION .
-  docker run -it --rm $PROJECT_NAME:$VERSION
+  docker run --rm $PROJECT_NAME:$VERSION "$@"
 }
 
 # Function to create a release build
