@@ -140,11 +140,11 @@ func (c *Client) ExecuteStoredProcedure(procedure string, params map[string]inte
 // Login authenticates the user and stores the session information
 func (c *Client) Login(email, password string) (*AuthResponse, error) {
 	params := map[string]interface{}{
-		"name": "{ }",  // Required parameter for CreateAuthenticationRequest
+		"name": email,  // User email for CreateAuthenticationRequest
 	}
 
 	// Execute login procedure (this will be routed to protected_CreateAuthenticationRequest)
-	response, err := c.executeAuthProcedure("CreateAuthenticationRequest", params, email, password)
+	response, err := c.ExecuteAuthProcedure("CreateAuthenticationRequest", params, email, password)
 	if err != nil {
 		return nil, err
 	}
@@ -189,8 +189,8 @@ func (c *Client) RefreshToken() error {
 	return fmt.Errorf("token refresh not implemented")
 }
 
-// executeAuthProcedure executes an authentication-related procedure  
-func (c *Client) executeAuthProcedure(procedure string, params map[string]interface{}, email, password string) (*AuthResponse, error) {
+// ExecuteAuthProcedure executes an authentication-related procedure  
+func (c *Client) ExecuteAuthProcedure(procedure string, params map[string]interface{}, email, password string) (*AuthResponse, error) {
 	jsonData, err := json.Marshal(params)
 	if err != nil {
 		return nil, fmt.Errorf("failed to marshal parameters: %w", err)
