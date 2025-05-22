@@ -103,6 +103,11 @@ func Initialize(configFile string) error {
 		return fmt.Errorf("could not unmarshal config: %w", err)
 	}
 
+	// Workaround: manually sync auth fields from viper
+	globalConfig.Auth.Email = viper.GetString("auth.email")
+	globalConfig.Auth.SessionToken = viper.GetString("auth.session_token")
+	globalConfig.Auth.RequestCredential = viper.GetString("auth.request_credential")
+
 	return nil
 }
 
@@ -110,6 +115,9 @@ func Initialize(configFile string) error {
 func setDefaults() {
 	viper.SetDefault("server.url", "http://localhost:8080")
 	viper.SetDefault("server.timeout", "30s")
+	viper.SetDefault("auth.email", "")
+	viper.SetDefault("auth.session_token", "")
+	viper.SetDefault("auth.request_credential", "")
 	viper.SetDefault("jobs.default_datastore_size", "100G")
 	viper.SetDefault("jobs.ssh_timeout", "30s")
 	viper.SetDefault("jobs.ssh_key_path", "~/.ssh/id_rsa")
@@ -223,11 +231,17 @@ func UpdateAuth(email, sessionToken, requestCredential string) error {
 		return fmt.Errorf("configuration not initialized")
 	}
 
+	// Update both viper and globalConfig
+	viper.Set("auth.email", email)
+	viper.Set("auth.session_token", sessionToken)  
+	viper.Set("auth.request_credential", requestCredential)
+	
 	globalConfig.Auth.Email = email
 	globalConfig.Auth.SessionToken = sessionToken
 	globalConfig.Auth.RequestCredential = requestCredential
 
-	return Save()
+	// Save using viper to ensure consistency
+	return viper.WriteConfig()
 }
 
 // ClearAuth clears the authentication configuration
@@ -236,9 +250,14 @@ func ClearAuth() error {
 		return fmt.Errorf("configuration not initialized")
 	}
 
+	// Clear both viper and globalConfig
+	viper.Set("auth.email", "")
+	viper.Set("auth.session_token", "")
+	viper.Set("auth.request_credential", "")
+
 	globalConfig.Auth.Email = ""
 	globalConfig.Auth.SessionToken = ""
 	globalConfig.Auth.RequestCredential = ""
 
-	return Save()
+	return viper.WriteConfig()
 }

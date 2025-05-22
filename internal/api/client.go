@@ -3,6 +3,7 @@ package api
 import (
 	"bytes"
 	"crypto/sha256"
+	"encoding/base64"
 	"encoding/json"
 	"fmt"
 	"io"
@@ -54,23 +55,31 @@ type AuthResponse struct {
 	Error             string `json:"error,omitempty"`
 }
 
+// MiddlewareResponse represents the middleware API response format
+type MiddlewareResponse struct {
+	Failure int                    `json:"failure"`
+	Errors  []string               `json:"errors"`
+	Tables  []MiddlewareTable      `json:"tables"`
+	Outputs map[string]interface{} `json:"outputs"`
+}
+
+// MiddlewareTable represents a result set from stored procedure
+type MiddlewareTable struct {
+	ResultSetIndex int                      `json:"resultSetIndex"`
+	Data           []map[string]interface{} `json:"data"`
+}
+
 // ExecuteStoredProcedure executes a stored procedure via the middleware API
 func (c *Client) ExecuteStoredProcedure(procedure string, params map[string]interface{}) (*Response, error) {
-	// Prepare request
-	request := Request{
-		Method:     "POST",
-		Procedure:  procedure,
-		Parameters: params,
-	}
-
-	// Convert to JSON
-	jsonData, err := json.Marshal(request)
+	// Convert parameters to JSON
+	jsonData, err := json.Marshal(params)
 	if err != nil {
-		return nil, fmt.Errorf("failed to marshal request: %w", err)
+		return nil, fmt.Errorf("failed to marshal parameters: %w", err)
 	}
 
-	// Create HTTP request
-	req, err := http.NewRequest("POST", c.BaseURL+"/api/execute", bytes.NewBuffer(jsonData))
+	// Create HTTP request using the correct endpoint format
+	url := fmt.Sprintf("%s/api/StoredProcedure/%s", c.BaseURL, procedure)
+	req, err := http.NewRequest("POST", url, bytes.NewBuffer(jsonData))
 	if err != nil {
 		return nil, fmt.Errorf("failed to create request: %w", err)
 	}
@@ -92,37 +101,50 @@ func (c *Client) ExecuteStoredProcedure(procedure string, params map[string]inte
 		return nil, fmt.Errorf("failed to read response: %w", err)
 	}
 
-	// Parse response
-	var response Response
-	if err := json.Unmarshal(body, &response); err != nil {
+	// Parse middleware response
+	var middlewareResp MiddlewareResponse
+	if err := json.Unmarshal(body, &middlewareResp); err != nil {
 		return nil, fmt.Errorf("failed to parse response: %w", err)
 	}
 
 	// Handle HTTP errors
 	if resp.StatusCode != http.StatusOK {
-		if response.Error != "" {
-			return nil, fmt.Errorf("API error (%d): %s", resp.StatusCode, response.Error)
-		}
 		return nil, fmt.Errorf("HTTP error: %d", resp.StatusCode)
 	}
 
-	// Handle API errors
-	if !response.Success && response.Error != "" {
-		return nil, fmt.Errorf("API error: %s", response.Error)
+	// Check for API errors
+	if middlewareResp.Failure != 0 {
+		if len(middlewareResp.Errors) > 0 {
+			return nil, fmt.Errorf("API error: %s", middlewareResp.Errors[0])
+		}
+		return nil, fmt.Errorf("API error: failure code %d", middlewareResp.Failure)
 	}
 
-	return &response, nil
+	// Check for token refresh (nextReqeustCredential in response)
+	c.updateTokenFromResponse(&middlewareResp)
+
+	// Convert to old Response format for compatibility
+	response := &Response{
+		Success: middlewareResp.Failure == 0,
+		Data:    []map[string]interface{}{},
+	}
+	
+	// Flatten all table data into the Data field
+	for _, table := range middlewareResp.Tables {
+		response.Data = append(response.Data, table.Data...)
+	}
+
+	return response, nil
 }
 
 // Login authenticates the user and stores the session information
 func (c *Client) Login(email, password string) (*AuthResponse, error) {
 	params := map[string]interface{}{
-		"UserEmail":    email,
-		"UserPassword": password,
+		"name": "{ }",  // Required parameter for CreateAuthenticationRequest
 	}
 
-	// Execute login procedure
-	response, err := c.executeAuthProcedure("web.protected_CreateAuthenticationRequest", params)
+	// Execute login procedure (this will be routed to protected_CreateAuthenticationRequest)
+	response, err := c.executeAuthProcedure("CreateAuthenticationRequest", params, email, password)
 	if err != nil {
 		return nil, err
 	}
@@ -142,15 +164,12 @@ func (c *Client) Login(email, password string) (*AuthResponse, error) {
 
 // Logout logs out the current user session
 func (c *Client) Logout() error {
-	if c.config.Auth.SessionToken == "" {
+	if c.config.Auth.RequestCredential == "" {
 		return fmt.Errorf("not logged in")
 	}
 
-	params := map[string]interface{}{
-		"session_id": c.config.Auth.SessionToken,
-	}
-
-	_, err := c.ExecuteStoredProcedure("web.public_LogoutUserSession", params)
+	// Call LogoutUserSession procedure - this is public, so no params needed
+	_, err := c.ExecuteStoredProcedure("LogoutUserSession", map[string]interface{}{})
 	if err != nil {
 		return err
 	}
@@ -170,25 +189,29 @@ func (c *Client) RefreshToken() error {
 	return fmt.Errorf("token refresh not implemented")
 }
 
-// executeAuthProcedure executes an authentication-related procedure
-func (c *Client) executeAuthProcedure(procedure string, params map[string]interface{}) (*AuthResponse, error) {
-	request := Request{
-		Method:     "POST",
-		Procedure:  procedure,
-		Parameters: params,
-	}
-
-	jsonData, err := json.Marshal(request)
+// executeAuthProcedure executes an authentication-related procedure  
+func (c *Client) executeAuthProcedure(procedure string, params map[string]interface{}, email, password string) (*AuthResponse, error) {
+	jsonData, err := json.Marshal(params)
 	if err != nil {
-		return nil, fmt.Errorf("failed to marshal request: %w", err)
+		return nil, fmt.Errorf("failed to marshal parameters: %w", err)
 	}
 
-	req, err := http.NewRequest("POST", c.BaseURL+"/api/execute", bytes.NewBuffer(jsonData))
+	url := fmt.Sprintf("%s/api/StoredProcedure/%s", c.BaseURL, procedure)
+	req, err := http.NewRequest("POST", url, bytes.NewBuffer(jsonData))
 	if err != nil {
 		return nil, fmt.Errorf("failed to create request: %w", err)
 	}
 
 	req.Header.Set("Content-Type", "application/json")
+	
+	// Set authentication headers for protected procedures
+	if email != "" && password != "" {
+		req.Header.Set("Rediacc-UserEmail", email)
+		// Calculate SHA-256 hash of password (matching sfHash function)
+		hash := sha256.Sum256([]byte(password))
+		// Encode as base64 like in the tutorial examples
+		req.Header.Set("Rediacc-UserHash", base64.StdEncoding.EncodeToString(hash[:]))
+	}
 
 	resp, err := c.HTTPClient.Do(req)
 	if err != nil {
@@ -201,37 +224,63 @@ func (c *Client) executeAuthProcedure(procedure string, params map[string]interf
 		return nil, fmt.Errorf("failed to read response: %w", err)
 	}
 
-	var response AuthResponse
-	if err := json.Unmarshal(body, &response); err != nil {
+	// Parse middleware response
+	var middlewareResp MiddlewareResponse
+	if err := json.Unmarshal(body, &middlewareResp); err != nil {
 		return nil, fmt.Errorf("failed to parse response: %w", err)
 	}
 
 	if resp.StatusCode != http.StatusOK {
-		if response.Error != "" {
-			return nil, fmt.Errorf("API error (%d): %s", resp.StatusCode, response.Error)
-		}
 		return nil, fmt.Errorf("HTTP error: %d", resp.StatusCode)
 	}
 
-	return &response, nil
+	// Check for API errors
+	if middlewareResp.Failure != 0 {
+		if len(middlewareResp.Errors) > 0 {
+			return nil, fmt.Errorf("API error: %s", middlewareResp.Errors[0])
+		}
+		return nil, fmt.Errorf("API error: failure code %d", middlewareResp.Failure)
+	}
+
+	// Extract the nextReqeustCredential from the first table
+	authResponse := &AuthResponse{Success: true}
+	if len(middlewareResp.Tables) > 0 && len(middlewareResp.Tables[0].Data) > 0 {
+		if cred, ok := middlewareResp.Tables[0].Data[0]["nextReqeustCredential"]; ok {
+			if credStr, ok := cred.(string); ok {
+				authResponse.RequestCredential = credStr
+				authResponse.SessionToken = credStr // Use the same for both for now
+			}
+		}
+	}
+
+	return authResponse, nil
+}
+
+// updateTokenFromResponse updates the stored token from API response
+func (c *Client) updateTokenFromResponse(resp *MiddlewareResponse) {
+	// Look for nextReqeustCredential in any table data
+	for _, table := range resp.Tables {
+		for _, row := range table.Data {
+			if cred, ok := row["nextReqeustCredential"]; ok {
+				if credStr, ok := cred.(string); ok {
+					// Update both session token and request credential
+					if err := config.UpdateAuth(c.config.Auth.Email, credStr, credStr); err == nil {
+						// Refresh client config reference
+						c.config = config.Get()
+					}
+					return
+				}
+			}
+		}
+	}
 }
 
 // setAuthHeaders sets the authentication headers based on the middleware requirements
 func (c *Client) setAuthHeaders(req *http.Request) {
-	if c.config.Auth.Email != "" {
-		req.Header.Set("UserEmail", c.config.Auth.Email)
-
-		// Create hash from email
-		hash := sha256.Sum256([]byte(c.config.Auth.Email))
-		req.Header.Set("UserHash", fmt.Sprintf("%x", hash))
-	}
-
+	// Use RequestToken header for authenticated requests
 	if c.config.Auth.RequestCredential != "" {
-		req.Header.Set("RequestCredential", c.config.Auth.RequestCredential)
+		req.Header.Set("Rediacc-RequestToken", c.config.Auth.RequestCredential)
 	}
-
-	// TODO: Implement verification header based on middleware requirements
-	// This might involve combining various fields and creating a signature
 }
 
 // IsAuthenticated checks if the client has valid authentication
