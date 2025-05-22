@@ -113,6 +113,15 @@ Verification: [verification string - TBD]
 
 ## Development Workflow
 
+### Middleware Dependency
+**IMPORTANT**: The CLI requires the middleware service to be running for authentication and API calls.
+
+To start the middleware in vibe coding:
+```bash
+@middleware/go start
+```
+This will start the .NET middleware service that the CLI communicates with.
+
 ### Using the `./go` script:
 ```bash
 ./go build              # Build the binary
