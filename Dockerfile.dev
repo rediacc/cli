@@ -1,0 +1,62 @@
+# Development Dockerfile for Rediacc CLI
+FROM golang:1.22-alpine
+
+# Install development dependencies
+RUN apk add --no-cache \
+    git \
+    ca-certificates \
+    tzdata \
+    bash \
+    curl \
+    openssh-client \
+    make \
+    gcc \
+    musl-dev
+
+# Install development tools
+RUN go install github.com/golangci/golangci-lint/cmd/golangci-lint@latest && \
+    go install golang.org/x/tools/cmd/goimports@latest && \
+    go install github.com/securecodewarrior/gosec/v2/cmd/gosec@latest
+
+# Set working directory
+WORKDIR /app
+
+# Copy go mod files first for better caching
+COPY go.mod go.sum ./
+
+# Download dependencies
+RUN go mod download
+
+# Copy the rest of the source code
+COPY . .
+
+# Make scripts executable
+RUN chmod +x scripts/*.sh && chmod +x go
+
+# Build the application
+RUN ./go build
+
+# Create development user
+RUN addgroup -g 1001 -S developer && \
+    adduser -u 1001 -S developer -G developer
+
+# Change ownership of app directory
+RUN chown -R developer:developer /app
+
+# Switch to development user
+USER developer
+
+# Set up development environment
+ENV GOCACHE=/app/.cache/go-build
+ENV GOMODCACHE=/app/.cache/go-mod
+ENV PATH="/app/bin:$PATH"
+
+# Create cache directories
+RUN mkdir -p /app/.cache/go-build /app/.cache/go-mod
+
+# Health check
+HEALTHCHECK --interval=30s --timeout=3s --start-period=5s --retries=3 \
+    CMD ./bin/rediacc --version || exit 1
+
+# Default command for development
+CMD ["bash"]
