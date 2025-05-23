@@ -102,31 +102,57 @@ function docker_prod() {
 function release() {
   echo "Creating release build for $PROJECT_NAME v$VERSION..."
   
-  # Create release directory
-  mkdir -p dist/
+  # Get the root directory
+  ROOT_DIR="$( cd "$( dirname "${BASH_SOURCE[0]}" )" && pwd )"
+  BIN_DIR="$ROOT_DIR/bin"
+  
+  # Clean up bin directory
+  echo "Cleaning up bin directory..."
+  rm -rf "$BIN_DIR"
+  mkdir -p "$BIN_DIR"
   
   # Build for multiple platforms
   echo "Building for Linux AMD64..."
-  GOOS=linux GOARCH=amd64 go build -ldflags "-X main.version=$VERSION" -o dist/${BINARY_NAME}-linux-amd64 main.go
+  GOOS=linux GOARCH=amd64 go build -ldflags "-X main.version=$VERSION" -o "$BIN_DIR/${BINARY_NAME}-linux-amd64" main.go
   
   echo "Building for Linux ARM64..."
-  GOOS=linux GOARCH=arm64 go build -ldflags "-X main.version=$VERSION" -o dist/${BINARY_NAME}-linux-arm64 main.go
+  GOOS=linux GOARCH=arm64 go build -ldflags "-X main.version=$VERSION" -o "$BIN_DIR/${BINARY_NAME}-linux-arm64" main.go
   
   echo "Building for macOS AMD64..."
-  GOOS=darwin GOARCH=amd64 go build -ldflags "-X main.version=$VERSION" -o dist/${BINARY_NAME}-darwin-amd64 main.go
+  GOOS=darwin GOARCH=amd64 go build -ldflags "-X main.version=$VERSION" -o "$BIN_DIR/${BINARY_NAME}-darwin-amd64" main.go
   
   echo "Building for macOS ARM64..."
-  GOOS=darwin GOARCH=arm64 go build -ldflags "-X main.version=$VERSION" -o dist/${BINARY_NAME}-darwin-arm64 main.go
+  GOOS=darwin GOARCH=arm64 go build -ldflags "-X main.version=$VERSION" -o "$BIN_DIR/${BINARY_NAME}-darwin-arm64" main.go
   
   echo "Building for Windows AMD64..."
-  GOOS=windows GOARCH=amd64 go build -ldflags "-X main.version=$VERSION" -o dist/${BINARY_NAME}-windows-amd64.exe main.go
+  GOOS=windows GOARCH=amd64 go build -ldflags "-X main.version=$VERSION" -o "$BIN_DIR/${BINARY_NAME}-windows-amd64.exe" main.go
   
   # Create checksums
-  cd dist/
+  cd "$BIN_DIR"
   sha256sum * > checksums.txt
-  cd ..
+  cd "$ROOT_DIR"
   
-  echo "Release builds created in dist/ directory"
+  # Create version info file
+  echo "{
+  \"version\": \"${VERSION}\",
+  \"buildDate\": \"$(date -u +%Y-%m-%dT%H:%M:%SZ)\",
+  \"gitCommit\": \"$(git rev-parse --short HEAD 2>/dev/null || echo 'unknown')\"
+}" > "$BIN_DIR/version.json"
+  
+  echo ""
+  echo "Release builds created successfully!"
+  echo "Version: ${VERSION}"
+  echo "Files created in: $BIN_DIR"
+  
+  # Copy to root bin/cli for nginx serving
+  echo "Copying to root bin/cli directory for nginx..."
+  ROOT_BIN_CLI="$ROOT_DIR/../bin/cli"
+  # Clean and recreate cli subdirectory
+  rm -rf "$ROOT_BIN_CLI"
+  mkdir -p "$ROOT_BIN_CLI"
+  # Copy all files to root bin/cli
+  cp -r "$BIN_DIR/"* "$ROOT_BIN_CLI/"
+  echo "Files also copied to: $ROOT_BIN_CLI"
 }
 
 # Function to update dependencies
