@@ -86,7 +86,7 @@ config.GetOutputFormat()  // Get output format
 Default location: `~/.rediacc-cli.yaml`
 ```yaml
 server:
-  url: "http://localhost:8080"
+  url: "http://localhost:7322/api"
   timeout: "30s"
 auth:
   email: ""

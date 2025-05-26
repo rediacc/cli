@@ -11,7 +11,7 @@ services:
     working_dir: /app
     environment:
       - GO_ENV=development
-      - REDIACC_SERVER_URL=http://middleware:8080
+      - REDIACC_SERVER_URL=http://rediacc-api:80/api
     networks:
       - rediacc-network
     profiles:
@@ -27,7 +27,7 @@ services:
     container_name: rediacc-cli
     environment:
       - GO_ENV=production
-      - REDIACC_SERVER_URL=http://middleware:8080
+      - REDIACC_SERVER_URL=http://rediacc-api:80/api
     networks:
       - rediacc-network
     profiles:
@@ -37,8 +37,6 @@ services:
   middleware-mock:
     image: nginx:alpine
     container_name: rediacc-middleware-mock
-    ports:
-      - "8080:80"
     volumes:
       - ./tests/fixtures/mock-server.conf:/etc/nginx/nginx.conf:ro
     networks:
