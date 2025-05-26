@@ -113,7 +113,7 @@ func Initialize(configFile string) error {
 
 // setDefaults sets default configuration values
 func setDefaults() {
-	viper.SetDefault("server.url", "http://localhost:8080")
+	viper.SetDefault("server.url", "http://localhost:7322/api")
 	viper.SetDefault("server.timeout", "30s")
 	viper.SetDefault("auth.email", "")
 	viper.SetDefault("auth.session_token", "")
@@ -140,7 +140,7 @@ func createDefaultConfig() error {
 
 	defaultConfig := Config{
 		Server: ServerConfig{
-			URL:     "http://localhost:8080",
+			URL:     "http://localhost:7322/api",
 			Timeout: "30s",
 		},
 		Auth: AuthConfig{},
