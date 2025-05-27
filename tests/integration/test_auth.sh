@@ -120,7 +120,7 @@ test_successful_login() {
         -d '{"companyName": "Test Company"}' > /dev/null
     
     # Enable user account
-    curl -s -X POST "$MIDDLEWARE_URL/api/StoredProcedure/EnableUserAccount" \
+    curl -s -X POST "$MIDDLEWARE_URL/api/StoredProcedure/ActivateUserAccount" \
         -H "Content-Type: application/json" \
         -d "{\"userEmail\": \"$TEST_EMAIL\"}" > /dev/null
     
