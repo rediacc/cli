@@ -44,10 +44,10 @@ var userInfoCmd = &cobra.Command{
 
 // userActivateCmd activates a user
 var userActivateCmd = &cobra.Command{
-	Use:   "activate <email>",
+	Use:   "activate <email> <code>",
 	Short: "Activate a user",
-	Long:  "Activate a user account",
-	Args:  cobra.ExactArgs(1),
+	Long:  "Activate a user account with the activation code",
+	Args:  cobra.ExactArgs(2),
 	RunE:  runUserActivate,
 }
 
@@ -158,13 +158,15 @@ func runUserInfo(cmd *cobra.Command, args []string) error {
 
 func runUserActivate(cmd *cobra.Command, args []string) error {
 	email := args[0]
+	activationCode := args[1]
 
 	cfg := config.Get()
 	client := api.NewClient(cfg.Server.URL)
 
-	// ActivateUserAccount expects userEmail parameter
+	// ActivateUserAccount expects userEmail and activationCode parameters
 	params := map[string]interface{}{
 		"userEmail": email,
+		"activationCode": activationCode,
 	}
 
 	response, err := client.ExecuteStoredProcedure("ActivateUserAccount", params)
