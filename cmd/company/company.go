@@ -113,22 +113,9 @@ func runCreate(cmd *cobra.Command, args []string) error {
 	}
 
 	if response.Success {
-		// Activate the admin user account after company creation
-		enableParams := map[string]interface{}{
-			"UserEmail": adminEmail,
-		}
-		
-		enableResponse, err := client.ExecuteStoredProcedure("ActivateUserAccount", enableParams)
-		if err != nil {
-			return fmt.Errorf("company created but failed to activate admin user: %w", err)
-		}
-		
-		if !enableResponse.Success {
-			return fmt.Errorf("company created but failed to activate admin user: %s", enableResponse.Error)
-		}
-		
 		format.PrintSuccess("✓ Company '%s' created successfully", name)
-		format.PrintSuccess("✓ Admin user '%s' activated", adminEmail)
+		format.PrintSuccess("✓ Admin user '%s' created", adminEmail)
+		format.PrintInfo("Check email for activation code to activate the account")
 		return nil
 	}
 
