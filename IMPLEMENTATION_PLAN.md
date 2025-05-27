@@ -341,7 +341,7 @@ type Machine struct {
 | `auth user create` | `web.public_CreateNewUser` | email, password |
 | `auth user update-email` | `web.public_UpdateUserEmail` | old_email, new_email |
 | `auth user update-password` | `web.public_UpdateUserPassword` | email, old_password, new_password |
-| `auth user enable` | `web.protected_EnableUserAccount` | email |
+| `auth user enable` | `web.protected_ActivateUserAccount` | email |
 | `auth user disable` | `web.public_DisableUserAccount` | email |
 | `auth 2fa enable` | `web.public_ManageUser2FA` | email, action: "enable" |
 | `auth 2fa generate` | `dbo.sp2FAGenerateSecretKey` | - |

@@ -118,7 +118,7 @@ func runCreate(cmd *cobra.Command, args []string) error {
 			"UserEmail": adminEmail,
 		}
 		
-		enableResponse, err := client.ExecuteStoredProcedure("EnableUserAccount", enableParams)
+		enableResponse, err := client.ExecuteStoredProcedure("ActivateUserAccount", enableParams)
 		if err != nil {
 			return fmt.Errorf("company created but failed to activate admin user: %w", err)
 		}

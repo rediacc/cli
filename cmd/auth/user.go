@@ -162,12 +162,12 @@ func runUserActivate(cmd *cobra.Command, args []string) error {
 	cfg := config.Get()
 	client := api.NewClient(cfg.Server.URL)
 
-	// EnableUserAccount expects userEmail parameter
+	// ActivateUserAccount expects userEmail parameter
 	params := map[string]interface{}{
 		"userEmail": email,
 	}
 
-	response, err := client.ExecuteStoredProcedure("EnableUserAccount", params)
+	response, err := client.ExecuteStoredProcedure("ActivateUserAccount", params)
 	if err != nil {
 		return fmt.Errorf("failed to activate user: %w", err)
 	}

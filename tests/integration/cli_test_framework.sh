@@ -186,7 +186,7 @@ cleanup_test_environment() {
 check_middleware() {
     log_info "Checking middleware availability at $MIDDLEWARE_URL..."
     
-    if curl -s --max-time 5 "$MIDDLEWARE_URL/api/StoredProcedure/EnableUserAccount" \
+    if curl -s --max-time 5 "$MIDDLEWARE_URL/api/StoredProcedure/ActivateUserAccount" \
        -H "Content-Type: application/json" \
        -d '{"userEmail": "health@check.com"}' > /dev/null 2>&1; then
         log_success "Middleware is responding"
