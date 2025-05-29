@@ -92,7 +92,7 @@ func runList(cmd *cobra.Command, args []string) error {
 	cfg := config.Get()
 	client := api.NewClient(cfg.Server.URL)
 
-	response, err := client.ExecuteStoredProcedure("GetAllCompanyTeams", map[string]interface{}{})
+	response, err := client.ExecuteStoredProcedure("GetCompanyTeams", map[string]interface{}{})
 	if err != nil {
 		return fmt.Errorf("failed to list teams: %w", err)
 	}
