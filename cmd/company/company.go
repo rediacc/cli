@@ -126,7 +126,7 @@ func runInfo(cmd *cobra.Command, args []string) error {
 	cfg := config.Get()
 	client := api.NewClient(cfg.Server.URL)
 
-	response, err := client.ExecuteStoredProcedure("GetUserCompanyDetails", map[string]interface{}{})
+	response, err := client.ExecuteStoredProcedure("GetUserCompany", map[string]interface{}{})
 	if err != nil {
 		return fmt.Errorf("failed to get company info: %w", err)
 	}
@@ -186,7 +186,7 @@ func runVaultGet(cmd *cobra.Command, args []string) error {
 	cfg := config.Get()
 	client := api.NewClient(cfg.Server.URL)
 
-	response, err := client.ExecuteStoredProcedure("GetCompanySecureData", map[string]interface{}{})
+	response, err := client.ExecuteStoredProcedure("GetCompanyVault", map[string]interface{}{})
 	if err != nil {
 		return fmt.Errorf("failed to get vault data: %w", err)
 	}
@@ -216,7 +216,7 @@ func runVaultUpdate(cmd *cobra.Command, args []string) error {
 		"data": data,
 	}
 
-	response, err := client.ExecuteStoredProcedure("UpdateCompanySecureData", params)
+	response, err := client.ExecuteStoredProcedure("UpdateCompanyVault", params)
 	if err != nil {
 		return fmt.Errorf("failed to update vault data: %w", err)
 	}

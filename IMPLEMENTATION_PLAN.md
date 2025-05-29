@@ -337,12 +337,12 @@ type Machine struct {
 | CLI Command | Stored Procedure | Parameters |
 |-------------|------------------|------------|
 | `auth login` | `web.protected_CreateAuthenticationRequest` | email, password, 2fa_code? |
-| `auth logout` | `web.public_LogoutUserSession` | session_id |
+| `auth logout` | `web.public_DeleteUserSession` | session_id |
 | `auth user create` | `web.public_CreateNewUser` | email, password |
 | `auth user update-email` | `web.public_UpdateUserEmail` | old_email, new_email |
 | `auth user update-password` | `web.public_UpdateUserPassword` | email, old_password, new_password |
 | `auth user enable` | `web.protected_ActivateUserAccount` | email |
-| `auth user disable` | `web.public_DeactivateUserAccount` | email |
+| `auth user disable` | `web.public_UpdateUserActivation` | email |
 | `auth 2fa enable` | `web.public_UpdateUser2FA` | email, action: "enable" |
 | `auth 2fa generate` | `dbo.sp2FAGenerateSecretKey` | - |
 | `auth 2fa validate` | `dbo.sp2FAValidate` | secret, code |
@@ -352,11 +352,11 @@ type Machine struct {
 | CLI Command | Stored Procedure | Parameters |
 |-------------|------------------|------------|
 | `company create` | `web.protected_CreateNewCompany` | name, admin_email |
-| `company info` | `web.public_GetUserCompanyDetails` | - |
+| `company info` | `web.public_GetUserCompany` | - |
 | `company users list` | `web.public_GetCompanyUsers` | - |
 | `company limits` | `web.public_GetCompanyResourceLimits` | - |
-| `company vault get` | `web.public_GetCompanySecureData` | - |
-| `company vault update` | `web.public_UpdateCompanySecureData` | data |
+| `company vault get` | `web.public_GetCompanyVault` | - |
+| `company vault update` | `web.public_UpdateCompanyVault` | data |
 | `company subscription info` | `web.public_GetSubscriptionDetails` | - |
 
 ### Permission Management
@@ -366,7 +366,7 @@ type Machine struct {
 | `permissions groups create` | `web.public_CreatePermissionGroup` | name |
 | `permissions groups delete` | `web.public_DeletePermissionGroup` | name |
 | `permissions groups show` | `web.public_GetPermissionGroupDetails` | name |
-| `permissions add` | `web.public_AddPermissionToGroup` | group, permission |
+| `permissions add` | `web.public_CreatePermissionInGroup` | group, permission |
 | `permissions remove` | `web.public_DeletePermissionFromGroup` | group, permission |
 | `permissions assign` | `web.public_UpdateUserPermissionGroup` | user_email, group |
 
@@ -377,9 +377,9 @@ type Machine struct {
 | `teams create` | `web.public_CreateTeam` | name |
 | `teams delete` | `web.public_DeleteTeam` | name |
 | `teams rename` | `web.public_UpdateTeamName` | old_name, new_name |
-| `teams vault update` | `web.public_UpdateTeamSecureData` | name, data |
+| `teams vault update` | `web.public_UpdateTeamVault` | name, data |
 | `teams members list` | `web.public_GetTeamMembers` | name |
-| `teams members add` | `web.public_AddUserToTeam` | team_name, user_email |
+| `teams members add` | `web.public_CreateTeamMembership` | team_name, user_email |
 | `teams members remove` | `web.public_DeleteUserFromTeam` | team_name, user_email |
 
 ### Infrastructure Management
@@ -388,16 +388,16 @@ type Machine struct {
 | `infra regions list` | `web.public_GetCompanyRegions` | - |
 | `infra regions create` | `web.public_CreateRegion` | name |
 | `infra regions delete` | `web.public_DeleteRegion` | name |
-| `infra regions update` | `web.public_UpdateRegionSecureData` | name, vault_data |
+| `infra regions update` | `web.public_UpdateRegionVault` | name, vault_data |
 | `infra bridges list` | `web.public_GetRegionBridges` | region |
 | `infra bridges create` | `web.public_CreateBridge` | region, name |
 | `infra bridges delete` | `web.public_DeleteBridge` | region, name |
-| `infra bridges update` | `web.public_UpdateBridgeSecureData` | region, name, vault_data |
+| `infra bridges update` | `web.public_UpdateBridgeVault` | region, name, vault_data |
 | `infra machines list` | `web.public_GetTeamMachines` | team |
 | `infra machines create` | `web.public_CreateMachine` | team, name, bridge |
 | `infra machines delete` | `web.public_DeleteMachine` | team, name |
 | `infra machines move` | `web.public_UpdateMachineBridge` | team, name, new_bridge |
-| `infra machines update` | `web.public_UpdateMachineSecureData` | team, name, vault_data |
+| `infra machines update` | `web.public_UpdateMachineVault` | team, name, vault_data |
 
 ### Storage & Repository Management
 | CLI Command | Stored Procedure | Parameters |
@@ -405,11 +405,11 @@ type Machine struct {
 | `storage list` | `web.public_GetTeamStorages` | team |
 | `storage create` | `web.public_CreateStorage` | team, name |
 | `storage delete` | `web.public_DeleteStorage` | team, name |
-| `storage update` | `web.public_UpdateStorageSecureData` | team, name, vault_data |
+| `storage update` | `web.public_UpdateStorageVault` | team, name, vault_data |
 | `storage repos list` | `web.public_GetTeamRepositories` | team |
 | `storage repos create` | `web.public_CreateRepository` | team, name |
 | `storage repos delete` | `web.public_DeleteRepository` | team, name |
-| `storage repos update` | `web.public_UpdateRepositorySecureData` | team, name, vault_data |
+| `storage repos update` | `web.public_UpdateRepositoryVault` | team, name, vault_data |
 
 ### Schedule Management
 | CLI Command | Stored Procedure | Parameters |
@@ -417,7 +417,7 @@ type Machine struct {
 | `schedules list` | `web.public_GetTeamSchedules` | team |
 | `schedules create` | `web.public_CreateSchedule` | team, name |
 | `schedules delete` | `web.public_DeleteSchedule` | team, name |
-| `schedules update` | `web.public_UpdateScheduleSecureData` | team, name, vault_data |
+| `schedules update` | `web.public_UpdateScheduleVault` | team, name, vault_data |
 
 ### Queue Management
 | CLI Command | Stored Procedure | Parameters |
@@ -425,9 +425,9 @@ type Machine struct {
 | `queue list` | `web.public_GetTeamQueueItems` | team |
 | `queue add` | `web.public_CreateQueueItem` | team, data |
 | `queue remove` | `web.public_DeleteQueueItem` | item_id |
-| `queue response add` | `web.public_AddQueueItemResponse` | item_id, response |
-| `queue response update` | `web.public_AddQueueItemResponse` | item_id, response |
-| `queue next` | `web.public_GetNextQueueItems` | team, count |
+| `queue response add` | `web.public_UpdateQueueItemResponse` | item_id, response |
+| `queue response update` | `web.public_UpdateQueueItemResponse` | item_id, response |
+| `queue next` | `web.public_GetQueueItemsNext` | team, count |
 
 ## Jobs Commands Implementation
 

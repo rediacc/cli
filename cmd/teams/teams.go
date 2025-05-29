@@ -219,7 +219,7 @@ func runMembersAdd(cmd *cobra.Command, args []string) error {
 		"NewUserEmail": userEmail,
 	}
 
-	response, err := client.ExecuteStoredProcedure("AddUserToTeam", params)
+	response, err := client.ExecuteStoredProcedure("CreateTeamMembership", params)
 	if err != nil {
 		return fmt.Errorf("failed to add user to team: %w", err)
 	}
