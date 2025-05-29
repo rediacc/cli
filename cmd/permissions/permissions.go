@@ -241,7 +241,7 @@ func runAssign(cmd *cobra.Command, args []string) error {
 		"group":     group,
 	}
 
-	response, err := client.ExecuteStoredProcedure("ChangeUserPermissionGroup", params)
+	response, err := client.ExecuteStoredProcedure("UpdateUserPermissionGroup", params)
 	if err != nil {
 		return fmt.Errorf("failed to assign user to group: %w", err)
 	}

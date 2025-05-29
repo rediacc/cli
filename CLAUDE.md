@@ -78,7 +78,7 @@ config.GetOutputFormat()  // Get output format
 - `company users list` → `web.public_GetCompanyUsers`
 
 ### Teams Management
-- `teams list` → `web.public_GetAllCompanyTeams`
+- `teams list` → `web.public_GetCompanyTeams`
 - `teams create` → `web.public_CreateTeam`
 - `teams members add` → `web.public_AddUserToTeam`
 
