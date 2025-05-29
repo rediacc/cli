@@ -115,7 +115,7 @@ func runUserList(cmd *cobra.Command, args []string) error {
 	cfg := config.Get()
 	client := api.NewClient(cfg.Server.URL)
 
-	response, err := client.ExecuteStoredProcedure("GetAllCompanyUsers", map[string]interface{}{})
+	response, err := client.ExecuteStoredProcedure("GetCompanyUsers", map[string]interface{}{})
 	if err != nil {
 		return fmt.Errorf("failed to list users: %w", err)
 	}
@@ -141,7 +141,7 @@ func runUserInfo(cmd *cobra.Command, args []string) error {
 		"email": email,
 	}
 
-	response, err := client.ExecuteStoredProcedure("GetAllCompanyUsers", params)
+	response, err := client.ExecuteStoredProcedure("GetCompanyUsers", params)
 	if err != nil {
 		return fmt.Errorf("failed to get user info: %w", err)
 	}
