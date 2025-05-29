@@ -188,12 +188,12 @@ func runUserDeactivate(cmd *cobra.Command, args []string) error {
 	cfg := config.Get()
 	client := api.NewClient(cfg.Server.URL)
 
-	// UpdateUserActivation expects userEmail parameter
+	// UpdateUserToDeactivated expects userEmail parameter
 	params := map[string]interface{}{
 		"userEmail": email,
 	}
 
-	response, err := client.ExecuteStoredProcedure("UpdateUserActivation", params)
+	response, err := client.ExecuteStoredProcedure("UpdateUserToDeactivated", params)
 	if err != nil {
 		return fmt.Errorf("failed to deactivate user: %w", err)
 	}
