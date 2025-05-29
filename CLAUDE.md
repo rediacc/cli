@@ -69,7 +69,7 @@ config.GetOutputFormat()  // Get output format
 
 ### Authentication
 - `auth login` → `web.protected_CreateAuthenticationRequest`
-- `auth logout` → `web.public_DeleteUserSession`
+- `auth logout` → `web.public_DeleteUserRequest`
 - `auth user create` → `web.public_CreateNewUser`
 
 ### Company Management

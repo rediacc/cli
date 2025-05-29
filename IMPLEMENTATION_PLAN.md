@@ -337,16 +337,16 @@ type Machine struct {
 | CLI Command | Stored Procedure | Parameters |
 |-------------|------------------|------------|
 | `auth login` | `web.protected_CreateAuthenticationRequest` | email, password, 2fa_code? |
-| `auth logout` | `web.public_DeleteUserSession` | session_id |
+| `auth logout` | `web.public_DeleteUserRequest` | session_id |
 | `auth user create` | `web.public_CreateNewUser` | email, password |
 | `auth user update-email` | `web.public_UpdateUserEmail` | old_email, new_email |
 | `auth user update-password` | `web.public_UpdateUserPassword` | email, old_password, new_password |
 | `auth user enable` | `web.protected_ActivateUserAccount` | email |
-| `auth user disable` | `web.public_UpdateUserActivation` | email |
+| `auth user disable` | `web.public_UpdateUserToDeactivated` | email |
 | `auth 2fa enable` | `web.public_UpdateUser2FA` | email, action: "enable" |
 | `auth 2fa generate` | `dbo.sp2FAGenerateSecretKey` | - |
 | `auth 2fa validate` | `dbo.sp2FAValidate` | secret, code |
-| `auth sessions list` | `web.public_GetUserSessions` | email |
+| `auth sessions list` | `web.public_GetUserRequests` | email |
 
 ### Company Management
 | CLI Command | Stored Procedure | Parameters |
@@ -368,7 +368,7 @@ type Machine struct {
 | `permissions groups show` | `web.public_GetPermissionGroupDetails` | name |
 | `permissions add` | `web.public_CreatePermissionInGroup` | group, permission |
 | `permissions remove` | `web.public_DeletePermissionFromGroup` | group, permission |
-| `permissions assign` | `web.public_UpdateUserPermissionGroup` | user_email, group |
+| `permissions assign` | `web.public_UpdateUserAssignedPermissions` | user_email, group |
 
 ### Team Management
 | CLI Command | Stored Procedure | Parameters |
@@ -396,7 +396,7 @@ type Machine struct {
 | `infra machines list` | `web.public_GetTeamMachines` | team |
 | `infra machines create` | `web.public_CreateMachine` | team, name, bridge |
 | `infra machines delete` | `web.public_DeleteMachine` | team, name |
-| `infra machines move` | `web.public_UpdateMachineBridge` | team, name, new_bridge |
+| `infra machines move` | `web.public_UpdateMachineAssignedBridge` | team, name, new_bridge |
 | `infra machines update` | `web.public_UpdateMachineVault` | team, name, vault_data |
 
 ### Storage & Repository Management
