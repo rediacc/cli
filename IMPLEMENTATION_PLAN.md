@@ -353,7 +353,7 @@ type Machine struct {
 |-------------|------------------|------------|
 | `company create` | `web.protected_CreateNewCompany` | name, admin_email |
 | `company info` | `web.public_GetUserCompanyDetails` | - |
-| `company users list` | `web.public_GetAllCompanyUsers` | - |
+| `company users list` | `web.public_GetCompanyUsers` | - |
 | `company limits` | `web.public_GetCompanyResourceLimits` | - |
 | `company vault get` | `web.public_GetCompanySecureData` | - |
 | `company vault update` | `web.public_UpdateCompanySecureData` | data |
@@ -367,7 +367,7 @@ type Machine struct {
 | `permissions groups delete` | `web.public_DeletePermissionGroup` | name |
 | `permissions groups show` | `web.public_GetPermissionGroupDetails` | name |
 | `permissions add` | `web.public_AddPermissionToGroup` | group, permission |
-| `permissions remove` | `web.public_RemovePermissionFromGroup` | group, permission |
+| `permissions remove` | `web.public_DeletePermissionFromGroup` | group, permission |
 | `permissions assign` | `web.public_ChangeUserPermissionGroup` | user_email, group |
 
 ### Team Management
@@ -380,12 +380,12 @@ type Machine struct {
 | `teams vault update` | `web.public_UpdateTeamSecureData` | name, data |
 | `teams members list` | `web.public_GetTeamMembers` | name |
 | `teams members add` | `web.public_AddUserToTeam` | team_name, user_email |
-| `teams members remove` | `web.public_RemoveUserFromTeam` | team_name, user_email |
+| `teams members remove` | `web.public_DeleteUserFromTeam` | team_name, user_email |
 
 ### Infrastructure Management
 | CLI Command | Stored Procedure | Parameters |
 |-------------|------------------|------------|
-| `infra regions list` | `web.public_GetAllCompanyRegions` | - |
+| `infra regions list` | `web.public_GetCompanyRegions` | - |
 | `infra regions create` | `web.public_CreateRegion` | name |
 | `infra regions delete` | `web.public_DeleteRegion` | name |
 | `infra regions update` | `web.public_UpdateRegionSecureData` | name, vault_data |
@@ -426,7 +426,7 @@ type Machine struct {
 | `queue add` | `web.public_CreateQueueItem` | team, data |
 | `queue remove` | `web.public_DeleteQueueItem` | item_id |
 | `queue response add` | `web.public_AddQueueItemResponse` | item_id, response |
-| `queue response update` | `web.public_UpdateQueueItemResponse` | item_id, response |
+| `queue response update` | `web.public_AddQueueItemResponse` | item_id, response |
 | `queue next` | `web.public_GetNextQueueItems` | team, count |
 
 ## Jobs Commands Implementation

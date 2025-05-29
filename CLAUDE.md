@@ -75,7 +75,7 @@ config.GetOutputFormat()  // Get output format
 ### Company Management
 - `company create` → `web.protected_CreateNewCompany`
 - `company info` → `web.public_GetUserCompanyDetails`
-- `company users list` → `web.public_GetAllCompanyUsers`
+- `company users list` → `web.public_GetCompanyUsers`
 
 ### Teams Management
 - `teams list` → `web.public_GetAllCompanyTeams`

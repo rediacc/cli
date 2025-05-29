@@ -244,7 +244,7 @@ func runMembersRemove(cmd *cobra.Command, args []string) error {
 		"userEmail": userEmail,
 	}
 
-	response, err := client.ExecuteStoredProcedure("RemoveUserFromTeam", params)
+	response, err := client.ExecuteStoredProcedure("DeleteUserFromTeam", params)
 	if err != nil {
 		return fmt.Errorf("failed to remove user from team: %w", err)
 	}

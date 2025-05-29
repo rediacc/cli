@@ -216,7 +216,7 @@ func runRemove(cmd *cobra.Command, args []string) error {
 		"permission": permission,
 	}
 
-	response, err := client.ExecuteStoredProcedure("RemovePermissionFromGroup", params)
+	response, err := client.ExecuteStoredProcedure("DeletePermissionFromGroup", params)
 	if err != nil {
 		return fmt.Errorf("failed to remove permission: %w", err)
 	}
