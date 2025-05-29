@@ -120,7 +120,7 @@ func (c *Client) ExecuteStoredProcedure(procedure string, params map[string]inte
 		return nil, fmt.Errorf("API error: failure code %d", middlewareResp.Failure)
 	}
 
-	// Check for token refresh (nextReqeustCredential in response)
+	// Check for token refresh (nextRequestCredential in response)
 	c.updateTokenFromResponse(&middlewareResp)
 
 	// Convert to old Response format for compatibility
@@ -242,10 +242,10 @@ func (c *Client) ExecuteAuthProcedure(procedure string, params map[string]interf
 		return nil, fmt.Errorf("API error: failure code %d", middlewareResp.Failure)
 	}
 
-	// Extract the nextReqeustCredential from the first table
+	// Extract the nextRequestCredential from the first table
 	authResponse := &AuthResponse{Success: true}
 	if len(middlewareResp.Tables) > 0 && len(middlewareResp.Tables[0].Data) > 0 {
-		if cred, ok := middlewareResp.Tables[0].Data[0]["nextReqeustCredential"]; ok {
+		if cred, ok := middlewareResp.Tables[0].Data[0]["nextRequestCredential"]; ok {
 			if credStr, ok := cred.(string); ok {
 				authResponse.RequestCredential = credStr
 				authResponse.SessionToken = credStr // Use the same for both for now
@@ -258,10 +258,10 @@ func (c *Client) ExecuteAuthProcedure(procedure string, params map[string]interf
 
 // updateTokenFromResponse updates the stored token from API response
 func (c *Client) updateTokenFromResponse(resp *MiddlewareResponse) {
-	// Look for nextReqeustCredential in any table data
+	// Look for nextRequestCredential in any table data
 	for _, table := range resp.Tables {
 		for _, row := range table.Data {
-			if cred, ok := row["nextReqeustCredential"]; ok {
+			if cred, ok := row["nextRequestCredential"]; ok {
 				if credStr, ok := cred.(string); ok {
 					// Update both session token and request credential
 					if err := config.UpdateAuth(c.config.Auth.Email, credStr, credStr); err == nil {
