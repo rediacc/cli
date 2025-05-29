@@ -215,7 +215,7 @@ func runMembersAdd(cmd *cobra.Command, args []string) error {
 	client := api.NewClient(cfg.Server.URL)
 
 	params := map[string]interface{}{
-		"Team":         teamName,
+		"TeamName":         teamName,
 		"NewUserEmail": userEmail,
 	}
 
