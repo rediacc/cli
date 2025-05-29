@@ -168,8 +168,8 @@ func (c *Client) Logout() error {
 		return fmt.Errorf("not logged in")
 	}
 
-	// Call LogoutUserSession procedure - this is public, so no params needed
-	_, err := c.ExecuteStoredProcedure("LogoutUserSession", map[string]interface{}{})
+	// Call DeleteUserSession procedure - this is public, so no params needed
+	_, err := c.ExecuteStoredProcedure("DeleteUserSession", map[string]interface{}{})
 	if err != nil {
 		return err
 	}

@@ -191,7 +191,7 @@ func runAdd(cmd *cobra.Command, args []string) error {
 		"permission": permission,
 	}
 
-	response, err := client.ExecuteStoredProcedure("AddPermissionToGroup", params)
+	response, err := client.ExecuteStoredProcedure("CreatePermissionInGroup", params)
 	if err != nil {
 		return fmt.Errorf("failed to add permission: %w", err)
 	}

@@ -69,18 +69,18 @@ config.GetOutputFormat()  // Get output format
 
 ### Authentication
 - `auth login` → `web.protected_CreateAuthenticationRequest`
-- `auth logout` → `web.public_LogoutUserSession`
+- `auth logout` → `web.public_DeleteUserSession`
 - `auth user create` → `web.public_CreateNewUser`
 
 ### Company Management
 - `company create` → `web.protected_CreateNewCompany`
-- `company info` → `web.public_GetUserCompanyDetails`
+- `company info` → `web.public_GetUserCompany`
 - `company users list` → `web.public_GetCompanyUsers`
 
 ### Teams Management
 - `teams list` → `web.public_GetCompanyTeams`
 - `teams create` → `web.public_CreateTeam`
-- `teams members add` → `web.public_AddUserToTeam`
+- `teams members add` → `web.public_CreateTeamMembership`
 
 ## Configuration File Structure
 Default location: `~/.rediacc-cli.yaml`
