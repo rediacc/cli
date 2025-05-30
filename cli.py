@@ -9,9 +9,10 @@ import hashlib
 import json
 import os
 import sys
+import urllib.request
+import urllib.parse
+import urllib.error
 from typing import Dict, Any, Optional, List, Union
-
-import requests
 
 # Configuration
 BASE_URL = os.environ.get('REDIACC_API_URL', 'http://localhost:8080')
@@ -408,38 +409,55 @@ class APIClient:
     def __init__(self, config=None, config_manager=None):
         self.config = config or {}
         self.config_manager = config_manager
-        self.session = requests.Session()
-        self.session.headers.update({"Content-Type": "application/json"})
+        self.base_headers = {"Content-Type": "application/json"}
     
     def request(self, endpoint, data=None, headers=None):
         """Make an API request to the middleware service"""
         url = f"{BASE_URL}{API_PREFIX}/{endpoint}"
-        merged_headers = self.session.headers.copy()
+        
+        # Merge headers
+        merged_headers = self.base_headers.copy()
         if headers:
             merged_headers.update(headers)
         
+        # Prepare the request
+        request_data = json.dumps(data or {}).encode('utf-8')
+        req = urllib.request.Request(
+            url,
+            data=request_data,
+            headers=merged_headers,
+            method='POST'
+        )
+        
         try:
-            response = self.session.post(
-                url, json=data or {}, headers=merged_headers, timeout=REQUEST_TIMEOUT
-            )
-            
-            if response.status_code != 200:
-                return {"error": f"API Error: {response.status_code} - {response.text}", 
-                        "status_code": response.status_code}
-            
-            result = response.json()
-            # Check for actual failure (failure != 0)
-            if result.get('failure') and result.get('failure') != 0:
-                errors = result.get('errors', [])
-                if errors and len(errors) > 0:
-                    error_msg = f"API Error: {'; '.join(errors)}"
-                else:
-                    error_msg = f"API Error: {result.get('message', 'Request failed')}"
-                return {"error": error_msg, "status_code": 400}
-            
-            return result
-        except requests.exceptions.RequestException as e:
+            # Make the request with timeout
+            with urllib.request.urlopen(req, timeout=REQUEST_TIMEOUT) as response:
+                response_data = response.read().decode('utf-8')
+                
+                if response.status != 200:
+                    return {"error": f"API Error: {response.status} - {response_data}", 
+                            "status_code": response.status}
+                
+                result = json.loads(response_data)
+                
+                # Check for actual failure (failure != 0)
+                if result.get('failure') and result.get('failure') != 0:
+                    errors = result.get('errors', [])
+                    if errors and len(errors) > 0:
+                        error_msg = f"API Error: {'; '.join(errors)}"
+                    else:
+                        error_msg = f"API Error: {result.get('message', 'Request failed')}"
+                    return {"error": error_msg, "status_code": 400}
+                
+                return result
+                
+        except urllib.error.HTTPError as e:
+            error_body = e.read().decode('utf-8') if e.fp else str(e)
+            return {"error": f"API Error: {e.code} - {error_body}", "status_code": e.code}
+        except urllib.error.URLError as e:
             return {"error": f"Connection error: {str(e)}", "status_code": 500}
+        except Exception as e:
+            return {"error": f"Request error: {str(e)}", "status_code": 500}
     
     def auth_request(self, endpoint, email, pwd_hash, data=None):
         """Make an authenticated request with user credentials"""
