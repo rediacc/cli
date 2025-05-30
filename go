@@ -16,24 +16,18 @@ start() {
         return 1
     fi
     
-    # Install dependencies if needed
-    if ! python3 -c "import requests" 2>/dev/null; then
-        echo -e "\e[33mInstalling required dependency: requests\e[0m"
-        pip3 install --user requests
-    fi
-    
     # Run CLI with arguments
-    python3 "$CLI_HOME/cli.py" "$@"
+    python3 "$CLI_HOME/rediacc-cli" "$@"
 }
 
 test() {
     echo -e "\e[32mRunning CLI tests...\e[0m"
     
     # Run test script if it exists
-    if [ -f "$CLI_HOME/test_cli.sh" ]; then
-        bash "$CLI_HOME/test_cli.sh"
+    if [ -f "$CLI_HOME/test.sh" ]; then
+        bash "$CLI_HOME/test.sh"
     else
-        echo -e "\e[33mNo test script found. Create test_cli.sh to add tests.\e[0m"
+        echo -e "\e[33mNo test script found. Create test.sh to add tests.\e[0m"
     fi
 }
 
@@ -44,15 +38,14 @@ release() {
     mkdir -p "$CLI_HOME/../bin/cli"
     
     # Copy CLI script to bin
-    cp "$CLI_HOME/cli.py" "$CLI_HOME/../bin/cli/"
-    cp "$CLI_HOME/requirements.txt" "$CLI_HOME/../bin/cli/" 2>/dev/null || echo "requests==2.31.0" > "$CLI_HOME/../bin/cli/requirements.txt"
+    cp "$CLI_HOME/rediacc-cli" "$CLI_HOME/../bin/cli/"
     
     # Create a simple wrapper script
     cat > "$CLI_HOME/../bin/cli/rediacc" << 'EOF'
 #!/bin/bash
 # Rediacc CLI wrapper
 DIR="$( cd "$( dirname "${BASH_SOURCE[0]}" )" && pwd )"
-python3 "$DIR/cli.py" "$@"
+python3 "$DIR/rediacc-cli" "$@"
 EOF
     chmod +x "$CLI_HOME/../bin/cli/rediacc"
     
