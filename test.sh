@@ -6,7 +6,7 @@ TIMESTAMP=$(date +%Y%m%d_%H%M%S)
 RANDOM_SUFFIX=$(openssl rand -hex 2)
 
 # Test data - modify these as needed
-ADMIN_EMAIL="admin@system.local"
+ADMIN_EMAIL="admin@rediacc.io"
 ADMIN_PASSWORD="admin"
 COMPANY_NAME="TestCompany_${TIMESTAMP}_${RANDOM_SUFFIX}"
 TEAM_NAME="TestTeam_${TIMESTAMP}_${RANDOM_SUFFIX}"
@@ -128,6 +128,49 @@ ${CLI} list machines "${TEAM_NAME}"
 echo -e "\nRepositories in ${TEAM_NAME}:"
 ${CLI} list repositories "${TEAM_NAME}"
 
+# 3.1. Test JSON output
+print_section "Testing JSON Output"
+
+echo -e "\nTeams (JSON):"
+if ${CLI} --output json list teams | python3 -m json.tool > /dev/null 2>&1; then
+    print_status "Teams JSON output is valid"
+    ${CLI} --output json list teams
+else
+    print_error "Teams JSON output is invalid"
+fi
+
+echo -e "\nRegions (JSON):"
+if ${CLI} --output json list regions | python3 -m json.tool > /dev/null 2>&1; then
+    print_status "Regions JSON output is valid"
+    ${CLI} --output json list regions
+else
+    print_error "Regions JSON output is invalid"
+fi
+
+echo -e "\nBridges in Default Region (JSON):"
+if ${CLI} --output json list bridges "Default Region" | python3 -m json.tool > /dev/null 2>&1; then
+    print_status "Bridges JSON output is valid"
+    ${CLI} --output json list bridges "Default Region"
+else
+    print_error "Bridges JSON output is invalid"
+fi
+
+echo -e "\nMachines in Default Team (JSON):"
+if ${CLI} --output json list machines "Default Team" | python3 -m json.tool > /dev/null 2>&1; then
+    print_status "Machines JSON output is valid"
+    ${CLI} --output json list machines "Default Team"
+else
+    print_error "Machines JSON output is invalid"
+fi
+
+echo -e "\nRepositories in Default Team (JSON):"
+if ${CLI} --output json list repositories "Default Team" | python3 -m json.tool > /dev/null 2>&1; then
+    print_status "Repositories JSON output is valid"
+    ${CLI} --output json list repositories "Default Team"
+else
+    print_error "Repositories JSON output is invalid"
+fi
+
 # 4. Inspect entities
 print_section "Inspecting Entities"
 
@@ -136,6 +179,15 @@ ${CLI} inspect team "${TEAM_NAME}"
 
 echo -e "\nMachine details for ${MACHINE_NAME}:"
 ${CLI} inspect machine "${TEAM_NAME}" "${MACHINE_NAME}"
+
+# 4.1. Test JSON inspection
+echo -e "\nDefault Team details (JSON):"
+if ${CLI} --output json inspect team "Default Team" | python3 -m json.tool > /dev/null 2>&1; then
+    print_status "Team inspect JSON output is valid"
+    ${CLI} --output json inspect team "Default Team"
+else
+    print_error "Team inspect JSON output is invalid"
+fi
 
 # 5. Clean up (uncomment if you want to delete after testing)
 print_section "Cleanup"
