@@ -487,6 +487,30 @@ class APIClient:
         
         return response
 
+# Output format handler
+def format_output(data, format_type, message=None, error=None):
+    """Format output based on the specified format type"""
+    if format_type == 'json':
+        output = {
+            'success': error is None,
+            'data': data
+        }
+        if message:
+            output['message'] = message
+        if error:
+            output['error'] = error
+        return json.dumps(output, indent=2)
+    else:
+        # Text format (default)
+        if error:
+            return colorize(f"Error: {error}", 'RED')
+        elif data:
+            return data
+        elif message:
+            return colorize(message, 'GREEN')
+        else:
+            return "No data available"
+
 # Utility functions
 def pwd_hash(pwd):
     """Generate a base64 password hash for authentication"""
@@ -615,71 +639,112 @@ def format_table(headers, rows):
     
     return '\n'.join([header_line, separator] + formatted_rows)
 
-def format_dynamic_tables(response, skip_fields=None):
+def table_to_dict(headers, rows):
+    """Convert table data to a list of dictionaries for JSON output"""
+    result = []
+    for row in rows:
+        item = {}
+        for i, header in enumerate(headers):
+            if i < len(row):
+                item[header] = row[i]
+        result.append(item)
+    return result
+
+def format_dynamic_tables(response, output_format='text', skip_fields=None):
     """Format all tables from response dynamically, skipping table index 0"""
     if not response or 'tables' not in response:
-        return "No data available"
+        return format_output("No data available", output_format)
     
     tables = response.get('tables', [])
     if len(tables) <= 1:
-        return "No records found"
+        return format_output("No records found", output_format)
     
     # Fields to skip in output
     if skip_fields is None:
         skip_fields = ['vaultContent', 'nextRequestCredential', 'vaultVersion']
     
-    output_parts = []
-    
-    # Process each table (skip index 0 which contains credentials)
-    for table_idx in range(1, len(tables)):
-        table = tables[table_idx]
-        data = table.get('data', [])
+    if output_format == 'json':
+        # For JSON output, convert all tables to lists of dictionaries
+        result = []
+        for table_idx in range(1, len(tables)):
+            table = tables[table_idx]
+            data = table.get('data', [])
+            
+            if not data:
+                continue
+                
+            # Process each record, removing fields we want to skip
+            processed_data = []
+            for record in data:
+                processed_record = {k: v for k, v in record.items() if k not in skip_fields}
+                processed_data.append(processed_record)
+            
+            result.extend(processed_data)
         
-        if not data:
-            continue
+        return format_output(result, output_format)
+    else:
+        # For text output, format as before
+        output_parts = []
         
-        # Get all unique keys from all records
-        all_keys = set()
-        for record in data:
-            all_keys.update(record.keys())
+        # Process each table (skip index 0 which contains credentials)
+        for table_idx in range(1, len(tables)):
+            table = tables[table_idx]
+            data = table.get('data', [])
+            
+            if not data:
+                continue
+            
+            # Get all unique keys from all records
+            all_keys = set()
+            for record in data:
+                all_keys.update(record.keys())
+            
+            # Remove fields we want to skip
+            display_keys = [k for k in sorted(all_keys) if k not in skip_fields]
+            
+            if not display_keys:
+                continue
+            
+            # Create headers and rows
+            headers = [camel_to_title(key) for key in display_keys]
+            rows = [[str(record.get(key, '')) for key in display_keys] for record in data]
+            
+            # Format this table
+            if rows:
+                table_output = format_table(headers, rows)
+                output_parts.append(table_output)
         
-        # Remove fields we want to skip
-        display_keys = [k for k in sorted(all_keys) if k not in skip_fields]
-        
-        if not display_keys:
-            continue
-        
-        # Create headers and rows
-        headers = [camel_to_title(key) for key in display_keys]
-        rows = [[str(record.get(key, '')) for key in display_keys] for record in data]
-        
-        # Format this table
-        if rows:
-            table_output = format_table(headers, rows)
-            output_parts.append(table_output)
-    
-    return '\n\n'.join(output_parts) if output_parts else "No records found"
+        return format_output('\n\n'.join(output_parts) if output_parts else "No records found", output_format)
 
 class CommandHandler:
     """Unified command handler"""
-    def __init__(self, config_manager):
+    def __init__(self, config_manager, output_format='text'):
         self.config = config_manager.config
         self.config_manager = config_manager
         self.client = APIClient(self.config, config_manager)
+        self.output_format = output_format
     
     def handle_response(self, response, success_message=None, format_args=None):
         """Handle API response and print appropriate message"""
         if response.get('error'):
-            print(colorize(f"Error: {response['error']}", 'RED'))
+            output = format_output(None, self.output_format, None, response['error'])
+            print(output)
             return False
         
-        if success_message:
+        if success_message and self.output_format != 'json':
             if format_args:
                 success_message = success_message.format(**{k: getattr(format_args, k, '') 
                                                            for k in dir(format_args) 
                                                            if not k.startswith('_')})
             print(colorize(success_message, 'GREEN'))
-        
+        elif success_message and self.output_format == 'json':
+            if format_args:
+                success_message = success_message.format(**{k: getattr(format_args, k, '') 
+                                                           for k in dir(format_args) 
+                                                           if not k.startswith('_')})
+            output = format_output({}, self.output_format, success_message)
+            print(output)
+            
         return True
     
     def login(self, args):
@@ -697,18 +762,23 @@ class CommandHandler:
         )
         
         if response.get('error'):
-            print(colorize(f"Login failed: {response['error']}", 'RED'))
+            output = format_output(None, self.output_format, None, f"Login failed: {response['error']}")
+            print(output)
             return 1
         
         # Extract token from response
         tables = response.get('tables', [])
         if not tables or not tables[0].get('data'):
-            print(colorize("Login failed: Could not get authentication token", 'RED'))
+            error_msg = "Login failed: Could not get authentication token"
+            output = format_output(None, self.output_format, None, error_msg)
+            print(output)
             return 1
         
         token = tables[0]['data'][0].get('nextRequestCredential')
         if not token:
-            print(colorize("Login failed: Invalid authentication token", 'RED'))
+            error_msg = "Login failed: Invalid authentication token"
+            output = format_output(None, self.output_format, None, error_msg)
+            print(output)
             return 1
         
         # Get company info
@@ -726,9 +796,18 @@ class CommandHandler:
         # Save authentication data
         self.config_manager.set_auth(email, token, company)
         
-        print(colorize(f"Successfully logged in as {email}", 'GREEN'))
-        if company:
-            print(f"Company: {company}")
+        # Generate output based on format
+        if self.output_format == 'json':
+            result = {
+                'email': email,
+                'company': company
+            }
+            output = format_output(result, self.output_format, f"Successfully logged in as {email}")
+            print(output)
+        else:
+            print(colorize(f"Successfully logged in as {email}", 'GREEN'))
+            if company:
+                print(f"Company: {company}")
         
         return 0
     
@@ -740,19 +819,23 @@ class CommandHandler:
         
         # Clear local auth data
         self.config_manager.clear_auth()
-        print(colorize("Successfully logged out", 'GREEN'))
+        
+        output = format_output({}, self.output_format, "Successfully logged out")
+        print(output)
         return 0
     
     def generic_command(self, cmd_type, resource_type, args):
         """Handle generic commands using configuration"""
         if cmd_type not in CMD_CONFIG or resource_type not in CMD_CONFIG[cmd_type]:
-            print(colorize(f"Error: Unsupported command: {cmd_type} {resource_type}", 'RED'))
+            error = f"Unsupported command: {cmd_type} {resource_type}"
+            output = format_output(None, self.output_format, None, error)
+            print(output)
             return 1
         
         cmd_config = CMD_CONFIG[cmd_type][resource_type]
         
-        # For remove commands, confirm before proceeding
-        if cmd_type == 'rm' and not args.force and 'confirm_msg' in cmd_config:
+        # For remove commands, confirm before proceeding (unless JSON output or force flag)
+        if cmd_type == 'rm' and not args.force and self.output_format != 'json' and 'confirm_msg' in cmd_config:
             confirm_msg = cmd_config['confirm_msg'].format(**{k: getattr(args, k, '') 
                                                              for k in dir(args) 
                                                              if not k.startswith('_')})
@@ -781,7 +864,9 @@ class CommandHandler:
                 password = getpass.getpass("Admin Password: ")
                 confirm = getpass.getpass("Confirm Password: ")
                 if password != confirm:
-                    print(colorize("Error: Passwords do not match", 'RED'))
+                    error = "Passwords do not match"
+                    output = format_output(None, self.output_format, None, error)
+                    print(output)
                     return 1
             
             response = self.client.auth_request(
@@ -794,19 +879,12 @@ class CommandHandler:
         # For list commands, format the output
         if cmd_type == 'list':
             if response.get('error'):
-                print(colorize(f"Error: {response['error']}", 'RED'))
+                output = format_output(None, self.output_format, None, response['error'])
+                print(output)
                 return 1
             
-            result = format_dynamic_tables(response)
-            if result == "No records found":
-                if resource_type == 'bridges' and hasattr(args, 'region'):
-                    print(f"No bridges found in region '{args.region}'")
-                elif resource_type in ['machines', 'repositories'] and hasattr(args, 'team'):
-                    print(f"No {resource_type} found in team '{args.team}'")
-                else:
-                    print(f"No {resource_type} found")
-            else:
-                print(result)
+            result = format_dynamic_tables(response, self.output_format)
+            print(result)
             return 0
         
         # For other commands, handle the response
@@ -822,7 +900,8 @@ class CommandHandler:
             response = self.client.token_request("GetTeamMembers", {"teamName": args.name})
             
             if response.get('error'):
-                print(colorize(f"Error: {response['error']}", 'RED'))
+                output = format_output(None, self.output_format, None, response['error'])
+                print(output)
                 return 1
             
             members = extract_table_data(response, table_index=1)
@@ -834,21 +913,33 @@ class CommandHandler:
             if not machines_response.get('error'):
                 machines = extract_table_data(machines_response, table_index=1)
             
-            # Print team details
-            print(colorize(f"Team: {args.name}", 'HEADER'))
-            print(f"Members: {len(members)}")
-            print(f"Machines: {len(machines)}")
-            
-            # Print member and machine details
-            if members:
-                print("\nMembers:")
-                for member in members:
-                    print(f"  - {member.get('userEmail', 'N/A')}")
-            
-            if machines:
-                print("\nMachines:")
-                for machine in machines:
-                    print(f"  - {machine.get('machineName', 'N/A')} ({machine.get('bridgeName', 'N/A')})")
+            if self.output_format == 'json':
+                # JSON output
+                result = {
+                    'team': args.name,
+                    'members_count': len(members),
+                    'machines_count': len(machines),
+                    'members': [{'email': m.get('userEmail', 'N/A')} for m in members],
+                    'machines': [{'name': m.get('machineName', 'N/A'), 'bridge': m.get('bridgeName', 'N/A')} for m in machines]
+                }
+                output = format_output(result, self.output_format)
+                print(output)
+            else:
+                # Text output
+                print(colorize(f"Team: {args.name}", 'HEADER'))
+                print(f"Members: {len(members)}")
+                print(f"Machines: {len(machines)}")
+                
+                # Print member and machine details
+                if members:
+                    print("\nMembers:")
+                    for member in members:
+                        print(f"  - {member.get('userEmail', 'N/A')}")
+                
+                if machines:
+                    print("\nMachines:")
+                    for machine in machines:
+                        print(f"  - {machine.get('machineName', 'N/A')} ({machine.get('bridgeName', 'N/A')})")
             
             return 0
             
@@ -857,31 +948,50 @@ class CommandHandler:
             response = self.client.token_request("GetTeamMachines", {"teamName": args.team})
             
             if response.get('error'):
-                print(colorize(f"Error: {response['error']}", 'RED'))
+                output = format_output(None, self.output_format, None, response['error'])
+                print(output)
                 return 1
             
             machines = extract_table_data(response, table_index=1)
             target_machine = next((m for m in machines if m.get('machineName') == args.name), None)
             
             if not target_machine:
-                print(colorize(f"Machine not found: {args.name}", 'RED'))
+                error = f"Machine not found: {args.name}"
+                output = format_output(None, self.output_format, None, error)
+                print(output)
                 return 1
-            
-            # Print machine details
-            print(colorize(f"Machine: {args.name}", 'HEADER'))
-            print(f"Team: {args.team}")
-            print(f"Bridge: {target_machine.get('bridgeName', 'N/A')}")
-            print(f"Region: {target_machine.get('regionName', 'N/A')}")
-            print(f"Queue Count: {target_machine.get('queueCount', 0)}")
-            print(f"Vault Version: {target_machine.get('vaultVersion', 0)}")
             
             # Get queue items
             queue_response = self.client.token_request(
                 "GetQueueItemsNext", {"machineName": args.name, "itemCount": 5}
             )
             
+            queue_items = []
             if not queue_response.get('error'):
                 queue_items = extract_table_data(queue_response, table_index=1)
+            
+            if self.output_format == 'json':
+                # JSON output
+                result = {
+                    'machine': args.name,
+                    'team': args.team,
+                    'bridge': target_machine.get('bridgeName', 'N/A'),
+                    'region': target_machine.get('regionName', 'N/A'),
+                    'queue_count': target_machine.get('queueCount', 0),
+                    'vault_version': target_machine.get('vaultVersion', 0),
+                    'queue_items': [{'task_id': item.get('taskId', 'N/A')} for item in queue_items]
+                }
+                output = format_output(result, self.output_format)
+                print(output)
+            else:
+                # Text output
+                print(colorize(f"Machine: {args.name}", 'HEADER'))
+                print(f"Team: {args.team}")
+                print(f"Bridge: {target_machine.get('bridgeName', 'N/A')}")
+                print(f"Region: {target_machine.get('regionName', 'N/A')}")
+                print(f"Queue Count: {target_machine.get('queueCount', 0)}")
+                print(f"Vault Version: {target_machine.get('vaultVersion', 0)}")
+                
                 if queue_items:
                     print(f"\nQueue Items: {len(queue_items)}")
                     for item in queue_items:
@@ -889,12 +999,15 @@ class CommandHandler:
             
             return 0
         
-        print(colorize(f"Error: Unsupported resource type: {resource_type}", 'RED'))
+        error = f"Unsupported resource type: {resource_type}"
+        output = format_output(None, self.output_format, None, error)
+        print(output)
         return 1
     
     def update_resource(self, resource_type, args):
         """Handle update commands"""
         success = True
+        result_data = {}
         
         if resource_type == 'team':
             if args.new_name:
@@ -904,10 +1017,11 @@ class CommandHandler:
                     {"currentTeamName": args.name, "newTeamName": args.new_name}
                 )
                 
-                if not self.handle_response(
-                    response, f"Successfully renamed team: {args.name} → {args.new_name}"
-                ):
+                success_msg = f"Successfully renamed team: {args.name} → {args.new_name}"
+                if not self.handle_response(response, success_msg):
                     success = False
+                else:
+                    result_data['team_name'] = args.new_name
             
             # Update vault if provided
             if (args.vault or args.vault_file) and success:
@@ -925,9 +1039,13 @@ class CommandHandler:
                 
                 if not self.handle_response(response, "Successfully updated team vault"):
                     success = False
+                else:
+                    result_data['vault_updated'] = True
+                    result_data['vault_version'] = args.vault_version or 1
         
         elif resource_type == 'machine':
             team_name = args.team
+            result_data['team'] = team_name
             
             if args.new_name:
                 # Update machine name
@@ -940,10 +1058,11 @@ class CommandHandler:
                     }
                 )
                 
-                if not self.handle_response(
-                    response, f"Successfully renamed machine: {args.name} → {args.new_name}"
-                ):
+                success_msg = f"Successfully renamed machine: {args.name} → {args.new_name}"
+                if not self.handle_response(response, success_msg):
                     success = False
+                else:
+                    result_data['machine_name'] = args.new_name
             
             # Update bridge if provided
             if args.new_bridge and success:
@@ -958,10 +1077,11 @@ class CommandHandler:
                     }
                 )
                 
-                if not self.handle_response(
-                    response, f"Successfully updated machine bridge: → {args.new_bridge}"
-                ):
+                success_msg = f"Successfully updated machine bridge: → {args.new_bridge}"
+                if not self.handle_response(response, success_msg):
                     success = False
+                else:
+                    result_data['bridge'] = args.new_bridge
             
             # Update vault if provided
             if (args.vault or args.vault_file) and success:
@@ -980,10 +1100,20 @@ class CommandHandler:
                 
                 if not self.handle_response(response, "Successfully updated machine vault"):
                     success = False
+                else:
+                    result_data['vault_updated'] = True
+                    result_data['vault_version'] = args.vault_version or 1
         
         else:
-            print(colorize(f"Error: Unsupported resource type: {resource_type}", 'RED'))
+            error = f"Unsupported resource type: {resource_type}"
+            output = format_output(None, self.output_format, None, error)
+            print(output)
             return 1
+        
+        # If JSON output and operations were successful, show summary
+        if self.output_format == 'json' and success and result_data:
+            output = format_output(result_data, self.output_format, "Update completed successfully")
+            print(output)
         
         return 0 if success else 1
     
@@ -993,28 +1123,47 @@ class CommandHandler:
         endpoints = CMD_CONFIG['vault']['get']['endpoints']
         
         if resource_type not in endpoints:
-            print(colorize(f"Error: Unsupported resource type: {resource_type}", 'RED'))
+            error = f"Unsupported resource type: {resource_type}"
+            output = format_output(None, self.output_format, None, error)
+            print(output)
             return 1
         
         params = get_vault_get_params(args)
         response = self.client.token_request(endpoints[resource_type], params)
         
         if response.get('error'):
-            print(colorize(f"Error: {response['error']}", 'RED'))
+            output = format_output(None, self.output_format, None, response['error'])
+            print(output)
             return 1
         
         data = extract_table_data(response)
         if not data:
-            print(colorize(f"No vault data found", 'YELLOW'))
+            warning = "No vault data found"
+            if self.output_format == 'json':
+                output = format_output({}, self.output_format, warning)
+            else:
+                output = colorize(warning, 'YELLOW')
+            print(output)
             return 0
         
-        # Extract vault data and print as JSON
+        # Extract vault data 
         vault_data = data[0].get('vault', '{}')
         try:
             parsed = json.loads(vault_data)
-            print(json.dumps(parsed, indent=2))
+            
+            if self.output_format == 'json':
+                # For JSON output, return the parsed vault data
+                output = format_output(parsed, self.output_format)
+                print(output)
+            else:
+                # For text output, pretty print the JSON
+                print(json.dumps(parsed, indent=2))
         except json.JSONDecodeError:
-            print(vault_data)
+            if self.output_format == 'json':
+                output = format_output({'raw_vault': vault_data}, self.output_format)
+                print(output)
+            else:
+                print(vault_data)
         
         return 0
     
@@ -1024,7 +1173,9 @@ class CommandHandler:
         endpoints = CMD_CONFIG['vault']['set']['endpoints']
         
         if resource_type not in endpoints:
-            print(colorize(f"Error: Unsupported resource type: {resource_type}", 'RED'))
+            error = f"Unsupported resource type: {resource_type}"
+            output = format_output(None, self.output_format, None, error)
+            print(output)
             return 1
         
         params = get_vault_set_params(args)
@@ -1033,7 +1184,22 @@ class CommandHandler:
         
         response = self.client.token_request(endpoints[resource_type], params)
         
-        if self.handle_response(response, f"Successfully updated {resource_type} vault"):
+        success_msg = f"Successfully updated {resource_type} vault"
+        if self.handle_response(response, success_msg):
+            if self.output_format == 'json':
+                result = {
+                    'resource_type': resource_type,
+                    'vault_version': params.get('vaultVersion', 1)
+                }
+                if resource_type != 'company':
+                    result['name'] = args.name
+                if resource_type == 'machine':
+                    result['team'] = args.team
+                if resource_type == 'bridge':
+                    result['region'] = args.region
+                
+                output = format_output(result, self.output_format, success_msg)
+                print(output)
             return 0
         return 1
 
@@ -1042,6 +1208,10 @@ def setup_parser():
     parser = argparse.ArgumentParser(
         description='Rediacc CLI - Docker-like interface for Rediacc Middleware API'
     )
+    # Add global output format option
+    parser.add_argument('--output', '-o', choices=['text', 'json'], default='text',
+                       help='Output format (text or json)')
+    
     subparsers = parser.add_subparsers(dest='command', help='Command')
     
     # Add command parsers
@@ -1072,9 +1242,12 @@ def main():
         parser.print_help()
         return 1
     
+    # Get output format
+    output_format = args.output
+    
     # Load configuration
     config_manager = ConfigManager()
-    handler = CommandHandler(config_manager)
+    handler = CommandHandler(config_manager, output_format)
     
     # Handle authentication commands directly
     if args.command == 'login':
@@ -1084,12 +1257,16 @@ def main():
     
     # Check if authenticated for other commands
     if not config_manager.is_authenticated():
-        print(colorize("Error: Not authenticated. Please login first.", 'RED'))
+        error = "Not authenticated. Please login first."
+        output = format_output(None, output_format, None, error)
+        print(output)
         return 1
     
     # Handle other commands with resource types
     if not hasattr(args, 'resource') or not args.resource:
-        print(colorize(f"Error: No resource specified for command: {args.command}", 'RED'))
+        error = f"No resource specified for command: {args.command}"
+        output = format_output(None, output_format, None, error)
+        print(output)
         return 1
     
     # Special handling for certain commands
