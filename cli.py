@@ -40,8 +40,9 @@ def colorize(text, color):
 
 class APIClient:
     """Client for interacting with the Rediacc Middleware API"""
-    def __init__(self, config=None):
+    def __init__(self, config=None, config_manager=None):
         self.config = config or {}
+        self.config_manager = config_manager
         self.session = requests.Session()
         self.session.headers.update({"Content-Type": "application/json"})
     
@@ -67,7 +68,12 @@ class APIClient:
             result = response.json()
             # Check for actual failure (failure != 0)
             if result.get('failure') and result.get('failure') != 0:
-                error_msg = f"API Error: {result.get('message', 'Unknown error')}"
+                # Check for errors array first, then fall back to message
+                errors = result.get('errors', [])
+                if errors and len(errors) > 0:
+                    error_msg = f"API Error: {'; '.join(errors)}"
+                else:
+                    error_msg = f"API Error: {result.get('message', 'Request failed')}"
                 return {"error": error_msg, "status_code": 400}
             
             return result
@@ -86,9 +92,23 @@ class APIClient:
         if not self.config.get('token'):
             return {"error": "Not authenticated. Please login first.", "status_code": 401}
         
-        return self.request(endpoint, data, {
+        response = self.request(endpoint, data, {
             "Rediacc-RequestToken": self.config['token']
         })
+        
+        # Update token if a new one is provided (token chain mechanism)
+        if response and not response.get('error'):
+            tables = response.get('tables', [])
+            if tables and tables[0].get('data'):
+                new_token = tables[0]['data'][0].get('nextRequestCredential')
+                if new_token:
+                    self.config['token'] = new_token
+                    # Save the updated token to config file
+                    if self.config_manager:
+                        self.config_manager.config['token'] = new_token
+                        self.config_manager.save_config()
+        
+        return response
 
 class ConfigManager:
     """Manages configuration and authentication state"""
@@ -163,6 +183,100 @@ def format_table(headers, rows):
     
     return '\n'.join([header_line, separator] + formatted_rows)
 
+def camel_to_title(name):
+    """Convert camelCase or PascalCase to Title Case"""
+    # Handle special cases
+    special_cases = {
+        'vaultVersion': 'Vault Version',
+        'vaultContent': 'Vault Content',
+        'memberCount': 'Members',
+        'machineCount': 'Machines',
+        'bridgeCount': 'Bridges',
+        'repoCount': 'Repos',
+        'storageCount': 'Storage',
+        'scheduleCount': 'Schedules',
+        'queueCount': 'Queue Items',
+        'teamName': 'Team',
+        'regionName': 'Region',
+        'bridgeName': 'Bridge',
+        'machineName': 'Machine',
+        'repoName': 'Repository',
+        'storageName': 'Storage',
+        'scheduleName': 'Schedule',
+        'userEmail': 'Email',
+        'companyName': 'Company',
+        'hasAccess': 'Access',
+        'isMember': 'Member',
+        'activated': 'Active'
+    }
+    
+    if name in special_cases:
+        return special_cases[name]
+    
+    # Insert spaces before capital letters
+    result = name[0].upper()
+    for char in name[1:]:
+        if char.isupper():
+            result += ' ' + char
+        else:
+            result += char
+    
+    return result
+
+def format_dynamic_tables(response, skip_fields=None):
+    """Format all tables from response dynamically, skipping table index 0"""
+    if not response or 'tables' not in response:
+        return "No data available"
+    
+    tables = response.get('tables', [])
+    if len(tables) <= 1:
+        return "No records found"
+    
+    # Fields to skip in output
+    if skip_fields is None:
+        skip_fields = ['vaultContent', 'nextRequestCredential', 'vaultVersion']
+    
+    output_parts = []
+    
+    # Process each table (skip index 0 which contains credentials)
+    for table_idx in range(1, len(tables)):
+        table = tables[table_idx]
+        data = table.get('data', [])
+        
+        if not data:
+            continue
+        
+        # Get all unique keys from all records
+        all_keys = set()
+        for record in data:
+            all_keys.update(record.keys())
+        
+        # Remove fields we want to skip
+        display_keys = [k for k in sorted(all_keys) if k not in skip_fields]
+        
+        if not display_keys:
+            continue
+        
+        # Create headers
+        headers = [camel_to_title(key) for key in display_keys]
+        
+        # Create rows
+        rows = []
+        for record in data:
+            row = [str(record.get(key, '')) for key in display_keys]
+            rows.append(row)
+        
+        # Format this table
+        if rows:
+            table_output = format_table(headers, rows)
+            output_parts.append(table_output)
+    
+    if not output_parts:
+        return "No records found"
+    
+    # Join all tables with newlines
+    return '\n\n'.join(output_parts)
+
 def load_vault_data(file_path):
     """Load vault data from a file or return empty vault"""
     if not file_path or file_path == '-':
@@ -195,7 +309,8 @@ class CommandHandler:
     """Base class for command handlers"""
     def __init__(self, config_manager):
         self.config = config_manager.config
-        self.client = APIClient(self.config)
+        self.config_manager = config_manager
+        self.client = APIClient(self.config, config_manager)
     
     def _handle_response(self, response, success_message=None):
         """Handle API response and print appropriate message"""
@@ -318,10 +433,12 @@ class CreateCommands(CommandHandler):
             }
         )
         
-        return self._handle_response(
+        if self._handle_response(
             response,
             f"Successfully created company: {args.name}"
-        )
+        ):
+            return 0
+        return 1
     
     def team(self, args):
         """Create a new team"""
@@ -338,10 +455,12 @@ class CreateCommands(CommandHandler):
             }
         )
         
-        return self._handle_response(
+        if self._handle_response(
             response,
             f"Successfully created team: {args.name}"
-        )
+        ):
+            return 0
+        return 1
     
     def region(self, args):
         """Create a new region"""
@@ -358,10 +477,12 @@ class CreateCommands(CommandHandler):
             }
         )
         
-        return self._handle_response(
+        if self._handle_response(
             response,
             f"Successfully created region: {args.name}"
-        )
+        ):
+            return 0
+        return 1
     
     def bridge(self, args):
         """Create a bridge in a region"""
@@ -379,10 +500,12 @@ class CreateCommands(CommandHandler):
             }
         )
         
-        return self._handle_response(
+        if self._handle_response(
             response,
             f"Successfully created bridge: {args.name} in region {args.region}"
-        )
+        ):
+            return 0
+        return 1
     
     def machine(self, args):
         """Create a machine for a team using a bridge"""
@@ -401,10 +524,12 @@ class CreateCommands(CommandHandler):
             }
         )
         
-        return self._handle_response(
+        if self._handle_response(
             response,
             f"Successfully created machine: {args.name} for team {args.team}"
-        )
+        ):
+            return 0
+        return 1
     
     def repository(self, args):
         """Create a repository for a team"""
@@ -422,10 +547,12 @@ class CreateCommands(CommandHandler):
             }
         )
         
-        return self._handle_response(
+        if self._handle_response(
             response,
             f"Successfully created repository: {args.name} for team {args.team}"
-        )
+        ):
+            return 0
+        return 1
     
     def storage(self, args):
         """Create storage for a team"""
@@ -443,10 +570,12 @@ class CreateCommands(CommandHandler):
             }
         )
         
-        return self._handle_response(
+        if self._handle_response(
             response,
             f"Successfully created storage: {args.name} for team {args.team}"
-        )
+        ):
+            return 0
+        return 1
     
     def schedule(self, args):
         """Create a schedule for a team"""
@@ -464,10 +593,12 @@ class CreateCommands(CommandHandler):
             }
         )
         
-        return self._handle_response(
+        if self._handle_response(
             response,
             f"Successfully created schedule: {args.name} for team {args.team}"
-        )
+        ):
+            return 0
+        return 1
 
 class ListCommands(CommandHandler):
     """Commands for listing resources"""
@@ -479,22 +610,7 @@ class ListCommands(CommandHandler):
             print(colorize(f"Error: {response['error']}", 'RED'))
             return 1
         
-        teams = self._extract_data(response)
-        if not teams:
-            print("No teams found")
-            return 0
-        
-        headers = ["NAME", "CREATED", "USERS"]
-        rows = [
-            [
-                team.get('name', 'N/A'),
-                team.get('created', 'N/A'),
-                team.get('memberCount', 'N/A')
-            ]
-            for team in teams
-        ]
-        
-        print(format_table(headers, rows))
+        print(format_dynamic_tables(response))
         return 0
     
     def regions(self, args):
@@ -505,22 +621,7 @@ class ListCommands(CommandHandler):
             print(colorize(f"Error: {response['error']}", 'RED'))
             return 1
         
-        regions = self._extract_data(response)
-        if not regions:
-            print("No regions found")
-            return 0
-        
-        headers = ["NAME", "CREATED", "BRIDGES"]
-        rows = [
-            [
-                region.get('name', 'N/A'),
-                region.get('created', 'N/A'),
-                region.get('bridgeCount', 0)
-            ]
-            for region in regions
-        ]
-        
-        print(format_table(headers, rows))
+        print(format_dynamic_tables(response))
         return 0
     
     def bridges(self, args):
@@ -534,22 +635,11 @@ class ListCommands(CommandHandler):
             print(colorize(f"Error: {response['error']}", 'RED'))
             return 1
         
-        bridges = self._extract_data(response)
-        if not bridges:
-            print(f"No bridges found in region {args.region}")
-            return 0
-        
-        headers = ["NAME", "CREATED", "MACHINES"]
-        rows = [
-            [
-                bridge.get('name', 'N/A'),
-                bridge.get('created', 'N/A'),
-                bridge.get('machineCount', 0)
-            ]
-            for bridge in bridges
-        ]
-        
-        print(format_table(headers, rows))
+        result = format_dynamic_tables(response)
+        if result == "No records found":
+            print(f"No bridges found in region '{args.region}'")
+        else:
+            print(result)
         return 0
     
     def machines(self, args):
@@ -563,23 +653,11 @@ class ListCommands(CommandHandler):
             print(colorize(f"Error: {response['error']}", 'RED'))
             return 1
         
-        machines = self._extract_data(response)
-        if not machines:
-            print(f"No machines found in team {args.team}")
-            return 0
-        
-        headers = ["NAME", "BRIDGE", "CREATED", "STATUS"]
-        rows = [
-            [
-                machine.get('name', 'N/A'),
-                machine.get('bridgeName', 'N/A'),
-                machine.get('created', 'N/A'),
-                machine.get('status', 'N/A')
-            ]
-            for machine in machines
-        ]
-        
-        print(format_table(headers, rows))
+        result = format_dynamic_tables(response)
+        if result == "No records found":
+            print(f"No machines found in team '{args.team}'")
+        else:
+            print(result)
         return 0
     
     def repositories(self, args):
@@ -593,22 +671,11 @@ class ListCommands(CommandHandler):
             print(colorize(f"Error: {response['error']}", 'RED'))
             return 1
         
-        repos = self._extract_data(response)
-        if not repos:
-            print(f"No repositories found in team {args.team}")
-            return 0
-        
-        headers = ["NAME", "CREATED", "VAULT VERSION"]
-        rows = [
-            [
-                repo.get('name', 'N/A'),
-                repo.get('created', 'N/A'),
-                repo.get('vaultVersion', 0)
-            ]
-            for repo in repos
-        ]
-        
-        print(format_table(headers, rows))
+        result = format_dynamic_tables(response)
+        if result == "No records found":
+            print(f"No repositories found in team '{args.team}'")
+        else:
+            print(result)
         return 0
 
 class InspectCommands(CommandHandler):
@@ -625,7 +692,8 @@ class InspectCommands(CommandHandler):
             print(colorize(f"Error: {response['error']}", 'RED'))
             return 1
         
-        members = self._extract_data(response)
+        # Members data is in the second table (index 1)
+        members = self._extract_data(response, table_index=1)
         
         # Get team machines
         machines_response = self.client.token_request(
@@ -635,7 +703,7 @@ class InspectCommands(CommandHandler):
         
         machines = []
         if not machines_response.get('error'):
-            machines = self._extract_data(machines_response)
+            machines = self._extract_data(machines_response, table_index=1)
         
         # Print team details
         print(colorize(f"Team: {args.name}", 'HEADER'))
@@ -646,13 +714,13 @@ class InspectCommands(CommandHandler):
         if members:
             print("\nMembers:")
             for member in members:
-                print(f"  - {member.get('email', 'N/A')}")
+                print(f"  - {member.get('userEmail', 'N/A')}")
         
         # Print machine details if any
         if machines:
             print("\nMachines:")
             for machine in machines:
-                print(f"  - {machine.get('name', 'N/A')} ({machine.get('bridgeName', 'N/A')})")
+                print(f"  - {machine.get('machineName', 'N/A')} ({machine.get('bridgeName', 'N/A')})")
         
         return 0
     
@@ -668,8 +736,9 @@ class InspectCommands(CommandHandler):
             print(colorize(f"Error: {response['error']}", 'RED'))
             return 1
         
-        machines = self._extract_data(response)
-        target_machine = next((m for m in machines if m.get('name') == args.name), None)
+        # Machines data is in the second table (index 1)
+        machines = self._extract_data(response, table_index=1)
+        target_machine = next((m for m in machines if m.get('machineName') == args.name), None)
         
         if not target_machine:
             print(colorize(f"Machine not found: {args.name}", 'RED'))
@@ -679,8 +748,8 @@ class InspectCommands(CommandHandler):
         print(colorize(f"Machine: {args.name}", 'HEADER'))
         print(f"Team: {args.team}")
         print(f"Bridge: {target_machine.get('bridgeName', 'N/A')}")
-        print(f"Created: {target_machine.get('created', 'N/A')}")
-        print(f"Status: {target_machine.get('status', 'N/A')}")
+        print(f"Region: {target_machine.get('regionName', 'N/A')}")
+        print(f"Queue Count: {target_machine.get('queueCount', 0)}")
         print(f"Vault Version: {target_machine.get('vaultVersion', 0)}")
         
         # Get queue items if any
@@ -690,7 +759,7 @@ class InspectCommands(CommandHandler):
         )
         
         if not queue_response.get('error'):
-            queue_items = self._extract_data(queue_response)
+            queue_items = self._extract_data(queue_response, table_index=1)
             if queue_items:
                 print(f"\nQueue Items: {len(queue_items)}")
                 for item in queue_items:
@@ -827,10 +896,12 @@ class RemoveCommands(CommandHandler):
             {"teamName": args.name}
         )
         
-        return self._handle_response(
+        if self._handle_response(
             response,
             f"Successfully deleted team: {args.name}"
-        )
+        ):
+            return 0
+        return 1
     
     def machine(self, args):
         """Remove a machine"""
@@ -848,10 +919,12 @@ class RemoveCommands(CommandHandler):
             }
         )
         
-        return self._handle_response(
+        if self._handle_response(
             response,
             f"Successfully deleted machine: {args.name}"
-        )
+        ):
+            return 0
+        return 1
     
     def bridge(self, args):
         """Remove a bridge"""
@@ -869,10 +942,12 @@ class RemoveCommands(CommandHandler):
             }
         )
         
-        return self._handle_response(
+        if self._handle_response(
             response,
             f"Successfully deleted bridge: {args.name}"
-        )
+        ):
+            return 0
+        return 1
     
     def region(self, args):
         """Remove a region"""
@@ -887,10 +962,12 @@ class RemoveCommands(CommandHandler):
             {"regionName": args.name}
         )
         
-        return self._handle_response(
+        if self._handle_response(
             response,
             f"Successfully deleted region: {args.name}"
-        )
+        ):
+            return 0
+        return 1
 
 class VaultCommands(CommandHandler):
     """Commands for managing vault data"""
@@ -1025,10 +1102,12 @@ class VaultCommands(CommandHandler):
             print(colorize(f"Error: Unsupported resource type: {resource_type}", 'RED'))
             return 1
         
-        return self._handle_response(
+        if self._handle_response(
             response,
             f"Successfully updated {resource_type} vault"
-        )
+        ):
+            return 0
+        return 1
 
 def setup_auth_parser(subparsers):
     """Set up authentication command parsers"""
