@@ -1,6 +1,7 @@
 #!/usr/bin/env python3
 """
-Rediacc CLI - Docker-like command-line interface for Rediacc Middleware API
+Rediacc CLI - Complete command-line interface for Rediacc Middleware API
+Includes all functionality from both CLI and test suite
 """
 import argparse
 import base64
@@ -20,6 +21,7 @@ API_PREFIX = '/api/StoredProcedure'
 CONFIG_DIR = os.path.expanduser('~/.rediacc')
 CONFIG_FILE = os.path.join(CONFIG_DIR, 'config.json')
 REQUEST_TIMEOUT = 30
+TEST_ACTIVATION_CODE = '111111'
 
 # Color codes for terminal output
 COLORS = {
@@ -57,6 +59,14 @@ CMD_CONFIG = {
                 'subscriptionPlan': args.plan or 'ELITE'
             },
             'success_msg': 'Successfully created company: {name}'
+        },
+        'user': {
+            'endpoint': 'CreateNewUser',
+            'params': lambda args: {
+                'newUserEmail': args.email,
+                'newUserHash': pwd_hash_hex(args.password)
+            },
+            'success_msg': 'Successfully created user: {email}'
         },
         'team': {
             'endpoint': 'CreateTeam',
@@ -119,6 +129,15 @@ CMD_CONFIG = {
                 'scheduleVault': get_vault_data(args) or '{}'
             },
             'success_msg': 'Successfully created schedule: {name} for team {team}'
+        },
+        'queue-item': {
+            'endpoint': 'CreateQueueItem',
+            'params': lambda args: {
+                'teamName': args.team,
+                'machineName': args.machine,
+                'queueVault': get_vault_data(args) or '{}'
+            },
+            'success_msg': 'Successfully created queue item for machine {machine}'
         }
     },
     
@@ -143,6 +162,34 @@ CMD_CONFIG = {
         'repositories': {
             'endpoint': 'GetTeamRepositories',
             'params': lambda args: {'teamName': args.team}
+        },
+        'storages': {
+            'endpoint': 'GetTeamStorages',
+            'params': lambda args: {'teamName': args.team}
+        },
+        'schedules': {
+            'endpoint': 'GetTeamSchedules',
+            'params': lambda args: {'teamName': args.team}
+        },
+        'users': {
+            'endpoint': 'GetCompanyUsers',
+            'params': lambda args: {}
+        },
+        'sessions': {
+            'endpoint': 'GetUserRequests',
+            'params': lambda args: {}
+        },
+        'queue-items': {
+            'endpoint': 'GetTeamQueueItems',
+            'params': lambda args: {'teamName': args.team}
+        },
+        'resource-limits': {
+            'endpoint': 'GetCompanyResourceLimits',
+            'params': lambda args: {}
+        },
+        'subscription': {
+            'endpoint': 'GetSubscriptionDetails',
+            'params': lambda args: {}
         }
     },
     
@@ -189,6 +236,12 @@ CMD_CONFIG = {
             'params': lambda args: {'teamName': args.team, 'scheduleName': args.name},
             'confirm_msg': "Are you sure you want to delete schedule '{name}' from team '{team}'?",
             'success_msg': 'Successfully deleted schedule: {name}'
+        },
+        'queue-item': {
+            'endpoint': 'DeleteQueueItem',
+            'params': lambda args: {'taskId': args.task_id},
+            'confirm_msg': "Are you sure you want to delete queue item '{task_id}'?",
+            'success_msg': 'Successfully deleted queue item: {task_id}'
         }
     },
     
@@ -210,7 +263,10 @@ CMD_CONFIG = {
                 'machine': 'UpdateMachineVault',
                 'region': 'UpdateRegionVault',
                 'bridge': 'UpdateBridgeVault',
-                'company': 'UpdateCompanyVault'
+                'company': 'UpdateCompanyVault',
+                'repository': 'UpdateRepositoryVault',
+                'storage': 'UpdateStorageVault',
+                'schedule': 'UpdateScheduleVault'
             },
             'params': lambda args: get_vault_set_params(args),
             'success_msg': 'Successfully updated {resource_type} vault'
@@ -263,6 +319,92 @@ CMD_CONFIG = {
             'endpoint': 'GetPermissionGroupDetails',
             'params': lambda args: {'permissionGroupName': args.name}
         }
+    },
+    
+    # User commands
+    'user': {
+        'activate': {
+            'auth_required': False,
+            'endpoint': 'ActivateUserAccount',
+            'params': lambda args: {
+                'userEmail': args.email,
+                'activationCode': args.code or TEST_ACTIVATION_CODE
+            },
+            'success_msg': 'Successfully activated user: {email}'
+        },
+        'deactivate': {
+            'endpoint': 'UpdateUserToDeactivated',
+            'params': lambda args: {'userEmail': args.email},
+            'confirm_msg': "Are you sure you want to deactivate user '{email}'?",
+            'success_msg': 'Successfully deactivated user: {email}'
+        },
+        'update-email': {
+            'endpoint': 'UpdateUserEmail',
+            'params': lambda args: {
+                'currentUserEmail': args.current_email,
+                'newUserEmail': args.new_email
+            },
+            'success_msg': 'Successfully updated user email: {current_email} → {new_email}'
+        },
+        'update-password': {
+            'endpoint': 'UpdateUserPassword',
+            'params': lambda args: {
+                'userNewPass': pwd_hash_hex(args.new_password)
+            },
+            'success_msg': 'Successfully updated user password'
+        }
+    },
+    
+    # Team membership commands
+    'team-member': {
+        'add': {
+            'endpoint': 'CreateTeamMembership',
+            'params': lambda args: {
+                'teamName': args.team,
+                'newUserEmail': args.email
+            },
+            'success_msg': 'Successfully added {email} to team {team}'
+        },
+        'remove': {
+            'endpoint': 'DeleteUserFromTeam',
+            'params': lambda args: {
+                'teamName': args.team,
+                'removeUserEmail': args.email
+            },
+            'confirm_msg': "Are you sure you want to remove '{email}' from team '{team}'?",
+            'success_msg': 'Successfully removed {email} from team {team}'
+        },
+        'list': {
+            'endpoint': 'GetTeamMembers',
+            'params': lambda args: {'teamName': args.team}
+        }
+    },
+    
+    # Queue commands
+    'queue': {
+        'get-next': {
+            'endpoint': 'GetQueueItemsNext',
+            'params': lambda args: {
+                'machineName': args.machine,
+                'itemCount': args.count or 5
+            }
+        },
+        'update-response': {
+            'endpoint': 'UpdateQueueItemResponse',
+            'params': lambda args: {
+                'taskId': args.task_id,
+                'responseVault': get_vault_data(args) or '{}'
+            },
+            'success_msg': 'Successfully updated queue item response: {task_id}'
+        },
+        'complete': {
+            'endpoint': 'UpdateQueueItemToCompleted',
+            'params': lambda args: {
+                'taskId': args.task_id,
+                'finalVault': get_vault_data(args) or '{}'
+            },
+            'success_msg': 'Successfully completed queue item: {task_id}'
+        }
     }
 }
 
@@ -281,6 +423,10 @@ ARG_DEFS = {
             {'name': '--email', 'help': 'Admin email address'},
             {'name': '--password', 'help': 'Admin password'},
             {'name': '--plan', 'help': 'Subscription plan', 'choices': ['FREE', 'BASIC', 'PRO', 'ELITE']}
+        ],
+        'user': [
+            {'name': 'email', 'help': 'User email address'},
+            {'name': '--password', 'help': 'User password'}
         ],
         'team': [
             {'name': 'name', 'help': 'Team name'},
@@ -322,15 +468,28 @@ ARG_DEFS = {
             {'name': 'name', 'help': 'Schedule name'},
             {'name': '--vault', 'help': 'JSON vault data'},
             {'name': '--vault-file', 'help': 'File containing JSON vault data'}
+        ],
+        'queue-item': [
+            {'name': 'team', 'help': 'Team name'},
+            {'name': 'machine', 'help': 'Machine name'},
+            {'name': '--vault', 'help': 'JSON vault data'},
+            {'name': '--vault-file', 'help': 'File containing JSON vault data'}
         ]
     },
     
     'list': {
         'teams': [],
         'regions': [],
+        'users': [],
+        'sessions': [],
+        'resource-limits': [],
+        'subscription': [],
         'bridges': [{'name': 'region', 'help': 'Region name'}],
         'machines': [{'name': 'team', 'help': 'Team name'}],
-        'repositories': [{'name': 'team', 'help': 'Team name'}]
+        'repositories': [{'name': 'team', 'help': 'Team name'}],
+        'storages': [{'name': 'team', 'help': 'Team name'}],
+        'schedules': [{'name': 'team', 'help': 'Team name'}],
+        'queue-items': [{'name': 'team', 'help': 'Team name'}]
     },
     
     'inspect': {
@@ -349,6 +508,15 @@ ARG_DEFS = {
             {'name': '--vault-file', 'help': 'File containing JSON vault data'},
             {'name': '--vault-version', 'type': int, 'help': 'Vault version'}
         ],
+        'region': [
+            {'name': 'name', 'help': 'Region name'},
+            {'name': '--new-name', 'help': 'New region name'}
+        ],
+        'bridge': [
+            {'name': 'region', 'help': 'Region name'},
+            {'name': 'name', 'help': 'Bridge name'},
+            {'name': '--new-name', 'help': 'New bridge name'}
+        ],
         'machine': [
             {'name': 'team', 'help': 'Team name'},
             {'name': 'name', 'help': 'Machine name'},
@@ -357,6 +525,21 @@ ARG_DEFS = {
             {'name': '--vault', 'help': 'JSON vault data'},
             {'name': '--vault-file', 'help': 'File containing JSON vault data'},
             {'name': '--vault-version', 'type': int, 'help': 'Vault version'}
+        ],
+        'repository': [
+            {'name': 'team', 'help': 'Team name'},
+            {'name': 'name', 'help': 'Repository name'},
+            {'name': '--new-name', 'help': 'New repository name'}
+        ],
+        'storage': [
+            {'name': 'team', 'help': 'Team name'},
+            {'name': 'name', 'help': 'Storage name'},
+            {'name': '--new-name', 'help': 'New storage name'}
+        ],
+        'schedule': [
+            {'name': 'team', 'help': 'Team name'},
+            {'name': 'name', 'help': 'Schedule name'},
+            {'name': '--new-name', 'help': 'New schedule name'}
         ]
     },
     
@@ -393,6 +576,10 @@ ARG_DEFS = {
             {'name': 'team', 'help': 'Team name'},
             {'name': 'name', 'help': 'Schedule name'},
             {'name': '--force', 'action': 'store_true', 'help': 'Skip confirmation'}
+        ],
+        'queue-item': [
+            {'name': 'task_id', 'help': 'Task ID'},
+            {'name': '--force', 'action': 'store_true', 'help': 'Skip confirmation'}
         ]
     },
     
@@ -406,10 +593,10 @@ ARG_DEFS = {
         ],
         'set': [
             {'name': 'resource_type', 'help': 'Resource type',
-             'choices': ['team', 'machine', 'region', 'bridge', 'company']},
+             'choices': ['team', 'machine', 'region', 'bridge', 'company', 'repository', 'storage', 'schedule']},
             {'name': 'name', 'help': 'Resource name'},
             {'name': 'file', 'nargs': '?', 'help': 'File containing JSON vault data (or - for stdin)'},
-            {'name': '--team', 'help': 'Team name (for machine)'},
+            {'name': '--team', 'help': 'Team name (for machine, repository, storage, schedule)'},
             {'name': '--region', 'help': 'Region name (for bridge)'},
             {'name': '--vault-version', 'type': int, 'help': 'Vault version'}
         ]
@@ -440,6 +627,59 @@ ARG_DEFS = {
         'list-groups': [],
         'list-group': [
             {'name': 'name', 'help': 'Permission group name'}
+        ]
+    },
+    
+    # User command arguments
+    'user': {
+        'activate': [
+            {'name': 'email', 'help': 'User email address'},
+            {'name': '--code', 'help': f'Activation code (default: {TEST_ACTIVATION_CODE})'}
+        ],
+        'deactivate': [
+            {'name': 'email', 'help': 'User email address'},
+            {'name': '--force', 'action': 'store_true', 'help': 'Skip confirmation'}
+        ],
+        'update-email': [
+            {'name': 'current_email', 'help': 'Current user email'},
+            {'name': 'new_email', 'help': 'New user email'}
+        ],
+        'update-password': [
+            {'name': '--new-password', 'help': 'New password'}
+        ]
+    },
+    
+    # Team member command arguments
+    'team-member': {
+        'add': [
+            {'name': 'team', 'help': 'Team name'},
+            {'name': 'email', 'help': 'User email address'}
+        ],
+        'remove': [
+            {'name': 'team', 'help': 'Team name'},
+            {'name': 'email', 'help': 'User email address'},
+            {'name': '--force', 'action': 'store_true', 'help': 'Skip confirmation'}
+        ],
+        'list': [
+            {'name': 'team', 'help': 'Team name'}
+        ]
+    },
+    
+    # Queue command arguments
+    'queue': {
+        'get-next': [
+            {'name': 'machine', 'help': 'Machine name'},
+            {'name': '--count', 'type': int, 'help': 'Number of items to retrieve (default: 5)'}
+        ],
+        'update-response': [
+            {'name': 'task_id', 'help': 'Task ID'},
+            {'name': '--vault', 'help': 'JSON vault data'},
+            {'name': '--vault-file', 'help': 'File containing JSON vault data'}
+        ],
+        'complete': [
+            {'name': 'task_id', 'help': 'Task ID'},
+            {'name': '--vault', 'help': 'JSON vault data'},
+            {'name': '--vault-file', 'help': 'File containing JSON vault data'}
         ]
     }
 }
@@ -592,6 +832,10 @@ def pwd_hash(pwd):
     """Generate a base64 password hash for authentication"""
     return base64.b64encode(hashlib.sha256(pwd.encode()).digest()).decode()
 
+def pwd_hash_hex(pwd):
+    """Generate a hexadecimal password hash for user creation/updates"""
+    return "0x" + hashlib.sha256(pwd.encode()).digest().hex()
+
 def extract_table_data(response, table_index=0):
     """Extract data from API response tables"""
     if not response or 'tables' not in response or len(response['tables']) <= table_index:
@@ -661,6 +905,12 @@ def get_vault_set_params(args):
         params.update({'regionName': args.region, 'bridgeName': args.name, 'bridgeVault': vault_data})
     elif args.resource_type == 'company':
         params['companyVault'] = vault_data
+    elif args.resource_type == 'repository':
+        params.update({'teamName': args.team, 'repoName': args.name, 'repoVault': vault_data})
+    elif args.resource_type == 'storage':
+        params.update({'teamName': args.team, 'storageName': args.name, 'storageVault': vault_data})
+    elif args.resource_type == 'schedule':
+        params.update({'teamName': args.team, 'scheduleName': args.name, 'scheduleVault': vault_data})
     
     return params
 
@@ -678,7 +928,14 @@ def camel_to_title(name):
         'storageName': 'Storage', 'scheduleName': 'Schedule',
         'userEmail': 'Email', 'companyName': 'Company',
         'hasAccess': 'Access', 'isMember': 'Member',
-        'activated': 'Active'
+        'activated': 'Active', 'taskId': 'Task ID',
+        'itemCount': 'Count', 'newUserEmail': 'Email',
+        'permissionGroupName': 'Permission Group',
+        'permissionName': 'Permission', 'subscriptionPlan': 'Plan',
+        'maxTeams': 'Max Teams', 'maxRegions': 'Max Regions',
+        'maxMachines': 'Max Machines', 'maxStorage': 'Max Storage',
+        'sessionName': 'Session', 'createdAt': 'Created',
+        'updatedAt': 'Updated', 'lastActive': 'Last Active'
     }
     
     if name in special_cases:
@@ -737,7 +994,7 @@ def format_dynamic_tables(response, output_format='text', skip_fields=None):
     
     # Fields to skip in output
     if skip_fields is None:
-        skip_fields = ['vaultContent', 'nextRequestCredential', 'vaultVersion']
+        skip_fields = ['vaultContent', 'nextRequestCredential', 'vaultVersion', 'newUserHash']
     
     if output_format == 'json':
         # For JSON output, convert all tables to lists of dictionaries
@@ -807,6 +1064,14 @@ class CommandHandler:
             print(output)
             return False
         
+        # Extract task ID if present for queue operations
+        if success_message and format_args and '{task_id}' in success_message:
+            tables = response.get('tables', [])
+            if len(tables) > 1 and tables[1].get('data'):
+                task_id = tables[1]['data'][0].get('taskId', tables[1]['data'][0].get('TaskId'))
+                if task_id:
+                    setattr(format_args, 'task_id', task_id)
+        
         if success_message and self.output_format != 'json':
             if format_args:
                 success_message = success_message.format(**{k: getattr(format_args, k, '') 
@@ -818,7 +1083,11 @@ class CommandHandler:
                 success_message = success_message.format(**{k: getattr(format_args, k, '') 
                                                            for k in dir(format_args) 
                                                            if not k.startswith('_')})
-            output = format_output({}, self.output_format, success_message)
+            # For create queue item, include task ID in response
+            data = {}
+            if hasattr(format_args, 'task_id') and format_args.task_id:
+                data['task_id'] = format_args.task_id
+            output = format_output(data, self.output_format, success_message)
             print(output)
             
         return True
@@ -910,9 +1179,21 @@ class CommandHandler:
         
         cmd_config = CMD_CONFIG[cmd_type][resource_type]
         
+        # Check if auth is required (default is True unless specified otherwise)
+        auth_required = cmd_config.get('auth_required', True)
+        
+        # Handle special case for user create which needs a password prompt
+        if cmd_type == 'create' and resource_type == 'user' and not hasattr(args, 'password'):
+            args.password = getpass.getpass("Password for new user: ")
+        
+        # Handle special case for user update-password which needs a password prompt
+        if cmd_type == 'user' and resource_type == 'update-password' and not args.new_password:
+            args.new_password = getpass.getpass("New password: ")
+        
         # For remove commands, confirm before proceeding (unless JSON output or force flag)
-        if cmd_type == 'rm' and not args.force and self.output_format != 'json' and 'confirm_msg' in cmd_config:
-            confirm_msg = cmd_config['confirm_msg'].format(**{k: getattr(args, k, '') 
+        confirm_msg = cmd_config.get('confirm_msg')
+        if confirm_msg and not args.force and self.output_format != 'json':
+            confirm_msg = confirm_msg.format(**{k: getattr(args, k, '') 
                                                              for k in dir(args) 
                                                              if not k.startswith('_')})
             confirm = input(f"{confirm_msg} [y/N] ")
@@ -948,12 +1229,17 @@ class CommandHandler:
             response = self.client.auth_request(
                 cmd_config['endpoint'], email, pwd_hash(password), params
             )
+        elif not auth_required:
+            # No authentication required
+            response = self.client.request(cmd_config['endpoint'], params)
         else:
             # Use token authentication
             response = self.client.token_request(cmd_config['endpoint'], params)
         
         # For list commands or permission list commands, format the output
-        if cmd_type == 'list' or (cmd_type == 'permission' and resource_type in ['list-groups', 'list-group']):
+        if cmd_type == 'list' or (cmd_type == 'permission' and resource_type in ['list-groups', 'list-group']) or \
+           (cmd_type == 'team-member' and resource_type == 'list') or \
+           (cmd_type == 'queue' and resource_type == 'get-next'):
             if response.get('error'):
                 output = format_output(None, self.output_format, None, response['error'])
                 print(output)
@@ -962,6 +1248,24 @@ class CommandHandler:
             result = format_dynamic_tables(response, self.output_format)
             print(result)
             return 0
+        
+        # For create queue-item, handle special response
+        if cmd_type == 'create' and resource_type == 'queue-item':
+            success_msg = cmd_config.get('success_msg')
+            # Create a simple object to hold task_id for format_args
+            class Args:
+                pass
+            format_args = Args()
+            for k in dir(args):
+                if not k.startswith('_'):
+                    setattr(format_args, k, getattr(args, k))
+            
+            if self.handle_response(response, success_msg, format_args):
+                # If we have a task ID, print it
+                if hasattr(format_args, 'task_id') and format_args.task_id and self.output_format != 'json':
+                    print(f"Task ID: {format_args.task_id}")
+                return 0
+            return 1
         
         # For other commands, handle the response
         success_msg = cmd_config.get('success_msg')
@@ -1119,6 +1423,38 @@ class CommandHandler:
                     result_data['vault_updated'] = True
                     result_data['vault_version'] = args.vault_version or 1
         
+        elif resource_type == 'region':
+            if args.new_name:
+                # Update region name
+                response = self.client.token_request(
+                    "UpdateRegionName", 
+                    {"currentRegionName": args.name, "newRegionName": args.new_name}
+                )
+                
+                success_msg = f"Successfully renamed region: {args.name} → {args.new_name}"
+                if not self.handle_response(response, success_msg):
+                    success = False
+                else:
+                    result_data['region_name'] = args.new_name
+        
+        elif resource_type == 'bridge':
+            if args.new_name:
+                # Update bridge name
+                response = self.client.token_request(
+                    "UpdateBridgeName", 
+                    {
+                        "regionName": args.region,
+                        "currentBridgeName": args.name,
+                        "newBridgeName": args.new_name
+                    }
+                )
+                
+                success_msg = f"Successfully renamed bridge: {args.name} → {args.new_name}"
+                if not self.handle_response(response, success_msg):
+                    success = False
+                else:
+                    result_data['bridge_name'] = args.new_name
+        
         elif resource_type == 'machine':
             team_name = args.team
             result_data['team'] = team_name
@@ -1179,6 +1515,60 @@ class CommandHandler:
                 else:
                     result_data['vault_updated'] = True
                     result_data['vault_version'] = args.vault_version or 1
+        
+        elif resource_type == 'repository':
+            if args.new_name:
+                # Update repository name
+                response = self.client.token_request(
+                    "UpdateRepositoryName", 
+                    {
+                        "teamName": args.team,
+                        "currentRepoName": args.name,
+                        "newRepoName": args.new_name
+                    }
+                )
+                
+                success_msg = f"Successfully renamed repository: {args.name} → {args.new_name}"
+                if not self.handle_response(response, success_msg):
+                    success = False
+                else:
+                    result_data['repository_name'] = args.new_name
+        
+        elif resource_type == 'storage':
+            if args.new_name:
+                # Update storage name
+                response = self.client.token_request(
+                    "UpdateStorageName", 
+                    {
+                        "teamName": args.team,
+                        "currentStorageName": args.name,
+                        "newStorageName": args.new_name
+                    }
+                )
+                
+                success_msg = f"Successfully renamed storage: {args.name} → {args.new_name}"
+                if not self.handle_response(response, success_msg):
+                    success = False
+                else:
+                    result_data['storage_name'] = args.new_name
+        
+        elif resource_type == 'schedule':
+            if args.new_name:
+                # Update schedule name
+                response = self.client.token_request(
+                    "UpdateScheduleName", 
+                    {
+                        "teamName": args.team,
+                        "currentScheduleName": args.name,
+                        "newScheduleName": args.new_name
+                    }
+                )
+                
+                success_msg = f"Successfully renamed schedule: {args.name} → {args.new_name}"
+                if not self.handle_response(response, success_msg):
+                    success = False
+                else:
+                    result_data['schedule_name'] = args.new_name
         
         else:
             error = f"Unsupported resource type: {resource_type}"
@@ -1269,7 +1659,7 @@ class CommandHandler:
                 }
                 if resource_type != 'company':
                     result['name'] = args.name
-                if resource_type == 'machine':
+                if resource_type in ['machine', 'repository', 'storage', 'schedule']:
                     result['team'] = args.team
                 if resource_type == 'bridge':
                     result['region'] = args.region
@@ -1282,7 +1672,7 @@ class CommandHandler:
 def setup_parser():
     """Create and configure the argument parser from definitions"""
     parser = argparse.ArgumentParser(
-        description='Rediacc CLI - Docker-like interface for Rediacc Middleware API'
+        description='Rediacc CLI - Complete interface for Rediacc Middleware API'
     )
     # Add global output format option
     parser.add_argument('--output', '-o', choices=['text', 'json'], default='text',
@@ -1331,12 +1721,19 @@ def main():
     elif args.command == 'logout':
         return handler.logout(args)
     
-    # Check if authenticated for other commands
-    if not config_manager.is_authenticated():
-        error = "Not authenticated. Please login first."
-        output = format_output(None, output_format, None, error)
-        print(output)
-        return 1
+    # Check if command requires authentication
+    auth_not_required_commands = {
+        ('user', 'activate'),
+        ('create', 'company')
+    }
+    
+    # Check if authenticated for commands that require it
+    if (args.command, getattr(args, 'resource', None)) not in auth_not_required_commands:
+        if not config_manager.is_authenticated():
+            error = "Not authenticated. Please login first."
+            output = format_output(None, output_format, None, error)
+            print(output)
+            return 1
     
     # Handle other commands with resource types
     if not hasattr(args, 'resource') or not args.resource:
@@ -1351,7 +1748,7 @@ def main():
     elif args.command == 'update':
         return handler.update_resource(args.resource, args)
     else:
-        # Generic command handling for create, list, rm, vault, permission
+        # Generic command handling for create, list, rm, vault, permission, user, team-member, queue
         return handler.generic_command(args.command, args.resource, args)
 
 if __name__ == "__main__":
