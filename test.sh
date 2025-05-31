@@ -110,7 +110,66 @@ else
     print_error "Failed to create schedule"
 fi
 
-# 3. List entities
+# 3. Test Permission Features
+print_section "Testing Permission Features"
+
+# Create permission group
+PERMISSION_GROUP="TestPermGroup_${TIMESTAMP}_${RANDOM_SUFFIX}"
+echo "Creating permission group: ${PERMISSION_GROUP}"
+if ${CLI} permission create-group "${PERMISSION_GROUP}"; then
+    print_status "Created permission group: ${PERMISSION_GROUP}"
+else
+    print_error "Failed to create permission group"
+fi
+
+# Add permissions to group
+echo "Adding permissions to group: ${PERMISSION_GROUP}"
+if ${CLI} permission add "${PERMISSION_GROUP}" "view_teams"; then
+    print_status "Added permission 'view_teams' to group ${PERMISSION_GROUP}"
+else
+    print_error "Failed to add permission to group"
+fi
+
+if ${CLI} permission add "${PERMISSION_GROUP}" "manage_machines"; then
+    print_status "Added permission 'manage_machines' to group ${PERMISSION_GROUP}"
+else
+    print_error "Failed to add second permission to group"
+fi
+
+# List permission groups
+echo -e "\nPermission Groups:"
+${CLI} permission list-groups
+
+# List specific permission group details
+echo -e "\nPermission Group Details for ${PERMISSION_GROUP}:"
+${CLI} permission list-group "${PERMISSION_GROUP}"
+
+# Test JSON output for permission groups
+echo -e "\nPermission Groups (JSON):"
+if ${CLI} --output json permission list-groups | python3 -m json.tool > /dev/null 2>&1; then
+    print_status "Permission groups JSON output is valid"
+    ${CLI} --output json permission list-groups
+else
+    print_error "Permission groups JSON output is invalid"
+fi
+
+echo -e "\nPermission Group Details (JSON):"
+if ${CLI} --output json permission list-group "${PERMISSION_GROUP}" | python3 -m json.tool > /dev/null 2>&1; then
+    print_status "Permission group details JSON output is valid"
+    ${CLI} --output json permission list-group "${PERMISSION_GROUP}"
+else
+    print_error "Permission group details JSON output is invalid"
+fi
+
+# Remove permission from group
+echo -e "\nRemoving permission from group:"
+if ${CLI} permission remove "${PERMISSION_GROUP}" "view_teams" --force; then
+    print_status "Removed permission 'view_teams' from group ${PERMISSION_GROUP}"
+else
+    print_error "Failed to remove permission from group"
+fi
+
+# 4. List entities
 print_section "Listing Entities"
 
 echo -e "\nTeams:"
@@ -199,6 +258,7 @@ ${CLI} rm schedule "${TEAM_NAME}" "${SCHEDULE_NAME}" --force
 ${CLI} rm team "${TEAM_NAME}" --force
 ${CLI} rm bridge "${REGION_NAME}" "${BRIDGE_NAME}" --force
 ${CLI} rm region "${REGION_NAME}" --force
+${CLI} permission delete-group "${PERMISSION_GROUP}" --force
 
 print_section "Test Complete"
 echo "Finished: $(date)"
