@@ -168,45 +168,6 @@ fi
 # 4. Vault Operations Tests
 print_section "Vault Operations Tests"
 
-# Test vault get commands - Currently not supported in middleware
-# The vault data is embedded in entity data, not available through separate endpoints
-print_warning "Vault get operations are not currently implemented in the middleware"
-# echo "Testing vault get for team..."
-# if ${CLI} vault get team "${TEAM_NAME}"; then
-#     print_status "Successfully retrieved team vault"
-# else
-#     print_error "Failed to get team vault"
-# fi
-
-# echo "Testing vault get for machine..."
-# if ${CLI} vault get machine "${MACHINE_NAME}" --team "${TEAM_NAME}"; then
-#     print_status "Successfully retrieved machine vault"
-# else
-#     print_error "Failed to get machine vault"
-# fi
-
-# echo "Testing vault get for region..."
-# if ${CLI} vault get region "${REGION_NAME}"; then
-#     print_status "Successfully retrieved region vault"
-# else
-#     print_error "Failed to get region vault"
-# fi
-
-# echo "Testing vault get for bridge..."
-# if ${CLI} vault get bridge "${BRIDGE_NAME}" --region "${REGION_NAME}"; then
-#     print_status "Successfully retrieved bridge vault"
-# else
-#     print_error "Failed to get bridge vault"
-# fi
-
-# # Test vault get with JSON output
-# echo "Testing vault get with JSON output..."
-# if ${CLI} --output json vault get team "${TEAM_NAME}" | python3 -m json.tool > /dev/null 2>&1; then
-#     print_status "Vault get JSON output is valid"
-# else
-#     print_error "Vault get JSON output is invalid"
-# fi
-
 # Test vault set commands
 echo "Testing vault set for team..."
 if ${CLI} vault set team "${TEAM_NAME}" test_vault_updated.json --vault-version 2; then
@@ -405,13 +366,6 @@ fi
 print_section "Error Handling Tests"
 
 echo "Testing operations on non-existent resources..."
-
-# Try to get vault for non-existent team
-if ${CLI} vault get team "NonExistentTeam_${TIMESTAMP}" 2>&1 | grep -q -i "error\|not found"; then
-    print_status "Properly handled non-existent team vault get"
-else
-    print_error "Did not properly handle non-existent team"
-fi
 
 # Try to update non-existent machine
 if ${CLI} update machine "${TEAM_NAME}" "NonExistentMachine_${TIMESTAMP}" --new-name "ShouldFail" 2>&1 | grep -q -i "error\|not found"; then
