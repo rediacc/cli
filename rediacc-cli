@@ -215,6 +215,54 @@ CMD_CONFIG = {
             'params': lambda args: get_vault_set_params(args),
             'success_msg': 'Successfully updated {resource_type} vault'
         }
+    },
+
+    # Permission commands
+    'permission': {
+        'create-group': {
+            'endpoint': 'CreatePermissionGroup',
+            'params': lambda args: {'permissionGroupName': args.name},
+            'success_msg': 'Successfully created permission group: {name}'
+        },
+        'delete-group': {
+            'endpoint': 'DeletePermissionGroup',
+            'params': lambda args: {'permissionGroupName': args.name},
+            'confirm_msg': "Are you sure you want to delete permission group '{name}'?",
+            'success_msg': 'Successfully deleted permission group: {name}'
+        },
+        'add': {
+            'endpoint': 'CreatePermissionInGroup',
+            'params': lambda args: {
+                'permissionGroupName': args.group, 
+                'permissionName': args.name
+            },
+            'success_msg': 'Successfully added permission: {name} to group {group}'
+        },
+        'remove': {
+            'endpoint': 'DeletePermissionFromGroup',
+            'params': lambda args: {
+                'permissionGroupName': args.group, 
+                'permissionName': args.name
+            },
+            'confirm_msg': "Are you sure you want to remove permission '{name}' from group '{group}'?",
+            'success_msg': 'Successfully removed permission: {name} from group {group}'
+        },
+        'assign': {
+            'endpoint': 'UpdateUserAssignedPermissions',
+            'params': lambda args: {
+                'userEmail': args.email, 
+                'permissionGroupName': args.group
+            },
+            'success_msg': 'Successfully assigned permission group {group} to user {email}'
+        },
+        'list-groups': {
+            'endpoint': 'GetCompanyPermissionGroups',
+            'params': lambda args: {}
+        },
+        'list-group': {
+            'endpoint': 'GetPermissionGroupDetails',
+            'params': lambda args: {'permissionGroupName': args.name}
+        }
     }
 }
 
@@ -364,6 +412,34 @@ ARG_DEFS = {
             {'name': '--team', 'help': 'Team name (for machine)'},
             {'name': '--region', 'help': 'Region name (for bridge)'},
             {'name': '--vault-version', 'type': int, 'help': 'Vault version'}
+        ]
+    },
+    
+    # Permission command arguments
+    'permission': {
+        'create-group': [
+            {'name': 'name', 'help': 'Permission group name'}
+        ],
+        'delete-group': [
+            {'name': 'name', 'help': 'Permission group name'},
+            {'name': '--force', 'action': 'store_true', 'help': 'Skip confirmation'}
+        ],
+        'add': [
+            {'name': 'group', 'help': 'Permission group name'},
+            {'name': 'name', 'help': 'Permission name'}
+        ],
+        'remove': [
+            {'name': 'group', 'help': 'Permission group name'},
+            {'name': 'name', 'help': 'Permission name'},
+            {'name': '--force', 'action': 'store_true', 'help': 'Skip confirmation'}
+        ],
+        'assign': [
+            {'name': 'email', 'help': 'User email address'},
+            {'name': 'group', 'help': 'Permission group name'}
+        ],
+        'list-groups': [],
+        'list-group': [
+            {'name': 'name', 'help': 'Permission group name'}
         ]
     }
 }
@@ -876,8 +952,8 @@ class CommandHandler:
             # Use token authentication
             response = self.client.token_request(cmd_config['endpoint'], params)
         
-        # For list commands, format the output
-        if cmd_type == 'list':
+        # For list commands or permission list commands, format the output
+        if cmd_type == 'list' or (cmd_type == 'permission' and resource_type in ['list-groups', 'list-group']):
             if response.get('error'):
                 output = format_output(None, self.output_format, None, response['error'])
                 print(output)
@@ -1275,7 +1351,7 @@ def main():
     elif args.command == 'update':
         return handler.update_resource(args.resource, args)
     else:
-        # Generic command handling for create, list, rm, vault
+        # Generic command handling for create, list, rm, vault, permission
         return handler.generic_command(args.command, args.resource, args)
 
 if __name__ == "__main__":
