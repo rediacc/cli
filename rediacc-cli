@@ -247,16 +247,6 @@ CMD_CONFIG = {
     
     # Vault commands
     'vault': {
-        'get': {
-            'endpoints': {
-                'team': 'GetTeamVault',
-                'machine': 'GetMachineVault',
-                'region': 'GetRegionVault',
-                'bridge': 'GetBridgeVault',
-                'company': 'GetCompanyVault'
-            },
-            'params': lambda args: get_vault_get_params(args)
-        },
         'set': {
             'endpoints': {
                 'team': 'UpdateTeamVault',
@@ -584,13 +574,6 @@ ARG_DEFS = {
     },
     
     'vault': {
-        'get': [
-            {'name': 'resource_type', 'help': 'Resource type',
-             'choices': ['team', 'machine', 'region', 'bridge', 'company']},
-            {'name': 'name', 'help': 'Resource name'},
-            {'name': '--team', 'help': 'Team name (for machine)'},
-            {'name': '--region', 'help': 'Region name (for bridge)'}
-        ],
         'set': [
             {'name': 'resource_type', 'help': 'Resource type',
              'choices': ['team', 'machine', 'region', 'bridge', 'company', 'repository', 'storage', 'schedule']},
@@ -855,18 +838,6 @@ def get_vault_data(args):
             return '{}'
     return args.vault if hasattr(args, 'vault') and args.vault else '{}'
 
-def get_vault_get_params(args):
-    """Generate params for vault get commands"""
-    params = {}
-    if args.resource_type == 'team':
-        params['teamName'] = args.name
-    elif args.resource_type == 'machine':
-        params.update({'teamName': args.team, 'machineName': args.name})
-    elif args.resource_type == 'region':
-        params['regionName'] = args.name
-    elif args.resource_type == 'bridge':
-        params.update({'regionName': args.region, 'bridgeName': args.name})
-    return params
 
 def get_vault_set_params(args):
     """Generate params for vault set commands"""
@@ -1203,9 +1174,7 @@ class CommandHandler:
         
         # Handle vault commands specially
         if cmd_type == 'vault':
-            if resource_type == 'get':
-                return self.vault_get(args)
-            elif resource_type == 'set':
+            if resource_type == 'set':
                 return self.vault_set(args)
             return 1
         
@@ -1582,56 +1551,6 @@ class CommandHandler:
             print(output)
         
         return 0 if success else 1
-    
-    def vault_get(self, args):
-        """Get vault data for a resource"""
-        resource_type = args.resource_type
-        endpoints = CMD_CONFIG['vault']['get']['endpoints']
-        
-        if resource_type not in endpoints:
-            error = f"Unsupported resource type: {resource_type}"
-            output = format_output(None, self.output_format, None, error)
-            print(output)
-            return 1
-        
-        params = get_vault_get_params(args)
-        response = self.client.token_request(endpoints[resource_type], params)
-        
-        if response.get('error'):
-            output = format_output(None, self.output_format, None, response['error'])
-            print(output)
-            return 1
-        
-        data = extract_table_data(response)
-        if not data:
-            warning = "No vault data found"
-            if self.output_format == 'json':
-                output = format_output({}, self.output_format, warning)
-            else:
-                output = colorize(warning, 'YELLOW')
-            print(output)
-            return 0
-        
-        # Extract vault data 
-        vault_data = data[0].get('vault', '{}')
-        try:
-            parsed = json.loads(vault_data)
-            
-            if self.output_format == 'json':
-                # For JSON output, return the parsed vault data
-                output = format_output(parsed, self.output_format)
-                print(output)
-            else:
-                # For text output, pretty print the JSON
-                print(json.dumps(parsed, indent=2))
-        except json.JSONDecodeError:
-            if self.output_format == 'json':
-                output = format_output({'raw_vault': vault_data}, self.output_format)
-                print(output)
-            else:
-                print(vault_data)
-        
-        return 0
     
     def vault_set(self, args):
         """Set vault data for a resource"""
