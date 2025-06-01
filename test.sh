@@ -271,12 +271,16 @@ for perm in "${PERMISSIONS[@]}"; do
 done
 
 # List permission groups
-echo -e "\nPermission Groups:"
+echo -e "\nPermission Groups (Table Format):"
+echo "----------------------------------------"
 ${CLI} permission list-groups
+echo "----------------------------------------"
 
 # List specific permission group details
 echo -e "\nPermission Group Details for ${PERMISSION_GROUP}:"
+echo "----------------------------------------"
 ${CLI} permission list-group "${PERMISSION_GROUP}"
+echo "----------------------------------------"
 
 # Create a test user for permission assignment
 echo "Creating test user for permission assignment..."
@@ -296,19 +300,27 @@ else
 fi
 
 # Test JSON output for permissions
-echo -e "\nPermission Groups (JSON):"
-if ${CLI} --output json permission list-groups | python3 -m json.tool > /dev/null 2>&1; then
+echo -e "\nPermission Groups (JSON Format - Pretty Printed):"
+echo "----------------------------------------"
+if ${CLI} --output json permission list-groups 2>/dev/null | python3 -m json.tool 2>/dev/null; then
     print_status "Permission groups JSON output is valid"
 else
-    print_error "Permission groups JSON output is invalid"
+    # If pretty printing fails, just show raw JSON
+    ${CLI} --output json permission list-groups 2>/dev/null
+    print_error "Permission groups JSON pretty printing failed (but raw JSON shown above)"
 fi
+echo "----------------------------------------"
 
-echo -e "\nPermission Group Details (JSON):"
-if ${CLI} --output json permission list-group "${PERMISSION_GROUP}" | python3 -m json.tool > /dev/null 2>&1; then
+echo -e "\nPermission Group Details (JSON Format - Pretty Printed):"
+echo "----------------------------------------"
+if ${CLI} --output json permission list-group "${PERMISSION_GROUP}" 2>/dev/null | python3 -m json.tool 2>/dev/null; then
     print_status "Permission group details JSON output is valid"
 else
-    print_error "Permission group details JSON output is invalid"
+    # If pretty printing fails, just show raw JSON
+    ${CLI} --output json permission list-group "${PERMISSION_GROUP}" 2>/dev/null
+    print_error "Permission group details JSON pretty printing failed (but raw JSON shown above)"
 fi
+echo "----------------------------------------"
 
 # Remove permissions from group
 echo -e "\nRemoving permissions from group:"
@@ -362,7 +374,179 @@ else
     print_error "Machine inspect JSON output is invalid"
 fi
 
-# 9. Error Handling Tests
+# 9. Queue Operations Tests
+print_section "Queue Operations Tests"
+
+# Test queue list-functions command
+echo "Testing queue list-functions..."
+if ${CLI} queue list-functions > /dev/null 2>&1; then
+    print_status "Successfully listed queue functions"
+else
+    print_error "Failed to list queue functions"
+fi
+
+# Test queue list-functions with JSON output
+echo "Testing queue list-functions (JSON)..."
+if ${CLI} --output json queue list-functions | python3 -m json.tool > /dev/null 2>&1; then
+    print_status "Queue list-functions JSON output is valid"
+else
+    print_error "Queue list-functions JSON output is invalid"
+fi
+
+# Test queue add command with various functions
+echo "Testing queue add command..."
+
+# Test simple function without parameters
+echo "Adding 'hello' function to queue..."
+if ${CLI} queue add "${TEAM_NAME}" "${MACHINE_NAME}" hello --description "Test hello function"; then
+    print_status "Successfully queued 'hello' function"
+else
+    print_error "Failed to queue 'hello' function"
+fi
+
+# Test function with required parameters
+echo "Adding 'repo_new' function to queue..."
+TEST_REPO="QueueTestRepo_${TIMESTAMP}_${RANDOM_SUFFIX}"
+if ${CLI} queue add "${TEAM_NAME}" "${MACHINE_NAME}" repo_new --repo "${TEST_REPO}" --size "5G" --priority 8; then
+    print_status "Successfully queued 'repo_new' function with parameters"
+else
+    print_error "Failed to queue 'repo_new' function with parameters"
+fi
+
+# Test function with optional parameters
+echo "Adding 'os_setup' function to queue..."
+if ${CLI} queue add "${TEAM_NAME}" "${MACHINE_NAME}" os_setup --datastore-size "90%" --source "custom-repo"; then
+    print_status "Successfully queued 'os_setup' function with optional parameters"
+else
+    print_error "Failed to queue 'os_setup' function with optional parameters"
+fi
+
+# Test function with default parameters
+echo "Adding 'os_setup' function with defaults to queue..."
+if ${CLI} queue add "${TEAM_NAME}" "${MACHINE_NAME}" os_setup; then
+    print_status "Successfully queued 'os_setup' function with defaults"
+else
+    print_error "Failed to queue 'os_setup' function with defaults"
+fi
+
+# Test repo_mount function
+echo "Adding 'repo_mount' function to queue..."
+if ${CLI} queue add "${TEAM_NAME}" "${MACHINE_NAME}" repo_mount --repo "${REPO_NAME}" --from "remote-machine"; then
+    print_status "Successfully queued 'repo_mount' function"
+else
+    print_error "Failed to queue 'repo_mount' function"
+fi
+
+# Test map_socket function
+echo "Adding 'map_socket' function to queue..."
+if ${CLI} queue add "${TEAM_NAME}" "${MACHINE_NAME}" map_socket --machine "${MACHINE_NAME}" --repo "${REPO_NAME}" --plugin "test-plugin"; then
+    print_status "Successfully queued 'map_socket' function"
+else
+    print_error "Failed to queue 'map_socket' function"
+fi
+
+# Test queue add with JSON output
+echo "Testing queue add with JSON output..."
+QUEUE_JSON_OUTPUT=$(${CLI} --output json queue add "${TEAM_NAME}" "${MACHINE_NAME}" uninstall --priority 10)
+if echo "${QUEUE_JSON_OUTPUT}" | python3 -m json.tool > /dev/null 2>&1; then
+    print_status "Queue add JSON output is valid"
+    
+    # Extract task ID if possible
+    TASK_ID=$(echo "${QUEUE_JSON_OUTPUT}" | python3 -c "import json, sys; data = json.load(sys.stdin); print(data.get('data', {}).get('task_id', ''))" 2>/dev/null)
+    if [ -n "${TASK_ID}" ]; then
+        print_status "Successfully extracted task ID: ${TASK_ID}"
+    fi
+else
+    print_error "Queue add JSON output is invalid"
+fi
+
+# Test queue get-next to see our queued items
+echo "Testing queue get-next..."
+if ${CLI} queue get-next "${MACHINE_NAME}" --count 10 | grep -q "hello\|repo_new\|os_setup"; then
+    print_status "Successfully retrieved queued items"
+else
+    print_warning "Could not verify queued items (might be processed already)"
+fi
+
+# Test queue operations error handling
+echo "Testing queue add with invalid function..."
+if ${CLI} queue add "${TEAM_NAME}" "${MACHINE_NAME}" invalid_function 2>&1 | grep -q -i "unknown function\|error"; then
+    print_status "Properly handled invalid function name"
+else
+    print_error "Did not properly handle invalid function name"
+fi
+
+echo "Testing queue add with missing required parameters..."
+if ${CLI} --output json queue add "${TEAM_NAME}" "${MACHINE_NAME}" repo_new 2>&1 | grep -q -i "missing required parameter\|error"; then
+    print_status "Properly handled missing required parameters"
+else
+    print_error "Did not properly handle missing required parameters"
+fi
+
+# Test edge cases for queue operations
+echo "Testing queue add with very high priority..."
+if ${CLI} queue add "${TEAM_NAME}" "${MACHINE_NAME}" hello --priority 999 --description "High priority test"; then
+    print_status "Successfully queued with high priority"
+else
+    print_error "Failed to queue with high priority"
+fi
+
+echo "Testing queue add with complex parameters..."
+if ${CLI} queue add "${TEAM_NAME}" "${MACHINE_NAME}" repo_push --repo "repo1,repo2,repo3" --to "backup-storage" --option "no-suffix,override"; then
+    print_status "Successfully queued repo_push with complex parameters"
+else
+    print_error "Failed to queue repo_push with complex parameters"
+fi
+
+# Test repo_pull function with 'from' parameter
+echo "Testing repo_pull function..."
+if ${CLI} queue add "${TEAM_NAME}" "${MACHINE_NAME}" repo_pull --from "source-machine" --repo "${REPO_NAME}"; then
+    print_status "Successfully queued repo_pull function"
+else
+    print_error "Failed to queue repo_pull function"
+fi
+
+# Test repo_resize function
+echo "Testing repo_resize function..."
+if ${CLI} queue add "${TEAM_NAME}" "${MACHINE_NAME}" repo_resize --repo "${REPO_NAME}" --size "50G"; then
+    print_status "Successfully queued repo_resize function"
+else
+    print_error "Failed to queue repo_resize function"
+fi
+
+# Test repo_plugin and repo_plugout functions
+echo "Testing repo_plugin function..."
+if ${CLI} queue add "${TEAM_NAME}" "${MACHINE_NAME}" repo_plugin --repo "${REPO_NAME}" --plugin "browser,terminal"; then
+    print_status "Successfully queued repo_plugin function"
+else
+    print_error "Failed to queue repo_plugin function"
+fi
+
+echo "Testing repo_plugout function..."
+if ${CLI} queue add "${TEAM_NAME}" "${MACHINE_NAME}" repo_plugout --repo "${REPO_NAME}" --plugin "browser"; then
+    print_status "Successfully queued repo_plugout function"
+else
+    print_error "Failed to queue repo_plugout function"
+fi
+
+# If we have a task ID, test queue update and complete operations
+if [ -n "${TASK_ID}" ]; then
+    echo "Testing queue update-response..."
+    if ${CLI} queue update-response "${TASK_ID}" --vault '{"status": "processing", "message": "Test update"}'; then
+        print_status "Successfully updated queue item response"
+    else
+        print_warning "Failed to update queue item response (might be already processed)"
+    fi
+    
+    echo "Testing queue complete..."
+    if ${CLI} queue complete "${TASK_ID}" --vault '{"status": "completed", "result": "success"}'; then
+        print_status "Successfully completed queue item"
+    else
+        print_warning "Failed to complete queue item (might be already completed)"
+    fi
+fi
+
+# 10. Error Handling Tests
 print_section "Error Handling Tests"
 
 echo "Testing operations on non-existent resources..."
@@ -392,7 +576,7 @@ else
     rm -f invalid_vault.json
 fi
 
-# 10. Test Confirmation Prompts (without --force)
+# 11. Test Confirmation Prompts (without --force)
 print_section "Testing Confirmation Prompts"
 
 echo "Testing delete without --force flag..."
@@ -415,19 +599,97 @@ else
     print_error "Failed to delete with --force flag"
 fi
 
-# 11. Comprehensive Cleanup
+# 12. Comprehensive Cleanup
 print_section "Comprehensive Cleanup"
 echo "Deleting all created entities..."
 
+# First, delete any remaining queue items to avoid dependency issues
+echo "Cleaning up queue items..."
+# Keep trying to delete queue items until none are left
+MAX_ATTEMPTS=5
+ATTEMPT=1
+TOTAL_DELETED=0
+
+while [ ${ATTEMPT} -le ${MAX_ATTEMPTS} ]; do
+    # Skip header lines and extract Task ID (UUID pattern) from any column
+    # This handles both PENDING items (Task ID in column 5) and COMPLETED items (Task ID in column 6)
+    QUEUE_ITEMS=$(${CLI} list queue-items "${TEAM_NAME}" 2>/dev/null | tail -n +3 | grep -oE '[a-f0-9]{8}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{12}' | sort -u)
+    
+    if [ -z "${QUEUE_ITEMS}" ]; then
+        break
+    fi
+    
+    DELETED_COUNT=0
+    for ITEM_ID in ${QUEUE_ITEMS}; do
+        if ${CLI} rm queue-item "${ITEM_ID}" --force > /dev/null 2>&1; then
+            ((DELETED_COUNT++))
+            ((TOTAL_DELETED++))
+        fi
+    done
+    
+    if [ ${DELETED_COUNT} -eq 0 ]; then
+        # No items deleted in this attempt, break to avoid infinite loop
+        break
+    fi
+    
+    ((ATTEMPT++))
+done
+
+if [ ${TOTAL_DELETED} -gt 0 ]; then
+    print_status "Cleaned up ${TOTAL_DELETED} queue items"
+else
+    print_status "No queue items to clean up"
+fi
+
 # Delete in correct order to avoid dependency issues
-${CLI} rm machine "${TEAM_NAME}" "${MACHINE_NAME}" --force
-${CLI} rm repository "${TEAM_NAME}" "${REPO_NAME}" --force
-${CLI} rm storage "${TEAM_NAME}" "${STORAGE_NAME}" --force
-${CLI} rm schedule "${TEAM_NAME}" "${SCHEDULE_NAME}" --force
-${CLI} rm team "${TEAM_NAME}" --force
-${CLI} rm bridge "${REGION_NAME}" "${BRIDGE_NAME}" --force
-${CLI} rm bridge "${REGION_NAME}" "${NEW_BRIDGE_NAME}" --force 2>/dev/null
-${CLI} rm region "${REGION_NAME}" --force
+echo "Deleting resources..."
+if ${CLI} rm machine "${TEAM_NAME}" "${MACHINE_NAME}" --force > /dev/null 2>&1; then
+    print_status "Deleted machine: ${MACHINE_NAME}"
+else
+    print_error "Failed to delete machine: ${MACHINE_NAME}"
+fi
+
+if ${CLI} rm repository "${TEAM_NAME}" "${REPO_NAME}" --force > /dev/null 2>&1; then
+    print_status "Deleted repository: ${REPO_NAME}"
+else
+    print_error "Failed to delete repository: ${REPO_NAME}"
+fi
+
+if ${CLI} rm storage "${TEAM_NAME}" "${STORAGE_NAME}" --force > /dev/null 2>&1; then
+    print_status "Deleted storage: ${STORAGE_NAME}"
+else
+    print_error "Failed to delete storage: ${STORAGE_NAME}"
+fi
+
+if ${CLI} rm schedule "${TEAM_NAME}" "${SCHEDULE_NAME}" --force > /dev/null 2>&1; then
+    print_status "Deleted schedule: ${SCHEDULE_NAME}"
+else
+    print_error "Failed to delete schedule: ${SCHEDULE_NAME}"
+fi
+
+if ${CLI} rm team "${TEAM_NAME}" --force > /dev/null 2>&1; then
+    print_status "Deleted team: ${TEAM_NAME}"
+else
+    print_error "Failed to delete team: ${TEAM_NAME}"
+fi
+
+if ${CLI} rm bridge "${REGION_NAME}" "${BRIDGE_NAME}" --force > /dev/null 2>&1; then
+    print_status "Deleted bridge: ${BRIDGE_NAME}"
+else
+    print_error "Failed to delete bridge: ${BRIDGE_NAME}"
+fi
+
+if ${CLI} rm bridge "${REGION_NAME}" "${NEW_BRIDGE_NAME}" --force > /dev/null 2>&1; then
+    print_status "Deleted bridge: ${NEW_BRIDGE_NAME}"
+else
+    print_error "Failed to delete bridge: ${NEW_BRIDGE_NAME}"
+fi
+
+if ${CLI} rm region "${REGION_NAME}" --force > /dev/null 2>&1; then
+    print_status "Deleted region: ${REGION_NAME}"
+else
+    print_error "Failed to delete region: ${REGION_NAME}"
+fi
 
 # Reassign test user to default "Users" group before deleting our custom group
 ${CLI} permission assign "${TEST_USER_EMAIL}" "Users" 2>/dev/null
@@ -440,7 +702,7 @@ ${CLI} permission delete-group "${PERMISSION_GROUP}" --force
 
 print_status "Cleanup completed"
 
-# 12. Test logout functionality
+# 13. Test logout functionality
 print_section "Final Authentication Test"
 
 # Test operations after logout (should fail)

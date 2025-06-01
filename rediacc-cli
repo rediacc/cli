@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 """
 Rediacc CLI - Complete command-line interface for Rediacc Middleware API
-Includes all functionality from both CLI and test suite
+Includes all functionality from both CLI and test suite with enhanced queue support
 """
 import argparse
 import base64
@@ -32,6 +32,131 @@ COLORS = {
 def colorize(text, color):
     """Add color to terminal output if supported"""
     return f"{COLORS.get(color, '')}{text}{COLORS['ENDC']}" if sys.stdout.isatty() else text
+
+# Available bash functions for queuing
+QUEUE_FUNCTIONS = {
+    # System setup functions
+    'os_setup': {
+        'description': 'Setup operating system with required tools and configurations',
+        'params': {
+            'datastore_size': {'type': 'string', 'default': '95%', 'help': 'Datastore size (e.g., 95%, 100G)'},
+            'source': {'type': 'string', 'default': 'apt-repo', 'help': 'Package source'}
+        }
+    },
+    'hello': {
+        'description': 'Simple test function that prints hello from hostname',
+        'params': {}
+    },
+    'uninstall': {
+        'description': 'Cleanup and uninstall system components',
+        'params': {}
+    },
+    
+    # Repository management functions
+    'repo_new': {
+        'description': 'Create a new repository',
+        'params': {
+            'repo': {'type': 'string', 'required': True, 'help': 'Repository name (no numbers)'},
+            'size': {'type': 'string', 'required': True, 'help': 'Repository size (e.g., 10G)'}
+        }
+    },
+    'repo_mount': {
+        'description': 'Mount repository filesystems',
+        'params': {
+            'repo': {'type': 'string', 'required': True, 'help': 'Repository name(s), comma-separated'},
+            'from': {'type': 'string', 'help': 'Remote machine to mount from'}
+        }
+    },
+    'repo_unmount': {
+        'description': 'Unmount repository filesystems',
+        'params': {
+            'repo': {'type': 'string', 'required': True, 'help': 'Repository name(s), comma-separated'},
+            'from': {'type': 'string', 'help': 'Remote machine to unmount from'}
+        }
+    },
+    'repo_up': {
+        'description': 'Start repository services using Rediaccfile',
+        'params': {
+            'repo': {'type': 'string', 'required': True, 'help': 'Repository name(s), comma-separated'},
+            'option': {'type': 'string', 'help': 'Options (e.g., prep-only)'}
+        }
+    },
+    'repo_down': {
+        'description': 'Stop repository services',
+        'params': {
+            'repo': {'type': 'string', 'required': True, 'help': 'Repository name(s), comma-separated'}
+        }
+    },
+    'repo_resize': {
+        'description': 'Resize repository storage',
+        'params': {
+            'repo': {'type': 'string', 'required': True, 'help': 'Repository name'},
+            'size': {'type': 'string', 'required': True, 'help': 'New size (e.g., 20G)'}
+        }
+    },
+    'repo_rm': {
+        'description': 'Delete repository',
+        'params': {
+            'repo': {'type': 'string', 'required': True, 'help': 'Repository name'}
+        }
+    },
+    'repo_plugin': {
+        'description': 'Activate repository plugins',
+        'params': {
+            'repo': {'type': 'string', 'required': True, 'help': 'Repository name(s), comma-separated'},
+            'plugin': {'type': 'string', 'required': True, 'help': 'Plugin name(s), comma-separated'}
+        }
+    },
+    'repo_plugout': {
+        'description': 'Deactivate repository plugins',
+        'params': {
+            'repo': {'type': 'string', 'required': True, 'help': 'Repository name(s), comma-separated'},
+            'plugin': {'type': 'string', 'required': True, 'help': 'Plugin name(s), comma-separated'}
+        }
+    },
+    'repo_ownership': {
+        'description': 'Change repository ownership',
+        'params': {
+            'repo': {'type': 'string', 'required': True, 'help': 'Repository name'},
+            'from': {'type': 'string', 'required': True, 'help': 'Current owner'},
+            'to': {'type': 'string', 'help': 'New owner (default: universal user)'}
+        }
+    },
+    'repo_list': {
+        'description': 'List repositories',
+        'params': {
+            'kind': {'type': 'string', 'default': 'repo', 'help': 'Type to list'},
+            'format': {'type': 'string', 'help': 'Output format (json)'}
+        }
+    },
+    
+    # Backup functions
+    'repo_push': {
+        'description': 'Push repository to remote storage',
+        'params': {
+            'repo': {'type': 'string', 'required': True, 'help': 'Repository name(s), comma-separated'},
+            'to': {'type': 'string', 'help': 'Destination machine/storage'},
+            'option': {'type': 'string', 'help': 'Options (e.g., no-suffix, override)'}
+        }
+    },
+    'repo_pull': {
+        'description': 'Pull repository from remote storage',
+        'params': {
+            'from': {'type': 'string', 'required': True, 'help': 'Source machine/storage'},
+            'repo': {'type': 'string', 'required': True, 'help': 'Repository name(s), comma-separated'}
+        }
+    },
+    
+    # Socket mapping
+    'map_socket': {
+        'description': 'Map socket from remote machine',
+        'params': {
+            'machine': {'type': 'string', 'required': True, 'help': 'Machine name'},
+            'repo': {'type': 'string', 'required': True, 'help': 'Repository name'},
+            'plugin': {'type': 'string', 'required': True, 'help': 'Plugin name'}
+        }
+    }
+}
 
 # Command and API endpoint configuration
 CMD_CONFIG = {
@@ -648,7 +773,7 @@ ARG_DEFS = {
         ]
     },
     
-    # Queue command arguments
+    # Queue command arguments with enhanced functionality
     'queue': {
         'get-next': [
             {'name': 'machine', 'help': 'Machine name'},
@@ -663,7 +788,15 @@ ARG_DEFS = {
             {'name': 'task_id', 'help': 'Task ID'},
             {'name': '--vault', 'help': 'JSON vault data'},
             {'name': '--vault-file', 'help': 'File containing JSON vault data'}
-        ]
+        ],
+        'add': [
+            {'name': 'team', 'help': 'Team name'},
+            {'name': 'machine', 'help': 'Machine name'},
+            {'name': 'function', 'help': 'Function to execute', 'choices': list(QUEUE_FUNCTIONS.keys())},
+            {'name': '--description', 'help': 'Queue item description'},
+            {'name': '--priority', 'type': int, 'default': 5, 'help': 'Priority (1-10, default: 5)'}
+        ],
+        'list-functions': []
     }
 }
 
@@ -837,7 +970,6 @@ def get_vault_data(args):
             print(colorize(f"Warning: Could not load vault data: {e}", 'YELLOW'))
             return '{}'
     return args.vault if hasattr(args, 'vault') and args.vault else '{}'
-
 
 def get_vault_set_params(args):
     """Generate params for vault set commands"""
@@ -1020,6 +1152,41 @@ def format_dynamic_tables(response, output_format='text', skip_fields=None):
         
         return format_output('\n\n'.join(output_parts) if output_parts else "No records found", output_format)
 
+def build_queue_vault_data(function_name, args):
+    """Build vault data for queue item based on function and arguments"""
+    func_def = QUEUE_FUNCTIONS.get(function_name)
+    if not func_def:
+        return None
+    
+    # Build parameters from provided arguments
+    params = {}
+    for param_name, param_info in func_def.get('params', {}).items():
+        # Get parameter value from args
+        value = getattr(args, param_name, None)
+        
+        # Use default if available and value not provided
+        if value is None and 'default' in param_info:
+            value = param_info['default']
+        
+        # Skip if not required and not provided
+        if value is None and not param_info.get('required', False):
+            continue
+        
+        # Add to params if we have a value
+        if value is not None:
+            params[param_name] = value
+    
+    # Create vault data structure
+    vault_data = {
+        'type': 'bash_function',
+        'function': function_name,
+        'params': params,
+        'description': args.description or func_def.get('description', ''),
+        'priority': args.priority
+    }
+    
+    return json.dumps(vault_data)
+
 class CommandHandler:
     """Unified command handler"""
     def __init__(self, config_manager, output_format='text'):
@@ -1140,8 +1307,129 @@ class CommandHandler:
         print(output)
         return 0
     
+    def queue_add(self, args):
+        """Add a bash function to the queue"""
+        # Validate function exists
+        func_def = QUEUE_FUNCTIONS.get(args.function)
+        if not func_def:
+            error = f"Unknown function: {args.function}"
+            output = format_output(None, self.output_format, None, error)
+            print(output)
+            return 1
+        
+        # Collect parameters for the function
+        for param_name, param_info in func_def.get('params', {}).items():
+            if not hasattr(args, param_name):
+                setattr(args, param_name, None)
+            
+            # Prompt for required parameters if not provided
+            if param_info.get('required', False) and getattr(args, param_name) is None:
+                if self.output_format == 'json':
+                    error = f"Missing required parameter: {param_name}"
+                    output = format_output(None, self.output_format, None, error)
+                    print(output)
+                    return 1
+                else:
+                    value = input(f"{param_info.get('help', param_name)}: ")
+                    setattr(args, param_name, value)
+        
+        # Build vault data
+        vault_data = build_queue_vault_data(args.function, args)
+        if not vault_data:
+            error = "Failed to build queue item data"
+            output = format_output(None, self.output_format, None, error)
+            print(output)
+            return 1
+        
+        # Create the queue item
+        response = self.client.token_request(
+            "CreateQueueItem",
+            {
+                'teamName': args.team,
+                'machineName': args.machine,
+                'queueVault': vault_data
+            }
+        )
+        
+        if response.get('error'):
+            output = format_output(None, self.output_format, None, response['error'])
+            print(output)
+            return 1
+        
+        # Extract task ID
+        tables = response.get('tables', [])
+        task_id = None
+        if len(tables) > 1 and tables[1].get('data'):
+            task_id = tables[1]['data'][0].get('taskId', tables[1]['data'][0].get('TaskId'))
+        
+        if self.output_format == 'json':
+            result = {
+                'task_id': task_id,
+                'function': args.function,
+                'team': args.team,
+                'machine': args.machine
+            }
+            output = format_output(result, self.output_format, f"Successfully queued {args.function}")
+            print(output)
+        else:
+            print(colorize(f"Successfully queued {args.function} for machine {args.machine}", 'GREEN'))
+            if task_id:
+                print(f"Task ID: {task_id}")
+        
+        return 0
+    
+    def queue_list_functions(self, args):
+        """List available functions that can be queued"""
+        if self.output_format == 'json':
+            # JSON output with full function details
+            result = {}
+            for func_name, func_def in QUEUE_FUNCTIONS.items():
+                result[func_name] = {
+                    'description': func_def.get('description', ''),
+                    'params': {}
+                }
+                for param_name, param_info in func_def.get('params', {}).items():
+                    result[func_name]['params'][param_name] = {
+                        'type': param_info.get('type', 'string'),
+                        'required': param_info.get('required', False),
+                        'default': param_info.get('default', None),
+                        'help': param_info.get('help', '')
+                    }
+            output = format_output(result, self.output_format)
+            print(output)
+        else:
+            # Text output with formatted table
+            print(colorize("Available Queue Functions", 'HEADER'))
+            print("=" * 80)
+            
+            for func_name, func_def in sorted(QUEUE_FUNCTIONS.items()):
+                print(f"\n{colorize(func_name, 'BLUE')}")
+                print(f"  {func_def.get('description', 'No description available')}")
+                
+                params = func_def.get('params', {})
+                if params:
+                    print("  Parameters:")
+                    for param_name, param_info in params.items():
+                        required = "[required]" if param_info.get('required', False) else "[optional]"
+                        default = f" (default: {param_info.get('default')})" if 'default' in param_info else ""
+                        help_text = param_info.get('help', '')
+                        print(f"    - {param_name} {colorize(required, 'YELLOW')}{default}")
+                        if help_text:
+                            print(f"      {help_text}")
+                else:
+                    print("  No parameters required")
+        
+        return 0
+    
     def generic_command(self, cmd_type, resource_type, args):
         """Handle generic commands using configuration"""
+        # Special handling for queue commands
+        if cmd_type == 'queue':
+            if resource_type == 'add':
+                return self.queue_add(args)
+            elif resource_type == 'list-functions':
+                return self.queue_list_functions(args)
+        
         if cmd_type not in CMD_CONFIG or resource_type not in CMD_CONFIG[cmd_type]:
             error = f"Unsupported command: {cmd_type} {resource_type}"
             output = format_output(None, self.output_format, None, error)
@@ -1591,7 +1879,7 @@ class CommandHandler:
 def setup_parser():
     """Create and configure the argument parser from definitions"""
     parser = argparse.ArgumentParser(
-        description='Rediacc CLI - Complete interface for Rediacc Middleware API'
+        description='Rediacc CLI - Complete interface for Rediacc Middleware API with enhanced queue support'
     )
     # Add global output format option
     parser.add_argument('--output', '-o', choices=['text', 'json'], default='text',
@@ -1612,9 +1900,35 @@ def setup_parser():
             
             for subcmd_name, subcmd_def in cmd_def.items():
                 subcmd_parser = subcmd_parsers.add_parser(subcmd_name, help=f"{subcmd_name} resource")
-                for arg in subcmd_def:
-                    kwargs = {k: v for k, v in arg.items() if k != 'name'}
-                    subcmd_parser.add_argument(arg['name'], **kwargs)
+                
+                # Special handling for queue add command - add function-specific arguments
+                if cmd_name == 'queue' and subcmd_name == 'add':
+                    # Add the basic arguments
+                    for arg in subcmd_def:
+                        kwargs = {k: v for k, v in arg.items() if k != 'name'}
+                        subcmd_parser.add_argument(arg['name'], **kwargs)
+                    
+                    # Add all possible function parameters as optional arguments
+                    # Use a dict to ensure unique parameter names
+                    all_params = {}
+                    for func_def in QUEUE_FUNCTIONS.values():
+                        for param_name, param_info in func_def.get('params', {}).items():
+                            # Only add if not already present or update with more descriptive help
+                            if param_name not in all_params or len(param_info.get('help', '')) > len(all_params[param_name]):
+                                all_params[param_name] = param_info.get('help', f'Parameter for function')
+                    
+                    # Add each unique parameter
+                    for param_name, help_text in sorted(all_params.items()):
+                        # Skip parameters that might conflict with Python keywords or argparse
+                        if param_name.replace('-', '_').replace('_', '').isidentifier():
+                            subcmd_parser.add_argument(f'--{param_name.replace("_", "-")}', 
+                                                     dest=param_name,
+                                                     help=help_text)
+                else:
+                    # Normal argument handling
+                    for arg in subcmd_def:
+                        kwargs = {k: v for k, v in arg.items() if k != 'name'}
+                        subcmd_parser.add_argument(arg['name'], **kwargs)
     
     return parser
 
