@@ -260,7 +260,8 @@ CMD_CONFIG = {
             'params': lambda args: {
                 'teamName': args.team,
                 'machineName': args.machine,
-                'queueVault': get_vault_data(args) or '{}'
+                'bridgeName': args.bridge,  # Bridge is now passed as parameter
+                'queueVault': get_vault_data(args) or '{}'  # Vault data might still include bridge info
             },
             'success_msg': 'Successfully created queue item for machine {machine}'
         }
@@ -587,6 +588,7 @@ ARG_DEFS = {
         'queue-item': [
             {'name': 'team', 'help': 'Team name'},
             {'name': 'machine', 'help': 'Machine name'},
+            {'name': 'bridge', 'help': 'Bridge name'},
             {'name': '--vault', 'help': 'JSON vault data'},
             {'name': '--vault-file', 'help': 'File containing JSON vault data'}
         ]
@@ -792,6 +794,7 @@ ARG_DEFS = {
         'add': [
             {'name': 'team', 'help': 'Team name'},
             {'name': 'machine', 'help': 'Machine name'},
+            {'name': 'bridge', 'help': 'Bridge name'},
             {'name': 'function', 'help': 'Function to execute', 'choices': list(QUEUE_FUNCTIONS.keys())},
             {'name': '--description', 'help': 'Queue item description'},
             {'name': '--priority', 'type': int, 'default': 5, 'help': 'Priority (1-10, default: 5)'}
@@ -1182,7 +1185,8 @@ def build_queue_vault_data(function_name, args):
         'function': function_name,
         'params': params,
         'description': args.description or func_def.get('description', ''),
-        'priority': args.priority
+        'priority': args.priority,
+        'bridge': args.bridge
     }
     
     return json.dumps(vault_data)
@@ -1347,6 +1351,7 @@ class CommandHandler:
             {
                 'teamName': args.team,
                 'machineName': args.machine,
+                'bridgeName': args.bridge,
                 'queueVault': vault_data
             }
         )
@@ -1367,7 +1372,8 @@ class CommandHandler:
                 'task_id': task_id,
                 'function': args.function,
                 'team': args.team,
-                'machine': args.machine
+                'machine': args.machine,
+                'bridge': args.bridge
             }
             output = format_output(result, self.output_format, f"Successfully queued {args.function}")
             print(output)
