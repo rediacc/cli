@@ -165,6 +165,12 @@ CMD_CONFIG = {
         'auth_required': False,
         'endpoint': 'CreateAuthenticationRequest',
         'auth_type': 'credentials',
+        'params': lambda args: {
+            'name': args.session_name or "CLI Session",
+            '2FACode': args.tfa_code,
+            'requestedPermissions': args.permissions,
+            'tokenExpirationHours': args.expiration
+        },
         'success_msg': 'Successfully logged in as {email}'
     },
     'logout': {
@@ -181,7 +187,8 @@ CMD_CONFIG = {
             'auth_type': 'credentials',
             'params': lambda args: {
                 'companyName': args.name,
-                'subscriptionPlan': args.plan or 'ELITE'
+                'activationCode': args.activation_code or TEST_ACTIVATION_CODE,
+                'subscriptionPlan': args.plan or 'COMMUNITY'
             },
             'success_msg': 'Successfully created company: {name}'
         },
@@ -189,7 +196,8 @@ CMD_CONFIG = {
             'endpoint': 'CreateNewUser',
             'params': lambda args: {
                 'newUserEmail': args.email,
-                'newUserHash': pwd_hash_hex(args.password)
+                'newUserHash': pwd_hash_hex(args.password),
+                'activationCode': args.activation_code or TEST_ACTIVATION_CODE
             },
             'success_msg': 'Successfully created user: {email}'
         },
@@ -310,11 +318,11 @@ CMD_CONFIG = {
             'params': lambda args: {'teamName': args.team}
         },
         'resource-limits': {
-            'endpoint': 'GetCompanyResourceLimits',
+            'endpoint': 'GetCompanyDashboardJson',
             'params': lambda args: {}
         },
         'subscription': {
-            'endpoint': 'GetSubscriptionDetails',
+            'endpoint': 'GetCompanyDashboardJson',
             'params': lambda args: {}
         }
     },
@@ -502,7 +510,7 @@ CMD_CONFIG = {
             'endpoint': 'GetQueueItemsNext',
             'params': lambda args: {
                 'machineName': args.machine,
-                'itemCount': args.count or 5
+                'itemCount': args.count or 3
             }
         },
         'update-response': {
@@ -529,7 +537,10 @@ ARG_DEFS = {
     'login': [
         {'name': '--email', 'help': 'User email address'},
         {'name': '--password', 'help': 'User password'},
-        {'name': '--session-name', 'help': 'Name for this session'}
+        {'name': '--session-name', 'help': 'Name for this session'},
+        {'name': '--tfa-code', 'help': 'Two-factor authentication code'},
+        {'name': '--permissions', 'help': 'Requested permission group'},
+        {'name': '--expiration', 'type': int, 'help': 'Token expiration in hours (default: 24)'}
     ],
     'logout': [],
     
@@ -538,11 +549,13 @@ ARG_DEFS = {
             {'name': 'name', 'help': 'Company name'},
             {'name': '--email', 'help': 'Admin email address'},
             {'name': '--password', 'help': 'Admin password'},
-            {'name': '--plan', 'help': 'Subscription plan', 'choices': ['FREE', 'BASIC', 'PRO', 'ELITE']}
+            {'name': '--activation-code', 'help': f'Activation code (default: {TEST_ACTIVATION_CODE})'},
+            {'name': '--plan', 'help': 'Subscription plan', 'choices': ['COMMUNITY', 'ADVANCED', 'PREMIUM', 'ELITE']}
         ],
         'user': [
             {'name': 'email', 'help': 'User email address'},
-            {'name': '--password', 'help': 'User password'}
+            {'name': '--password', 'help': 'User password'},
+            {'name': '--activation-code', 'help': f'Activation code (default: {TEST_ACTIVATION_CODE})'}
         ],
         'team': [
             {'name': 'name', 'help': 'Team name'},
@@ -779,7 +792,7 @@ ARG_DEFS = {
     'queue': {
         'get-next': [
             {'name': 'machine', 'help': 'Machine name'},
-            {'name': '--count', 'type': int, 'help': 'Number of items to retrieve (default: 5)'}
+            {'name': '--count', 'type': int, 'help': 'Number of items to retrieve (default: 3)'}
         ],
         'update-response': [
             {'name': 'task_id', 'help': 'Task ID'},
@@ -1241,11 +1254,24 @@ class CommandHandler:
         
         hash_pwd = pwd_hash(password)
         
+        # Prepare login parameters
+        login_params = {
+            'name': args.session_name or "CLI Session"
+        }
+        
+        # Add optional parameters if provided
+        if hasattr(args, 'tfa_code') and args.tfa_code:
+            login_params['2FACode'] = args.tfa_code
+        if hasattr(args, 'permissions') and args.permissions:
+            login_params['requestedPermissions'] = args.permissions
+        if hasattr(args, 'expiration') and args.expiration:
+            login_params['tokenExpirationHours'] = args.expiration
+        
         # Try to create authentication request
         response = self.client.auth_request(
             "CreateAuthenticationRequest", 
             email, hash_pwd, 
-            {"name": args.session_name or "CLI Session"}
+            login_params
         )
         
         if response.get('error'):
@@ -1606,7 +1632,7 @@ class CommandHandler:
             
             # Get queue items
             queue_response = self.client.token_request(
-                "GetQueueItemsNext", {"machineName": args.name, "itemCount": 5}
+                "GetQueueItemsNext", {"machineName": args.name, "itemCount": 3}
             )
             
             queue_items = []
