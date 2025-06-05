@@ -4,7 +4,6 @@ Rediacc CLI - Complete command-line interface for Rediacc Middleware API
 Includes all functionality from both CLI and test suite with enhanced queue support
 """
 import argparse
-import base64
 import getpass
 import hashlib
 import json
@@ -196,7 +195,7 @@ CMD_CONFIG = {
             'endpoint': 'CreateNewUser',
             'params': lambda args: {
                 'newUserEmail': args.email,
-                'newUserHash': pwd_hash_hex(args.password),
+                'newUserHash': pwd_hash(args.password),
                 'activationCode': args.activation_code or TEST_ACTIVATION_CODE
             },
             'success_msg': 'Successfully created user: {email}'
@@ -473,7 +472,7 @@ CMD_CONFIG = {
         'update-password': {
             'endpoint': 'UpdateUserPassword',
             'params': lambda args: {
-                'userNewPass': pwd_hash_hex(args.new_password)
+                'userNewPass': pwd_hash(args.new_password)
             },
             'success_msg': 'Successfully updated user password'
         }
@@ -961,11 +960,7 @@ def format_output(data, format_type, message=None, error=None):
 
 # Utility functions
 def pwd_hash(pwd):
-    """Generate a base64 password hash for authentication"""
-    return base64.b64encode(hashlib.sha256(pwd.encode()).digest()).decode()
-
-def pwd_hash_hex(pwd):
-    """Generate a hexadecimal password hash for user creation/updates"""
+    """Generate a hexadecimal password hash for authentication and user operations"""
     return "0x" + hashlib.sha256(pwd.encode()).digest().hex()
 
 def extract_table_data(response, table_index=0):
