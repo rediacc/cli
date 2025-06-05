@@ -5,9 +5,14 @@ CLI="./rediacc-cli"
 TIMESTAMP=$(date +%Y%m%d_%H%M%S)
 RANDOM_SUFFIX=$(openssl rand -hex 2)
 
+# Load environment variables from .env file if it exists
+if [ -f "../.env" ]; then
+    export $(grep -v '^#' ../.env | xargs)
+fi
+
 # Test data - modify these as needed
-ADMIN_EMAIL="admin@rediacc.io"
-ADMIN_PASSWORD="admin"
+ADMIN_EMAIL="${SYSTEM_ADMIN_EMAIL:-admin@rediacc.io}"
+ADMIN_PASSWORD="${SYSTEM_ADMIN_PASSWORD:-admin}"
 COMPANY_NAME="TestCompany_${TIMESTAMP}_${RANDOM_SUFFIX}"
 TEAM_NAME="TestTeam_${TIMESTAMP}_${RANDOM_SUFFIX}"
 REGION_NAME="TestRegion_${TIMESTAMP}_${RANDOM_SUFFIX}"
