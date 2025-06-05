@@ -983,7 +983,7 @@ def get_vault_data(args):
             return '{}'
     return args.vault if hasattr(args, 'vault') and args.vault else '{}'
 
-def get_vault_set_params(args):
+def get_vault_set_params(args, config_manager=None):
     """Generate params for vault set commands"""
     # Load vault data
     vault_data = None
@@ -1019,6 +1019,10 @@ def get_vault_set_params(args):
     elif args.resource_type == 'bridge':
         params.update({'regionName': args.region, 'bridgeName': args.name, 'bridgeVault': vault_data})
     elif args.resource_type == 'company':
+        # Note: The server validates that users can only update their own company's vault
+        # The company name parameter is ignored by the server
+        if args.name and args.name.strip():
+            print(colorize(f"Note: Company name '{args.name}' is ignored. You can only update your own company's vault.", 'YELLOW'))
         params['companyVault'] = vault_data
     elif args.resource_type == 'repository':
         params.update({'teamName': args.team, 'repoName': args.name, 'repoVault': vault_data})
@@ -1291,16 +1295,9 @@ class CommandHandler:
             return 1
         
         # Get company info
-        company_response = self.client.request(
-            "GetUserCompany", {}, 
-            {"Rediacc-UserEmail": email, "Rediacc-UserHash": hash_pwd}
-        )
-        
         company = None
-        if not company_response.get('error'):
-            company_data = extract_table_data(company_response)
-            if company_data:
-                company = company_data[0].get('name')
+        # Note: GetUserCompany requires special authentication that's not available during login
+        # Company info can be obtained from other endpoints after login
         
         # Save authentication data
         self.config_manager.set_auth(email, token, company)
@@ -1879,7 +1876,7 @@ class CommandHandler:
             print(output)
             return 1
         
-        params = get_vault_set_params(args)
+        params = get_vault_set_params(args, self.config_manager)
         if not params:
             return 1
         

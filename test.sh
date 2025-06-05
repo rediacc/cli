@@ -51,11 +51,12 @@ print_warning() {
 create_test_vault_files() {
     echo '{"test_key": "test_value", "version": 1}' > test_vault.json
     echo '{"updated_key": "updated_value", "version": 2}' > test_vault_updated.json
+    echo '{"company_config": {"tier": "enterprise", "features": ["backup", "restore"], "max_users": 100}}' > test_company_vault.json
 }
 
 # Cleanup test vault files
 cleanup_test_vault_files() {
-    rm -f test_vault.json test_vault_updated.json
+    rm -f test_vault.json test_vault_updated.json test_company_vault.json
 }
 
 # Start testing
@@ -187,6 +188,35 @@ if [ $? -eq 0 ]; then
     print_status "Successfully updated machine vault from stdin"
 else
     print_error "Failed to set machine vault from stdin"
+fi
+
+# Test company vault set
+echo "Testing vault set for company..."
+# First, we need to get the current company name
+# Assuming we're in a company context based on admin login
+if ${CLI} vault set company "${COMPANY_NAME}" test_company_vault.json --vault-version 2; then
+    print_status "Successfully updated company vault from file"
+else
+    print_error "Failed to set company vault from file"
+fi
+
+echo "Testing vault set for company with inline JSON..."
+if ${CLI} vault set company "${COMPANY_NAME}" - --vault-version 3 <<< '{"company_settings": {"feature_flags": ["new_feature", "advanced_backup"], "config": "updated", "metadata": {"last_updated": "2024-01-01"}}}'; then
+    print_status "Successfully updated company vault with inline JSON"
+else
+    print_error "Failed to set company vault with inline JSON"
+fi
+
+# Test vault set with different company name
+# Note: The server ignores the company name and updates the authenticated user's company
+echo "Testing vault set with different company name..."
+DIFFERENT_OUTPUT=$(${CLI} vault set company "DifferentCompany_${TIMESTAMP}" test_company_vault.json --vault-version 1 2>&1)
+if echo "${DIFFERENT_OUTPUT}" | grep -q -i "Note:.*ignored"; then
+    print_status "CLI properly warns that company name is ignored"
+elif echo "${DIFFERENT_OUTPUT}" | grep -q -i "successfully"; then
+    print_warning "Vault set succeeded but no warning about ignored company name"
+else
+    print_error "Unexpected response for vault set with different company name"
 fi
 
 # 5. Update Operations Tests
