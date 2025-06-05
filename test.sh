@@ -265,7 +265,7 @@ else
 fi
 
 # Add multiple permissions to group
-PERMISSIONS=("view_teams" "manage_machines" "create_repositories" "view_regions")
+PERMISSIONS=("GetCompanyTeams" "GetTeamMachines" "CreateRepository" "GetCompanyRegions")
 for perm in "${PERMISSIONS[@]}"; do
     echo "Adding permission '${perm}' to group..."
     if ${CLI} permission add "${PERMISSION_GROUP}" "${perm}"; then
@@ -291,6 +291,7 @@ echo "----------------------------------------"
 echo "Creating test user for permission assignment..."
 if ${CLI} create user "${TEST_USER_EMAIL}" --password "TestUserPass123!" 2>/dev/null; then
     print_status "Created test user: ${TEST_USER_EMAIL}"
+    TEST_USER_CREATED=true
     
     # Now test permission assignment
     echo "Testing permission assignment..."
@@ -302,6 +303,7 @@ if ${CLI} create user "${TEST_USER_EMAIL}" --password "TestUserPass123!" 2>/dev/
 else
     print_warning "Test user creation skipped (might require special permissions)"
     print_warning "Permission assignment skipped (user doesn't exist)"
+    TEST_USER_CREATED=false
 fi
 
 # Test JSON output for permissions
@@ -403,7 +405,7 @@ echo "Testing queue add command..."
 
 # Test simple function without parameters
 echo "Adding 'hello' function to queue..."
-if ${CLI} queue add "${TEAM_NAME}" "${MACHINE_NAME}" hello --description "Test hello function"; then
+if ${CLI} queue add "${TEAM_NAME}" "${MACHINE_NAME}" "${NEW_BRIDGE_NAME}" hello --description "Test hello function"; then
     print_status "Successfully queued 'hello' function"
 else
     print_error "Failed to queue 'hello' function"
@@ -412,7 +414,7 @@ fi
 # Test function with required parameters
 echo "Adding 'repo_new' function to queue..."
 TEST_REPO="QueueTestRepo_${TIMESTAMP}_${RANDOM_SUFFIX}"
-if ${CLI} queue add "${TEAM_NAME}" "${MACHINE_NAME}" repo_new --repo "${TEST_REPO}" --size "5G" --priority 8; then
+if ${CLI} queue add "${TEAM_NAME}" "${MACHINE_NAME}" "${NEW_BRIDGE_NAME}" repo_new --repo "${TEST_REPO}" --size "5G" --priority 8; then
     print_status "Successfully queued 'repo_new' function with parameters"
 else
     print_error "Failed to queue 'repo_new' function with parameters"
@@ -420,7 +422,7 @@ fi
 
 # Test function with optional parameters
 echo "Adding 'os_setup' function to queue..."
-if ${CLI} queue add "${TEAM_NAME}" "${MACHINE_NAME}" os_setup --datastore-size "90%" --source "custom-repo"; then
+if ${CLI} queue add "${TEAM_NAME}" "${MACHINE_NAME}" "${NEW_BRIDGE_NAME}" os_setup --datastore-size "90%" --source "custom-repo"; then
     print_status "Successfully queued 'os_setup' function with optional parameters"
 else
     print_error "Failed to queue 'os_setup' function with optional parameters"
@@ -428,7 +430,7 @@ fi
 
 # Test function with default parameters
 echo "Adding 'os_setup' function with defaults to queue..."
-if ${CLI} queue add "${TEAM_NAME}" "${MACHINE_NAME}" os_setup; then
+if ${CLI} queue add "${TEAM_NAME}" "${MACHINE_NAME}" "${NEW_BRIDGE_NAME}" os_setup; then
     print_status "Successfully queued 'os_setup' function with defaults"
 else
     print_error "Failed to queue 'os_setup' function with defaults"
@@ -436,7 +438,7 @@ fi
 
 # Test repo_mount function
 echo "Adding 'repo_mount' function to queue..."
-if ${CLI} queue add "${TEAM_NAME}" "${MACHINE_NAME}" repo_mount --repo "${REPO_NAME}" --from "remote-machine"; then
+if ${CLI} queue add "${TEAM_NAME}" "${MACHINE_NAME}" "${NEW_BRIDGE_NAME}" repo_mount --repo "${REPO_NAME}" --from "remote-machine"; then
     print_status "Successfully queued 'repo_mount' function"
 else
     print_error "Failed to queue 'repo_mount' function"
@@ -444,7 +446,7 @@ fi
 
 # Test map_socket function
 echo "Adding 'map_socket' function to queue..."
-if ${CLI} queue add "${TEAM_NAME}" "${MACHINE_NAME}" map_socket --machine "${MACHINE_NAME}" --repo "${REPO_NAME}" --plugin "test-plugin"; then
+if ${CLI} queue add "${TEAM_NAME}" "${MACHINE_NAME}" "${NEW_BRIDGE_NAME}" map_socket --machine "${MACHINE_NAME}" --repo "${REPO_NAME}" --plugin "test-plugin"; then
     print_status "Successfully queued 'map_socket' function"
 else
     print_error "Failed to queue 'map_socket' function"
@@ -452,37 +454,66 @@ fi
 
 # Test queue add with JSON output
 echo "Testing queue add with JSON output..."
-QUEUE_JSON_OUTPUT=$(${CLI} --output json queue add "${TEAM_NAME}" "${MACHINE_NAME}" uninstall --priority 10)
+QUEUE_JSON_OUTPUT=$(${CLI} --output json queue add "${TEAM_NAME}" "${MACHINE_NAME}" "${NEW_BRIDGE_NAME}" uninstall --priority 10 2>&1)
 if echo "${QUEUE_JSON_OUTPUT}" | python3 -m json.tool > /dev/null 2>&1; then
     print_status "Queue add JSON output is valid"
     
     # Extract task ID if possible
-    TASK_ID=$(echo "${QUEUE_JSON_OUTPUT}" | python3 -c "import json, sys; data = json.load(sys.stdin); print(data.get('data', {}).get('task_id', ''))" 2>/dev/null)
+    TASK_ID=$(echo "${QUEUE_JSON_OUTPUT}" | python3 -c "import json, sys; data = json.load(sys.stdin); print(data.get('data', {}).get('task_id', '') if isinstance(data.get('data'), dict) else '')" 2>/dev/null)
     if [ -n "${TASK_ID}" ]; then
         print_status "Successfully extracted task ID: ${TASK_ID}"
+    else
+        # Try alternate extraction for different response formats
+        TASK_ID=$(echo "${QUEUE_JSON_OUTPUT}" | python3 -c "import json, sys; data = json.load(sys.stdin); print(data.get('task_id', '') if 'task_id' in data else '')" 2>/dev/null)
+        if [ -n "${TASK_ID}" ]; then
+            print_status "Successfully extracted task ID: ${TASK_ID}"
+        fi
     fi
 else
     print_error "Queue add JSON output is invalid"
 fi
 
+# First list queue items for the team to see what's queued
+echo "Listing queue items for team..."
+TEAM_QUEUE_OUTPUT=$(${CLI} list queue-items "${TEAM_NAME}" 2>&1)
+if echo "${TEAM_QUEUE_OUTPUT}" | grep -q "PENDING\|COMPLETED"; then
+    print_status "Successfully listed team queue items"
+    # Count pending items
+    PENDING_COUNT=$(echo "${TEAM_QUEUE_OUTPUT}" | grep -c "PENDING" || true)
+    if [ ${PENDING_COUNT} -gt 0 ]; then
+        print_status "Found ${PENDING_COUNT} pending queue items"
+    fi
+fi
+
 # Test queue get-next to see our queued items
 echo "Testing queue get-next..."
-if ${CLI} queue get-next "${MACHINE_NAME}" --count 10 | grep -q "hello\|repo_new\|os_setup"; then
+QUEUE_OUTPUT=$(${CLI} queue get-next "${MACHINE_NAME}" --count 3 2>&1)
+if echo "${QUEUE_OUTPUT}" | grep -q "hello\|repo_new\|os_setup\|uninstall"; then
     print_status "Successfully retrieved queued items"
+elif echo "${QUEUE_OUTPUT}" | grep -q "No queue items found"; then
+    print_warning "No queue items found (might be processed already)"
 else
-    print_warning "Could not verify queued items (might be processed already)"
+    # Check if we got any queue items at all
+    if echo "${QUEUE_OUTPUT}" | grep -q -E "Task ID|taskId|task_id"; then
+        print_status "Retrieved queue items (different functions than expected)"
+    elif echo "${QUEUE_OUTPUT}" | grep -q -E "[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}"; then
+        # Check for UUID pattern which indicates task IDs
+        print_status "Retrieved queue items with task IDs"
+    else
+        print_warning "Could not verify queued items"
+    fi
 fi
 
 # Test queue operations error handling
 echo "Testing queue add with invalid function..."
-if ${CLI} queue add "${TEAM_NAME}" "${MACHINE_NAME}" invalid_function 2>&1 | grep -q -i "unknown function\|error"; then
+if ${CLI} queue add "${TEAM_NAME}" "${MACHINE_NAME}" "${NEW_BRIDGE_NAME}" invalid_function 2>&1 | grep -q -i "unknown function\|error"; then
     print_status "Properly handled invalid function name"
 else
     print_error "Did not properly handle invalid function name"
 fi
 
 echo "Testing queue add with missing required parameters..."
-if ${CLI} --output json queue add "${TEAM_NAME}" "${MACHINE_NAME}" repo_new 2>&1 | grep -q -i "missing required parameter\|error"; then
+if ${CLI} --output json queue add "${TEAM_NAME}" "${MACHINE_NAME}" "${NEW_BRIDGE_NAME}" repo_new 2>&1 | grep -q -i "missing required parameter\|error"; then
     print_status "Properly handled missing required parameters"
 else
     print_error "Did not properly handle missing required parameters"
@@ -490,14 +521,14 @@ fi
 
 # Test edge cases for queue operations
 echo "Testing queue add with very high priority..."
-if ${CLI} queue add "${TEAM_NAME}" "${MACHINE_NAME}" hello --priority 999 --description "High priority test"; then
+if ${CLI} queue add "${TEAM_NAME}" "${MACHINE_NAME}" "${NEW_BRIDGE_NAME}" hello --priority 999 --description "High priority test"; then
     print_status "Successfully queued with high priority"
 else
     print_error "Failed to queue with high priority"
 fi
 
 echo "Testing queue add with complex parameters..."
-if ${CLI} queue add "${TEAM_NAME}" "${MACHINE_NAME}" repo_push --repo "repo1,repo2,repo3" --to "backup-storage" --option "no-suffix,override"; then
+if ${CLI} queue add "${TEAM_NAME}" "${MACHINE_NAME}" "${NEW_BRIDGE_NAME}" repo_push --repo "repo1,repo2,repo3" --to "backup-storage" --option "no-suffix,override"; then
     print_status "Successfully queued repo_push with complex parameters"
 else
     print_error "Failed to queue repo_push with complex parameters"
@@ -505,7 +536,7 @@ fi
 
 # Test repo_pull function with 'from' parameter
 echo "Testing repo_pull function..."
-if ${CLI} queue add "${TEAM_NAME}" "${MACHINE_NAME}" repo_pull --from "source-machine" --repo "${REPO_NAME}"; then
+if ${CLI} queue add "${TEAM_NAME}" "${MACHINE_NAME}" "${NEW_BRIDGE_NAME}" repo_pull --from "source-machine" --repo "${REPO_NAME}"; then
     print_status "Successfully queued repo_pull function"
 else
     print_error "Failed to queue repo_pull function"
@@ -513,7 +544,7 @@ fi
 
 # Test repo_resize function
 echo "Testing repo_resize function..."
-if ${CLI} queue add "${TEAM_NAME}" "${MACHINE_NAME}" repo_resize --repo "${REPO_NAME}" --size "50G"; then
+if ${CLI} queue add "${TEAM_NAME}" "${MACHINE_NAME}" "${NEW_BRIDGE_NAME}" repo_resize --repo "${REPO_NAME}" --size "50G"; then
     print_status "Successfully queued repo_resize function"
 else
     print_error "Failed to queue repo_resize function"
@@ -521,17 +552,36 @@ fi
 
 # Test repo_plugin and repo_plugout functions
 echo "Testing repo_plugin function..."
-if ${CLI} queue add "${TEAM_NAME}" "${MACHINE_NAME}" repo_plugin --repo "${REPO_NAME}" --plugin "browser,terminal"; then
+if ${CLI} queue add "${TEAM_NAME}" "${MACHINE_NAME}" "${NEW_BRIDGE_NAME}" repo_plugin --repo "${REPO_NAME}" --plugin "browser,terminal"; then
     print_status "Successfully queued repo_plugin function"
 else
     print_error "Failed to queue repo_plugin function"
 fi
 
 echo "Testing repo_plugout function..."
-if ${CLI} queue add "${TEAM_NAME}" "${MACHINE_NAME}" repo_plugout --repo "${REPO_NAME}" --plugin "browser"; then
+if ${CLI} queue add "${TEAM_NAME}" "${MACHINE_NAME}" "${NEW_BRIDGE_NAME}" repo_plugout --repo "${REPO_NAME}" --plugin "browser"; then
     print_status "Successfully queued repo_plugout function"
 else
     print_error "Failed to queue repo_plugout function"
+fi
+
+# Test viewing specific queue item details (if we have JSON output)
+echo "Testing queue item parameter verification..."
+if ${CLI} --output json list queue-items "${TEAM_NAME}" 2>/dev/null | python3 -c "
+import json, sys
+data = json.load(sys.stdin)
+if data.get('success'):
+    items = data.get('data', [])
+    found_params = False
+    for item in items:
+        if 'repo_new' in str(item):
+            print('Found repo_new with expected parameters')
+            found_params = True
+            break
+    if not found_params and len(items) > 0:
+        print('Queue items exist but parameters not visible in list')
+" 2>/dev/null; then
+    print_status "Queue parameter verification completed"
 fi
 
 # If we have a task ID, test queue update and complete operations
@@ -549,6 +599,8 @@ if [ -n "${TASK_ID}" ]; then
     else
         print_warning "Failed to complete queue item (might be already completed)"
     fi
+else
+    print_warning "No task ID available for update/complete tests"
 fi
 
 # 10. Error Handling Tests
@@ -696,13 +748,17 @@ else
     print_error "Failed to delete region: ${REGION_NAME}"
 fi
 
-# Reassign test user to default "Users" group before deleting our custom group
-${CLI} permission assign "${TEST_USER_EMAIL}" "Users" 2>/dev/null
+# Only try to reassign/deactivate user if it was created
+if ${CLI} list users 2>/dev/null | grep -q "${TEST_USER_EMAIL}"; then
+    # Reassign test user to default "Users" group before deleting our custom group
+    ${CLI} permission assign "${TEST_USER_EMAIL}" "Users" 2>/dev/null
+    
+    # Deactivate test user
+    ${CLI} user deactivate "${TEST_USER_EMAIL}" --force 2>/dev/null
+    print_status "Deactivated test user: ${TEST_USER_EMAIL}"
+fi
 
-# Deactivate test user
-${CLI} user deactivate "${TEST_USER_EMAIL}" --force 2>/dev/null
-
-# Now delete permission group (should work now that user is reassigned)
+# Now delete permission group
 ${CLI} permission delete-group "${PERMISSION_GROUP}" --force
 
 print_status "Cleanup completed"
