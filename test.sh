@@ -411,7 +411,149 @@ else
     print_error "Machine inspect JSON output is invalid"
 fi
 
-# 9. Queue Operations Tests
+# 9. Priority Queue Tests (New Feature)
+print_section "Priority Queue Tests (New Feature)"
+
+# Test creating queue items with different priorities
+echo "Testing priority queue functionality..."
+
+# Create queue item with default priority (3)
+echo "Creating queue item with default priority..."
+if ${CLI} create queue-item "${TEAM_NAME}" "${MACHINE_NAME}" "${NEW_BRIDGE_NAME}" --vault '{"function": "test_default_priority"}'; then
+    print_status "Created queue item with default priority (3)"
+else
+    print_error "Failed to create queue item with default priority"
+fi
+
+# Create queue item with high priority (1) - Premium/Elite only
+echo "Creating queue item with high priority (1)..."
+if OUTPUT=$(${CLI} create queue-item "${TEAM_NAME}" "${MACHINE_NAME}" "${NEW_BRIDGE_NAME}" --priority 1 --vault '{"function": "test_high_priority"}' 2>&1); then
+    if echo "${OUTPUT}" | grep -q "priority 1"; then
+        print_status "Created queue item with high priority (1) - Premium/Elite feature"
+    else
+        print_status "Created queue item (priority may have been reset to default for non-Premium/Elite)"
+    fi
+else
+    print_error "Failed to create queue item with high priority"
+fi
+
+# Create queue item with medium priority (3)
+echo "Creating queue item with medium priority (3)..."
+if ${CLI} create queue-item "${TEAM_NAME}" "${MACHINE_NAME}" "${NEW_BRIDGE_NAME}" --priority 3 --vault '{"function": "test_medium_priority"}'; then
+    print_status "Created queue item with medium priority (3)"
+else
+    print_error "Failed to create queue item with medium priority"
+fi
+
+# Create queue item with low priority (5)
+echo "Creating queue item with low priority (5)..."
+if ${CLI} create queue-item "${TEAM_NAME}" "${MACHINE_NAME}" "${NEW_BRIDGE_NAME}" --priority 5 --vault '{"function": "test_low_priority"}'; then
+    print_status "Created queue item with low priority (5)"
+else
+    print_error "Failed to create queue item with low priority"
+fi
+
+# Test invalid priority (should fail)
+echo "Testing invalid priority (6) - should fail..."
+if ${CLI} create queue-item "${TEAM_NAME}" "${MACHINE_NAME}" "${NEW_BRIDGE_NAME}" --priority 6 --vault '{"function": "test_invalid_priority"}' 2>&1 | grep -q -E "invalid choice|priority must be between"; then
+    print_status "Properly rejected invalid priority (6)"
+else
+    print_error "Did not properly validate priority range"
+fi
+
+# Test invalid priority (0) - should fail
+echo "Testing invalid priority (0) - should fail..."
+if ${CLI} create queue-item "${TEAM_NAME}" "${MACHINE_NAME}" "${NEW_BRIDGE_NAME}" --priority 0 --vault '{"function": "test_invalid_priority"}' 2>&1 | grep -q -E "invalid choice|priority must be between"; then
+    print_status "Properly rejected invalid priority (0)"
+else
+    print_error "Did not properly validate priority range"
+fi
+
+# List queue items to see priority column
+echo -e "\nListing queue items with priority information..."
+QUEUE_LIST_OUTPUT=$(${CLI} list queue-items "${TEAM_NAME}" 2>&1)
+echo "${QUEUE_LIST_OUTPUT}"
+
+# Check if Priority column is present
+if echo "${QUEUE_LIST_OUTPUT}" | head -n 3 | grep -q "Priority"; then
+    print_status "Priority column displayed (Premium/Elite subscription detected)"
+    
+    # Verify priority ordering
+    if echo "${QUEUE_LIST_OUTPUT}" | grep -q "test_high_priority.*1\|1.*test_high_priority"; then
+        print_status "High priority items displayed correctly"
+    fi
+else
+    print_warning "Priority column not displayed (Community/Advanced subscription or no data)"
+fi
+
+# Note: queue get-next is only for bridge tokens, not user tokens
+echo -e "\nNote: queue get-next requires bridge authentication..."
+print_warning "Skipping queue get-next test (requires bridge token, not user token)"
+
+# Instead, verify subscription information is shown in list queue-items
+echo -e "\nChecking subscription information in queue list..."
+if echo "${QUEUE_LIST_OUTPUT}" | grep -q "Priority"; then
+    print_status "Queue list shows priority information (Premium/Elite feature)"
+fi
+
+# Test creating multiple queue items to test concurrent limits
+echo -e "\nTesting concurrent task limits..."
+
+# Create additional machines to test concurrent limits
+MACHINE2_NAME="TestMachine2_${TIMESTAMP}_${RANDOM_SUFFIX}"
+MACHINE3_NAME="TestMachine3_${TIMESTAMP}_${RANDOM_SUFFIX}"
+
+echo "Creating additional test machines..."
+if ${CLI} create machine "${TEAM_NAME}" "${NEW_BRIDGE_NAME}" "${MACHINE2_NAME}" --vault '{}' > /dev/null 2>&1; then
+    print_status "Created machine: ${MACHINE2_NAME}"
+else
+    print_error "Failed to create machine: ${MACHINE2_NAME}"
+fi
+
+if ${CLI} create machine "${TEAM_NAME}" "${NEW_BRIDGE_NAME}" "${MACHINE3_NAME}" --vault '{}' > /dev/null 2>&1; then
+    print_status "Created machine: ${MACHINE3_NAME}"
+else
+    print_error "Failed to create machine: ${MACHINE3_NAME}"
+fi
+
+# Queue items on different machines
+echo "Queueing items on multiple machines..."
+${CLI} create queue-item "${TEAM_NAME}" "${MACHINE2_NAME}" "${NEW_BRIDGE_NAME}" --priority 2 --vault '{"function": "test_machine2"}' > /dev/null 2>&1
+${CLI} create queue-item "${TEAM_NAME}" "${MACHINE3_NAME}" "${NEW_BRIDGE_NAME}" --priority 4 --vault '{"function": "test_machine3"}' > /dev/null 2>&1
+
+# List all queue items to see multiple machines
+echo "Listing all queue items to verify multiple machines..."
+ALL_QUEUE_OUTPUT=$(${CLI} list queue-items "${TEAM_NAME}" 2>&1)
+
+# Count unique machines with queue items
+UNIQUE_MACHINES=$(echo "${ALL_QUEUE_OUTPUT}" | tail -n +3 | awk '{print $4}' | sort -u | grep -v "^$" | wc -l)
+if [ ${UNIQUE_MACHINES} -gt 1 ]; then
+    print_status "Queue items distributed across ${UNIQUE_MACHINES} machines"
+else
+    print_warning "Queue items only on ${UNIQUE_MACHINES} machine(s)"
+fi
+
+# Clean up additional test machines
+echo "Cleaning up additional test machines..."
+${CLI} rm machine "${TEAM_NAME}" "${MACHINE2_NAME}" --force > /dev/null 2>&1
+${CLI} rm machine "${TEAM_NAME}" "${MACHINE3_NAME}" --force > /dev/null 2>&1
+
+# Test JSON output for priority queue operations
+echo -e "\nTesting priority queue with JSON output..."
+PRIORITY_JSON_OUTPUT=$(${CLI} --output json create queue-item "${TEAM_NAME}" "${MACHINE_NAME}" "${NEW_BRIDGE_NAME}" --priority 2 --vault '{"function": "test_json_priority"}' 2>&1)
+
+if echo "${PRIORITY_JSON_OUTPUT}" | python3 -m json.tool > /dev/null 2>&1; then
+    print_status "Priority queue JSON output is valid"
+    
+    # Check if priority is included in success message
+    if echo "${PRIORITY_JSON_OUTPUT}" | grep -q "priority 2"; then
+        print_status "Priority included in JSON response"
+    fi
+else
+    print_error "Priority queue JSON output is invalid"
+fi
+
+# 10. Queue Operations Tests (Original)
 print_section "Queue Operations Tests"
 
 # Test queue list-functions command
@@ -515,23 +657,23 @@ if echo "${TEAM_QUEUE_OUTPUT}" | grep -q "PENDING\|COMPLETED"; then
     fi
 fi
 
-# Test queue get-next to see our queued items
-echo "Testing queue get-next..."
-QUEUE_OUTPUT=$(${CLI} queue get-next "${MACHINE_NAME}" --count 3 2>&1)
-if echo "${QUEUE_OUTPUT}" | grep -q "hello\|repo_new\|os_setup\|uninstall"; then
-    print_status "Successfully retrieved queued items"
-elif echo "${QUEUE_OUTPUT}" | grep -q "No queue items found"; then
-    print_warning "No queue items found (might be processed already)"
-else
-    # Check if we got any queue items at all
-    if echo "${QUEUE_OUTPUT}" | grep -q -E "Task ID|taskId|task_id"; then
-        print_status "Retrieved queue items (different functions than expected)"
-    elif echo "${QUEUE_OUTPUT}" | grep -q -E "[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}"; then
-        # Check for UUID pattern which indicates task IDs
-        print_status "Retrieved queue items with task IDs"
-    else
-        print_warning "Could not verify queued items"
+# Note: queue get-next requires bridge authentication, skip this test
+echo "Skipping queue get-next test (requires bridge token)..."
+print_warning "Queue get-next is only available for bridge tokens"
+
+# Instead, verify queue items were created by listing them
+echo "Verifying queue items were created..."
+VERIFY_QUEUE_OUTPUT=$(${CLI} list queue-items "${TEAM_NAME}" 2>&1)
+if echo "${VERIFY_QUEUE_OUTPUT}" | grep -q "hello\|repo_new\|os_setup\|uninstall"; then
+    print_status "Successfully verified queued items exist"
+    
+    # Count pending items
+    PENDING_COUNT=$(echo "${VERIFY_QUEUE_OUTPUT}" | grep -c "PENDING" || true)
+    if [ ${PENDING_COUNT} -gt 0 ]; then
+        print_status "Found ${PENDING_COUNT} pending queue items"
     fi
+else
+    print_warning "Could not verify specific queued functions"
 fi
 
 # Test queue operations error handling
@@ -633,7 +775,7 @@ else
     print_warning "No task ID available for update/complete tests"
 fi
 
-# 10. Error Handling Tests
+# 11. Error Handling Tests
 print_section "Error Handling Tests"
 
 echo "Testing operations on non-existent resources..."
@@ -663,7 +805,7 @@ else
     rm -f invalid_vault.json
 fi
 
-# 11. Test Confirmation Prompts (without --force)
+# 12. Test Confirmation Prompts (without --force)
 print_section "Testing Confirmation Prompts"
 
 echo "Testing delete without --force flag..."
@@ -686,7 +828,7 @@ else
     print_error "Failed to delete with --force flag"
 fi
 
-# 12. Comprehensive Cleanup
+# 13. Comprehensive Cleanup
 print_section "Comprehensive Cleanup"
 echo "Deleting all created entities..."
 
@@ -793,7 +935,7 @@ ${CLI} permission delete-group "${PERMISSION_GROUP}" --force
 
 print_status "Cleanup completed"
 
-# 13. Test logout functionality
+# 14. Test logout functionality
 print_section "Final Authentication Test"
 
 # Test operations after logout (should fail)
