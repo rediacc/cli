@@ -269,9 +269,10 @@ CMD_CONFIG = {
                 'teamName': args.team,
                 'machineName': args.machine,
                 'bridgeName': args.bridge,  # Bridge is now passed as parameter
-                'queueVault': get_vault_data(args) or '{}'  # Vault data might still include bridge info
+                'queueVault': get_vault_data(args) or '{}',  # Vault data might still include bridge info
+                'priority': getattr(args, 'priority', 3)  # Default priority is 3 (normal)
             },
-            'success_msg': 'Successfully created queue item for machine {machine}'
+            'success_msg': 'Successfully created queue item for machine {machine} with priority {priority}'
         }
     },
     
@@ -509,7 +510,6 @@ CMD_CONFIG = {
         'get-next': {
             'endpoint': 'GetQueueItemsNext',
             'params': lambda args: {
-                'machineName': args.machine,
                 'itemCount': args.count or 3
             }
         },
@@ -602,6 +602,8 @@ ARG_DEFS = {
             {'name': 'team', 'help': 'Team name'},
             {'name': 'machine', 'help': 'Machine name'},
             {'name': 'bridge', 'help': 'Bridge name'},
+            {'name': '--priority', 'type': int, 'default': 3, 'choices': [1, 2, 3, 4, 5],
+             'help': 'Priority level (1=highest, 5=lowest, default=3). Premium/Elite subscriptions only.'},
             {'name': '--vault', 'help': 'JSON vault data'},
             {'name': '--vault-file', 'help': 'File containing JSON vault data'}
         ]
@@ -791,7 +793,6 @@ ARG_DEFS = {
     # Queue command arguments with enhanced functionality
     'queue': {
         'get-next': [
-            {'name': 'machine', 'help': 'Machine name'},
             {'name': '--count', 'type': int, 'help': 'Number of items to retrieve (default: 3)'}
         ],
         'update-response': [
