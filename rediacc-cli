@@ -322,6 +322,23 @@ CMD_CONFIG = {
         'user-company': {
             'endpoint': 'GetUserCompany',
             'params': lambda args: {}
+        },
+        'audit-logs': {
+            'endpoint': 'GetAuditLogs',
+            'params': lambda args: {
+                'startDate': getattr(args, 'start_date', None),
+                'endDate': getattr(args, 'end_date', None),
+                'entityFilter': getattr(args, 'entity_filter', None),
+                'maxRecords': getattr(args, 'max_records', None)
+            }
+        },
+        'entity-history': {
+            'endpoint': 'GetEntityHistory',
+            'params': lambda args: {
+                'entity': args.entity_type,
+                'credential': args.credential,
+                'maxRecords': getattr(args, 'max_records', None)
+            }
         }
     },
     
@@ -623,7 +640,18 @@ ARG_DEFS = {
         'data-graph': [],
         'company-vault': [],
         'lookup-data': [{'name': '--context', 'help': 'Context filter (e.g., machine_create, queue_create)'}],
-        'user-company': []
+        'user-company': [],
+        'audit-logs': [
+            {'name': '--start-date', 'help': 'Start date for audit logs (ISO format)'},
+            {'name': '--end-date', 'help': 'End date for audit logs (ISO format)'},
+            {'name': '--entity-filter', 'help': 'Filter by entity type (e.g., Team, Machine, User)'},
+            {'name': '--max-records', 'type': int, 'help': 'Maximum number of records to retrieve (default: 1000)'}
+        ],
+        'entity-history': [
+            {'name': 'entity_type', 'help': 'Entity type (e.g., Team, Machine, User, Region, Bridge)'},
+            {'name': 'credential', 'help': 'Entity credential (GUID)'},
+            {'name': '--max-records', 'type': int, 'help': 'Maximum number of records to retrieve (default: 500)'}
+        ]
     },
     
     'update': {
@@ -1055,7 +1083,14 @@ def camel_to_title(name):
         'maxTeams': 'Max Teams', 'maxRegions': 'Max Regions',
         'maxMachines': 'Max Machines', 'maxStorage': 'Max Storage',
         'sessionName': 'Session', 'createdAt': 'Created',
-        'updatedAt': 'Updated', 'lastActive': 'Last Active'
+        'updatedAt': 'Updated', 'lastActive': 'Last Active',
+        'auditId': 'Audit ID', 'entityName': 'Entity Name',
+        'actionByUser': 'Action By', 'timestamp': 'Timestamp',
+        'details': 'Details', 'action': 'Action',
+        'entity': 'Entity', 'entityId': 'Entity ID',
+        'userId': 'User ID', 'changeType': 'Change Type',
+        'previousValue': 'Previous Value', 'newValue': 'New Value',
+        'propertyName': 'Property', 'changeDetails': 'Change Details'
     }
     
     if name in special_cases:
