@@ -855,7 +855,10 @@ class APIClient:
     def __init__(self, config=None, config_manager=None):
         self.config = config or {}
         self.config_manager = config_manager
-        self.base_headers = {"Content-Type": "application/json"}
+        self.base_headers = {
+            "Content-Type": "application/json",
+            "User-Agent": "rediacc-cli/1.0"
+        }
     
     def request(self, endpoint, data=None, headers=None):
         """Make an API request to the middleware service"""
