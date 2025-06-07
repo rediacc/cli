@@ -282,7 +282,88 @@ else
     print_warning "Update JSON output validation skipped (multiple JSON objects)"
 fi
 
-# 6. Permission Features Tests
+# 6. User Management Tests (New)
+print_section "User Management Tests"
+
+# Create test users for comprehensive testing
+TEST_USER2_EMAIL="testuser2_${TIMESTAMP}@example.com"
+TEST_USER3_EMAIL="testuser3_${TIMESTAMP}@example.com"
+
+echo "Creating test users..."
+if ${CLI} create user "${TEST_USER_EMAIL}" --password "TestUserPass123!" 2>/dev/null; then
+    print_status "Created test user: ${TEST_USER_EMAIL}"
+    TEST_USER_CREATED=true
+else
+    print_warning "Test user creation skipped (might require special permissions)"
+    TEST_USER_CREATED=false
+fi
+
+if ${TEST_USER_CREATED}; then
+    # Test user 2FA enable
+    echo "Testing 2FA enable for user..."
+    if ${CLI} user enable-2fa "${TEST_USER_EMAIL}"; then
+        print_status "Successfully enabled 2FA for ${TEST_USER_EMAIL}"
+    else
+        print_error "Failed to enable 2FA"
+    fi
+    
+    # Test user 2FA disable
+    echo "Testing 2FA disable for user..."
+    if ${CLI} user disable-2fa "${TEST_USER_EMAIL}" --force; then
+        print_status "Successfully disabled 2FA for ${TEST_USER_EMAIL}"
+    else
+        print_error "Failed to disable 2FA"
+    fi
+    
+    # Test user reset-password
+    echo "Testing password reset for user..."
+    NEW_PASSWORD="NewTestPassword456!"
+    if ${CLI} user reset-password "${TEST_USER_EMAIL}" --password "${NEW_PASSWORD}"; then
+        print_status "Successfully reset password for ${TEST_USER_EMAIL}"
+    else
+        print_error "Failed to reset password"
+    fi
+    
+    # Test list users
+    echo -e "\nListing all users..."
+    USER_LIST_OUTPUT=$(${CLI} list users 2>&1)
+    if echo "${USER_LIST_OUTPUT}" | grep -q "${TEST_USER_EMAIL}"; then
+        print_status "User list includes test user"
+    else
+        print_error "User list does not include test user"
+    fi
+    
+    # Test JSON output for list users
+    echo "Testing list users with JSON output..."
+    if ${CLI} --output json list users 2>/dev/null | python3 -m json.tool > /dev/null 2>&1; then
+        print_status "List users JSON output is valid"
+    else
+        print_error "List users JSON output is invalid"
+    fi
+    
+    # Create second test user
+    if ${CLI} create user "${TEST_USER2_EMAIL}" --password "TestUser2Pass123!" 2>/dev/null; then
+        print_status "Created second test user: ${TEST_USER2_EMAIL}"
+        
+        # Test user deactivation
+        echo "Testing user deactivation..."
+        if ${CLI} user deactivate "${TEST_USER2_EMAIL}" --force; then
+            print_status "Successfully deactivated ${TEST_USER2_EMAIL}"
+        else
+            print_error "Failed to deactivate user"
+        fi
+        
+        # Test user activation
+        echo "Testing user activation..."
+        if ${CLI} user activate "${TEST_USER2_EMAIL}"; then
+            print_status "Successfully activated ${TEST_USER2_EMAIL}"
+        else
+            print_error "Failed to activate user"
+        fi
+    fi
+fi
+
+# 7. Permission Features Tests
 print_section "Permission Features Tests"
 
 # Create permission group
@@ -317,23 +398,24 @@ echo "----------------------------------------"
 ${CLI} permission list-group "${PERMISSION_GROUP}"
 echo "----------------------------------------"
 
-# Create a test user for permission assignment
-echo "Creating test user for permission assignment..."
-if ${CLI} create user "${TEST_USER_EMAIL}" --password "TestUserPass123!" 2>/dev/null; then
-    print_status "Created test user: ${TEST_USER_EMAIL}"
-    TEST_USER_CREATED=true
-    
-    # Now test permission assignment
+# Test permission assignment if we have a test user
+if ${TEST_USER_CREATED}; then
     echo "Testing permission assignment..."
     if ${CLI} permission assign "${TEST_USER_EMAIL}" "${PERMISSION_GROUP}"; then
         print_status "Assigned permission group to user ${TEST_USER_EMAIL}"
     else
         print_error "Failed to assign permission group to user"
     fi
+    
+    # Test listing permissions for user
+    echo "Testing list permissions for user..."
+    if ${CLI} permission list-user "${TEST_USER_EMAIL}" > /dev/null 2>&1; then
+        print_status "Successfully listed permissions for user"
+    else
+        print_error "Failed to list permissions for user"
+    fi
 else
-    print_warning "Test user creation skipped (might require special permissions)"
     print_warning "Permission assignment skipped (user doesn't exist)"
-    TEST_USER_CREATED=false
 fi
 
 # Test JSON output for permissions
@@ -369,7 +451,129 @@ for perm in "${PERMISSIONS[@]:0:2}"; do  # Remove first two permissions
     fi
 done
 
-# 7. List All Entities
+# 8. Company and Subscription Management Tests (New)
+print_section "Company and Subscription Management Tests"
+
+# Test inspect company
+echo "Testing inspect company..."
+COMPANY_INFO=$(${CLI} inspect company 2>&1)
+if echo "${COMPANY_INFO}" | grep -q "Company:\|Plan:\|Status:"; then
+    print_status "Successfully inspected company"
+    
+    # Extract company name for further tests
+    CURRENT_COMPANY=$(echo "${COMPANY_INFO}" | grep "Company:" | awk '{print $2}')
+    echo "Current company: ${CURRENT_COMPANY}"
+else
+    print_error "Failed to inspect company"
+fi
+
+# Test JSON output for inspect company
+echo "Testing inspect company with JSON output..."
+if ${CLI} --output json inspect company 2>/dev/null | python3 -m json.tool > /dev/null 2>&1; then
+    print_status "Inspect company JSON output is valid"
+else
+    print_error "Inspect company JSON output is invalid"
+fi
+
+# Test update company
+echo "Testing company update operations..."
+if ${CLI} update company --vault '{"company_settings": {"updated": true}}' --vault-version 5; then
+    print_status "Successfully updated company vault"
+else
+    print_error "Failed to update company vault"
+fi
+
+# Test subscription info
+echo -e "\nChecking subscription information..."
+SUBSCRIPTION_INFO=$(${CLI} inspect company 2>&1)
+if echo "${SUBSCRIPTION_INFO}" | grep -q -E "Plan:.*COMMUNITY|ADVANCED|PREMIUM|ELITE"; then
+    PLAN=$(echo "${SUBSCRIPTION_INFO}" | grep "Plan:" | awk '{print $2}')
+    print_status "Current subscription plan: ${PLAN}"
+    
+    # Check plan-specific features
+    if [[ "${PLAN}" == "PREMIUM" ]] || [[ "${PLAN}" == "ELITE" ]]; then
+        print_status "Premium/Elite features available (priority queue, extended limits)"
+    else
+        print_warning "Basic plan - some features may be limited"
+    fi
+fi
+
+# 9. Infrastructure Management Tests (New)
+print_section "Infrastructure Management Tests"
+
+# Test list all infrastructure entities
+echo "Testing comprehensive infrastructure listing..."
+
+# List regions with details
+echo -e "\nDetailed region listing:"
+if ${CLI} list regions --output table 2>&1 | grep -q "${REGION_NAME}"; then
+    print_status "Region list includes test region"
+else
+    print_error "Region list does not include test region"
+fi
+
+# Test inspect region
+echo "Testing inspect region..."
+if ${CLI} inspect region "${REGION_NAME}" > /dev/null 2>&1; then
+    print_status "Successfully inspected region ${REGION_NAME}"
+else
+    print_error "Failed to inspect region"
+fi
+
+# Test inspect bridge
+echo "Testing inspect bridge..."
+if ${CLI} inspect bridge "${REGION_NAME}" "${NEW_BRIDGE_NAME}" > /dev/null 2>&1; then
+    print_status "Successfully inspected bridge ${NEW_BRIDGE_NAME}"
+else
+    print_error "Failed to inspect bridge"
+fi
+
+# Test JSON output for infrastructure
+echo "Testing infrastructure JSON outputs..."
+if ${CLI} --output json list regions 2>/dev/null | python3 -m json.tool > /dev/null 2>&1; then
+    print_status "List regions JSON output is valid"
+else
+    print_error "List regions JSON output is invalid"
+fi
+
+if ${CLI} --output json inspect region "${REGION_NAME}" 2>/dev/null | python3 -m json.tool > /dev/null 2>&1; then
+    print_status "Inspect region JSON output is valid"
+else
+    print_error "Inspect region JSON output is invalid"
+fi
+
+# Test update operations for infrastructure
+echo "Testing infrastructure update operations..."
+
+# Update region
+NEW_REGION_NAME="${REGION_NAME}_updated"
+echo "Testing region rename..."
+if ${CLI} update region "${REGION_NAME}" --new-name "${NEW_REGION_NAME}"; then
+    print_status "Successfully renamed region to ${NEW_REGION_NAME}"
+    REGION_NAME="${NEW_REGION_NAME}"  # Update variable for subsequent operations
+else
+    print_error "Failed to rename region"
+fi
+
+# Update bridge
+UPDATED_BRIDGE_NAME="${BRIDGE_NAME}_updated"
+echo "Testing bridge rename..."
+if ${CLI} update bridge "${REGION_NAME}" "${BRIDGE_NAME}" --new-name "${UPDATED_BRIDGE_NAME}"; then
+    print_status "Successfully renamed bridge to ${UPDATED_BRIDGE_NAME}"
+    BRIDGE_NAME="${UPDATED_BRIDGE_NAME}"  # Update variable for subsequent operations
+else
+    print_error "Failed to rename bridge"
+fi
+
+# Test bridge vault update
+echo "Testing bridge vault update..."
+if ${CLI} update bridge "${REGION_NAME}" "${NEW_BRIDGE_NAME}" --vault '{"bridge_config": "updated"}' --vault-version 2; then
+    print_status "Successfully updated bridge vault"
+else
+    print_error "Failed to update bridge vault"
+fi
+
+# 10. List All Entities
 print_section "Listing All Entities"
 
 echo -e "\nTeams:"
@@ -387,7 +591,122 @@ ${CLI} list machines "${TEAM_NAME}"
 echo -e "\nRepositories in ${TEAM_NAME}:"
 ${CLI} list repositories "${TEAM_NAME}"
 
-# 8. Inspect Entities with Updated Names
+# 11. Storage and Schedule Tests (New)
+print_section "Storage and Schedule Tests"
+
+# Test storage operations
+echo "Testing storage operations..."
+
+# Update storage
+NEW_STORAGE_NAME="${STORAGE_NAME}_updated"
+echo "Testing storage rename..."
+if ${CLI} update storage "${TEAM_NAME}" "${STORAGE_NAME}" --new-name "${NEW_STORAGE_NAME}"; then
+    print_status "Successfully renamed storage to ${NEW_STORAGE_NAME}"
+    STORAGE_NAME="${NEW_STORAGE_NAME}"  # Update variable for subsequent operations
+else
+    print_error "Failed to rename storage"
+fi
+
+# Test storage vault update
+echo "Testing storage vault update..."
+if ${CLI} update storage "${TEAM_NAME}" "${STORAGE_NAME}" --vault '{"storage_config": {"type": "s3", "bucket": "test-bucket"}}' --vault-version 2; then
+    print_status "Successfully updated storage vault"
+else
+    print_error "Failed to update storage vault"
+fi
+
+# Test schedule operations
+echo "Testing schedule operations..."
+
+# Update schedule
+NEW_SCHEDULE_NAME="${SCHEDULE_NAME}_updated"
+echo "Testing schedule rename..."
+if ${CLI} update schedule "${TEAM_NAME}" "${SCHEDULE_NAME}" --new-name "${NEW_SCHEDULE_NAME}"; then
+    print_status "Successfully renamed schedule to ${NEW_SCHEDULE_NAME}"
+    SCHEDULE_NAME="${NEW_SCHEDULE_NAME}"  # Update variable for subsequent operations
+else
+    print_error "Failed to rename schedule"
+fi
+
+# Test schedule vault update
+echo "Testing schedule vault update..."
+if ${CLI} update schedule "${TEAM_NAME}" "${SCHEDULE_NAME}" --vault '{"schedule_config": {"cron": "0 0 * * *", "enabled": true}}' --vault-version 2; then
+    print_status "Successfully updated schedule vault"
+else
+    print_error "Failed to update schedule vault"
+fi
+
+# Test inspect storage
+echo "Testing inspect storage..."
+if ${CLI} inspect storage "${TEAM_NAME}" "${STORAGE_NAME}" > /dev/null 2>&1; then
+    print_status "Successfully inspected storage ${STORAGE_NAME}"
+else
+    print_error "Failed to inspect storage"
+fi
+
+# Test inspect schedule
+echo "Testing inspect schedule..."
+if ${CLI} inspect schedule "${TEAM_NAME}" "${SCHEDULE_NAME}" > /dev/null 2>&1; then
+    print_status "Successfully inspected schedule ${SCHEDULE_NAME}"
+else
+    print_error "Failed to inspect schedule"
+fi
+
+# Test JSON output for storage and schedule
+echo "Testing storage and schedule JSON outputs..."
+if ${CLI} --output json list storages "${TEAM_NAME}" 2>/dev/null | python3 -m json.tool > /dev/null 2>&1; then
+    print_status "List storages JSON output is valid"
+else
+    print_error "List storages JSON output is invalid"
+fi
+
+if ${CLI} --output json list schedules "${TEAM_NAME}" 2>/dev/null | python3 -m json.tool > /dev/null 2>&1; then
+    print_status "List schedules JSON output is valid"
+else
+    print_error "List schedules JSON output is invalid"
+fi
+
+# 12. Repository Operations Tests (New)
+print_section "Repository Operations Tests"
+
+# Test repository operations
+echo "Testing repository operations..."
+
+# Update repository
+NEW_REPO_NAME="${REPO_NAME}_updated"
+echo "Testing repository rename..."
+if ${CLI} update repository "${TEAM_NAME}" "${REPO_NAME}" --new-name "${NEW_REPO_NAME}"; then
+    print_status "Successfully renamed repository to ${NEW_REPO_NAME}"
+    REPO_NAME="${NEW_REPO_NAME}"  # Update variable for subsequent operations
+else
+    print_error "Failed to rename repository"
+fi
+
+# Test repository vault update
+echo "Testing repository vault update..."
+if ${CLI} update repository "${TEAM_NAME}" "${REPO_NAME}" --vault '{"repo_config": {"plugins": ["browser", "terminal"], "size": "10G"}}' --vault-version 2; then
+    print_status "Successfully updated repository vault"
+else
+    print_error "Failed to update repository vault"
+fi
+
+# Test inspect repository
+echo "Testing inspect repository..."
+if ${CLI} inspect repository "${TEAM_NAME}" "${REPO_NAME}" > /dev/null 2>&1; then
+    print_status "Successfully inspected repository ${REPO_NAME}"
+else
+    print_error "Failed to inspect repository"
+fi
+
+# Test JSON output for repository
+echo "Testing repository JSON output..."
+if ${CLI} --output json inspect repository "${TEAM_NAME}" "${REPO_NAME}" 2>/dev/null | python3 -m json.tool > /dev/null 2>&1; then
+    print_status "Inspect repository JSON output is valid"
+else
+    print_error "Inspect repository JSON output is invalid"
+fi
+
+# 13. Inspect Entities with Updated Names
 print_section "Inspecting Updated Entities"
 
 echo -e "\nTeam details for ${TEAM_NAME}:"
@@ -411,7 +730,7 @@ else
     print_error "Machine inspect JSON output is invalid"
 fi
 
-# 9. Priority Queue Tests (New Feature)
+# 14. Priority Queue Tests (New Feature)
 print_section "Priority Queue Tests (New Feature)"
 
 # Test creating queue items with different priorities
@@ -553,7 +872,7 @@ else
     print_error "Priority queue JSON output is invalid"
 fi
 
-# 10. Queue Operations Tests (Original)
+# 15. Queue Operations Tests (Original)
 print_section "Queue Operations Tests"
 
 # Test queue list-functions command
@@ -775,7 +1094,82 @@ else
     print_warning "No task ID available for update/complete tests"
 fi
 
-# 11. Error Handling Tests
+# 16. Vault Operations Advanced Tests (New)
+print_section "Vault Operations Advanced Tests"
+
+# Test vault operations for all entity types
+echo "Testing comprehensive vault operations..."
+
+# Test vault get for team
+echo "Testing vault get for team..."
+if ${CLI} vault get team "${TEAM_NAME}" > /dev/null 2>&1; then
+    print_status "Successfully retrieved team vault"
+else
+    print_error "Failed to get team vault"
+fi
+
+# Test vault get with JSON output
+echo "Testing vault get with JSON output..."
+if ${CLI} --output json vault get team "${TEAM_NAME}" 2>/dev/null | python3 -m json.tool > /dev/null 2>&1; then
+    print_status "Vault get JSON output is valid"
+else
+    print_error "Vault get JSON output is invalid"
+fi
+
+# Test vault operations for different resource types
+RESOURCE_TYPES=("region" "bridge" "machine" "repository" "storage" "schedule")
+for resource in "${RESOURCE_TYPES[@]}"; do
+    echo "Testing vault set for ${resource}..."
+    
+    case "${resource}" in
+        "region")
+            RESOURCE_NAME="${REGION_NAME}"
+            EXTRA_ARGS=""
+            ;;
+        "bridge")
+            RESOURCE_NAME="${NEW_BRIDGE_NAME}"
+            EXTRA_ARGS="--region ${REGION_NAME}"
+            ;;
+        "machine")
+            RESOURCE_NAME="${MACHINE_NAME}"
+            EXTRA_ARGS="--team ${TEAM_NAME}"
+            ;;
+        "repository"|"storage"|"schedule")
+            case "${resource}" in
+                "repository") RESOURCE_NAME="${REPO_NAME}" ;;
+                "storage") RESOURCE_NAME="${STORAGE_NAME}" ;;
+                "schedule") RESOURCE_NAME="${SCHEDULE_NAME}" ;;
+            esac
+            EXTRA_ARGS="--team ${TEAM_NAME}"
+            ;;
+    esac
+    
+    # Test vault set with inline JSON
+    if ${CLI} vault set ${resource} "${RESOURCE_NAME}" - ${EXTRA_ARGS} --vault-version 10 <<< "{\"${resource}_test\": \"vault_test_${TIMESTAMP}\"}" 2>/dev/null; then
+        print_status "Successfully set vault for ${resource}"
+    else
+        print_warning "Failed to set vault for ${resource} (might be permission issue)"
+    fi
+done
+
+# Test vault operations error handling
+echo "Testing vault error handling..."
+
+# Test vault set with invalid resource
+if ${CLI} vault set team "NonExistentTeam_${TIMESTAMP}" test_vault.json 2>&1 | grep -q -i "error\|not found"; then
+    print_status "Properly handled vault set for non-existent resource"
+else
+    print_error "Did not properly handle vault set for non-existent resource"
+fi
+
+# Test vault get for non-existent resource
+if ${CLI} vault get machine "NonExistentMachine_${TIMESTAMP}" --team "${TEAM_NAME}" 2>&1 | grep -q -i "error\|not found"; then
+    print_status "Properly handled vault get for non-existent resource"
+else
+    print_error "Did not properly handle vault get for non-existent resource"
+fi
+
+# 17. Error Handling Tests
 print_section "Error Handling Tests"
 
 echo "Testing operations on non-existent resources..."
@@ -805,7 +1199,52 @@ else
     rm -f invalid_vault.json
 fi
 
-# 12. Test Confirmation Prompts (without --force)
+# Test permission errors
+echo "Testing permission denied scenarios..."
+# Try to create queue item without proper permissions (simulated)
+if ${CLI} create queue-item "NonExistentTeam_${TIMESTAMP}" "${MACHINE_NAME}" "${NEW_BRIDGE_NAME}" --vault '{}' 2>&1 | grep -q -i "error\|permission\|not found"; then
+    print_status "Properly handled permission/not found error"
+else
+    print_error "Did not properly handle permission error"
+fi
+
+# Test subscription tier limitations
+echo "Testing subscription tier limitations..."
+# These tests will behave differently based on actual subscription
+SUBSCRIPTION_OUTPUT=$(${CLI} inspect company 2>&1)
+if echo "${SUBSCRIPTION_OUTPUT}" | grep -q "COMMUNITY"; then
+    # Test Community tier limitations
+    echo "Testing Community tier limitations..."
+    # Priority 1 should be reset to default
+    if ${CLI} create queue-item "${TEAM_NAME}" "${MACHINE_NAME}" "${NEW_BRIDGE_NAME}" --priority 1 --vault '{"test": "community_limit"}' 2>&1 | grep -v "priority 1" > /dev/null; then
+        print_status "Community tier properly limits priority settings"
+    fi
+fi
+
+# Test edge cases for resource names
+echo "Testing edge cases for resource names..."
+
+# Test very long names (should fail)
+LONG_NAME="VeryLongTeamName_${TIMESTAMP}_$(openssl rand -hex 50)"
+if ${CLI} create team "${LONG_NAME}" --vault '{}' 2>&1 | grep -q -i "error\|too long\|invalid"; then
+    print_status "Properly handled very long resource name"
+else
+    print_warning "Long name might have been accepted - cleanup may be needed"
+    # Try to clean up if it was created
+    ${CLI} rm team "${LONG_NAME}" --force 2>/dev/null
+fi
+
+# Test special characters in names
+SPECIAL_NAME="Team@Special#${TIMESTAMP}"
+if ${CLI} create team "${SPECIAL_NAME}" --vault '{}' 2>&1 | grep -q -i "error\|invalid"; then
+    print_status "Properly handled special characters in name"
+else
+    print_warning "Special character name might have been accepted"
+    # Try to clean up if it was created
+    ${CLI} rm team "${SPECIAL_NAME}" --force 2>/dev/null
+fi
+
+# 18. Test Confirmation Prompts (without --force)
 print_section "Testing Confirmation Prompts"
 
 echo "Testing delete without --force flag..."
@@ -828,7 +1267,7 @@ else
     print_error "Failed to delete with --force flag"
 fi
 
-# 13. Comprehensive Cleanup
+# 19. Comprehensive Cleanup
 print_section "Comprehensive Cleanup"
 echo "Deleting all created entities..."
 
@@ -920,22 +1359,35 @@ else
     print_error "Failed to delete region: ${REGION_NAME}"
 fi
 
-# Only try to reassign/deactivate user if it was created
-if ${CLI} list users 2>/dev/null | grep -q "${TEST_USER_EMAIL}"; then
-    # Reassign test user to default "Users" group before deleting our custom group
-    ${CLI} permission assign "${TEST_USER_EMAIL}" "Users" 2>/dev/null
-    
-    # Deactivate test user
-    ${CLI} user deactivate "${TEST_USER_EMAIL}" --force 2>/dev/null
-    print_status "Deactivated test user: ${TEST_USER_EMAIL}"
-fi
+# Clean up test users
+echo "Cleaning up test users..."
+for user in "${TEST_USER_EMAIL}" "${TEST_USER2_EMAIL}" "${TEST_USER3_EMAIL}"; do
+    if [ -n "${user}" ] && ${CLI} list users 2>/dev/null | grep -q "${user}"; then
+        # Reassign user to default "Users" group before deleting our custom group
+        ${CLI} permission assign "${user}" "Users" 2>/dev/null
+        
+        # Deactivate test user
+        if ${CLI} user deactivate "${user}" --force 2>/dev/null; then
+            print_status "Deactivated test user: ${user}"
+        fi
+    fi
+done
 
 # Now delete permission group
-${CLI} permission delete-group "${PERMISSION_GROUP}" --force
+if ${CLI} permission delete-group "${PERMISSION_GROUP}" --force 2>/dev/null; then
+    print_status "Deleted permission group: ${PERMISSION_GROUP}"
+else
+    print_warning "Failed to delete permission group (might not exist)"
+fi
+
+# Clean up any test companies if they were created
+if [ -n "${NEW_COMPANY}" ] && ${CLI} list companies 2>/dev/null | grep -q "${NEW_COMPANY}"; then
+    echo "Note: Test company ${NEW_COMPANY} may need manual cleanup"
+fi
 
 print_status "Cleanup completed"
 
-# 14. Test logout functionality
+# 20. Test logout functionality
 print_section "Final Authentication Test"
 
 # Test operations after logout (should fail)

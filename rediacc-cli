@@ -169,7 +169,8 @@ CMD_CONFIG = {
             'name': args.session_name or "CLI Session",
             '2FACode': args.tfa_code,
             'requestedPermissions': args.permissions,
-            'tokenExpirationHours': args.expiration
+            'tokenExpirationHours': args.expiration,
+            'target': getattr(args, 'target', None)
         },
         'success_msg': 'Successfully logged in as {email}'
     },
@@ -290,22 +291,6 @@ CMD_CONFIG = {
             'endpoint': 'GetRegionBridges',
             'params': lambda args: {'regionName': args.region}
         },
-        'machines': {
-            'endpoint': 'GetTeamMachines',
-            'params': lambda args: {'teamName': args.team}
-        },
-        'repositories': {
-            'endpoint': 'GetTeamRepositories',
-            'params': lambda args: {'teamName': args.team}
-        },
-        'storages': {
-            'endpoint': 'GetTeamStorages',
-            'params': lambda args: {'teamName': args.team}
-        },
-        'schedules': {
-            'endpoint': 'GetTeamSchedules',
-            'params': lambda args: {'teamName': args.team}
-        },
         'users': {
             'endpoint': 'GetCompanyUsers',
             'params': lambda args: {}
@@ -314,16 +299,28 @@ CMD_CONFIG = {
             'endpoint': 'GetUserRequests',
             'params': lambda args: {}
         },
-        'queue-items': {
-            'endpoint': 'GetTeamQueueItems',
-            'params': lambda args: {'teamName': args.team}
-        },
         'resource-limits': {
             'endpoint': 'GetCompanyDashboardJson',
             'params': lambda args: {}
         },
         'subscription': {
             'endpoint': 'GetCompanyDashboardJson',
+            'params': lambda args: {}
+        },
+        'data-graph': {
+            'endpoint': 'GetCompanyDataGraphJson',
+            'params': lambda args: {}
+        },
+        'company-vault': {
+            'endpoint': 'GetCompanyVault',
+            'params': lambda args: {}
+        },
+        'lookup-data': {
+            'endpoint': 'GetLookupData',
+            'params': lambda args: {'context': getattr(args, 'context', None)}
+        },
+        'user-company': {
+            'endpoint': 'GetUserCompany',
             'params': lambda args: {}
         }
     },
@@ -477,6 +474,15 @@ CMD_CONFIG = {
                 'userNewPass': pwd_hash(args.new_password)
             },
             'success_msg': 'Successfully updated user password'
+        },
+        'update-2fa': {
+            'endpoint': 'UpdateUser2FA',
+            'params': lambda args: {
+                'enable': args.enable,
+                'userHash': pwd_hash(args.password),
+                'currentCode': getattr(args, 'current_code', None)
+            },
+            'success_msg': 'Successfully updated 2FA settings'
         }
     },
     
@@ -498,10 +504,6 @@ CMD_CONFIG = {
             },
             'confirm_msg': "Are you sure you want to remove '{email}' from team '{team}'?",
             'success_msg': 'Successfully removed {email} from team {team}'
-        },
-        'list': {
-            'endpoint': 'GetTeamMembers',
-            'params': lambda args: {'teamName': args.team}
         }
     },
     
@@ -540,7 +542,8 @@ ARG_DEFS = {
         {'name': '--session-name', 'help': 'Name for this session'},
         {'name': '--tfa-code', 'help': 'Two-factor authentication code'},
         {'name': '--permissions', 'help': 'Requested permission group'},
-        {'name': '--expiration', 'type': int, 'help': 'Token expiration in hours (default: 24)'}
+        {'name': '--expiration', 'type': int, 'help': 'Token expiration in hours (default: 24)'},
+        {'name': '--target', 'help': 'Target resource (e.g., bridge name for bridge token)'}
     ],
     'logout': [],
     
@@ -617,19 +620,10 @@ ARG_DEFS = {
         'resource-limits': [],
         'subscription': [],
         'bridges': [{'name': 'region', 'help': 'Region name'}],
-        'machines': [{'name': 'team', 'help': 'Team name'}],
-        'repositories': [{'name': 'team', 'help': 'Team name'}],
-        'storages': [{'name': 'team', 'help': 'Team name'}],
-        'schedules': [{'name': 'team', 'help': 'Team name'}],
-        'queue-items': [{'name': 'team', 'help': 'Team name'}]
-    },
-    
-    'inspect': {
-        'team': [{'name': 'name', 'help': 'Team name'}],
-        'machine': [
-            {'name': 'team', 'help': 'Team name'},
-            {'name': 'name', 'help': 'Machine name'}
-        ]
+        'data-graph': [],
+        'company-vault': [],
+        'lookup-data': [{'name': '--context', 'help': 'Context filter (e.g., machine_create, queue_create)'}],
+        'user-company': []
     },
     
     'update': {
@@ -771,6 +765,12 @@ ARG_DEFS = {
         ],
         'update-password': [
             {'name': '--new-password', 'help': 'New password'}
+        ],
+        'update-2fa': [
+            {'name': 'enable', 'help': 'Enable (1/true) or disable (0/false) 2FA',
+             'type': lambda x: bool(int(x) if x in ['0', '1'] else x.lower() == 'true')},
+            {'name': '--password', 'help': 'Current password for verification'},
+            {'name': '--current-code', 'help': 'Current 2FA code (required when disabling)'}
         ]
     },
     
@@ -784,9 +784,6 @@ ARG_DEFS = {
             {'name': 'team', 'help': 'Team name'},
             {'name': 'email', 'help': 'User email address'},
             {'name': '--force', 'action': 'store_true', 'help': 'Skip confirmation'}
-        ],
-        'list': [
-            {'name': 'team', 'help': 'Team name'}
         ]
     },
     
@@ -1267,6 +1264,8 @@ class CommandHandler:
             login_params['requestedPermissions'] = args.permissions
         if hasattr(args, 'expiration') and args.expiration:
             login_params['tokenExpirationHours'] = args.expiration
+        if hasattr(args, 'target') and args.target:
+            login_params['target'] = args.target
         
         # Try to create authentication request
         response = self.client.auth_request(
@@ -1475,6 +1474,10 @@ class CommandHandler:
         if cmd_type == 'user' and resource_type == 'update-password' and not args.new_password:
             args.new_password = getpass.getpass("New password: ")
         
+        # Handle special case for user update-2fa which needs a password prompt
+        if cmd_type == 'user' and resource_type == 'update-2fa' and not hasattr(args, 'password'):
+            args.password = getpass.getpass("Current password: ")
+        
         # For remove commands, confirm before proceeding (unless JSON output or force flag)
         confirm_msg = cmd_config.get('confirm_msg')
         if confirm_msg and not args.force and self.output_format != 'json':
@@ -1554,117 +1557,6 @@ class CommandHandler:
         success_msg = cmd_config.get('success_msg')
         if self.handle_response(response, success_msg, args):
             return 0
-        return 1
-    
-    def inspect_resource(self, resource_type, args):
-        """Handle inspect commands"""
-        if resource_type == 'team':
-            # Get team details and members
-            response = self.client.token_request("GetTeamMembers", {"teamName": args.name})
-            
-            if response.get('error'):
-                output = format_output(None, self.output_format, None, response['error'])
-                print(output)
-                return 1
-            
-            members = extract_table_data(response, table_index=1)
-            
-            # Get team machines
-            machines_response = self.client.token_request("GetTeamMachines", {"teamName": args.name})
-            
-            machines = []
-            if not machines_response.get('error'):
-                machines = extract_table_data(machines_response, table_index=1)
-            
-            if self.output_format == 'json':
-                # JSON output
-                result = {
-                    'team': args.name,
-                    'members_count': len(members),
-                    'machines_count': len(machines),
-                    'members': [{'email': m.get('userEmail', 'N/A')} for m in members],
-                    'machines': [{'name': m.get('machineName', 'N/A'), 'bridge': m.get('bridgeName', 'N/A')} for m in machines]
-                }
-                output = format_output(result, self.output_format)
-                print(output)
-            else:
-                # Text output
-                print(colorize(f"Team: {args.name}", 'HEADER'))
-                print(f"Members: {len(members)}")
-                print(f"Machines: {len(machines)}")
-                
-                # Print member and machine details
-                if members:
-                    print("\nMembers:")
-                    for member in members:
-                        print(f"  - {member.get('userEmail', 'N/A')}")
-                
-                if machines:
-                    print("\nMachines:")
-                    for machine in machines:
-                        print(f"  - {machine.get('machineName', 'N/A')} ({machine.get('bridgeName', 'N/A')})")
-            
-            return 0
-            
-        elif resource_type == 'machine':
-            # Get machine details
-            response = self.client.token_request("GetTeamMachines", {"teamName": args.team})
-            
-            if response.get('error'):
-                output = format_output(None, self.output_format, None, response['error'])
-                print(output)
-                return 1
-            
-            machines = extract_table_data(response, table_index=1)
-            target_machine = next((m for m in machines if m.get('machineName') == args.name), None)
-            
-            if not target_machine:
-                error = f"Machine not found: {args.name}"
-                output = format_output(None, self.output_format, None, error)
-                print(output)
-                return 1
-            
-            # Get queue items
-            queue_response = self.client.token_request(
-                "GetQueueItemsNext", {"machineName": args.name, "itemCount": 3}
-            )
-            
-            queue_items = []
-            if not queue_response.get('error'):
-                queue_items = extract_table_data(queue_response, table_index=1)
-            
-            if self.output_format == 'json':
-                # JSON output
-                result = {
-                    'machine': args.name,
-                    'team': args.team,
-                    'bridge': target_machine.get('bridgeName', 'N/A'),
-                    'region': target_machine.get('regionName', 'N/A'),
-                    'queue_count': target_machine.get('queueCount', 0),
-                    'vault_version': target_machine.get('vaultVersion', 0),
-                    'queue_items': [{'task_id': item.get('taskId', 'N/A')} for item in queue_items]
-                }
-                output = format_output(result, self.output_format)
-                print(output)
-            else:
-                # Text output
-                print(colorize(f"Machine: {args.name}", 'HEADER'))
-                print(f"Team: {args.team}")
-                print(f"Bridge: {target_machine.get('bridgeName', 'N/A')}")
-                print(f"Region: {target_machine.get('regionName', 'N/A')}")
-                print(f"Queue Count: {target_machine.get('queueCount', 0)}")
-                print(f"Vault Version: {target_machine.get('vaultVersion', 0)}")
-                
-                if queue_items:
-                    print(f"\nQueue Items: {len(queue_items)}")
-                    for item in queue_items:
-                        print(f"  - {item.get('taskId', 'N/A')}")
-            
-            return 0
-        
-        error = f"Unsupported resource type: {resource_type}"
-        output = format_output(None, self.output_format, None, error)
-        print(output)
         return 1
     
     def update_resource(self, resource_type, args):
@@ -2002,9 +1894,7 @@ def main():
         return 1
     
     # Special handling for certain commands
-    if args.command == 'inspect':
-        return handler.inspect_resource(args.resource, args)
-    elif args.command == 'update':
+    if args.command == 'update':
         return handler.update_resource(args.resource, args)
     else:
         # Generic command handling for create, list, rm, vault, permission, user, team-member, queue
