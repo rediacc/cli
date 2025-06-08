@@ -394,6 +394,16 @@ CMD_CONFIG = {
         }
     },
     
+    # Bridge commands
+    'bridge': {
+        'reset-auth': {
+            'endpoint': 'ResetBridgeAuthorization',
+            'params': lambda args: {'bridgeName': args.name},
+            'confirm_msg': "Are you sure you want to reset authorization for bridge '{name}'? This will generate new credentials.",
+            'success_msg': 'Successfully reset authorization for bridge: {name}'
+        }
+    },
+    
     # Vault commands
     'vault': {
         'set': {
@@ -815,6 +825,14 @@ ARG_DEFS = {
         ]
     },
     
+    # Bridge command arguments
+    'bridge': {
+        'reset-auth': [
+            {'name': 'name', 'help': 'Bridge name'},
+            {'name': '--force', 'action': 'store_true', 'help': 'Skip confirmation'}
+        ]
+    },
+    
     # Queue command arguments with enhanced functionality
     'queue': {
         'get-next': [
@@ -1090,7 +1108,10 @@ def camel_to_title(name):
         'entity': 'Entity', 'entityId': 'Entity ID',
         'userId': 'User ID', 'changeType': 'Change Type',
         'previousValue': 'Previous Value', 'newValue': 'New Value',
-        'propertyName': 'Property', 'changeDetails': 'Change Details'
+        'propertyName': 'Property', 'changeDetails': 'Change Details',
+        'bridgeCredentialsVersion': 'Bridge Credentials Version',
+        'bridgeCredentials': 'Bridge Credentials',
+        'bridgeUserEmail': 'Bridge User Email'
     }
     
     if name in special_cases:
@@ -1916,6 +1937,9 @@ def main():
         ('create', 'company')
     }
     
+    # Check if it's a standalone command (like 'bridge')
+    standalone_commands = ['bridge']
+    
     # Check if authenticated for commands that require it
     if (args.command, getattr(args, 'resource', None)) not in auth_not_required_commands:
         if not config_manager.is_authenticated():
@@ -1934,6 +1958,9 @@ def main():
     # Special handling for certain commands
     if args.command == 'update':
         return handler.update_resource(args.resource, args)
+    elif args.command in standalone_commands:
+        # Handle standalone commands (like bridge)
+        return handler.generic_command(args.command, args.resource, args)
     else:
         # Generic command handling for create, list, rm, vault, permission, user, team-member, queue
         return handler.generic_command(args.command, args.resource, args)
