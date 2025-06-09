@@ -1054,6 +1054,23 @@ else
     print_error "Did not properly reject invalid priority value"
 fi
 
+# Test queue trace with invalid task ID
+echo "Testing queue trace with invalid task ID..."
+INVALID_TASK_ID="00000000-0000-0000-0000-000000000000"
+if ${CLI} queue trace "${INVALID_TASK_ID}" 2>&1 | grep -q -i "error\|not found"; then
+    print_status "Properly handled invalid task ID for trace"
+else
+    print_error "Did not properly handle invalid task ID for trace"
+fi
+
+# Test queue trace with malformed task ID
+echo "Testing queue trace with malformed task ID..."
+if ${CLI} queue trace "not-a-uuid" 2>&1 | grep -q -i "error\|invalid"; then
+    print_status "Properly handled malformed task ID for trace"
+else
+    print_error "Did not properly handle malformed task ID for trace"
+fi
+
 # Test invalid priority range
 if ${CLI} queue list --min-priority 0 2>&1 | grep -q -E "priority must be between|error"; then
     print_status "Properly rejected invalid minimum priority"
@@ -1078,6 +1095,52 @@ if [ ${DURATION} -lt 5 ]; then
     print_status "Queue list completed quickly (${DURATION}s)"
 else
     print_warning "Queue list took ${DURATION}s (might be slow)"
+fi
+
+# Test queue trace for items in different states
+echo "Testing queue trace for different item states..."
+
+# Create a queue item specifically for trace testing
+echo "Creating queue item for trace testing..."
+TRACE_TEST_OUTPUT=$(${CLI} --output json create queue-item "${TEAM_NAME}" "${MACHINE_NAME}" "${NEW_BRIDGE_NAME}" --priority 2 --vault '{"function": "trace_test", "test_data": {"timestamp": "'$(date -u +%Y-%m-%dT%H:%M:%SZ)'", "test_id": "'${TIMESTAMP}'"}}' 2>&1)
+
+if echo "${TRACE_TEST_OUTPUT}" | python3 -m json.tool > /dev/null 2>&1; then
+    # Extract task ID from JSON output
+    TRACE_TASK_ID=$(echo "${TRACE_TEST_OUTPUT}" | python3 -c "
+import json, sys
+data = json.load(sys.stdin)
+# Try different possible locations for task_id
+task_id = data.get('data', {}).get('task_id') if isinstance(data.get('data'), dict) else None
+if not task_id and 'task_id' in data:
+    task_id = data['task_id']
+if task_id:
+    print(task_id)
+" 2>/dev/null)
+    
+    if [ -n "${TRACE_TASK_ID}" ]; then
+        print_status "Created queue item for trace testing: ${TRACE_TASK_ID}"
+        
+        # Trace the newly created item (should be PENDING)
+        echo "Tracing PENDING queue item..."
+        PENDING_TRACE=$(${CLI} queue trace "${TRACE_TASK_ID}" 2>&1)
+        if echo "${PENDING_TRACE}" | grep -q "Status.*PENDING"; then
+            print_status "Successfully traced PENDING queue item"
+            
+            # Check if request vault is shown with our test data
+            if echo "${PENDING_TRACE}" | grep -q "trace_test.*test_id.*${TIMESTAMP}"; then
+                print_status "Trace shows correct request vault data"
+            fi
+        else
+            print_error "Failed to trace PENDING queue item"
+        fi
+        
+        # Save this task ID for cleanup later
+        TRACE_TEST_TASK_ID="${TRACE_TASK_ID}"
+    else
+        print_warning "Could not extract task ID for trace testing"
+    fi
+else
+    print_warning "Failed to create queue item for trace testing"
 fi
 
 # 16. Queue Operations Tests (Original)
@@ -1285,9 +1348,59 @@ fi
 
 # If we have a task ID, test queue update and complete operations
 if [ -n "${TASK_ID}" ]; then
+    echo "Testing queue trace..."
+    TRACE_OUTPUT=$(${CLI} queue trace "${TASK_ID}" 2>&1)
+    if echo "${TRACE_OUTPUT}" | grep -q "QUEUE ITEM DETAILS\|Task ID"; then
+        print_status "Successfully traced queue item"
+        
+        # Check if vault contents are shown
+        if echo "${TRACE_OUTPUT}" | grep -q "REQUEST VAULT\|RESPONSE VAULT"; then
+            print_status "Trace includes vault information"
+        fi
+        
+        # Check if timeline is shown
+        if echo "${TRACE_OUTPUT}" | grep -q "PROCESSING TIMELINE"; then
+            print_status "Trace includes processing timeline"
+        fi
+    else
+        print_error "Failed to trace queue item"
+    fi
+    
+    # Test queue trace with JSON output
+    echo "Testing queue trace with JSON output..."
+    if ${CLI} --output json queue trace "${TASK_ID}" 2>/dev/null | python3 -m json.tool > /dev/null 2>&1; then
+        print_status "Queue trace JSON output is valid"
+        
+        # Verify JSON structure
+        JSON_CHECK=$(${CLI} --output json queue trace "${TASK_ID}" 2>/dev/null | python3 -c "
+import json, sys
+data = json.load(sys.stdin)
+if data.get('success'):
+    trace_data = data.get('data', {})
+    if all(key in trace_data for key in ['queue_item', 'request_vault', 'response_vault', 'timeline']):
+        print('Valid trace structure')
+    else:
+        print('Missing trace sections')
+" 2>/dev/null)
+        if [ "${JSON_CHECK}" = "Valid trace structure" ]; then
+            print_status "Queue trace JSON has correct structure"
+        else
+            print_warning "Queue trace JSON structure might be incomplete"
+        fi
+    else
+        print_error "Queue trace JSON output is invalid"
+    fi
+    
     echo "Testing queue update-response..."
     if ${CLI} queue update-response "${TASK_ID}" --vault '{"status": "processing", "message": "Test update"}'; then
         print_status "Successfully updated queue item response"
+        
+        # Trace again to see the response vault
+        echo "Tracing after update-response..."
+        TRACE_AFTER_UPDATE=$(${CLI} queue trace "${TASK_ID}" 2>&1)
+        if echo "${TRACE_AFTER_UPDATE}" | grep -q "RESPONSE VAULT.*Test update"; then
+            print_status "Trace shows updated response vault"
+        fi
     else
         print_warning "Failed to update queue item response (might be already processed)"
     fi
@@ -1295,11 +1408,18 @@ if [ -n "${TASK_ID}" ]; then
     echo "Testing queue complete..."
     if ${CLI} queue complete "${TASK_ID}" --vault '{"status": "completed", "result": "success"}'; then
         print_status "Successfully completed queue item"
+        
+        # Trace again to see the completed status
+        echo "Tracing after completion..."
+        TRACE_AFTER_COMPLETE=$(${CLI} queue trace "${TASK_ID}" 2>&1)
+        if echo "${TRACE_AFTER_COMPLETE}" | grep -q "Status.*COMPLETED"; then
+            print_status "Trace shows completed status"
+        fi
     else
         print_warning "Failed to complete queue item (might be already completed)"
     fi
 else
-    print_warning "No task ID available for update/complete tests"
+    print_warning "No task ID available for update/complete/trace tests"
 fi
 
 # 17. Vault Operations Advanced Tests (New)
@@ -1485,6 +1605,13 @@ echo "Cleaning up queue items..."
 MAX_ATTEMPTS=5
 ATTEMPT=1
 TOTAL_DELETED=0
+
+# First, clean up the trace test task if it exists
+if [ -n "${TRACE_TEST_TASK_ID}" ]; then
+    if ${CLI} rm queue-item "${TRACE_TEST_TASK_ID}" --force > /dev/null 2>&1; then
+        print_status "Cleaned up trace test queue item"
+    fi
+fi
 
 while [ ${ATTEMPT} -le ${MAX_ATTEMPTS} ]; do
     # Skip header lines and extract Task ID (UUID pattern) from any column
