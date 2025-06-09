@@ -577,6 +577,12 @@ CMD_CONFIG = {
                 'finalVault': get_vault_data(args) or '{}'
             },
             'success_msg': 'Successfully completed queue item: {task_id}'
+        },
+        'trace': {
+            'endpoint': 'GetQueueItemTrace',
+            'params': lambda args: {
+                'taskId': args.task_id
+            }
         }
     }
 }
@@ -895,7 +901,10 @@ ARG_DEFS = {
             {'name': '--description', 'help': 'Queue item description'},
             {'name': '--priority', 'type': int, 'default': 5, 'help': 'Priority (1-10, default: 5)'}
         ],
-        'list-functions': []
+        'list-functions': [],
+        'trace': [
+            {'name': 'task_id', 'help': 'Task ID to trace'}
+        ]
     }
 }
 
@@ -1623,13 +1632,17 @@ class CommandHandler:
         # For list commands or permission list commands, format the output
         if cmd_type == 'list' or (cmd_type == 'permission' and resource_type in ['list-groups', 'list-group']) or \
            (cmd_type == 'team-member' and resource_type == 'list') or \
-           (cmd_type == 'queue' and resource_type in ['get-next', 'list']):
+           (cmd_type == 'queue' and resource_type in ['get-next', 'list', 'trace']):
             if response.get('error'):
                 output = format_output(None, self.output_format, None, response['error'])
                 print(output)
                 return 1
             
-            result = format_dynamic_tables(response, self.output_format)
+            # Special handling for queue trace command
+            if cmd_type == 'queue' and resource_type == 'trace':
+                result = self.format_queue_trace(response, self.output_format)
+            else:
+                result = format_dynamic_tables(response, self.output_format)
             print(result)
             return 0
         
@@ -1891,6 +1904,158 @@ class CommandHandler:
                 print(output)
             return 0
         return 1
+    
+    def format_queue_trace(self, response, output_format):
+        """Format queue trace response with multiple result sets"""
+        if not response or 'tables' not in response:
+            return format_output("No trace data available", output_format)
+        
+        tables = response.get('tables', [])
+        if len(tables) < 2:
+            return format_output("No trace data found", output_format)
+        
+        if output_format == 'json':
+            # For JSON output, organize data into meaningful sections
+            result = {
+                'queue_item': {},
+                'request_vault': {},
+                'response_vault': {},
+                'timeline': []
+            }
+            
+            # Table 1 (index 1): Queue Item Details
+            if len(tables) > 1 and tables[1].get('data'):
+                item_data = tables[1]['data'][0] if tables[1]['data'] else {}
+                result['queue_item'] = item_data
+            
+            # Table 2 (index 2): Request Vault
+            if len(tables) > 2 and tables[2].get('data'):
+                vault_data = tables[2]['data'][0] if tables[2]['data'] else {}
+                result['request_vault'] = {
+                    'type': vault_data.get('VaultType', 'Request'),
+                    'version': vault_data.get('VaultVersion'),
+                    'content': vault_data.get('VaultContent'),
+                    'has_content': vault_data.get('HasContent', False)
+                }
+            
+            # Table 3 (index 3): Response Vault
+            if len(tables) > 3 and tables[3].get('data'):
+                vault_data = tables[3]['data'][0] if tables[3]['data'] else {}
+                result['response_vault'] = {
+                    'type': vault_data.get('VaultType', 'Response'),
+                    'version': vault_data.get('VaultVersion'),
+                    'content': vault_data.get('VaultContent'),
+                    'has_content': vault_data.get('HasContent', False)
+                }
+            
+            # Table 4 (index 4): Timeline
+            if len(tables) > 4 and tables[4].get('data'):
+                result['timeline'] = tables[4]['data']
+            
+            return format_output(result, output_format)
+        else:
+            # For text output, format each section separately
+            output_parts = []
+            
+            # Queue Item Details
+            if len(tables) > 1 and tables[1].get('data') and tables[1]['data']:
+                item_data = tables[1]['data'][0]
+                output_parts.append(colorize("QUEUE ITEM DETAILS", 'HEADER'))
+                output_parts.append("=" * 80)
+                
+                # Core details
+                details = [
+                    ('Task ID', item_data.get('TaskId')),
+                    ('Status', item_data.get('Status')),
+                    ('Health Status', item_data.get('HealthStatus')),
+                    ('Created Time', item_data.get('CreatedTime')),
+                    ('Assigned Time', item_data.get('AssignedTime')),
+                    ('Last Heartbeat', item_data.get('LastHeartbeat')),
+                ]
+                
+                # Add priority if available
+                if item_data.get('Priority') is not None:
+                    details.extend([
+                        ('Priority', f"{item_data.get('Priority')} ({item_data.get('PriorityLabel')})"),
+                    ])
+                
+                # Time calculations
+                details.extend([
+                    ('Seconds to Assignment', item_data.get('SecondsToAssignment')),
+                    ('Processing Duration (seconds)', item_data.get('ProcessingDurationSeconds')),
+                    ('Total Duration (seconds)', item_data.get('TotalDurationSeconds')),
+                ])
+                
+                # Resource hierarchy
+                details.extend([
+                    ('Company', f"{item_data.get('CompanyName')} (ID: {item_data.get('CompanyId')})"),
+                    ('Team', f"{item_data.get('TeamName')} (ID: {item_data.get('TeamId')})"),
+                    ('Region', f"{item_data.get('RegionName')} (ID: {item_data.get('RegionId')})"),
+                    ('Bridge', f"{item_data.get('BridgeName')} (ID: {item_data.get('BridgeId')})"),
+                    ('Machine', f"{item_data.get('MachineName')} (ID: {item_data.get('MachineId')})"),
+                ])
+                
+                # Flags
+                if item_data.get('IsStale'):
+                    details.append(('Warning', colorize('This queue item is STALE', 'YELLOW')))
+                
+                # Format details
+                max_label_width = max(len(label) for label, _ in details)
+                for label, value in details:
+                    if value is not None:
+                        output_parts.append(f"{label.ljust(max_label_width)} : {value}")
+                
+            # Request Vault
+            if len(tables) > 2 and tables[2].get('data') and tables[2]['data']:
+                vault_data = tables[2]['data'][0]
+                if vault_data.get('HasContent'):
+                    output_parts.append("")
+                    output_parts.append(colorize("REQUEST VAULT", 'HEADER'))
+                    output_parts.append("=" * 80)
+                    output_parts.append(f"Version: {vault_data.get('VaultVersion', 'N/A')}")
+                    try:
+                        vault_content = json.loads(vault_data.get('VaultContent', '{}'))
+                        output_parts.append(json.dumps(vault_content, indent=2))
+                    except:
+                        output_parts.append(vault_data.get('VaultContent', 'No content'))
+            
+            # Response Vault
+            if len(tables) > 3 and tables[3].get('data') and tables[3]['data']:
+                vault_data = tables[3]['data'][0]
+                if vault_data.get('HasContent'):
+                    output_parts.append("")
+                    output_parts.append(colorize("RESPONSE VAULT", 'HEADER'))
+                    output_parts.append("=" * 80)
+                    output_parts.append(f"Version: {vault_data.get('VaultVersion', 'N/A')}")
+                    try:
+                        vault_content = json.loads(vault_data.get('VaultContent', '{}'))
+                        output_parts.append(json.dumps(vault_content, indent=2))
+                    except:
+                        output_parts.append(vault_data.get('VaultContent', 'No content'))
+            
+            # Timeline
+            if len(tables) > 4 and tables[4].get('data') and tables[4]['data']:
+                output_parts.append("")
+                output_parts.append(colorize("PROCESSING TIMELINE", 'HEADER'))
+                output_parts.append("=" * 80)
+                
+                timeline_data = tables[4]['data']
+                if timeline_data:
+                    # Format timeline as a table
+                    headers = ['Time', 'Status', 'Description']
+                    rows = []
+                    for event in timeline_data:
+                        time = event.get('Timestamp', 'N/A')
+                        status = event.get('NewValue', event.get('Status', 'N/A'))
+                        desc = event.get('ChangeDetails', event.get('Action', 'Status change'))
+                        rows.append([time, status, desc])
+                    
+                    if rows:
+                        output_parts.append(format_table(headers, rows))
+                else:
+                    output_parts.append("No timeline events recorded")
+            
+            return '\n'.join(output_parts)
 
 def setup_parser():
     """Create and configure the argument parser from definitions"""
