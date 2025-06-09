@@ -542,6 +542,26 @@ CMD_CONFIG = {
                 'itemCount': args.count or 3
             }
         },
+        'list': {
+            'endpoint': 'GetTeamQueueItems',
+            'params': lambda args: {
+                'teamName': getattr(args, 'team', None),
+                'machineName': getattr(args, 'machine', None),
+                'bridgeName': getattr(args, 'bridge', None),
+                'status': getattr(args, 'status', None),
+                'priority': getattr(args, 'priority', None),
+                'minPriority': getattr(args, 'min_priority', None),
+                'maxPriority': getattr(args, 'max_priority', None),
+                'dateFrom': getattr(args, 'date_from', None),
+                'dateTo': getattr(args, 'date_to', None),
+                'taskId': getattr(args, 'task_id', None),
+                'includeCompleted': getattr(args, 'include_completed', True),
+                'includeCancelled': getattr(args, 'include_cancelled', True),
+                'onlyStale': getattr(args, 'only_stale', False),
+                'staleThresholdMinutes': getattr(args, 'stale_threshold', None),
+                'maxRecords': getattr(args, 'max_records', None)
+            }
+        },
         'update-response': {
             'endpoint': 'UpdateQueueItemResponse',
             'params': lambda args: {
@@ -837,6 +857,25 @@ ARG_DEFS = {
     'queue': {
         'get-next': [
             {'name': '--count', 'type': int, 'help': 'Number of items to retrieve (default: 3)'}
+        ],
+        'list': [
+            {'name': '--team', 'help': 'Filter by team name(s), comma-separated'},
+            {'name': '--machine', 'help': 'Filter by specific machine name'},
+            {'name': '--bridge', 'help': 'Filter by specific bridge name'},
+            {'name': '--status', 'help': 'Filter by status(es), comma-separated (e.g., PENDING,PROCESSING)'},
+            {'name': '--priority', 'type': int, 'help': 'Filter by specific priority (1-5)'},
+            {'name': '--min-priority', 'type': int, 'help': 'Filter by minimum priority (1-5)'},
+            {'name': '--max-priority', 'type': int, 'help': 'Filter by maximum priority (1-5)'},
+            {'name': '--date-from', 'help': 'Filter by date range start (ISO format)'},
+            {'name': '--date-to', 'help': 'Filter by date range end (ISO format)'},
+            {'name': '--task-id', 'help': 'Search for specific task ID'},
+            {'name': '--no-completed', 'dest': 'include_completed', 'action': 'store_false', 
+             'help': 'Exclude completed items (default: include)'},
+            {'name': '--no-cancelled', 'dest': 'include_cancelled', 'action': 'store_false',
+             'help': 'Exclude cancelled items (default: include)'},
+            {'name': '--only-stale', 'action': 'store_true', 'help': 'Show only stale items'},
+            {'name': '--stale-threshold', 'type': int, 'help': 'Custom stale threshold in minutes (default: 10)'},
+            {'name': '--max-records', 'type': int, 'help': 'Maximum records to retrieve (default: 1000, max: 10000)'}
         ],
         'update-response': [
             {'name': 'task_id', 'help': 'Task ID'},
@@ -1584,7 +1623,7 @@ class CommandHandler:
         # For list commands or permission list commands, format the output
         if cmd_type == 'list' or (cmd_type == 'permission' and resource_type in ['list-groups', 'list-group']) or \
            (cmd_type == 'team-member' and resource_type == 'list') or \
-           (cmd_type == 'queue' and resource_type == 'get-next'):
+           (cmd_type == 'queue' and resource_type in ['get-next', 'list']):
             if response.get('error'):
                 output = format_output(None, self.output_format, None, response['error'])
                 print(output)
