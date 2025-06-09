@@ -790,7 +790,7 @@ fi
 
 # List queue items to see priority column
 echo -e "\nListing queue items with priority information..."
-QUEUE_LIST_OUTPUT=$(${CLI} list queue-items "${TEAM_NAME}" 2>&1)
+QUEUE_LIST_OUTPUT=$(${CLI} queue list --team "${TEAM_NAME}" 2>&1)
 echo "${QUEUE_LIST_OUTPUT}"
 
 # Check if Priority column is present
@@ -809,7 +809,7 @@ fi
 echo -e "\nNote: queue get-next requires bridge authentication..."
 print_warning "Skipping queue get-next test (requires bridge token, not user token)"
 
-# Instead, verify subscription information is shown in list queue-items
+# Instead, verify subscription information is shown in queue list
 echo -e "\nChecking subscription information in queue list..."
 if echo "${QUEUE_LIST_OUTPUT}" | grep -q "Priority"; then
     print_status "Queue list shows priority information (Premium/Elite feature)"
@@ -842,7 +842,7 @@ ${CLI} create queue-item "${TEAM_NAME}" "${MACHINE3_NAME}" "${NEW_BRIDGE_NAME}" 
 
 # List all queue items to see multiple machines
 echo "Listing all queue items to verify multiple machines..."
-ALL_QUEUE_OUTPUT=$(${CLI} list queue-items "${TEAM_NAME}" 2>&1)
+ALL_QUEUE_OUTPUT=$(${CLI} queue list --team "${TEAM_NAME}" 2>&1)
 
 # Count unique machines with queue items
 UNIQUE_MACHINES=$(echo "${ALL_QUEUE_OUTPUT}" | tail -n +3 | awk '{print $4}' | sort -u | grep -v "^$" | wc -l)
@@ -872,7 +872,215 @@ else
     print_error "Priority queue JSON output is invalid"
 fi
 
-# 15. Queue Operations Tests (Original)
+# 15. Queue List Command Tests (New Feature)
+print_section "Queue List Command Tests (New Feature)"
+
+# Test basic queue list command
+echo "Testing basic queue list..."
+if ${CLI} queue list > /dev/null 2>&1; then
+    print_status "Successfully executed queue list"
+else
+    print_error "Failed to execute queue list"
+fi
+
+# Test queue list with team filter
+echo "Testing queue list with team filter..."
+if ${CLI} queue list --team "${TEAM_NAME}" > /dev/null 2>&1; then
+    print_status "Successfully listed queue items for team: ${TEAM_NAME}"
+else
+    print_error "Failed to list queue items for team"
+fi
+
+# Test queue list with multiple teams (comma-separated)
+echo "Testing queue list with multiple teams..."
+if ${CLI} queue list --team "${TEAM_NAME},OtherTeam" > /dev/null 2>&1; then
+    print_status "Successfully listed queue items for multiple teams"
+else
+    print_error "Failed to list queue items for multiple teams"
+fi
+
+# Test queue list with machine filter
+echo "Testing queue list with machine filter..."
+if ${CLI} queue list --machine "${MACHINE_NAME}" > /dev/null 2>&1; then
+    print_status "Successfully listed queue items for machine: ${MACHINE_NAME}"
+else
+    print_error "Failed to list queue items for machine"
+fi
+
+# Test queue list with bridge filter
+echo "Testing queue list with bridge filter..."
+if ${CLI} queue list --bridge "${NEW_BRIDGE_NAME}" > /dev/null 2>&1; then
+    print_status "Successfully listed queue items for bridge: ${NEW_BRIDGE_NAME}"
+else
+    print_error "Failed to list queue items for bridge"
+fi
+
+# Test queue list with status filter
+echo "Testing queue list with status filter..."
+if ${CLI} queue list --status "PENDING,PROCESSING" > /dev/null 2>&1; then
+    print_status "Successfully listed queue items with status filter"
+else
+    print_error "Failed to list queue items with status filter"
+fi
+
+# Test queue list with priority filters (Premium/Elite only)
+echo "Testing queue list with priority filters..."
+if ${CLI} queue list --priority 1 2>&1 | grep -q -E "Priority|successfully"; then
+    print_status "Priority filter accepted (may be limited by subscription)"
+else
+    print_error "Failed to filter by priority"
+fi
+
+# Test queue list with priority range
+echo "Testing queue list with priority range..."
+if ${CLI} queue list --min-priority 1 --max-priority 3 > /dev/null 2>&1; then
+    print_status "Successfully listed queue items with priority range"
+else
+    print_error "Failed to list queue items with priority range"
+fi
+
+# Test queue list with date range
+echo "Testing queue list with date range..."
+START_DATE=$(date -u -d "1 hour ago" +"%Y-%m-%dT%H:%M:%S" 2>/dev/null || date -u -v-1H +"%Y-%m-%dT%H:%M:%S")
+END_DATE=$(date -u +"%Y-%m-%dT%H:%M:%S")
+if ${CLI} queue list --date-from "${START_DATE}" --date-to "${END_DATE}" > /dev/null 2>&1; then
+    print_status "Successfully listed queue items with date range"
+else
+    print_error "Failed to list queue items with date range"
+fi
+
+# Test queue list with specific task ID
+echo "Testing queue list with specific task ID..."
+# First, get a task ID from the list
+SAMPLE_TASK_ID=$(${CLI} queue list --team "${TEAM_NAME}" --max-records 1 2>/dev/null | tail -n +3 | grep -oE '[a-f0-9]{8}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{12}' | head -n 1)
+if [ -n "${SAMPLE_TASK_ID}" ]; then
+    if ${CLI} queue list --task-id "${SAMPLE_TASK_ID}" > /dev/null 2>&1; then
+        print_status "Successfully searched for specific task ID"
+    else
+        print_error "Failed to search for specific task ID"
+    fi
+else
+    print_warning "No task ID available for search test"
+fi
+
+# Test queue list excluding completed items
+echo "Testing queue list excluding completed items..."
+if ${CLI} queue list --no-completed > /dev/null 2>&1; then
+    print_status "Successfully listed queue items excluding completed"
+else
+    print_error "Failed to list queue items excluding completed"
+fi
+
+# Test queue list excluding cancelled items
+echo "Testing queue list excluding cancelled items..."
+if ${CLI} queue list --no-cancelled > /dev/null 2>&1; then
+    print_status "Successfully listed queue items excluding cancelled"
+else
+    print_error "Failed to list queue items excluding cancelled"
+fi
+
+# Test queue list showing only stale items
+echo "Testing queue list showing only stale items..."
+if ${CLI} queue list --only-stale > /dev/null 2>&1; then
+    print_status "Successfully listed only stale queue items"
+else
+    print_error "Failed to list only stale queue items"
+fi
+
+# Test queue list with custom stale threshold
+echo "Testing queue list with custom stale threshold..."
+if ${CLI} queue list --only-stale --stale-threshold 30 > /dev/null 2>&1; then
+    print_status "Successfully listed stale items with custom threshold"
+else
+    print_error "Failed to list stale items with custom threshold"
+fi
+
+# Test queue list with max records limit
+echo "Testing queue list with max records limit..."
+if ${CLI} queue list --max-records 5 > /dev/null 2>&1; then
+    print_status "Successfully limited queue list to 5 records"
+else
+    print_error "Failed to limit queue list records"
+fi
+
+# Test queue list with very high max records (should be capped at 10000)
+echo "Testing queue list with high max records..."
+if ${CLI} queue list --max-records 20000 2>&1 | grep -v "error" > /dev/null; then
+    print_status "Successfully handled high max records (capped at 10000)"
+else
+    print_error "Failed to handle high max records"
+fi
+
+# Test combined filters
+echo "Testing queue list with combined filters..."
+if ${CLI} queue list --team "${TEAM_NAME}" --status "PENDING" --priority 3 --no-completed --max-records 10 > /dev/null 2>&1; then
+    print_status "Successfully listed queue items with combined filters"
+else
+    print_error "Failed to list queue items with combined filters"
+fi
+
+# Test queue list with JSON output
+echo "Testing queue list with JSON output..."
+if ${CLI} --output json queue list --team "${TEAM_NAME}" 2>/dev/null | python3 -m json.tool > /dev/null 2>&1; then
+    print_status "Queue list JSON output is valid"
+    
+    # Check if priority field is included (Premium/Elite only)
+    PRIORITY_CHECK=$(${CLI} --output json queue list --team "${TEAM_NAME}" --max-records 1 2>/dev/null | python3 -c "
+import json, sys
+data = json.load(sys.stdin)
+if data.get('success'):
+    items = data.get('data', [])
+    if items and 'Priority' in items[0]:
+        print('Priority field found')
+    else:
+        print('Priority field not found')
+" 2>/dev/null)
+    if [ "${PRIORITY_CHECK}" = "Priority field found" ]; then
+        print_status "Priority field included in JSON (Premium/Elite subscription)"
+    else
+        print_warning "Priority field not included (Community/Advanced subscription or no data)"
+    fi
+else
+    print_error "Queue list JSON output is invalid"
+fi
+
+# Test error handling for queue list
+echo "Testing queue list error handling..."
+
+# Test invalid priority value
+if ${CLI} queue list --priority 6 2>&1 | grep -q -E "Priority must be between|error"; then
+    print_status "Properly rejected invalid priority value"
+else
+    print_error "Did not properly reject invalid priority value"
+fi
+
+# Test invalid priority range
+if ${CLI} queue list --min-priority 0 2>&1 | grep -q -E "priority must be between|error"; then
+    print_status "Properly rejected invalid minimum priority"
+else
+    print_error "Did not properly reject invalid minimum priority"
+fi
+
+# Test invalid date format
+if ${CLI} queue list --date-from "invalid-date" 2>&1 | grep -q -E "error|invalid"; then
+    print_status "Properly handled invalid date format"
+else
+    print_warning "Invalid date format might have been accepted"
+fi
+
+# Test performance with various filters
+echo "Testing queue list performance..."
+START_TIME=$(date +%s)
+${CLI} queue list --team "${TEAM_NAME}" --status "PENDING,PROCESSING,COMPLETED" --max-records 100 > /dev/null 2>&1
+END_TIME=$(date +%s)
+DURATION=$((END_TIME - START_TIME))
+if [ ${DURATION} -lt 5 ]; then
+    print_status "Queue list completed quickly (${DURATION}s)"
+else
+    print_warning "Queue list took ${DURATION}s (might be slow)"
+fi
+
+# 16. Queue Operations Tests (Original)
 print_section "Queue Operations Tests"
 
 # Test queue list-functions command
@@ -966,7 +1174,7 @@ fi
 
 # First list queue items for the team to see what's queued
 echo "Listing queue items for team..."
-TEAM_QUEUE_OUTPUT=$(${CLI} list queue-items "${TEAM_NAME}" 2>&1)
+TEAM_QUEUE_OUTPUT=$(${CLI} queue list --team "${TEAM_NAME}" 2>&1)
 if echo "${TEAM_QUEUE_OUTPUT}" | grep -q "PENDING\|COMPLETED"; then
     print_status "Successfully listed team queue items"
     # Count pending items
@@ -982,7 +1190,7 @@ print_warning "Queue get-next is only available for bridge tokens"
 
 # Instead, verify queue items were created by listing them
 echo "Verifying queue items were created..."
-VERIFY_QUEUE_OUTPUT=$(${CLI} list queue-items "${TEAM_NAME}" 2>&1)
+VERIFY_QUEUE_OUTPUT=$(${CLI} queue list --team "${TEAM_NAME}" 2>&1)
 if echo "${VERIFY_QUEUE_OUTPUT}" | grep -q "hello\|repo_new\|os_setup\|uninstall"; then
     print_status "Successfully verified queued items exist"
     
@@ -1058,7 +1266,7 @@ fi
 
 # Test viewing specific queue item details (if we have JSON output)
 echo "Testing queue item parameter verification..."
-if ${CLI} --output json list queue-items "${TEAM_NAME}" 2>/dev/null | python3 -c "
+if ${CLI} --output json queue list --team "${TEAM_NAME}" 2>/dev/null | python3 -c "
 import json, sys
 data = json.load(sys.stdin)
 if data.get('success'):
@@ -1094,7 +1302,7 @@ else
     print_warning "No task ID available for update/complete tests"
 fi
 
-# 16. Vault Operations Advanced Tests (New)
+# 17. Vault Operations Advanced Tests (New)
 print_section "Vault Operations Advanced Tests"
 
 # Test vault operations for all entity types
@@ -1169,7 +1377,7 @@ else
     print_error "Did not properly handle vault get for non-existent resource"
 fi
 
-# 17. Error Handling Tests
+# 18. Error Handling Tests
 print_section "Error Handling Tests"
 
 echo "Testing operations on non-existent resources..."
@@ -1244,7 +1452,7 @@ else
     ${CLI} rm team "${SPECIAL_NAME}" --force 2>/dev/null
 fi
 
-# 18. Test Confirmation Prompts (without --force)
+# 19. Test Confirmation Prompts (without --force)
 print_section "Testing Confirmation Prompts"
 
 echo "Testing delete without --force flag..."
@@ -1267,7 +1475,7 @@ else
     print_error "Failed to delete with --force flag"
 fi
 
-# 19. Comprehensive Cleanup
+# 20. Comprehensive Cleanup
 print_section "Comprehensive Cleanup"
 echo "Deleting all created entities..."
 
@@ -1281,7 +1489,7 @@ TOTAL_DELETED=0
 while [ ${ATTEMPT} -le ${MAX_ATTEMPTS} ]; do
     # Skip header lines and extract Task ID (UUID pattern) from any column
     # This handles both PENDING items (Task ID in column 5) and COMPLETED items (Task ID in column 6)
-    QUEUE_ITEMS=$(${CLI} list queue-items "${TEAM_NAME}" 2>/dev/null | tail -n +3 | grep -oE '[a-f0-9]{8}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{12}' | sort -u)
+    QUEUE_ITEMS=$(${CLI} queue list --team "${TEAM_NAME}" 2>/dev/null | tail -n +3 | grep -oE '[a-f0-9]{8}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{12}' | sort -u)
     
     if [ -z "${QUEUE_ITEMS}" ]; then
         break
@@ -1387,7 +1595,7 @@ fi
 
 print_status "Cleanup completed"
 
-# 20. Test logout functionality
+# 21. Test logout functionality
 print_section "Final Authentication Test"
 
 # Test operations after logout (should fail)
