@@ -12,7 +12,18 @@ import sys
 import urllib.request
 import urllib.parse
 import urllib.error
+import base64
 from typing import Dict, Any, Optional, List, Union
+
+# Try to import cryptography library
+try:
+    from cryptography.hazmat.primitives import hashes
+    from cryptography.hazmat.primitives.kdf.pbkdf2 import PBKDF2HMAC
+    from cryptography.hazmat.primitives.ciphers.aead import AESGCM
+    CRYPTO_AVAILABLE = True
+except ImportError:
+    CRYPTO_AVAILABLE = False
+    # Print warning after colorize is defined
 
 # Configuration
 MIDDLEWARE_PORT = os.environ.get('SYSTEM_MIDDLEWARE_PORT', '8080')
@@ -32,6 +43,153 @@ COLORS = {
 def colorize(text, color):
     """Add color to terminal output if supported"""
     return f"{COLORS.get(color, '')}{text}{COLORS['ENDC']}" if sys.stdout.isatty() else text
+
+# Print crypto warning if needed
+if not CRYPTO_AVAILABLE:
+    print(colorize("Warning: cryptography library not installed. Vault encryption will not be available.", 'YELLOW'))
+    print(colorize("Install with: pip install cryptography", 'YELLOW'))
+
+# Vault Encryption Functions
+# Following the same protocol as the web console (AES-256-GCM with PBKDF2)
+ITERATIONS = 100000
+SALT_SIZE = 16  # 128 bits
+IV_SIZE = 12    # 96 bits for GCM
+TAG_SIZE = 16   # 128 bits for GCM
+KEY_SIZE = 32   # 256 bits
+
+def derive_key(password: str, salt: bytes) -> bytes:
+    """Derive a 256-bit key from password using PBKDF2-HMAC-SHA256"""
+    if not CRYPTO_AVAILABLE:
+        raise RuntimeError("Cryptography library not available")
+    
+    kdf = PBKDF2HMAC(
+        algorithm=hashes.SHA256(),
+        length=KEY_SIZE,
+        salt=salt,
+        iterations=ITERATIONS,
+    )
+    return kdf.derive(password.encode('utf-8'))
+
+def encrypt_string(plaintext: str, password: str) -> str:
+    """Encrypt a string using AES-256-GCM
+    Returns base64 encoded string: salt || iv || ciphertext || authTag
+    """
+    if not CRYPTO_AVAILABLE:
+        raise RuntimeError("Cryptography library not available")
+    
+    # Generate random salt and IV
+    salt = os.urandom(SALT_SIZE)
+    iv = os.urandom(IV_SIZE)
+    
+    # Derive key
+    key = derive_key(password, salt)
+    aesgcm = AESGCM(key)
+    
+    # Encrypt (ciphertext includes auth tag at the end)
+    ciphertext = aesgcm.encrypt(iv, plaintext.encode('utf-8'), None)
+    
+    # Combine salt + IV + ciphertext (includes auth tag)
+    combined = salt + iv + ciphertext
+    
+    # Return base64 encoded
+    return base64.b64encode(combined).decode('ascii')
+
+def decrypt_string(encrypted: str, password: str) -> str:
+    """Decrypt a string encrypted with encrypt_string
+    Expects base64 encoded string: salt || iv || ciphertext || authTag
+    """
+    if not CRYPTO_AVAILABLE:
+        raise RuntimeError("Cryptography library not available")
+    
+    # Decode from base64
+    combined = base64.b64decode(encrypted)
+    
+    # Extract components
+    salt = combined[:SALT_SIZE]
+    iv = combined[SALT_SIZE:SALT_SIZE + IV_SIZE]
+    ciphertext = combined[SALT_SIZE + IV_SIZE:]
+    
+    # Derive key
+    key = derive_key(password, salt)
+    aesgcm = AESGCM(key)
+    
+    # Decrypt
+    plaintext = aesgcm.decrypt(iv, ciphertext, None)
+    return plaintext.decode('utf-8')
+
+def is_encrypted(value: str) -> bool:
+    """Check if a value appears to be encrypted"""
+    if not value or len(value) < 20:
+        return False
+    
+    # Check if it's valid JSON (not encrypted)
+    try:
+        json.loads(value)
+        return False
+    except:
+        pass
+    
+    # Check if it's base64 and has reasonable length
+    try:
+        decoded = base64.b64decode(value)
+        # Minimum size: salt(16) + iv(12) + data + tag(16)
+        return len(decoded) >= 44
+    except:
+        return False
+
+def encrypt_vault_fields(obj: dict, password: str) -> dict:
+    """Recursively encrypt fields containing 'vault' in their name"""
+    if not password or not obj:
+        return obj
+    
+    result = {}
+    for key, value in obj.items():
+        if 'vault' in key.lower() and isinstance(value, str) and value:
+            if not is_encrypted(value):
+                try:
+                    result[key] = encrypt_string(value, password)
+                except Exception as e:
+                    print(colorize(f"Warning: Failed to encrypt field {key}: {e}", 'YELLOW'))
+                    result[key] = value
+            else:
+                result[key] = value
+        elif isinstance(value, dict):
+            result[key] = encrypt_vault_fields(value, password)
+        elif isinstance(value, list):
+            result[key] = [
+                encrypt_vault_fields(item, password) if isinstance(item, dict) else item
+                for item in value
+            ]
+        else:
+            result[key] = value
+    return result
+
+def decrypt_vault_fields(obj: dict, password: str) -> dict:
+    """Recursively decrypt fields containing 'vault' in their name"""
+    if not password or not obj:
+        return obj
+    
+    result = {}
+    for key, value in obj.items():
+        if 'vault' in key.lower() and isinstance(value, str) and value:
+            if is_encrypted(value):
+                try:
+                    result[key] = decrypt_string(value, password)
+                except Exception as e:
+                    print(colorize(f"Warning: Failed to decrypt field {key}: {e}", 'YELLOW'))
+                    result[key] = value
+            else:
+                result[key] = value
+        elif isinstance(value, dict):
+            result[key] = decrypt_vault_fields(value, password)
+        elif isinstance(value, list):
+            result[key] = [
+                decrypt_vault_fields(item, password) if isinstance(item, dict) else item
+                for item in value
+            ]
+        else:
+            result[key] = value
+    return result
 
 # Available bash functions for queuing
 QUEUE_FUNCTIONS = {
@@ -592,6 +750,7 @@ ARG_DEFS = {
     'login': [
         {'name': '--email', 'help': 'User email address'},
         {'name': '--password', 'help': 'User password'},
+        {'name': '--master-password', 'help': 'Master password for vault encryption'},
         {'name': '--session-name', 'help': 'Name for this session'},
         {'name': '--tfa-code', 'help': 'Two-factor authentication code'},
         {'name': '--permissions', 'help': 'Requested permission group'},
@@ -782,7 +941,10 @@ ARG_DEFS = {
             {'name': '--team', 'help': 'Team name (for machine, repository, storage, schedule)'},
             {'name': '--region', 'help': 'Region name (for bridge)'},
             {'name': '--vault-version', 'type': int, 'help': 'Vault version'}
-        ]
+        ],
+        'set-password': [],
+        'clear-password': [],
+        'status': []
     },
     
     # Permission command arguments
@@ -912,6 +1074,14 @@ class ConfigManager:
     """Manages configuration and authentication state"""
     def __init__(self):
         self.config = self._load_config()
+        # Master password stored only in memory, never persisted
+        self._master_password = None
+        # VaultCompany value for validation
+        self._vault_company = None
+        # Company name for validation
+        self._company_name = None
+        # Flag to track if we've fetched vault info this session
+        self._vault_info_fetched = False
     
     def _load_config(self):
         """Load configuration from file"""
@@ -929,20 +1099,83 @@ class ConfigManager:
         with open(CONFIG_FILE, 'w') as f:
             json.dump(self.config, f, indent=2)
     
-    def set_auth(self, email, token, company=None):
+    def set_auth(self, email, token, company=None, vault_company=None):
         """Update authentication information"""
         self.config.update({'email': email, 'token': token, 'company': company})
+        if vault_company is not None:
+            self.config['vault_company'] = vault_company
+        self._company_name = company
+        self._vault_company = vault_company
         self.save_config()
     
     def clear_auth(self):
         """Clear authentication information"""
-        for key in ['email', 'token', 'company']:
+        for key in ['email', 'token', 'company', 'vault_company']:
             self.config.pop(key, None)
+        self._master_password = None
+        self._vault_company = None
+        self._company_name = None
+        self._vault_info_fetched = False
         self.save_config()
     
     def is_authenticated(self):
         """Check if user is authenticated"""
         return bool(self.config.get('token'))
+    
+    def set_master_password(self, password):
+        """Set master password in memory only"""
+        self._master_password = password
+    
+    def get_master_password(self):
+        """Get master password from memory"""
+        return self._master_password
+    
+    def clear_master_password(self):
+        """Clear master password from memory"""
+        self._master_password = None
+    
+    def has_vault_encryption(self):
+        """Check if company has vault encryption enabled"""
+        # Try to get vault company from memory first, then config
+        vault_company = self._vault_company or self.config.get('vault_company')
+        return vault_company and is_encrypted(vault_company)
+    
+    def get_vault_company(self):
+        """Get vault company value"""
+        return self._vault_company or self.config.get('vault_company')
+    
+    def needs_vault_info_fetch(self):
+        """Check if we need to fetch vault info"""
+        # Need to fetch if authenticated but don't have vault info
+        return self.is_authenticated() and not self._vault_info_fetched and not self.get_vault_company()
+    
+    def mark_vault_info_fetched(self):
+        """Mark that we've attempted to fetch vault info this session"""
+        self._vault_info_fetched = True
+    
+    def load_vault_info_from_config(self):
+        """Load vault info from saved config"""
+        if 'vault_company' in self.config:
+            self._vault_company = self.config['vault_company']
+        if 'company' in self.config:
+            self._company_name = self.config['company']
+    
+    def validate_master_password(self, password):
+        """Validate master password against VaultCompany"""
+        vault_company = self.get_vault_company()
+        company_name = self._company_name or self.config.get('company')
+        
+        if not vault_company or not company_name:
+            return False
+        
+        if not is_encrypted(vault_company):
+            return True  # No encryption required
+        
+        try:
+            decrypted = decrypt_string(vault_company, password)
+            return decrypted == company_name
+        except:
+            return False
 
 class APIClient:
     """Client for interacting with the Rediacc Middleware API"""
@@ -953,6 +1186,9 @@ class APIClient:
             "Content-Type": "application/json",
             "User-Agent": "rediacc-cli/1.0"
         }
+        # Load vault info from config if available
+        if self.config_manager:
+            self.config_manager.load_vault_info_from_config()
     
     def request(self, endpoint, data=None, headers=None):
         """Make an API request to the middleware service"""
@@ -962,6 +1198,13 @@ class APIClient:
         merged_headers = self.base_headers.copy()
         if headers:
             merged_headers.update(headers)
+        
+        # Encrypt vault fields if master password is set
+        if data and self.config_manager and self.config_manager.get_master_password():
+            try:
+                data = encrypt_vault_fields(data, self.config_manager.get_master_password())
+            except Exception as e:
+                print(colorize(f"Warning: Failed to encrypt vault fields: {e}", 'YELLOW'))
         
         # Prepare the request
         request_data = json.dumps(data or {}).encode('utf-8')
@@ -992,6 +1235,13 @@ class APIClient:
                         error_msg = f"API Error: {result.get('message', 'Request failed')}"
                     return {"error": error_msg, "status_code": 400}
                 
+                # Decrypt vault fields if master password is set
+                if self.config_manager and self.config_manager.get_master_password():
+                    try:
+                        result = decrypt_vault_fields(result, self.config_manager.get_master_password())
+                    except Exception as e:
+                        print(colorize(f"Warning: Failed to decrypt vault fields: {e}", 'YELLOW'))
+                
                 return result
                 
         except urllib.error.HTTPError as e:
@@ -1014,6 +1264,17 @@ class APIClient:
         if not self.config.get('token'):
             return {"error": "Not authenticated. Please login first.", "status_code": 401}
         
+        # Ensure vault info is fetched before making requests (except for GetCompanyVault itself)
+        if endpoint != 'GetCompanyVault':
+            self._ensure_vault_info()
+            
+            # Check if encryption is required but no master password is set
+            if self.config_manager and self.config_manager.has_vault_encryption() and not self.config_manager.get_master_password():
+                if not hasattr(self, '_vault_warning_shown'):
+                    print(colorize("Warning: Your company requires vault encryption but no master password is set.", 'YELLOW'))
+                    print(colorize("Vault fields will not be decrypted. Use 'rediacc vault set-password' to set it.", 'YELLOW'))
+                    self._vault_warning_shown = True
+        
         response = self.request(endpoint, data, {
             "Rediacc-RequestToken": self.config['token']
         })
@@ -1029,6 +1290,51 @@ class APIClient:
                     self.config_manager.save_config()
         
         return response
+    
+    def _ensure_vault_info(self):
+        """Ensure vault info is fetched if needed"""
+        if self.config_manager and self.config_manager.needs_vault_info_fetch():
+            # Mark as fetched to avoid infinite recursion
+            self.config_manager.mark_vault_info_fetched()
+            
+            # Fetch company vault info
+            company_info = self.get_company_vault()
+            if company_info:
+                # Update config manager with vault info
+                self.config_manager.set_auth(
+                    self.config_manager.config.get('email'),
+                    self.config_manager.config.get('token'),
+                    company_info.get('companyName'),
+                    company_info.get('vaultCompany')
+                )
+    
+    def get_company_vault(self):
+        """Get company vault information for the current authenticated session"""
+        response = self.token_request("GetCompanyVault", {})
+        
+        if response.get('error'):
+            return None
+        
+        # Extract company information from response
+        tables = response.get('tables', [])
+        for table in tables:
+            data = table.get('data', [])
+            if data and len(data) > 0:
+                row = data[0]
+                # Skip credentials table
+                if 'nextRequestCredential' in row:
+                    continue
+                
+                # Extract company info
+                company_info = {
+                    'companyName': row.get('companyName', ''),
+                    'vaultCompany': row.get('vaultCompany') or row.get('VaultCompany', '')
+                }
+                
+                if company_info['companyName']:
+                    return company_info
+        
+        return None
 
 # Output format handler
 def format_output(data, format_type, message=None, error=None):
@@ -1386,7 +1692,7 @@ class CommandHandler:
             print(output)
             return 1
         
-        # Extract token from response
+        # Extract token and company info from response
         tables = response.get('tables', [])
         if not tables or not tables[0].get('data'):
             error_msg = "Login failed: Could not get authentication token"
@@ -1394,26 +1700,53 @@ class CommandHandler:
             print(output)
             return 1
         
-        token = tables[0]['data'][0].get('nextRequestCredential')
+        auth_data = tables[0]['data'][0]
+        token = auth_data.get('nextRequestCredential')
         if not token:
             error_msg = "Login failed: Invalid authentication token"
             output = format_output(None, self.output_format, None, error_msg)
             print(output)
             return 1
         
-        # Get company info
-        company = None
-        # Note: GetUserCompany requires special authentication that's not available during login
-        # Company info can be obtained from other endpoints after login
+        # Extract company information and VaultCompany from the response
+        company = auth_data.get('companyName')
+        vault_company = auth_data.get('vaultCompany') or auth_data.get('VaultCompany')
         
-        # Save authentication data
-        self.config_manager.set_auth(email, token, company)
+        # Save authentication data first (without master password)
+        self.config_manager.set_auth(email, token, company, vault_company)
+        
+        # Check if company has vault encryption enabled
+        if vault_company and is_encrypted(vault_company):
+            # Company requires master password
+            master_password = getattr(args, 'master_password', None)
+            if not master_password:
+                print(colorize("Your company requires a master password for vault encryption.", 'YELLOW'))
+                master_password = getpass.getpass("Master Password: ")
+            
+            # Validate master password
+            if company and self.config_manager.validate_master_password(master_password):
+                self.config_manager.set_master_password(master_password)
+                if self.output_format != 'json':
+                    print(colorize("Master password validated successfully", 'GREEN'))
+            else:
+                error_msg = "Invalid master password. Please check with your administrator for the correct company master password."
+                output = format_output(None, self.output_format, None, error_msg)
+                print(output)
+                # Still logged in but without vault decryption capability
+                if self.output_format != 'json':
+                    print(colorize("Warning: Logged in but vault data will not be decrypted", 'YELLOW'))
+        elif hasattr(args, 'master_password') and args.master_password:
+            # User provided master password but company doesn't have encryption enabled
+            if self.output_format != 'json':
+                print(colorize("Note: Your company has not enabled vault encryption. The master password will not be used.", 'YELLOW'))
         
         # Generate output based on format
         if self.output_format == 'json':
             result = {
                 'email': email,
-                'company': company
+                'company': company,
+                'vault_encryption_enabled': bool(vault_company and is_encrypted(vault_company)),
+                'master_password_set': bool(self.config_manager.get_master_password())
             }
             output = format_output(result, self.output_format, f"Successfully logged in as {email}")
             print(output)
@@ -1421,6 +1754,12 @@ class CommandHandler:
             print(colorize(f"Successfully logged in as {email}", 'GREEN'))
             if company:
                 print(f"Company: {company}")
+            if vault_company and is_encrypted(vault_company):
+                print(f"Vault Encryption: Enabled")
+                if self.config_manager.get_master_password():
+                    print(f"Master Password: Set")
+                else:
+                    print(f"Master Password: Not set (vault data will remain encrypted)")
         
         return 0
     
@@ -1600,6 +1939,12 @@ class CommandHandler:
         if cmd_type == 'vault':
             if resource_type == 'set':
                 return self.vault_set(args)
+            elif resource_type == 'set-password':
+                return self.vault_set_password(args)
+            elif resource_type == 'clear-password':
+                return self.vault_clear_password(args)
+            elif resource_type == 'status':
+                return self.vault_status(args)
             return 1
         
         # Prepare parameters
@@ -1904,6 +2249,105 @@ class CommandHandler:
                 print(output)
             return 0
         return 1
+    
+    def vault_set_password(self, args):
+        """Set master password for vault encryption"""
+        if not CRYPTO_AVAILABLE:
+            error = "Cryptography library not available. Install with: pip install cryptography"
+            output = format_output(None, self.output_format, None, error)
+            print(output)
+            return 1
+        
+        # Ensure vault info is current
+        self.client._ensure_vault_info()
+        
+        # Check if company has vault encryption enabled
+        if not self.config_manager.has_vault_encryption():
+            error = "Your company has not enabled vault encryption. Contact your administrator to enable it."
+            output = format_output(None, self.output_format, None, error)
+            print(output)
+            return 1
+        
+        # Prompt for master password
+        master_password = getpass.getpass("Enter master password: ")
+        confirm_password = getpass.getpass("Confirm master password: ")
+        
+        if master_password != confirm_password:
+            error = "Passwords do not match"
+            output = format_output(None, self.output_format, None, error)
+            print(output)
+            return 1
+        
+        # Validate master password
+        if self.config_manager.validate_master_password(master_password):
+            self.config_manager.set_master_password(master_password)
+            success_msg = "Master password set successfully"
+            if self.output_format == 'json':
+                output = format_output({'success': True}, self.output_format, success_msg)
+            else:
+                output = colorize(success_msg, 'GREEN')
+            print(output)
+            return 0
+        else:
+            error = "Invalid master password. Please check with your administrator for the correct company master password."
+            output = format_output(None, self.output_format, None, error)
+            print(output)
+            return 1
+    
+    def vault_clear_password(self, args):
+        """Clear master password from memory"""
+        self.config_manager.clear_master_password()
+        success_msg = "Master password cleared from memory"
+        if self.output_format == 'json':
+            output = format_output({'success': True}, self.output_format, success_msg)
+        else:
+            output = colorize(success_msg, 'GREEN')
+        print(output)
+        return 0
+    
+    def vault_status(self, args):
+        """Show vault encryption status"""
+        # Ensure vault info is current
+        self.client._ensure_vault_info()
+        
+        # Get vault company value
+        vault_company = self.config_manager.get_vault_company()
+        
+        status_data = {
+            'crypto_available': CRYPTO_AVAILABLE,
+            'company': self.config_manager.config.get('company'),
+            'vault_encryption_enabled': self.config_manager.has_vault_encryption(),
+            'master_password_set': bool(self.config_manager.get_master_password()),
+            'vault_company_present': bool(vault_company),
+            'vault_company_encrypted': is_encrypted(vault_company) if vault_company else False
+        }
+        
+        if self.output_format == 'json':
+            output = format_output(status_data, self.output_format)
+            print(output)
+        else:
+            print(colorize("VAULT ENCRYPTION STATUS", 'HEADER'))
+            print("=" * 40)
+            print(f"Cryptography Library: {'Available' if status_data['crypto_available'] else 'Not Available'}")
+            print(f"Company: {status_data['company'] or 'Not set'}")
+            print(f"Vault Company Data: {'Present' if status_data['vault_company_present'] else 'Not fetched'}")
+            print(f"Vault Encryption: {'Required' if status_data['vault_encryption_enabled'] else 'Not Required'}")
+            print(f"Master Password: {'Set' if status_data['master_password_set'] else 'Not Set'}")
+            
+            if not status_data['crypto_available']:
+                print("")
+                print(colorize("To enable vault encryption, install the cryptography library:", 'YELLOW'))
+                print("  pip install cryptography")
+            elif status_data['vault_encryption_enabled'] and not status_data['master_password_set']:
+                print("")
+                print(colorize("Your company requires a master password for vault encryption.", 'YELLOW'))
+                print("Use 'rediacc vault set-password' to set it.")
+            elif not status_data['vault_company_present']:
+                print("")
+                print(colorize("Note: Vault company information will be fetched on next command.", 'BLUE'))
+        
+        return 0
+    
     
     def format_queue_trace(self, response, output_format):
         """Format queue trace response with multiple result sets"""
