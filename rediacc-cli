@@ -118,24 +118,26 @@ def decrypt_string(encrypted: str, password: str) -> str:
     return plaintext.decode('utf-8')
 
 def is_encrypted(value: str) -> bool:
-    """Check if a value appears to be encrypted"""
+    """Check if a value appears to be encrypted
+    Encrypted values are base64 encoded and typically longer than the original
+    """
     if not value or len(value) < 20:
         return False
     
-    # Check if it's valid JSON (not encrypted)
+    # Check if the value is valid JSON (not encrypted)
     try:
         json.loads(value)
+        # If it parses as JSON, it's not encrypted
         return False
     except:
+        # Not valid JSON, continue checking if it's encrypted
         pass
     
-    # Check if it's base64 and has reasonable length
-    try:
-        decoded = base64.b64decode(value)
-        # Minimum size: salt(16) + iv(12) + data + tag(16)
-        return len(decoded) >= 44
-    except:
-        return False
+    # Check if it matches base64 pattern and has reasonable length
+    # Encrypted values are typically much longer than originals due to IV + encrypted data
+    import re
+    base64_pattern = re.compile(r'^[A-Za-z0-9+/]+=*$')
+    return base64_pattern.match(value) is not None and len(value) >= 40
 
 def encrypt_vault_fields(obj: dict, password: str) -> dict:
     """Recursively encrypt fields containing 'vault' in their name"""
@@ -1163,18 +1165,22 @@ class ConfigManager:
     def validate_master_password(self, password):
         """Validate master password against VaultCompany"""
         vault_company = self.get_vault_company()
-        company_name = self._company_name or self.config.get('company')
         
-        if not vault_company or not company_name:
+        if not vault_company:
             return False
         
         if not is_encrypted(vault_company):
             return True  # No encryption required
         
         try:
+            # Try to decrypt the vault content
             decrypted = decrypt_string(vault_company, password)
-            return decrypted == company_name
+            # If decryption succeeds, the password is valid
+            # The decrypted content should be valid JSON (even if it's just {})
+            json.loads(decrypted)
+            return True
         except:
+            # Decryption failed or result is not valid JSON - wrong password
             return False
 
 class APIClient:
@@ -1724,7 +1730,7 @@ class CommandHandler:
                 master_password = getpass.getpass("Master Password: ")
             
             # Validate master password
-            if company and self.config_manager.validate_master_password(master_password):
+            if self.config_manager.validate_master_password(master_password):
                 self.config_manager.set_master_password(master_password)
                 if self.output_format != 'json':
                     print(colorize("Master password validated successfully", 'GREEN'))
