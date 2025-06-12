@@ -1367,9 +1367,17 @@ def format_output(data, format_type, message=None, error=None):
             return "No data available"
 
 # Utility functions
+
+# Static salt for password hashing - provides additional protection against dictionary attacks
+# This salt is concatenated with the password before hashing to ensure even common passwords
+# produce unique hashes. The salt value must be consistent across all components.
+STATIC_SALT = 'Rd!@cc111$ecur3P@$$w0rd$@lt#H@$h'
+
 def pwd_hash(pwd):
     """Generate a hexadecimal password hash for authentication and user operations"""
-    return "0x" + hashlib.sha256(pwd.encode()).digest().hex()
+    # Concatenate password with static salt before hashing
+    salted_password = pwd + STATIC_SALT
+    return "0x" + hashlib.sha256(salted_password.encode()).digest().hex()
 
 def extract_table_data(response, table_index=0):
     """Extract data from API response tables"""
