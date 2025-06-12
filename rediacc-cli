@@ -14,6 +14,7 @@ import urllib.parse
 import urllib.error
 import base64
 from typing import Dict, Any, Optional, List, Union
+from pathlib import Path
 
 # Try to import cryptography library
 try:
@@ -48,6 +49,18 @@ def colorize(text, color):
 if not CRYPTO_AVAILABLE:
     print(colorize("Warning: cryptography library not installed. Vault encryption will not be available.", 'YELLOW'))
     print(colorize("Install with: pip install cryptography", 'YELLOW'))
+
+# Load CLI configuration from JSON file
+CLI_CONFIG_PATH = Path(__file__).parent / 'rediacc-cli.json'
+try:
+    with open(CLI_CONFIG_PATH, 'r') as f:
+        cli_config = json.load(f)
+        QUEUE_FUNCTIONS = cli_config['QUEUE_FUNCTIONS']
+        CMD_CONFIG_JSON = cli_config['CMD_CONFIG']
+        ARG_DEFS_JSON = cli_config['ARG_DEFS']
+except Exception as e:
+    print(colorize(f"Error loading CLI configuration from {CLI_CONFIG_PATH}: {e}", 'RED'))
+    sys.exit(1)
 
 # Vault Encryption Functions
 # Following the same protocol as the web console (AES-256-GCM with PBKDF2)
@@ -194,883 +207,72 @@ def decrypt_vault_fields(obj: dict, password: str) -> dict:
     return result
 
 # Available bash functions for queuing
-QUEUE_FUNCTIONS = {
-    # System setup functions
-    'os_setup': {
-        'description': 'Setup operating system with required tools and configurations',
-        'params': {
-            'datastore_size': {'type': 'string', 'default': '95%', 'help': 'Datastore size (e.g., 95%, 100G)'},
-            'source': {'type': 'string', 'default': 'apt-repo', 'help': 'Package source'}
-        }
-    },
-    'hello': {
-        'description': 'Simple test function that prints hello from hostname',
-        'params': {}
-    },
-    'uninstall': {
-        'description': 'Cleanup and uninstall system components',
-        'params': {}
-    },
-    
-    # Repository management functions
-    'repo_new': {
-        'description': 'Create a new repository',
-        'params': {
-            'repo': {'type': 'string', 'required': True, 'help': 'Repository name (no numbers)'},
-            'size': {'type': 'string', 'required': True, 'help': 'Repository size (e.g., 10G)'}
-        }
-    },
-    'repo_mount': {
-        'description': 'Mount repository filesystems',
-        'params': {
-            'repo': {'type': 'string', 'required': True, 'help': 'Repository name(s), comma-separated'},
-            'from': {'type': 'string', 'help': 'Remote machine to mount from'}
-        }
-    },
-    'repo_unmount': {
-        'description': 'Unmount repository filesystems',
-        'params': {
-            'repo': {'type': 'string', 'required': True, 'help': 'Repository name(s), comma-separated'},
-            'from': {'type': 'string', 'help': 'Remote machine to unmount from'}
-        }
-    },
-    'repo_up': {
-        'description': 'Start repository services using Rediaccfile',
-        'params': {
-            'repo': {'type': 'string', 'required': True, 'help': 'Repository name(s), comma-separated'},
-            'option': {'type': 'string', 'help': 'Options (e.g., prep-only)'}
-        }
-    },
-    'repo_down': {
-        'description': 'Stop repository services',
-        'params': {
-            'repo': {'type': 'string', 'required': True, 'help': 'Repository name(s), comma-separated'}
-        }
-    },
-    'repo_resize': {
-        'description': 'Resize repository storage',
-        'params': {
-            'repo': {'type': 'string', 'required': True, 'help': 'Repository name'},
-            'size': {'type': 'string', 'required': True, 'help': 'New size (e.g., 20G)'}
-        }
-    },
-    'repo_rm': {
-        'description': 'Delete repository',
-        'params': {
-            'repo': {'type': 'string', 'required': True, 'help': 'Repository name'}
-        }
-    },
-    'repo_plugin': {
-        'description': 'Activate repository plugins',
-        'params': {
-            'repo': {'type': 'string', 'required': True, 'help': 'Repository name(s), comma-separated'},
-            'plugin': {'type': 'string', 'required': True, 'help': 'Plugin name(s), comma-separated'}
-        }
-    },
-    'repo_plugout': {
-        'description': 'Deactivate repository plugins',
-        'params': {
-            'repo': {'type': 'string', 'required': True, 'help': 'Repository name(s), comma-separated'},
-            'plugin': {'type': 'string', 'required': True, 'help': 'Plugin name(s), comma-separated'}
-        }
-    },
-    'repo_ownership': {
-        'description': 'Change repository ownership',
-        'params': {
-            'repo': {'type': 'string', 'required': True, 'help': 'Repository name'},
-            'from': {'type': 'string', 'required': True, 'help': 'Current owner'},
-            'to': {'type': 'string', 'help': 'New owner (default: universal user)'}
-        }
-    },
-    'repo_list': {
-        'description': 'List repositories',
-        'params': {
-            'kind': {'type': 'string', 'default': 'repo', 'help': 'Type to list'},
-            'format': {'type': 'string', 'help': 'Output format (json)'}
-        }
-    },
-    
-    # Backup functions
-    'repo_push': {
-        'description': 'Push repository to remote storage',
-        'params': {
-            'repo': {'type': 'string', 'required': True, 'help': 'Repository name(s), comma-separated'},
-            'to': {'type': 'string', 'help': 'Destination machine/storage'},
-            'option': {'type': 'string', 'help': 'Options (e.g., no-suffix, override)'}
-        }
-    },
-    'repo_pull': {
-        'description': 'Pull repository from remote storage',
-        'params': {
-            'from': {'type': 'string', 'required': True, 'help': 'Source machine/storage'},
-            'repo': {'type': 'string', 'required': True, 'help': 'Repository name(s), comma-separated'}
-        }
-    },
-    
-    # Socket mapping
-    'map_socket': {
-        'description': 'Map socket from remote machine',
-        'params': {
-            'machine': {'type': 'string', 'required': True, 'help': 'Machine name'},
-            'repo': {'type': 'string', 'required': True, 'help': 'Repository name'},
-            'plugin': {'type': 'string', 'required': True, 'help': 'Plugin name'}
-        }
-    }
-}
+# Convert lambda functions from JSON strings to actual functions
+def reconstruct_cmd_config():
+    """Reconstruct CMD_CONFIG with actual lambda functions"""
+    cmd_config = {}
+    for key, value in CMD_CONFIG_JSON.items():
+        if isinstance(value, dict):
+            if 'params' in value and isinstance(value['params'], str) and value['params'].startswith('lambda'):
+                # Create a new dict with the lambda evaluated
+                cmd_config[key] = value.copy()
+                cmd_config[key]['params'] = eval(value['params'])
+            else:
+                # Nested dict (like 'create', 'list', etc.)
+                cmd_config[key] = {}
+                for sub_key, sub_value in value.items():
+                    if isinstance(sub_value, dict) and 'params' in sub_value and isinstance(sub_value['params'], str) and sub_value['params'].startswith('lambda'):
+                        cmd_config[key][sub_key] = sub_value.copy()
+                        cmd_config[key][sub_key]['params'] = eval(sub_value['params'])
+                    else:
+                        cmd_config[key][sub_key] = sub_value
+        else:
+            cmd_config[key] = value
+    return cmd_config
 
-# Command and API endpoint configuration
-CMD_CONFIG = {
-    # Authentication commands
-    'login': {
-        'auth_required': False,
-        'endpoint': 'CreateAuthenticationRequest',
-        'auth_type': 'credentials',
-        'params': lambda args: {
-            'name': args.session_name or "CLI Session",
-            '2FACode': args.tfa_code,
-            'requestedPermissions': args.permissions,
-            'tokenExpirationHours': args.expiration,
-            'target': getattr(args, 'target', None)
-        },
-        'success_msg': 'Successfully logged in as {email}'
-    },
-    'logout': {
-        'auth_required': True,
-        'endpoint': 'DeleteUserRequest',
-        'auth_type': 'token',
-        'success_msg': 'Successfully logged out'
-    },
-    
-    # Create commands
-    'create': {
-        'company': {
-            'endpoint': 'CreateNewCompany',
-            'auth_type': 'credentials',
-            'params': lambda args: {
-                'companyName': args.name,
-                'activationCode': args.activation_code or TEST_ACTIVATION_CODE,
-                'subscriptionPlan': args.plan or 'COMMUNITY'
-            },
-            'success_msg': 'Successfully created company: {name}'
-        },
-        'user': {
-            'endpoint': 'CreateNewUser',
-            'params': lambda args: {
-                'newUserEmail': args.email,
-                'newUserHash': pwd_hash(args.password),
-                'activationCode': args.activation_code or TEST_ACTIVATION_CODE
-            },
-            'success_msg': 'Successfully created user: {email}'
-        },
-        'team': {
-            'endpoint': 'CreateTeam',
-            'params': lambda args: {
-                'teamName': args.name,
-                'teamVault': get_vault_data(args) or '{}'
-            },
-            'success_msg': 'Successfully created team: {name}'
-        },
-        'region': {
-            'endpoint': 'CreateRegion',
-            'params': lambda args: {
-                'regionName': args.name,
-                'regionVault': get_vault_data(args) or '{}'
-            },
-            'success_msg': 'Successfully created region: {name}'
-        },
-        'bridge': {
-            'endpoint': 'CreateBridge',
-            'params': lambda args: {
-                'regionName': args.region,
-                'bridgeName': args.name,
-                'bridgeVault': get_vault_data(args) or '{}'
-            },
-            'success_msg': 'Successfully created bridge: {name} in region {region}'
-        },
-        'machine': {
-            'endpoint': 'CreateMachine',
-            'params': lambda args: {
-                'teamName': args.team,
-                'bridgeName': args.bridge,
-                'machineName': args.name,
-                'machineVault': get_vault_data(args) or '{}'
-            },
-            'success_msg': 'Successfully created machine: {name} for team {team}'
-        },
-        'repository': {
-            'endpoint': 'CreateRepository',
-            'params': lambda args: {
-                'teamName': args.team,
-                'repoName': args.name,
-                'repoVault': get_vault_data(args) or '{}'
-            },
-            'success_msg': 'Successfully created repository: {name} for team {team}'
-        },
-        'storage': {
-            'endpoint': 'CreateStorage',
-            'params': lambda args: {
-                'teamName': args.team,
-                'storageName': args.name,
-                'storageVault': get_vault_data(args) or '{}'
-            },
-            'success_msg': 'Successfully created storage: {name} for team {team}'
-        },
-        'schedule': {
-            'endpoint': 'CreateSchedule',
-            'params': lambda args: {
-                'teamName': args.team,
-                'scheduleName': args.name,
-                'scheduleVault': get_vault_data(args) or '{}'
-            },
-            'success_msg': 'Successfully created schedule: {name} for team {team}'
-        },
-        'queue-item': {
-            'endpoint': 'CreateQueueItem',
-            'params': lambda args: {
-                'teamName': args.team,
-                'machineName': args.machine,
-                'bridgeName': args.bridge,  # Bridge is now passed as parameter
-                'queueVault': get_vault_data(args) or '{}',  # Vault data might still include bridge info
-                'priority': getattr(args, 'priority', 3)  # Default priority is 3 (normal)
-            },
-            'success_msg': 'Successfully created queue item for machine {machine} with priority {priority}'
-        }
-    },
-    
-    # List commands
-    'list': {
-        'teams': {
-            'endpoint': 'GetCompanyTeams',
-            'params': lambda args: {}
-        },
-        'regions': {
-            'endpoint': 'GetCompanyRegions',
-            'params': lambda args: {}
-        },
-        'bridges': {
-            'endpoint': 'GetRegionBridges',
-            'params': lambda args: {'regionName': args.region}
-        },
-        'users': {
-            'endpoint': 'GetCompanyUsers',
-            'params': lambda args: {}
-        },
-        'sessions': {
-            'endpoint': 'GetUserRequests',
-            'params': lambda args: {}
-        },
-        'resource-limits': {
-            'endpoint': 'GetCompanyDashboardJson',
-            'params': lambda args: {}
-        },
-        'subscription': {
-            'endpoint': 'GetCompanyDashboardJson',
-            'params': lambda args: {}
-        },
-        'data-graph': {
-            'endpoint': 'GetCompanyDataGraphJson',
-            'params': lambda args: {}
-        },
-        'company-vault': {
-            'endpoint': 'GetCompanyVault',
-            'params': lambda args: {}
-        },
-        'lookup-data': {
-            'endpoint': 'GetLookupData',
-            'params': lambda args: {'context': getattr(args, 'context', None)}
-        },
-        'user-company': {
-            'endpoint': 'GetUserCompany',
-            'params': lambda args: {}
-        },
-        'audit-logs': {
-            'endpoint': 'GetAuditLogs',
-            'params': lambda args: {
-                'startDate': getattr(args, 'start_date', None),
-                'endDate': getattr(args, 'end_date', None),
-                'entityFilter': getattr(args, 'entity_filter', None),
-                'maxRecords': getattr(args, 'max_records', None)
-            }
-        },
-        'entity-history': {
-            'endpoint': 'GetEntityHistory',
-            'params': lambda args: {
-                'entity': args.entity_type,
-                'credential': args.credential,
-                'maxRecords': getattr(args, 'max_records', None)
-            }
-        }
-    },
-    
-    # Remove commands
-    'rm': {
-        'team': {
-            'endpoint': 'DeleteTeam',
-            'params': lambda args: {'teamName': args.name},
-            'confirm_msg': "Are you sure you want to delete team '{name}'? This will remove all resources in the team.",
-            'success_msg': 'Successfully deleted team: {name}'
-        },
-        'machine': {
-            'endpoint': 'DeleteMachine',
-            'params': lambda args: {'teamName': args.team, 'machineName': args.name},
-            'confirm_msg': "Are you sure you want to delete machine '{name}' from team '{team}'?",
-            'success_msg': 'Successfully deleted machine: {name}'
-        },
-        'bridge': {
-            'endpoint': 'DeleteBridge',
-            'params': lambda args: {'regionName': args.region, 'bridgeName': args.name},
-            'confirm_msg': "Are you sure you want to delete bridge '{name}' from region '{region}'?",
-            'success_msg': 'Successfully deleted bridge: {name}'
-        },
-        'region': {
-            'endpoint': 'DeleteRegion',
-            'params': lambda args: {'regionName': args.name},
-            'confirm_msg': "Are you sure you want to delete region '{name}'? This will remove all bridges in the region.",
-            'success_msg': 'Successfully deleted region: {name}'
-        },
-        'repository': {
-            'endpoint': 'DeleteRepository',
-            'params': lambda args: {'teamName': args.team, 'repoName': args.name},
-            'confirm_msg': "Are you sure you want to delete repository '{name}' from team '{team}'?",
-            'success_msg': 'Successfully deleted repository: {name}'
-        },
-        'storage': {
-            'endpoint': 'DeleteStorage',
-            'params': lambda args: {'teamName': args.team, 'storageName': args.name},
-            'confirm_msg': "Are you sure you want to delete storage '{name}' from team '{team}'?",
-            'success_msg': 'Successfully deleted storage: {name}'
-        },
-        'schedule': {
-            'endpoint': 'DeleteSchedule',
-            'params': lambda args: {'teamName': args.team, 'scheduleName': args.name},
-            'confirm_msg': "Are you sure you want to delete schedule '{name}' from team '{team}'?",
-            'success_msg': 'Successfully deleted schedule: {name}'
-        },
-        'queue-item': {
-            'endpoint': 'DeleteQueueItem',
-            'params': lambda args: {'taskId': args.task_id},
-            'confirm_msg': "Are you sure you want to delete queue item '{task_id}'?",
-            'success_msg': 'Successfully deleted queue item: {task_id}'
-        }
-    },
-    
-    # Bridge commands
-    'bridge': {
-        'reset-auth': {
-            'endpoint': 'ResetBridgeAuthorization',
-            'params': lambda args: {'bridgeName': args.name},
-            'confirm_msg': "Are you sure you want to reset authorization for bridge '{name}'? This will generate new credentials.",
-            'success_msg': 'Successfully reset authorization for bridge: {name}'
-        }
-    },
-    
-    # Vault commands
-    'vault': {
-        'set': {
-            'endpoints': {
-                'team': 'UpdateTeamVault',
-                'machine': 'UpdateMachineVault',
-                'region': 'UpdateRegionVault',
-                'bridge': 'UpdateBridgeVault',
-                'company': 'UpdateCompanyVault',
-                'repository': 'UpdateRepositoryVault',
-                'storage': 'UpdateStorageVault',
-                'schedule': 'UpdateScheduleVault'
-            },
-            'params': lambda args: get_vault_set_params(args),
-            'success_msg': 'Successfully updated {resource_type} vault'
-        }
-    },
+# Convert ARG_DEFS type lambdas
+def reconstruct_arg_defs():
+    """Reconstruct ARG_DEFS with actual type functions"""
+    arg_defs = {}
+    for key, value in ARG_DEFS_JSON.items():
+        if isinstance(value, list):
+            arg_defs[key] = []
+            for arg in value:
+                if isinstance(arg, dict) and 'type' in arg and isinstance(arg['type'], str) and arg['type'].startswith('lambda'):
+                    new_arg = arg.copy()
+                    new_arg['type'] = eval(arg['type'])
+                    arg_defs[key].append(new_arg)
+                elif isinstance(arg, dict) and 'type' in arg and arg['type'] == 'int':
+                    new_arg = arg.copy()
+                    new_arg['type'] = int
+                    arg_defs[key].append(new_arg)
+                else:
+                    arg_defs[key].append(arg)
+        elif isinstance(value, dict):
+            arg_defs[key] = {}
+            for sub_key, sub_value in value.items():
+                if isinstance(sub_value, list):
+                    arg_defs[key][sub_key] = []
+                    for arg in sub_value:
+                        if isinstance(arg, dict) and 'type' in arg and isinstance(arg['type'], str) and arg['type'].startswith('lambda'):
+                            new_arg = arg.copy()
+                            new_arg['type'] = eval(arg['type'])
+                            arg_defs[key][sub_key].append(new_arg)
+                        elif isinstance(arg, dict) and 'type' in arg and arg['type'] == 'int':
+                            new_arg = arg.copy()
+                            new_arg['type'] = int
+                            arg_defs[key][sub_key].append(new_arg)
+                        else:
+                            arg_defs[key][sub_key].append(arg)
+                else:
+                    arg_defs[key][sub_key] = sub_value
+        else:
+            arg_defs[key] = value
+    return arg_defs
 
-    # Permission commands
-    'permission': {
-        'create-group': {
-            'endpoint': 'CreatePermissionGroup',
-            'params': lambda args: {'permissionGroupName': args.name},
-            'success_msg': 'Successfully created permission group: {name}'
-        },
-        'delete-group': {
-            'endpoint': 'DeletePermissionGroup',
-            'params': lambda args: {'permissionGroupName': args.name},
-            'confirm_msg': "Are you sure you want to delete permission group '{name}'?",
-            'success_msg': 'Successfully deleted permission group: {name}'
-        },
-        'add': {
-            'endpoint': 'CreatePermissionInGroup',
-            'params': lambda args: {
-                'permissionGroupName': args.group, 
-                'permissionName': args.name
-            },
-            'success_msg': 'Successfully added permission: {name} to group {group}'
-        },
-        'remove': {
-            'endpoint': 'DeletePermissionFromGroup',
-            'params': lambda args: {
-                'permissionGroupName': args.group, 
-                'permissionName': args.name
-            },
-            'confirm_msg': "Are you sure you want to remove permission '{name}' from group '{group}'?",
-            'success_msg': 'Successfully removed permission: {name} from group {group}'
-        },
-        'assign': {
-            'endpoint': 'UpdateUserAssignedPermissions',
-            'params': lambda args: {
-                'userEmail': args.email, 
-                'permissionGroupName': args.group
-            },
-            'success_msg': 'Successfully assigned permission group {group} to user {email}'
-        },
-        'list-groups': {
-            'endpoint': 'GetCompanyPermissionGroups',
-            'params': lambda args: {}
-        },
-        'list-group': {
-            'endpoint': 'GetPermissionGroupDetails',
-            'params': lambda args: {'permissionGroupName': args.name}
-        }
-    },
-    
-    # User commands
-    'user': {
-        'activate': {
-            'auth_required': False,
-            'endpoint': 'ActivateUserAccount',
-            'params': lambda args: {
-                'userEmail': args.email,
-                'activationCode': args.code or TEST_ACTIVATION_CODE
-            },
-            'success_msg': 'Successfully activated user: {email}'
-        },
-        'deactivate': {
-            'endpoint': 'UpdateUserToDeactivated',
-            'params': lambda args: {'userEmail': args.email},
-            'confirm_msg': "Are you sure you want to deactivate user '{email}'?",
-            'success_msg': 'Successfully deactivated user: {email}'
-        },
-        'update-email': {
-            'endpoint': 'UpdateUserEmail',
-            'params': lambda args: {
-                'currentUserEmail': args.current_email,
-                'newUserEmail': args.new_email
-            },
-            'success_msg': 'Successfully updated user email: {current_email} → {new_email}'
-        },
-        'update-password': {
-            'endpoint': 'UpdateUserPassword',
-            'params': lambda args: {
-                'userNewPass': pwd_hash(args.new_password)
-            },
-            'success_msg': 'Successfully updated user password'
-        },
-        'update-2fa': {
-            'endpoint': 'UpdateUser2FA',
-            'params': lambda args: {
-                'enable': args.enable,
-                'userHash': pwd_hash(args.password),
-                'currentCode': getattr(args, 'current_code', None)
-            },
-            'success_msg': 'Successfully updated 2FA settings'
-        }
-    },
-    
-    # Team membership commands
-    'team-member': {
-        'add': {
-            'endpoint': 'CreateTeamMembership',
-            'params': lambda args: {
-                'teamName': args.team,
-                'newUserEmail': args.email
-            },
-            'success_msg': 'Successfully added {email} to team {team}'
-        },
-        'remove': {
-            'endpoint': 'DeleteUserFromTeam',
-            'params': lambda args: {
-                'teamName': args.team,
-                'removeUserEmail': args.email
-            },
-            'confirm_msg': "Are you sure you want to remove '{email}' from team '{team}'?",
-            'success_msg': 'Successfully removed {email} from team {team}'
-        }
-    },
-    
-    # Queue commands
-    'queue': {
-        'get-next': {
-            'endpoint': 'GetQueueItemsNext',
-            'params': lambda args: {
-                'itemCount': args.count or 3
-            }
-        },
-        'list': {
-            'endpoint': 'GetTeamQueueItems',
-            'params': lambda args: {
-                'teamName': getattr(args, 'team', None),
-                'machineName': getattr(args, 'machine', None),
-                'bridgeName': getattr(args, 'bridge', None),
-                'status': getattr(args, 'status', None),
-                'priority': getattr(args, 'priority', None),
-                'minPriority': getattr(args, 'min_priority', None),
-                'maxPriority': getattr(args, 'max_priority', None),
-                'dateFrom': getattr(args, 'date_from', None),
-                'dateTo': getattr(args, 'date_to', None),
-                'taskId': getattr(args, 'task_id', None),
-                'includeCompleted': getattr(args, 'include_completed', True),
-                'includeCancelled': getattr(args, 'include_cancelled', True),
-                'onlyStale': getattr(args, 'only_stale', False),
-                'staleThresholdMinutes': getattr(args, 'stale_threshold', None),
-                'maxRecords': getattr(args, 'max_records', None)
-            }
-        },
-        'update-response': {
-            'endpoint': 'UpdateQueueItemResponse',
-            'params': lambda args: {
-                'taskId': args.task_id,
-                'responseVault': get_vault_data(args) or '{}'
-            },
-            'success_msg': 'Successfully updated queue item response: {task_id}'
-        },
-        'complete': {
-            'endpoint': 'UpdateQueueItemToCompleted',
-            'params': lambda args: {
-                'taskId': args.task_id,
-                'finalVault': get_vault_data(args) or '{}'
-            },
-            'success_msg': 'Successfully completed queue item: {task_id}'
-        },
-        'trace': {
-            'endpoint': 'GetQueueItemTrace',
-            'params': lambda args: {
-                'taskId': args.task_id
-            }
-        }
-    }
-}
-
-# Command-line argument definitions
-ARG_DEFS = {
-    'login': [
-        {'name': '--email', 'help': 'User email address'},
-        {'name': '--password', 'help': 'User password'},
-        {'name': '--master-password', 'help': 'Master password for vault encryption'},
-        {'name': '--session-name', 'help': 'Name for this session'},
-        {'name': '--tfa-code', 'help': 'Two-factor authentication code'},
-        {'name': '--permissions', 'help': 'Requested permission group'},
-        {'name': '--expiration', 'type': int, 'help': 'Token expiration in hours (default: 24)'},
-        {'name': '--target', 'help': 'Target resource (e.g., bridge name for bridge token)'}
-    ],
-    'logout': [],
-    
-    'create': {
-        'company': [
-            {'name': 'name', 'help': 'Company name'},
-            {'name': '--email', 'help': 'Admin email address'},
-            {'name': '--password', 'help': 'Admin password'},
-            {'name': '--activation-code', 'help': f'Activation code (default: {TEST_ACTIVATION_CODE})'},
-            {'name': '--plan', 'help': 'Subscription plan', 'choices': ['COMMUNITY', 'ADVANCED', 'PREMIUM', 'ELITE']}
-        ],
-        'user': [
-            {'name': 'email', 'help': 'User email address'},
-            {'name': '--password', 'help': 'User password'},
-            {'name': '--activation-code', 'help': f'Activation code (default: {TEST_ACTIVATION_CODE})'}
-        ],
-        'team': [
-            {'name': 'name', 'help': 'Team name'},
-            {'name': '--vault', 'help': 'JSON vault data'},
-            {'name': '--vault-file', 'help': 'File containing JSON vault data'}
-        ],
-        'region': [
-            {'name': 'name', 'help': 'Region name'},
-            {'name': '--vault', 'help': 'JSON vault data'},
-            {'name': '--vault-file', 'help': 'File containing JSON vault data'}
-        ],
-        'bridge': [
-            {'name': 'region', 'help': 'Region name'},
-            {'name': 'name', 'help': 'Bridge name'},
-            {'name': '--vault', 'help': 'JSON vault data'},
-            {'name': '--vault-file', 'help': 'File containing JSON vault data'}
-        ],
-        'machine': [
-            {'name': 'team', 'help': 'Team name'},
-            {'name': 'bridge', 'help': 'Bridge name'},
-            {'name': 'name', 'help': 'Machine name'},
-            {'name': '--vault', 'help': 'JSON vault data'},
-            {'name': '--vault-file', 'help': 'File containing JSON vault data'}
-        ],
-        'repository': [
-            {'name': 'team', 'help': 'Team name'},
-            {'name': 'name', 'help': 'Repository name'},
-            {'name': '--vault', 'help': 'JSON vault data'},
-            {'name': '--vault-file', 'help': 'File containing JSON vault data'}
-        ],
-        'storage': [
-            {'name': 'team', 'help': 'Team name'},
-            {'name': 'name', 'help': 'Storage name'},
-            {'name': '--vault', 'help': 'JSON vault data'},
-            {'name': '--vault-file', 'help': 'File containing JSON vault data'}
-        ],
-        'schedule': [
-            {'name': 'team', 'help': 'Team name'},
-            {'name': 'name', 'help': 'Schedule name'},
-            {'name': '--vault', 'help': 'JSON vault data'},
-            {'name': '--vault-file', 'help': 'File containing JSON vault data'}
-        ],
-        'queue-item': [
-            {'name': 'team', 'help': 'Team name'},
-            {'name': 'machine', 'help': 'Machine name'},
-            {'name': 'bridge', 'help': 'Bridge name'},
-            {'name': '--priority', 'type': int, 'default': 3, 'choices': [1, 2, 3, 4, 5],
-             'help': 'Priority level (1=highest, 5=lowest, default=3). Premium/Elite subscriptions only.'},
-            {'name': '--vault', 'help': 'JSON vault data'},
-            {'name': '--vault-file', 'help': 'File containing JSON vault data'}
-        ]
-    },
-    
-    'list': {
-        'teams': [],
-        'regions': [],
-        'users': [],
-        'sessions': [],
-        'resource-limits': [],
-        'subscription': [],
-        'bridges': [{'name': 'region', 'help': 'Region name'}],
-        'data-graph': [],
-        'company-vault': [],
-        'lookup-data': [{'name': '--context', 'help': 'Context filter (e.g., machine_create, queue_create)'}],
-        'user-company': [],
-        'audit-logs': [
-            {'name': '--start-date', 'help': 'Start date for audit logs (ISO format)'},
-            {'name': '--end-date', 'help': 'End date for audit logs (ISO format)'},
-            {'name': '--entity-filter', 'help': 'Filter by entity type (e.g., Team, Machine, User)'},
-            {'name': '--max-records', 'type': int, 'help': 'Maximum number of records to retrieve (default: 1000)'}
-        ],
-        'entity-history': [
-            {'name': 'entity_type', 'help': 'Entity type (e.g., Team, Machine, User, Region, Bridge)'},
-            {'name': 'credential', 'help': 'Entity credential (GUID)'},
-            {'name': '--max-records', 'type': int, 'help': 'Maximum number of records to retrieve (default: 500)'}
-        ]
-    },
-    
-    'update': {
-        'team': [
-            {'name': 'name', 'help': 'Team name'},
-            {'name': '--new-name', 'help': 'New team name'},
-            {'name': '--vault', 'help': 'JSON vault data'},
-            {'name': '--vault-file', 'help': 'File containing JSON vault data'},
-            {'name': '--vault-version', 'type': int, 'help': 'Vault version'}
-        ],
-        'region': [
-            {'name': 'name', 'help': 'Region name'},
-            {'name': '--new-name', 'help': 'New region name'}
-        ],
-        'bridge': [
-            {'name': 'region', 'help': 'Region name'},
-            {'name': 'name', 'help': 'Bridge name'},
-            {'name': '--new-name', 'help': 'New bridge name'}
-        ],
-        'machine': [
-            {'name': 'team', 'help': 'Team name'},
-            {'name': 'name', 'help': 'Machine name'},
-            {'name': '--new-name', 'help': 'New machine name'},
-            {'name': '--new-bridge', 'help': 'New bridge name'},
-            {'name': '--vault', 'help': 'JSON vault data'},
-            {'name': '--vault-file', 'help': 'File containing JSON vault data'},
-            {'name': '--vault-version', 'type': int, 'help': 'Vault version'}
-        ],
-        'repository': [
-            {'name': 'team', 'help': 'Team name'},
-            {'name': 'name', 'help': 'Repository name'},
-            {'name': '--new-name', 'help': 'New repository name'}
-        ],
-        'storage': [
-            {'name': 'team', 'help': 'Team name'},
-            {'name': 'name', 'help': 'Storage name'},
-            {'name': '--new-name', 'help': 'New storage name'}
-        ],
-        'schedule': [
-            {'name': 'team', 'help': 'Team name'},
-            {'name': 'name', 'help': 'Schedule name'},
-            {'name': '--new-name', 'help': 'New schedule name'}
-        ]
-    },
-    
-    'rm': {
-        'team': [
-            {'name': 'name', 'help': 'Team name'},
-            {'name': '--force', 'action': 'store_true', 'help': 'Skip confirmation'}
-        ],
-        'machine': [
-            {'name': 'team', 'help': 'Team name'},
-            {'name': 'name', 'help': 'Machine name'},
-            {'name': '--force', 'action': 'store_true', 'help': 'Skip confirmation'}
-        ],
-        'bridge': [
-            {'name': 'region', 'help': 'Region name'},
-            {'name': 'name', 'help': 'Bridge name'},
-            {'name': '--force', 'action': 'store_true', 'help': 'Skip confirmation'}
-        ],
-        'region': [
-            {'name': 'name', 'help': 'Region name'},
-            {'name': '--force', 'action': 'store_true', 'help': 'Skip confirmation'}
-        ],
-        'repository': [
-            {'name': 'team', 'help': 'Team name'},
-            {'name': 'name', 'help': 'Repository name'},
-            {'name': '--force', 'action': 'store_true', 'help': 'Skip confirmation'}
-        ],
-        'storage': [
-            {'name': 'team', 'help': 'Team name'},
-            {'name': 'name', 'help': 'Storage name'},
-            {'name': '--force', 'action': 'store_true', 'help': 'Skip confirmation'}
-        ],
-        'schedule': [
-            {'name': 'team', 'help': 'Team name'},
-            {'name': 'name', 'help': 'Schedule name'},
-            {'name': '--force', 'action': 'store_true', 'help': 'Skip confirmation'}
-        ],
-        'queue-item': [
-            {'name': 'task_id', 'help': 'Task ID'},
-            {'name': '--force', 'action': 'store_true', 'help': 'Skip confirmation'}
-        ]
-    },
-    
-    'vault': {
-        'set': [
-            {'name': 'resource_type', 'help': 'Resource type',
-             'choices': ['team', 'machine', 'region', 'bridge', 'company', 'repository', 'storage', 'schedule']},
-            {'name': 'name', 'help': 'Resource name'},
-            {'name': 'file', 'nargs': '?', 'help': 'File containing JSON vault data (or - for stdin)'},
-            {'name': '--team', 'help': 'Team name (for machine, repository, storage, schedule)'},
-            {'name': '--region', 'help': 'Region name (for bridge)'},
-            {'name': '--vault-version', 'type': int, 'help': 'Vault version'}
-        ],
-        'set-password': [],
-        'clear-password': [],
-        'status': []
-    },
-    
-    # Permission command arguments
-    'permission': {
-        'create-group': [
-            {'name': 'name', 'help': 'Permission group name'}
-        ],
-        'delete-group': [
-            {'name': 'name', 'help': 'Permission group name'},
-            {'name': '--force', 'action': 'store_true', 'help': 'Skip confirmation'}
-        ],
-        'add': [
-            {'name': 'group', 'help': 'Permission group name'},
-            {'name': 'name', 'help': 'Permission name'}
-        ],
-        'remove': [
-            {'name': 'group', 'help': 'Permission group name'},
-            {'name': 'name', 'help': 'Permission name'},
-            {'name': '--force', 'action': 'store_true', 'help': 'Skip confirmation'}
-        ],
-        'assign': [
-            {'name': 'email', 'help': 'User email address'},
-            {'name': 'group', 'help': 'Permission group name'}
-        ],
-        'list-groups': [],
-        'list-group': [
-            {'name': 'name', 'help': 'Permission group name'}
-        ]
-    },
-    
-    # User command arguments
-    'user': {
-        'activate': [
-            {'name': 'email', 'help': 'User email address'},
-            {'name': '--code', 'help': f'Activation code (default: {TEST_ACTIVATION_CODE})'}
-        ],
-        'deactivate': [
-            {'name': 'email', 'help': 'User email address'},
-            {'name': '--force', 'action': 'store_true', 'help': 'Skip confirmation'}
-        ],
-        'update-email': [
-            {'name': 'current_email', 'help': 'Current user email'},
-            {'name': 'new_email', 'help': 'New user email'}
-        ],
-        'update-password': [
-            {'name': '--new-password', 'help': 'New password'}
-        ],
-        'update-2fa': [
-            {'name': 'enable', 'help': 'Enable (1/true) or disable (0/false) 2FA',
-             'type': lambda x: bool(int(x) if x in ['0', '1'] else x.lower() == 'true')},
-            {'name': '--password', 'help': 'Current password for verification'},
-            {'name': '--current-code', 'help': 'Current 2FA code (required when disabling)'}
-        ]
-    },
-    
-    # Team member command arguments
-    'team-member': {
-        'add': [
-            {'name': 'team', 'help': 'Team name'},
-            {'name': 'email', 'help': 'User email address'}
-        ],
-        'remove': [
-            {'name': 'team', 'help': 'Team name'},
-            {'name': 'email', 'help': 'User email address'},
-            {'name': '--force', 'action': 'store_true', 'help': 'Skip confirmation'}
-        ]
-    },
-    
-    # Bridge command arguments
-    'bridge': {
-        'reset-auth': [
-            {'name': 'name', 'help': 'Bridge name'},
-            {'name': '--force', 'action': 'store_true', 'help': 'Skip confirmation'}
-        ]
-    },
-    
-    # Queue command arguments with enhanced functionality
-    'queue': {
-        'get-next': [
-            {'name': '--count', 'type': int, 'help': 'Number of items to retrieve (default: 3)'}
-        ],
-        'list': [
-            {'name': '--team', 'help': 'Filter by team name(s), comma-separated'},
-            {'name': '--machine', 'help': 'Filter by specific machine name'},
-            {'name': '--bridge', 'help': 'Filter by specific bridge name'},
-            {'name': '--status', 'help': 'Filter by status(es), comma-separated (e.g., PENDING,PROCESSING)'},
-            {'name': '--priority', 'type': int, 'help': 'Filter by specific priority (1-5)'},
-            {'name': '--min-priority', 'type': int, 'help': 'Filter by minimum priority (1-5)'},
-            {'name': '--max-priority', 'type': int, 'help': 'Filter by maximum priority (1-5)'},
-            {'name': '--date-from', 'help': 'Filter by date range start (ISO format)'},
-            {'name': '--date-to', 'help': 'Filter by date range end (ISO format)'},
-            {'name': '--task-id', 'help': 'Search for specific task ID'},
-            {'name': '--no-completed', 'dest': 'include_completed', 'action': 'store_false', 
-             'help': 'Exclude completed items (default: include)'},
-            {'name': '--no-cancelled', 'dest': 'include_cancelled', 'action': 'store_false',
-             'help': 'Exclude cancelled items (default: include)'},
-            {'name': '--only-stale', 'action': 'store_true', 'help': 'Show only stale items'},
-            {'name': '--stale-threshold', 'type': int, 'help': 'Custom stale threshold in minutes (default: 10)'},
-            {'name': '--max-records', 'type': int, 'help': 'Maximum records to retrieve (default: 1000, max: 10000)'}
-        ],
-        'update-response': [
-            {'name': 'task_id', 'help': 'Task ID'},
-            {'name': '--vault', 'help': 'JSON vault data'},
-            {'name': '--vault-file', 'help': 'File containing JSON vault data'}
-        ],
-        'complete': [
-            {'name': 'task_id', 'help': 'Task ID'},
-            {'name': '--vault', 'help': 'JSON vault data'},
-            {'name': '--vault-file', 'help': 'File containing JSON vault data'}
-        ],
-        'add': [
-            {'name': 'team', 'help': 'Team name'},
-            {'name': 'machine', 'help': 'Machine name'},
-            {'name': 'bridge', 'help': 'Bridge name'},
-            {'name': 'function', 'help': 'Function to execute', 'choices': list(QUEUE_FUNCTIONS.keys())},
-            {'name': '--description', 'help': 'Queue item description'},
-            {'name': '--priority', 'type': int, 'default': 5, 'help': 'Priority (1-10, default: 5)'}
-        ],
-        'list-functions': [],
-        'trace': [
-            {'name': 'task_id', 'help': 'Task ID to trace'}
-        ]
-    }
-}
+# Reconstruct configurations with actual functions
+CMD_CONFIG = reconstruct_cmd_config()
+ARG_DEFS = reconstruct_arg_defs()
 
 class ConfigManager:
     """Manages configuration and authentication state"""
@@ -2596,7 +1798,8 @@ def main():
     # Check if command requires authentication
     auth_not_required_commands = {
         ('user', 'activate'),
-        ('create', 'company')
+        ('create', 'company'),
+        ('queue', 'list-functions')
     }
     
     # Check if it's a standalone command (like 'bridge')
