@@ -294,6 +294,48 @@
         "success_msg": "Successfully reset authorization for bridge: {name}"
       }
     },
+    "update": {
+      "team": {
+        "endpoint": "UpdateTeamName",
+        "params": "lambda args: {'teamName': args.name, 'newTeamName': args.new_name}",
+        "success_msg": "Successfully updated team name: {name} → {new_name}"
+      },
+      "region": {
+        "endpoint": "UpdateRegionName", 
+        "params": "lambda args: {'regionName': args.name, 'newRegionName': args.new_name}",
+        "success_msg": "Successfully updated region name: {name} → {new_name}"
+      },
+      "bridge": {
+        "endpoint": "UpdateBridgeName",
+        "params": "lambda args: {'regionName': args.region, 'bridgeName': args.name, 'newBridgeName': args.new_name}",
+        "success_msg": "Successfully updated bridge name: {name} → {new_name}"
+      },
+      "machine": {
+        "endpoint": "UpdateMachineName",
+        "params": "lambda args: {'teamName': args.team, 'machineName': args.name, 'newMachineName': args.new_name}",
+        "success_msg": "Successfully updated machine name: {name} → {new_name}"
+      },
+      "machine-bridge": {
+        "endpoint": "UpdateMachineAssignedBridge",
+        "params": "lambda args: {'teamName': args.team, 'machineName': args.name, 'newBridgeName': args.new_bridge}",
+        "success_msg": "Successfully updated machine bridge: {name} → {new_bridge}"
+      },
+      "repository": {
+        "endpoint": "UpdateRepositoryName",
+        "params": "lambda args: {'teamName': args.team, 'repoName': args.name, 'newRepoName': args.new_name}",
+        "success_msg": "Successfully updated repository name: {name} → {new_name}"
+      },
+      "storage": {
+        "endpoint": "UpdateStorageName",
+        "params": "lambda args: {'teamName': args.team, 'storageName': args.name, 'newStorageName': args.new_name}",
+        "success_msg": "Successfully updated storage name: {name} → {new_name}"
+      },
+      "schedule": {
+        "endpoint": "UpdateScheduleName",
+        "params": "lambda args: {'teamName': args.team, 'scheduleName': args.name, 'newScheduleName': args.new_name}",
+        "success_msg": "Successfully updated schedule name: {name} → {new_name}"
+      }
+    },
     "vault": {
       "set": {
         "endpoints": {
@@ -345,6 +387,33 @@
       "list-group": {
         "endpoint": "GetPermissionGroupDetails",
         "params": "lambda args: {'permissionGroupName': args.name}"
+      }
+    },
+    "company": {
+      "block-user-requests": {
+        "endpoint": "UpdateCompanyBlockUserRequests",
+        "params": "lambda args: {'block': args.block}",
+        "success_msg": "Successfully updated company user request blocking: {block}"
+      },
+      "update-vault": {
+        "endpoint": "UpdateCompanyVault",
+        "params": "lambda args: {'companyVault': get_vault_data(args) or '{}', 'vaultVersion': getattr(args, 'vault_version', None)}",
+        "success_msg": "Successfully updated company vault"
+      },
+      "get-vaults": {
+        "endpoint": "GetCompanyVaults",
+        "params": "lambda args: {}"
+      },
+      "update-vaults": {
+        "endpoint": "UpdateCompanyVaults",
+        "params": "lambda args: {'vaults': get_vault_data(args) or '{}'}",
+        "success_msg": "Successfully updated company vaults"
+      }
+    },
+    "audit": {
+      "trace": {
+        "endpoint": "GetEntityAuditTrace",
+        "params": "lambda args: {'entity': args.entity_type, 'credential': args.credential, 'maxRecords': getattr(args, 'max_records', None)}"
       }
     },
     "user": {
@@ -411,6 +480,17 @@
       "trace": {
         "endpoint": "GetQueueItemTrace",
         "params": "lambda args: {'taskId': args.task_id}"
+      },
+      "cancel": {
+        "endpoint": "CancelQueueItem",
+        "params": "lambda args: {'taskId': args.task_id}",
+        "confirm_msg": "Are you sure you want to cancel queue item '{task_id}'?",
+        "success_msg": "Successfully cancelled queue item: {task_id}"
+      },
+      "retry": {
+        "endpoint": "RetryFailedQueueItem",
+        "params": "lambda args: {'taskId': args.task_id}",
+        "success_msg": "Successfully retried queue item: {task_id}"
       }
     }
   },
@@ -516,43 +596,41 @@
     "update": {
       "team": [
         {"name": "name", "help": "Team name"},
-        {"name": "--new-name", "help": "New team name"},
-        {"name": "--vault", "help": "JSON vault data"},
-        {"name": "--vault-file", "help": "File containing JSON vault data"},
-        {"name": "--vault-version", "type": "int", "help": "Vault version"}
+        {"name": "new_name", "help": "New team name"}
       ],
       "region": [
         {"name": "name", "help": "Region name"},
-        {"name": "--new-name", "help": "New region name"}
+        {"name": "new_name", "help": "New region name"}
       ],
       "bridge": [
         {"name": "region", "help": "Region name"},
         {"name": "name", "help": "Bridge name"},
-        {"name": "--new-name", "help": "New bridge name"}
+        {"name": "new_name", "help": "New bridge name"}
       ],
       "machine": [
         {"name": "team", "help": "Team name"},
         {"name": "name", "help": "Machine name"},
-        {"name": "--new-name", "help": "New machine name"},
-        {"name": "--new-bridge", "help": "New bridge name"},
-        {"name": "--vault", "help": "JSON vault data"},
-        {"name": "--vault-file", "help": "File containing JSON vault data"},
-        {"name": "--vault-version", "type": "int", "help": "Vault version"}
+        {"name": "new_name", "help": "New machine name"}
+      ],
+      "machine-bridge": [
+        {"name": "team", "help": "Team name"},
+        {"name": "name", "help": "Machine name"},
+        {"name": "new_bridge", "help": "New bridge name"}
       ],
       "repository": [
         {"name": "team", "help": "Team name"},
         {"name": "name", "help": "Repository name"},
-        {"name": "--new-name", "help": "New repository name"}
+        {"name": "new_name", "help": "New repository name"}
       ],
       "storage": [
         {"name": "team", "help": "Team name"},
         {"name": "name", "help": "Storage name"},
-        {"name": "--new-name", "help": "New storage name"}
+        {"name": "new_name", "help": "New storage name"}
       ],
       "schedule": [
         {"name": "team", "help": "Team name"},
         {"name": "name", "help": "Schedule name"},
-        {"name": "--new-name", "help": "New schedule name"}
+        {"name": "new_name", "help": "New schedule name"}
       ]
     },
     "rm": {
@@ -714,6 +792,35 @@
       "list-functions": [],
       "trace": [
         {"name": "task_id", "help": "Task ID to trace"}
+      ],
+      "cancel": [
+        {"name": "task_id", "help": "Task ID to cancel"},
+        {"name": "--force", "action": "store_true", "help": "Skip confirmation"}
+      ],
+      "retry": [
+        {"name": "task_id", "help": "Task ID to retry"}
+      ]
+    },
+    "company": {
+      "block-user-requests": [
+        {"name": "block", "help": "Block user requests (true/false)", "type": "lambda x: x.lower() == 'true'"}
+      ],
+      "update-vault": [
+        {"name": "--vault", "help": "JSON vault data"},
+        {"name": "--vault-file", "help": "File containing JSON vault data"},
+        {"name": "--vault-version", "type": "int", "help": "Vault version"}
+      ],
+      "get-vaults": [],
+      "update-vaults": [
+        {"name": "--vault", "help": "JSON vault data"},
+        {"name": "--vault-file", "help": "File containing JSON vault data"}
+      ]
+    },
+    "audit": {
+      "trace": [
+        {"name": "entity_type", "help": "Entity type (e.g., Team, Machine, User, Region, Bridge)"},
+        {"name": "credential", "help": "Entity credential (GUID)"},
+        {"name": "--max-records", "type": "int", "help": "Maximum number of records to retrieve"}
       ]
     }
   }

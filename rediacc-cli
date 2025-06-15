@@ -1297,6 +1297,26 @@ class CommandHandler:
                     success = False
                 else:
                     result_data['region_name'] = args.new_name
+            
+            # Update vault if provided
+            if (args.vault or args.vault_file) and success:
+                vault_data = get_vault_data(args)
+                region_name = args.new_name if args.new_name else args.name
+                
+                response = self.client.token_request(
+                    "UpdateRegionVault", 
+                    {
+                        "regionName": region_name,
+                        "regionVault": vault_data,
+                        "vaultVersion": args.vault_version or 1
+                    }
+                )
+                
+                if not self.handle_response(response, "Successfully updated region vault"):
+                    success = False
+                else:
+                    result_data['vault_updated'] = True
+                    result_data['vault_version'] = args.vault_version or 1
         
         elif resource_type == 'bridge':
             if args.new_name:
@@ -1315,6 +1335,27 @@ class CommandHandler:
                     success = False
                 else:
                     result_data['bridge_name'] = args.new_name
+            
+            # Update vault if provided
+            if (args.vault or args.vault_file) and success:
+                vault_data = get_vault_data(args)
+                bridge_name = args.new_name if args.new_name else args.name
+                
+                response = self.client.token_request(
+                    "UpdateBridgeVault", 
+                    {
+                        "regionName": args.region,
+                        "bridgeName": bridge_name,
+                        "bridgeVault": vault_data,
+                        "vaultVersion": args.vault_version or 1
+                    }
+                )
+                
+                if not self.handle_response(response, "Successfully updated bridge vault"):
+                    success = False
+                else:
+                    result_data['vault_updated'] = True
+                    result_data['vault_version'] = args.vault_version or 1
         
         elif resource_type == 'machine':
             team_name = args.team
@@ -1394,6 +1435,27 @@ class CommandHandler:
                     success = False
                 else:
                     result_data['repository_name'] = args.new_name
+            
+            # Update vault if provided
+            if (args.vault or args.vault_file) and success:
+                vault_data = get_vault_data(args)
+                repo_name = args.new_name if args.new_name else args.name
+                
+                response = self.client.token_request(
+                    "UpdateRepositoryVault", 
+                    {
+                        "teamName": args.team,
+                        "repoName": repo_name,
+                        "repoVault": vault_data,
+                        "vaultVersion": args.vault_version or 1
+                    }
+                )
+                
+                if not self.handle_response(response, "Successfully updated repository vault"):
+                    success = False
+                else:
+                    result_data['vault_updated'] = True
+                    result_data['vault_version'] = args.vault_version or 1
         
         elif resource_type == 'storage':
             if args.new_name:
@@ -1412,6 +1474,27 @@ class CommandHandler:
                     success = False
                 else:
                     result_data['storage_name'] = args.new_name
+            
+            # Update vault if provided
+            if (args.vault or args.vault_file) and success:
+                vault_data = get_vault_data(args)
+                storage_name = args.new_name if args.new_name else args.name
+                
+                response = self.client.token_request(
+                    "UpdateStorageVault", 
+                    {
+                        "teamName": args.team,
+                        "storageName": storage_name,
+                        "storageVault": vault_data,
+                        "vaultVersion": args.vault_version or 1
+                    }
+                )
+                
+                if not self.handle_response(response, "Successfully updated storage vault"):
+                    success = False
+                else:
+                    result_data['vault_updated'] = True
+                    result_data['vault_version'] = args.vault_version or 1
         
         elif resource_type == 'schedule':
             if args.new_name:
@@ -1430,6 +1513,27 @@ class CommandHandler:
                     success = False
                 else:
                     result_data['schedule_name'] = args.new_name
+            
+            # Update vault if provided
+            if (args.vault or args.vault_file) and success:
+                vault_data = get_vault_data(args)
+                schedule_name = args.new_name if args.new_name else args.name
+                
+                response = self.client.token_request(
+                    "UpdateScheduleVault", 
+                    {
+                        "teamName": args.team,
+                        "scheduleName": schedule_name,
+                        "scheduleVault": vault_data,
+                        "vaultVersion": args.vault_version or 1
+                    }
+                )
+                
+                if not self.handle_response(response, "Successfully updated schedule vault"):
+                    success = False
+                else:
+                    result_data['vault_updated'] = True
+                    result_data['vault_version'] = args.vault_version or 1
         
         else:
             error = f"Unsupported resource type: {resource_type}"
@@ -1784,6 +1888,16 @@ def setup_parser():
                     for arg in subcmd_def:
                         kwargs = {k: v for k, v in arg.items() if k != 'name'}
                         subcmd_parser.add_argument(arg['name'], **kwargs)
+                    
+                    # Special handling for update commands - add vault arguments
+                    if cmd_name == 'update' and subcmd_name in ['team', 'region', 'bridge', 'machine', 'repository', 'storage', 'schedule']:
+                        subcmd_parser.add_argument('--vault', help='JSON vault data')
+                        subcmd_parser.add_argument('--vault-file', help='File containing JSON vault data')
+                        subcmd_parser.add_argument('--vault-version', type=int, help='Vault version')
+                        
+                        # Add new_bridge for machine updates
+                        if subcmd_name == 'machine':
+                            subcmd_parser.add_argument('--new-bridge', help='New bridge name for machine')
     
     return parser
 
