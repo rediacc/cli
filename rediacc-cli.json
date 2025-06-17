@@ -18,7 +18,7 @@
     "repo_new": {
       "description": "Create a new repository",
       "params": {
-        "repo": {"type": "string", "required": true, "help": "Repository name (no numbers)"},
+        "repo": {"type": "string", "required": true, "help": "Repository name"},
         "size": {"type": "string", "required": true, "help": "Repository size (e.g., 10G)"}
       }
     },
@@ -95,8 +95,10 @@
       "description": "Push repository to remote storage",
       "params": {
         "repo": {"type": "string", "required": true, "help": "Repository name(s), comma-separated"},
+        "dest": {"type": "string", "required": true, "help": "Destination filename"},
         "to": {"type": "string", "help": "Destination machine/storage"},
-        "option": {"type": "string", "help": "Options (e.g., no-suffix, override)"}
+        "state": {"type": "string", "help": "Required repository state (online/offline)"},
+        "option": {"type": "string", "help": "Options (e.g., override)"}
       }
     },
     "repo_pull": {
@@ -234,6 +236,26 @@
       "entity-history": {
         "endpoint": "GetEntityHistory",
         "params": "lambda args: {'entity': args.entity_type, 'credential': args.credential, 'maxRecords': getattr(args, 'max_records', None)}"
+      },
+      "team-machines": {
+        "endpoint": "GetTeamMachines",
+        "params": "lambda args: {'teamName': args.team}"
+      },
+      "team-members": {
+        "endpoint": "GetTeamMembers",
+        "params": "lambda args: {'teamName': args.team}"
+      },
+      "team-repositories": {
+        "endpoint": "GetTeamRepositories",
+        "params": "lambda args: {'teamName': args.team}"
+      },
+      "team-schedules": {
+        "endpoint": "GetTeamSchedules",
+        "params": "lambda args: {'teamName': args.team}"
+      },
+      "team-storages": {
+        "endpoint": "GetTeamStorages",
+        "params": "lambda args: {'teamName': args.team}"
       }
     },
     "rm": {
@@ -591,7 +613,12 @@
         {"name": "entity_type", "help": "Entity type (e.g., Team, Machine, User, Region, Bridge)"},
         {"name": "credential", "help": "Entity credential (GUID)"},
         {"name": "--max-records", "type": "int", "help": "Maximum number of records to retrieve (default: 500)"}
-      ]
+      ],
+      "team-machines": [{"name": "team", "help": "Team name"}],
+      "team-members": [{"name": "team", "help": "Team name"}],
+      "team-repositories": [{"name": "team", "help": "Team name"}],
+      "team-schedules": [{"name": "team", "help": "Team name"}],
+      "team-storages": [{"name": "team", "help": "Team name"}]
     },
     "update": {
       "team": [
