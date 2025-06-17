@@ -1290,7 +1290,7 @@ else
 fi
 
 echo "Testing queue add with complex parameters..."
-if ${CLI} queue add "${TEAM_NAME}" "${MACHINE_NAME}" "${NEW_BRIDGE_NAME}" repo_push --repo "repo1,repo2,repo3" --to "backup-storage" --option "no-suffix,override"; then
+if ${CLI} queue add "${TEAM_NAME}" "${MACHINE_NAME}" "${NEW_BRIDGE_NAME}" repo_push --repo "repo1,repo2,repo3" --dest "backup-$(date +%Y%m%d)" --to "backup-storage" --state "offline" --option "override"; then
     print_status "Successfully queued repo_push with complex parameters"
 else
     print_error "Failed to queue repo_push with complex parameters"
