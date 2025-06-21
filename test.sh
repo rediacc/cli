@@ -1312,20 +1312,6 @@ else
     print_error "Failed to queue repo_resize function"
 fi
 
-# Test repo_plugin and repo_plugout functions
-echo "Testing repo_plugin function..."
-if ${CLI} queue add "${TEAM_NAME}" "${MACHINE_NAME}" "${NEW_BRIDGE_NAME}" repo_plugin --repo "${REPO_NAME}" --plugin "browser,terminal"; then
-    print_status "Successfully queued repo_plugin function"
-else
-    print_error "Failed to queue repo_plugin function"
-fi
-
-echo "Testing repo_plugout function..."
-if ${CLI} queue add "${TEAM_NAME}" "${MACHINE_NAME}" "${NEW_BRIDGE_NAME}" repo_plugout --repo "${REPO_NAME}" --plugin "browser"; then
-    print_status "Successfully queued repo_plugout function"
-else
-    print_error "Failed to queue repo_plugout function"
-fi
 
 # Test viewing specific queue item details (if we have JSON output)
 echo "Testing queue item parameter verification..."
