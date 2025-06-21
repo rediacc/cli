@@ -84,7 +84,7 @@
         "to": {"type": "string", "help": "New owner (default: universal user)"}
       }
     },
-    "repo_list": {
+    "list_system": {
       "description": "List repositories",
       "params": {
         "kind": {"type": "string", "default": "repo", "help": "Type to list"},
@@ -812,7 +812,7 @@
         {"name": "team", "help": "Team name"},
         {"name": "machine", "help": "Machine name"},
         {"name": "bridge", "help": "Bridge name"},
-        {"name": "function", "help": "Function to execute", "choices": ["os_setup", "hello", "uninstall", "repo_new", "repo_mount", "repo_unmount", "repo_up", "repo_down", "repo_resize", "repo_rm", "repo_plugin", "repo_plugout", "repo_ownership", "repo_list", "repo_push", "repo_pull", "map_socket"]},
+        {"name": "function", "help": "Function to execute", "choices": ["os_setup", "hello", "uninstall", "repo_new", "repo_mount", "repo_unmount", "repo_up", "repo_down", "repo_resize", "repo_rm", "repo_plugin", "repo_plugout", "repo_ownership", "list_system", "repo_push", "repo_pull", "map_socket"]},
         {"name": "--description", "help": "Queue item description"},
         {"name": "--priority", "type": "int", "default": 5, "help": "Priority (1-10, default: 5)"}
       ],
