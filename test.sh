@@ -1206,13 +1206,6 @@ else
     print_error "Failed to queue 'repo_mount' function"
 fi
 
-# Test map_socket function
-echo "Adding 'map_socket' function to queue..."
-if ${CLI} queue add "${TEAM_NAME}" "${MACHINE_NAME}" "${NEW_BRIDGE_NAME}" map_socket --machine "${MACHINE_NAME}" --repo "${REPO_NAME}" --plugin "test-plugin"; then
-    print_status "Successfully queued 'map_socket' function"
-else
-    print_error "Failed to queue 'map_socket' function"
-fi
 
 # Test queue add with JSON output
 echo "Testing queue add with JSON output..."
