@@ -26,8 +26,8 @@ except ImportError:
     CRYPTO_AVAILABLE = False
     # Print warning after colorize is defined
 
-# Load parent .env file if it exists and SYSTEM_MIDDLEWARE_PORT is not set
-if not os.environ.get('SYSTEM_MIDDLEWARE_PORT'):
+# Load parent .env file if it exists and SYSTEM_HTTP_PORT is not set
+if not os.environ.get('SYSTEM_HTTP_PORT'):
     parent_env = Path(__file__).parent.parent / '.env'
     if parent_env.exists():
         with open(parent_env) as f:
@@ -41,9 +41,9 @@ if not os.environ.get('SYSTEM_MIDDLEWARE_PORT'):
                         os.environ[key] = value
 
 # Configuration
-MIDDLEWARE_PORT = os.environ.get('SYSTEM_MIDDLEWARE_PORT')
-BASE_URL = os.environ.get('REDIACC_API_URL', f'http://localhost:{MIDDLEWARE_PORT}')
-API_PREFIX = '/api/StoredProcedure'
+HTTP_PORT = os.environ.get('SYSTEM_HTTP_PORT', '7322')
+BASE_URL = os.environ.get('REDIACC_API_URL', f'http://localhost:{HTTP_PORT}/api')
+API_PREFIX = '/StoredProcedure'
 CONFIG_DIR = os.path.expanduser('~/.rediacc')
 CONFIG_FILE = os.path.join(CONFIG_DIR, 'config.json')
 REQUEST_TIMEOUT = 30
