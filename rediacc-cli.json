@@ -492,6 +492,20 @@
         "params": "lambda args: {'taskId': args.task_id}",
         "success_msg": "Successfully retried queue item: {task_id}"
       }
+    },
+    "inspect": {
+      "machine": {
+        "endpoint": "GetTeamMachines",
+        "params": "lambda args: {'teamName': args.team}",
+        "filter": "lambda data, args: [m for m in data if m.get('machineName') == args.name]",
+        "single_result": true
+      },
+      "repository": {
+        "endpoint": "GetTeamRepositories", 
+        "params": "lambda args: {'teamName': args.team}",
+        "filter": "lambda data, args: [r for r in data if r.get('repoName') == args.name]",
+        "single_result": true
+      }
     }
   },
   "ARG_DEFS": {
@@ -826,6 +840,16 @@
         {"name": "entity_type", "help": "Entity type (e.g., Team, Machine, User, Region, Bridge)"},
         {"name": "credential", "help": "Entity credential (GUID)"},
         {"name": "--max-records", "type": "int", "help": "Maximum number of records to retrieve"}
+      ]
+    },
+    "inspect": {
+      "machine": [
+        {"name": "team", "help": "Team name"},
+        {"name": "name", "help": "Machine name"}
+      ],
+      "repository": [
+        {"name": "team", "help": "Team name"},
+        {"name": "name", "help": "Repository name"}
       ]
     }
   }

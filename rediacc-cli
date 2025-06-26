@@ -743,7 +743,7 @@ def table_to_dict(headers, rows):
         result.append(item)
     return result
 
-def format_dynamic_tables(response, output_format='text', skip_fields=None):
+def format_dynamic_tables(response, output_format='text', skip_fields=None, include_vault=False):
     """Format all tables from response dynamically, skipping table index 0"""
     if not response or 'tables' not in response:
         return format_output("No data available", output_format)
@@ -754,7 +754,10 @@ def format_dynamic_tables(response, output_format='text', skip_fields=None):
     
     # Fields to skip in output
     if skip_fields is None:
-        skip_fields = ['vaultContent', 'nextRequestCredential', 'vaultVersion', 'newUserHash']
+        skip_fields = ['nextRequestCredential', 'vaultVersion', 'newUserHash']
+        # Only skip vaultContent if not explicitly including it
+        if not include_vault:
+            skip_fields.append('vaultContent')
     
     if output_format == 'json':
         # For JSON output, convert all tables to lists of dictionaries
@@ -847,11 +850,12 @@ def build_queue_vault_data(function_name, args):
 
 class CommandHandler:
     """Unified command handler"""
-    def __init__(self, config_manager, output_format='text'):
+    def __init__(self, config_manager, output_format='text', include_vault=False):
         self.config = config_manager.config
         self.config_manager = config_manager
         self.client = APIClient(self.config, config_manager)
         self.output_format = output_format
+        self.include_vault = include_vault
     
     def handle_response(self, response, success_message=None, format_args=None):
         """Handle API response and print appropriate message"""
@@ -1205,7 +1209,7 @@ class CommandHandler:
             response = self.client.token_request(cmd_config['endpoint'], params)
         
         # For list commands or permission list commands, format the output
-        if cmd_type == 'list' or (cmd_type == 'permission' and resource_type in ['list-groups', 'list-group']) or \
+        if cmd_type == 'list' or cmd_type == 'inspect' or (cmd_type == 'permission' and resource_type in ['list-groups', 'list-group']) or \
            (cmd_type == 'team-member' and resource_type == 'list') or \
            (cmd_type == 'queue' and resource_type in ['get-next', 'list', 'trace']):
             if response.get('error'):
@@ -1216,8 +1220,32 @@ class CommandHandler:
             # Special handling for queue trace command
             if cmd_type == 'queue' and resource_type == 'trace':
                 result = self.format_queue_trace(response, self.output_format)
+            elif cmd_type == 'inspect':
+                # Apply filter for inspect commands
+                if 'filter' in cmd_config:
+                    # Extract data from response
+                    data = extract_table_data(response, 1)  # Data is in table index 1
+                    # Apply filter
+                    filter_func = eval(cmd_config['filter'])
+                    filtered_data = filter_func(data, args)
+                    
+                    if cmd_config.get('single_result') and filtered_data:
+                        # For single result, show just the first match
+                        filtered_data = filtered_data[:1]
+                    
+                    # Create new response with filtered data
+                    filtered_response = {
+                        'success': True,
+                        'tables': [
+                            response['tables'][0],  # Keep credentials table
+                            {'data': filtered_data}  # Replace data with filtered results
+                        ]
+                    }
+                    result = format_dynamic_tables(filtered_response, self.output_format, include_vault=self.include_vault)
+                else:
+                    result = format_dynamic_tables(response, self.output_format, include_vault=self.include_vault)
             else:
-                result = format_dynamic_tables(response, self.output_format)
+                result = format_dynamic_tables(response, self.output_format, include_vault=self.include_vault)
             print(result)
             return 0
         
@@ -1843,6 +1871,9 @@ def setup_parser():
     # Add global output format option
     parser.add_argument('--output', '-o', choices=['text', 'json'], default='text',
                        help='Output format (text or json)')
+    # Add global include-vault option for security
+    parser.add_argument('--include-vault', action='store_true',
+                       help='Include vault content in output (normally hidden for security)')
     
     subparsers = parser.add_subparsers(dest='command', help='Command')
     
@@ -1915,7 +1946,7 @@ def main():
     
     # Load configuration
     config_manager = ConfigManager()
-    handler = CommandHandler(config_manager, output_format)
+    handler = CommandHandler(config_manager, output_format, include_vault=args.include_vault)
     
     # Handle authentication commands directly
     if args.command == 'login':

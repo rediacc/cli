@@ -64,6 +64,19 @@ Thumbs.db
 rediacc-cli-*/
 *.tar.gz
 
+# Test artifacts
+test*.txt
+test-*/
+test-download/
+test-upload/
+test-sync-*/
+*.test
+
+# Temporary files
+tmp/
+temp/
+*.tmp
+
 # Logs
 *.log
 logs/

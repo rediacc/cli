@@ -1,7 +1,7 @@
 #!/bin/bash
 
 # Configuration
-CLI="./rediacc-cli"
+CLI="../rediacc-cli"
 TIMESTAMP=$(date +%Y%m%d_%H%M%S)
 RANDOM_SUFFIX=$(openssl rand -hex 2)
 
