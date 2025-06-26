@@ -15,6 +15,9 @@ from rediacc_cli_core import (
     INTERIM_FOLDER_NAME
 )
 
+# Import token manager
+from token_manager import TokenManager
+
 
 def connect_to_machine(args):
     """Connect to machine via SSH (without repository)"""
@@ -25,21 +28,21 @@ def connect_to_machine(args):
         get_machine_connection_info,
         get_ssh_key_from_vault,
         setup_ssh_for_connection,
-        cleanup_ssh_key,
-        ensure_token_in_config
+        cleanup_ssh_key
     )
     
-    # Ensure token is in config
-    ensure_token_in_config(args.token)
+    # Create token manager with the provided token
+    token_manager = TokenManager()
+    token_manager.set_token(args.token)
     
     # Get machine info
     print("Fetching machine information...")
-    machine_info = get_machine_info(args.token, args.machine)
+    machine_info = get_machine_info(args.machine, token_manager)
     connection_info = get_machine_connection_info(machine_info)
     
     # Get SSH key
     print("Retrieving SSH key...")
-    ssh_key = get_ssh_key_from_vault(args.token)
+    ssh_key = get_ssh_key_from_vault(token_manager)
     if not ssh_key:
         print(colorize("SSH private key not found in team vault", 'RED'))
         sys.exit(1)
@@ -119,8 +122,12 @@ def connect_to_terminal(args):
     """Connect to repository terminal via SSH"""
     print(colorize(f"Connecting to repository '{args.repo}' on machine '{args.machine}'...", 'HEADER'))
     
+    # Create token manager with the provided token
+    token_manager = TokenManager()
+    token_manager.set_token(args.token)
+    
     # Create repository connection
-    conn = RepositoryConnection(args.token, args.machine, args.repo)
+    conn = RepositoryConnection(args.machine, args.repo, token_manager)
     conn.connect()
     
     # Set up SSH

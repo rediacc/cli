@@ -17,8 +17,31 @@ import tempfile
 from pathlib import Path
 from typing import Dict, Any, Optional, Tuple
 
+# Import platform-specific utilities
+from rediacc_cli_platform import (
+    get_null_device,
+    create_temp_file,
+    set_file_permissions,
+    is_windows
+)
+
+# Import token manager
+from token_manager import TokenManager, get_default_token_manager
+
 # Configuration
 CLI_TOOL = os.path.join(os.path.dirname(os.path.abspath(__file__)), 'rediacc-cli')
+
+def safe_error_message(message: str) -> str:
+    """Sanitize error messages to prevent token leakage"""
+    # Replace any GUID-like patterns with masked version
+    import re
+    guid_pattern = r'\b[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}\b'
+    
+    def mask_guid(match):
+        guid = match.group(0)
+        return f"{guid[:8]}..."
+    
+    return re.sub(guid_pattern, mask_guid, message, flags=re.IGNORECASE)
 
 # Default paths from repo.sh
 DATASTORE_PATH = '/mnt/datastore'
@@ -54,19 +77,26 @@ def run_command(cmd, capture_output=True, check=True):
             return subprocess.run(cmd, check=check)
     except subprocess.CalledProcessError as e:
         if check:
-            print(colorize(f"Error running command: {' '.join(cmd)}", 'RED'))
+            # Sanitize command to hide tokens
+            safe_cmd = [safe_error_message(arg) for arg in cmd]
+            print(colorize(f"Error running command: {' '.join(safe_cmd)}", 'RED'))
             if hasattr(e, 'stderr') and e.stderr:
-                print(colorize(f"Error: {e.stderr}", 'RED'))
+                print(colorize(f"Error: {safe_error_message(e.stderr)}", 'RED'))
             sys.exit(1)
         return None
 
-def get_machine_info(token: str, machine_name: str) -> Dict[str, Any]:
+def get_machine_info(machine_name: str, token_manager: Optional[TokenManager] = None) -> Dict[str, Any]:
     """Get machine information using rediacc-cli inspect command"""
-    # Note: token parameter is kept for compatibility but not used directly
-    # The CLI uses the token from its internal config after login
+    if token_manager is None:
+        token_manager = get_default_token_manager()
+    
+    token = token_manager.get_token()
+    if not token:
+        print(colorize("No authentication token available", 'RED'))
+        sys.exit(1)
     
     # First, get the list of all teams to find which team has this machine
-    teams_output = run_command([CLI_TOOL, '--output', 'json', 'list', 'teams'])
+    teams_output = run_command([CLI_TOOL, '--token', token, '--output', 'json', 'list', 'teams'])
     if not teams_output:
         print(colorize("Failed to get teams list", 'RED'))
         sys.exit(1)
@@ -84,7 +114,7 @@ def get_machine_info(token: str, machine_name: str) -> Dict[str, Any]:
                 continue
                 
             # Try to inspect the machine in this team
-            inspect_output = run_command([CLI_TOOL, '--include-vault', '--output', 'json', 'inspect', 'machine', team_name, machine_name])
+            inspect_output = run_command([CLI_TOOL, '--token', token, '--include-vault', '--output', 'json', 'inspect', 'machine', team_name, machine_name])
             if not inspect_output:
                 continue
                 
@@ -118,10 +148,17 @@ def get_machine_info(token: str, machine_name: str) -> Dict[str, Any]:
         print(colorize(f"Failed to parse JSON response: {e}", 'RED'))
         sys.exit(1)
 
-def get_repository_info(token: str, team_name: str, repo_name: str) -> Dict[str, Any]:
+def get_repository_info(team_name: str, repo_name: str, token_manager: Optional[TokenManager] = None) -> Dict[str, Any]:
     """Get repository information using rediacc-cli inspect command"""
-    # Note: token parameter is kept for compatibility but not used directly
-    inspect_output = run_command([CLI_TOOL, '--include-vault', '--output', 'json', 'inspect', 'repository', team_name, repo_name])
+    if token_manager is None:
+        token_manager = get_default_token_manager()
+    
+    token = token_manager.get_token()
+    if not token:
+        print(colorize("No authentication token available", 'RED'))
+        sys.exit(1)
+    
+    inspect_output = run_command([CLI_TOOL, '--token', token, '--include-vault', '--output', 'json', 'inspect', 'repository', team_name, repo_name])
     if not inspect_output:
         print(colorize(f"Failed to inspect repository {repo_name}", 'RED'))
         sys.exit(1)
@@ -154,10 +191,18 @@ def get_repository_info(token: str, team_name: str, repo_name: str) -> Dict[str,
         print(colorize(f"Failed to parse JSON response: {e}", 'RED'))
         sys.exit(1)
 
-def get_ssh_key_from_vault(token: str) -> Optional[str]:
+def get_ssh_key_from_vault(token_manager: Optional[TokenManager] = None) -> Optional[str]:
     """Extract SSH private key from team vault"""
+    if token_manager is None:
+        token_manager = get_default_token_manager()
+    
+    token = token_manager.get_token()
+    if not token:
+        print(colorize("No authentication token available", 'RED'))
+        return None
+    
     # Use the CLI with --include-vault flag to get team vault content
-    teams_output = run_command([CLI_TOOL, '--include-vault', '--output', 'json', 'list', 'teams'])
+    teams_output = run_command([CLI_TOOL, '--token', token, '--include-vault', '--output', 'json', 'list', 'teams'])
     if not teams_output:
         return None
     
@@ -200,25 +245,25 @@ def setup_ssh_for_connection(ssh_key: str, host_entry: str = None) -> Tuple[str,
             pass
     
     # Create temporary SSH key file
-    ssh_key_file = tempfile.NamedTemporaryFile(mode='w', delete=False, suffix='_rsa')
-    ssh_key_file.write(ssh_key)
-    ssh_key_file.close()
+    ssh_key_file_path = create_temp_file(suffix='_rsa', prefix='ssh_key_')
+    with open(ssh_key_file_path, 'w') as f:
+        f.write(ssh_key)
     
     # Set proper permissions
-    os.chmod(ssh_key_file.name, 0o600)
+    set_file_permissions(ssh_key_file_path, 0o600)
     
     # Create temporary known_hosts file if host_entry is provided
-    known_hosts_file = None
+    known_hosts_file_path = None
     if host_entry:
-        known_hosts_file = tempfile.NamedTemporaryFile(mode='w', delete=False, suffix='_known_hosts')
-        known_hosts_file.write(host_entry + '\n')
-        known_hosts_file.close()
-        ssh_opts = f"-o StrictHostKeyChecking=yes -o UserKnownHostsFile={known_hosts_file.name} -i {ssh_key_file.name}"
+        known_hosts_file_path = create_temp_file(suffix='_known_hosts', prefix='known_hosts_')
+        with open(known_hosts_file_path, 'w') as f:
+            f.write(host_entry + '\n')
+        ssh_opts = f"-o StrictHostKeyChecking=yes -o UserKnownHostsFile={known_hosts_file_path} -i {ssh_key_file_path}"
     else:
-        ssh_opts = f"-o StrictHostKeyChecking=accept-new -o UserKnownHostsFile=/dev/null -i {ssh_key_file.name}"
-        known_hosts_file = None
+        null_device = get_null_device()
+        ssh_opts = f"-o StrictHostKeyChecking=accept-new -o UserKnownHostsFile={null_device} -i {ssh_key_file_path}"
     
-    return ssh_opts, ssh_key_file.name, known_hosts_file.name if known_hosts_file else None
+    return ssh_opts, ssh_key_file_path, known_hosts_file_path
 
 def cleanup_ssh_key(ssh_key_file: str, known_hosts_file: str = None):
     """Clean up temporary SSH key and known_hosts files"""
@@ -307,32 +352,11 @@ def validate_cli_tool():
         print(colorize(f"Error: rediacc-cli is not executable at {CLI_TOOL}", 'RED'))
         sys.exit(1)
 
-def ensure_token_in_config(token: str):
-    """Ensure the token is set in the CLI config file"""
-    config_path = Path.home() / '.rediacc' / 'config.json'
-    config_path.parent.mkdir(exist_ok=True)
-    
-    # Read existing config or create new one
-    config = {}
-    if config_path.exists():
-        try:
-            with open(config_path, 'r') as f:
-                config = json.load(f)
-        except (json.JSONDecodeError, IOError):
-            config = {}
-    
-    # Only update token if it's different or missing
-    if config.get('token') != token:
-        config['token'] = token
-        # Preserve other fields like email, company, vault_company
-        with open(config_path, 'w') as f:
-            json.dump(config, f, indent=2)
-
 class RepositoryConnection:
     """Helper class to manage repository connections"""
     
-    def __init__(self, token: str, machine_name: str, repo_name: str):
-        self.token = token
+    def __init__(self, machine_name: str, repo_name: str, token_manager: Optional[TokenManager] = None):
+        self.token_manager = token_manager or get_default_token_manager()
         self.machine_name = machine_name
         self.repo_name = repo_name
         self._machine_info = None
@@ -344,11 +368,8 @@ class RepositoryConnection:
     
     def connect(self):
         """Establish connection and gather all necessary information"""
-        # Ensure token is in config for CLI to use
-        ensure_token_in_config(self.token)
-        
         print("Fetching machine information...")
-        self._machine_info = get_machine_info(self.token, self.machine_name)
+        self._machine_info = get_machine_info(self.machine_name, self.token_manager)
         self._connection_info = get_machine_connection_info(self._machine_info)
         
         if not self._connection_info['ip'] or not self._connection_info['user']:
@@ -356,7 +377,7 @@ class RepositoryConnection:
             sys.exit(1)
         
         print(f"Fetching repository information for '{self.repo_name}'...")
-        self._repo_info = get_repository_info(self.token, self._connection_info['team'], self.repo_name)
+        self._repo_info = get_repository_info(self._connection_info['team'], self.repo_name, self.token_manager)
         
         # The repository GUID is in the repoGuid field or the vault's credential field
         repo_guid = self._repo_info.get('repoGuid') or self._repo_info.get('grandGuid')
@@ -387,7 +408,7 @@ class RepositoryConnection:
         self._repo_paths = get_repository_paths(repo_guid, self._connection_info['datastore'], universal_user_id)
         
         print("Retrieving SSH key...")
-        self._ssh_key = get_ssh_key_from_vault(self.token)
+        self._ssh_key = get_ssh_key_from_vault(self.token_manager)
         if not self._ssh_key:
             print(colorize("SSH private key not found in team vault", 'RED'))
             print(colorize("Please ensure SSH keys are set in team vault using GetCompanyTeams API", 'YELLOW'))

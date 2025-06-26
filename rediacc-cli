@@ -1,4 +1,5 @@
 #!/usr/bin/env python3
+# -*- coding: utf-8 -*-
 """
 Rediacc CLI - Complete command-line interface for Rediacc Middleware API
 Includes all functionality from both CLI and test suite with enhanced queue support
@@ -15,6 +16,9 @@ import urllib.error
 import base64
 from typing import Dict, Any, Optional, List, Union
 from pathlib import Path
+
+# Import token manager
+from token_manager import TokenManager
 
 # Try to import cryptography library
 try:
@@ -300,11 +304,20 @@ class ConfigManager:
         self._company_name = None
         # Flag to track if we've fetched vault info this session
         self._vault_info_fetched = False
+        # Flag to track if token was overridden via command line
+        self._token_overridden = False
     
     def _load_config(self):
         """Load configuration from file"""
         if not os.path.exists(CONFIG_FILE):
             return {}
+        
+        # Ensure config file has secure permissions
+        try:
+            os.chmod(CONFIG_FILE, 0o600)
+        except OSError:
+            pass  # May fail on some systems, continue anyway
+        
         try:
             with open(CONFIG_FILE, 'r') as f:
                 return json.load(f)
@@ -313,12 +326,30 @@ class ConfigManager:
     
     def save_config(self):
         """Save current configuration to file"""
-        os.makedirs(CONFIG_DIR, exist_ok=True)
-        with open(CONFIG_FILE, 'w') as f:
-            json.dump(self.config, f, indent=2)
+        os.makedirs(CONFIG_DIR, mode=0o700, exist_ok=True)
+        
+        # Write to temporary file first for atomic operation
+        temp_file = CONFIG_FILE + '.tmp'
+        try:
+            with open(temp_file, 'w') as f:
+                json.dump(self.config, f, indent=2)
+            
+            # Set secure permissions
+            os.chmod(temp_file, 0o600)
+            
+            # Atomic replace
+            os.replace(temp_file, CONFIG_FILE)
+        except Exception as e:
+            if os.path.exists(temp_file):
+                os.unlink(temp_file)
+            raise
     
     def set_auth(self, email, token, company=None, vault_company=None):
         """Update authentication information"""
+        # Validate token format before saving
+        if not TokenManager.validate_token(token):
+            raise ValueError(f"Invalid token format: {TokenManager.mask_token(token)}")
+        
         self.config.update({'email': email, 'token': token, 'company': company})
         if vault_company is not None:
             self.config['vault_company'] = vault_company
@@ -338,6 +369,9 @@ class ConfigManager:
     
     def is_authenticated(self):
         """Check if user is authenticated"""
+        # Check environment variable first
+        if os.environ.get('REDIACC_TOKEN'):
+            return True
         return bool(self.config.get('token'))
     
     def set_master_password(self, password):
@@ -483,7 +517,9 @@ class APIClient:
     
     def token_request(self, endpoint, data=None):
         """Make a request authenticated with a token"""
-        if not self.config.get('token'):
+        # Check environment variable first, then config
+        token = os.environ.get('REDIACC_TOKEN') or self.config.get('token')
+        if not token:
             return {"error": "Not authenticated. Please login first.", "status_code": 401}
         
         # Ensure vault info is fetched before making requests (except for GetCompanyVault itself)
@@ -498,7 +534,7 @@ class APIClient:
                     self._vault_warning_shown = True
         
         response = self.request(endpoint, data, {
-            "Rediacc-RequestToken": self.config['token']
+            "Rediacc-RequestToken": token
         })
         
         # Update token if a new one is provided (token chain mechanism)
@@ -507,9 +543,13 @@ class APIClient:
             if tables and tables[0].get('data'):
                 new_token = tables[0]['data'][0].get('nextRequestCredential')
                 if new_token and self.config_manager:
-                    self.config['token'] = new_token
-                    self.config_manager.config['token'] = new_token
-                    self.config_manager.save_config()
+                    # Don't update if using environment variable
+                    if not os.environ.get('REDIACC_TOKEN'):
+                        self.config['token'] = new_token
+                        self.config_manager.config['token'] = new_token
+                        # Only save to config if token wasn't overridden via command line
+                        if not self.config_manager._token_overridden:
+                            self.config_manager.save_config()
         
         return response
     
@@ -522,13 +562,16 @@ class APIClient:
             # Fetch company vault info
             company_info = self.get_company_vault()
             if company_info:
-                # Update config manager with vault info
-                self.config_manager.set_auth(
-                    self.config_manager.config.get('email'),
-                    self.config_manager.config.get('token'),
-                    company_info.get('companyName'),
-                    company_info.get('vaultCompany')
-                )
+                # Update config manager with vault info, but only if we have the required data
+                email = self.config_manager.config.get('email')
+                token = os.environ.get('REDIACC_TOKEN') or self.config_manager.config.get('token')
+                if email and token:
+                    self.config_manager.set_auth(
+                        email,
+                        token,
+                        company_info.get('companyName'),
+                        company_info.get('vaultCompany')
+                    )
     
     def get_company_vault(self):
         """Get company vault information for the current authenticated session"""
@@ -1874,6 +1917,8 @@ def setup_parser():
     # Add global include-vault option for security
     parser.add_argument('--include-vault', action='store_true',
                        help='Include vault content in output (normally hidden for security)')
+    # Add global token option to override config
+    parser.add_argument('--token', '-t', help='Authentication token (overrides saved token)')
     
     subparsers = parser.add_subparsers(dest='command', help='Command')
     
@@ -1946,6 +1991,19 @@ def main():
     
     # Load configuration
     config_manager = ConfigManager()
+    
+    # Handle --token override
+    if args.token:
+        # Validate and set the override token
+        if not TokenManager.validate_token(args.token):
+            error = f"Invalid token format: {TokenManager.mask_token(args.token)}"
+            output = format_output(None, output_format, None, error)
+            print(output)
+            return 1
+        # Override the token in config temporarily
+        config_manager.config['token'] = args.token
+        config_manager._token_overridden = True
+    
     handler = CommandHandler(config_manager, output_format, include_vault=args.include_vault)
     
     # Handle authentication commands directly

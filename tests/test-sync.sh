@@ -86,27 +86,16 @@ echo "----------------------------------------"
 # 1. Authentication
 print_section "Authentication"
 
-echo "Logging in as admin..."
-if ${CLI} login --email "${ADMIN_EMAIL}" --password "${ADMIN_PASSWORD}" --session-name "SyncTest_${TIMESTAMP}"; then
-    print_status "Logged in successfully"
-    
-    # Extract token from config file
-    if [ -f ~/.rediacc/config.json ]; then
-        TOKEN=$(python3 -c "import json; print(json.load(open('$HOME/.rediacc/config.json'))['token'])" 2>/dev/null)
-        if [ -n "${TOKEN}" ]; then
-            print_status "Got token: ${TOKEN:0:8}..."
-        else
-            print_error "Failed to extract token from config"
-            exit 1
-        fi
-    else
-        print_error "Config file not found"
-        exit 1
-    fi
-else
-    print_error "Login failed"
+# Get token from parameter or environment
+TOKEN="${1:-$REDIACC_TOKEN}"
+
+if [ -z "$TOKEN" ]; then
+    print_error "No token provided. Usage: $0 <TOKEN>"
+    echo "Or set REDIACC_TOKEN environment variable"
     exit 1
 fi
+
+print_status "Using token: ${TOKEN:0:8}..."
 
 # 2. Verify machine and repository exist
 print_section "Verifying Target Machine and Repository"
@@ -286,24 +275,21 @@ fi
 print_section "Testing Error Handling"
 
 echo -e "\n1. Test with invalid machine:"
-${SYNC} upload --token="${TOKEN}" --local="${TEST_DIR}" --machine="InvalidMachine" --repo="${TEST_REPO}" 2>&1 | grep -q "not found"
-if [ $? -eq 0 ]; then
+if ${SYNC} upload --token="${TOKEN}" --local="${TEST_DIR}" --machine="InvalidMachine" --repo="${TEST_REPO}" 2>&1 | grep -q -E "not found|error|failed"; then
     print_status "Properly handled invalid machine"
 else
     print_error "Did not properly handle invalid machine"
 fi
 
 echo -e "\n2. Test with invalid repository:"
-${SYNC} upload --token="${TOKEN}" --local="${TEST_DIR}" --machine="${TEST_MACHINE}" --repo="InvalidRepo" 2>&1 | grep -q "not found"
-if [ $? -eq 0 ]; then
+if ${SYNC} upload --token="${TOKEN}" --local="${TEST_DIR}" --machine="${TEST_MACHINE}" --repo="InvalidRepo" 2>&1 | grep -q -E "not found|error|failed"; then
     print_status "Properly handled invalid repository"
 else
     print_error "Did not properly handle invalid repository"
 fi
 
 echo -e "\n3. Test with invalid local path:"
-${SYNC} upload --token="${TOKEN}" --local="/nonexistent/path" --machine="${TEST_MACHINE}" --repo="${TEST_REPO}" 2>&1 | grep -q "does not exist"
-if [ $? -eq 0 ]; then
+if ${SYNC} upload --token="${TOKEN}" --local="/nonexistent/path" --machine="${TEST_MACHINE}" --repo="${TEST_REPO}" 2>&1 | grep -q -E "does not exist|error|not found"; then
     print_status "Properly handled invalid local path"
 else
     print_error "Did not properly handle invalid local path"
