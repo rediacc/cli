@@ -2,7 +2,7 @@
 
 ## Overview
 
-The `rediacc-cli-term` tool provides interactive terminal access to:
+The terminal tool provides interactive terminal access to:
 1. **Repository Docker environments** - When `--repo` is specified
 2. **Machines directly** - When only `--machine` is specified (no repository)
 
@@ -12,22 +12,38 @@ When run without the `--command` flag, it opens a full interactive terminal sess
 
 ### Repository Session (with Docker environment)
 ```bash
-./rediacc-cli-term --token <YOUR_TOKEN> --machine <MACHINE_NAME> --repo <REPO_NAME>
+# Linux/macOS
+./rediacc term --token <YOUR_TOKEN> --machine <MACHINE_NAME> --repo <REPO_NAME>
+
+# Windows
+.\rediacc.ps1 term --token <YOUR_TOKEN> --machine <MACHINE_NAME> --repo <REPO_NAME>
 ```
 
 Example:
 ```bash
-./rediacc-cli-term --token f1c4fe43-2a31-4411-b6dc-0fc74584cd03 --machine rediacc11 --repo A1
+# Linux/macOS
+./rediacc term --token f1c4fe43-2a31-4411-b6dc-0fc74584cd03 --machine rediacc11 --repo A1
+
+# Windows
+.\rediacc.ps1 term --token f1c4fe43-2a31-4411-b6dc-0fc74584cd03 --machine rediacc11 --repo A1
 ```
 
 ### Machine Session (direct access - NEW!)
 ```bash
-./rediacc-cli-term --token <YOUR_TOKEN> --machine <MACHINE_NAME>
+# Linux/macOS
+./rediacc term --token <YOUR_TOKEN> --machine <MACHINE_NAME>
+
+# Windows
+.\rediacc.ps1 term --token <YOUR_TOKEN> --machine <MACHINE_NAME>
 ```
 
 Example:
 ```bash
-./rediacc-cli-term --token f1c4fe43-2a31-4411-b6dc-0fc74584cd03 --machine rediacc11
+# Linux/macOS
+./rediacc term --token f1c4fe43-2a31-4411-b6dc-0fc74584cd03 --machine rediacc11
+
+# Windows
+.\rediacc.ps1 term --token f1c4fe43-2a31-4411-b6dc-0fc74584cd03 --machine rediacc11
 ```
 
 ## What Happens When You Connect

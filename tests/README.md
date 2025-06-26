@@ -8,6 +8,8 @@ This directory contains test scripts for the Rediacc CLI tools.
 
 - **`test-full-api.sh`** - Comprehensive test of all Rediacc API endpoints and CLI commands
 - **`test-quick.sh`** - Quick test of sync and term tools with basic operations
+- **`test-integration.sh`** - Integration test for new token management features
+- **`test-token-management.sh`** - Comprehensive token management test suite
 
 ### Tool-Specific Tests
 
@@ -81,4 +83,40 @@ To quickly verify all tools are working:
 ```bash
 cd tests
 ./test-quick.sh $(../rediacc-cli login --email admin@rediacc.io --password 111111 --output json | grep -o '"token":"[^"]*' | cut -d'"' -f4)
+```
+
+## Token Management Features
+
+The new token management system supports:
+
+### 1. Command Line Override
+```bash
+# Override saved token
+./rediacc-cli --token YOUR_TOKEN list teams
+```
+
+### 2. Environment Variables
+```bash
+# Use environment variable
+export REDIACC_TOKEN="YOUR_TOKEN"
+./rediacc-cli list teams
+```
+
+### 3. Token Validation
+- All tokens are validated as GUIDs before use
+- Invalid tokens are rejected with clear error messages
+- Tokens are masked in all output (only first 8 chars shown)
+
+### 4. Secure Storage
+- Config files have 0o600 permissions (owner read/write only)
+- Config directory has 0o700 permissions
+- Tokens from --token or env vars are never saved to disk
+
+### 5. Testing Token Management
+```bash
+# Run integration test
+./test-integration.sh
+
+# Run comprehensive test suite
+./test-token-management.sh
 ```
