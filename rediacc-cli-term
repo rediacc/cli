@@ -16,6 +16,105 @@ from rediacc_cli_core import (
 )
 
 
+def connect_to_machine(args):
+    """Connect to machine via SSH (without repository)"""
+    print(colorize(f"Connecting to machine '{args.machine}'...", 'HEADER'))
+    
+    from rediacc_cli_core import (
+        get_machine_info,
+        get_machine_connection_info,
+        get_ssh_key_from_vault,
+        setup_ssh_for_connection,
+        cleanup_ssh_key,
+        ensure_token_in_config
+    )
+    
+    # Ensure token is in config
+    ensure_token_in_config(args.token)
+    
+    # Get machine info
+    print("Fetching machine information...")
+    machine_info = get_machine_info(args.token, args.machine)
+    connection_info = get_machine_connection_info(machine_info)
+    
+    # Get SSH key
+    print("Retrieving SSH key...")
+    ssh_key = get_ssh_key_from_vault(args.token)
+    if not ssh_key:
+        print(colorize("SSH private key not found in team vault", 'RED'))
+        sys.exit(1)
+    
+    # Set up SSH
+    host_entry = connection_info.get('host_entry') if not args.dev else None  # Ignore host entry in dev mode
+    ssh_opts, ssh_key_file, known_hosts_file = setup_ssh_for_connection(ssh_key, host_entry)
+    
+    try:
+        # Build SSH command
+        ssh_cmd = [
+            'ssh',
+            '-tt',  # Force pseudo-terminal allocation
+        ] + ssh_opts.split() + [
+            f"{connection_info['user']}@{connection_info['ip']}"
+        ]
+        
+        # Get universal user info
+        universal_user = connection_info.get('universal_user', 'rediacc')
+        universal_user_id = connection_info.get('universal_user_id')
+        
+        # Build the datastore path
+        datastore_path = connection_info['datastore']
+        if universal_user_id:
+            datastore_path = f"{datastore_path}/{universal_user_id}"
+        
+        if args.command:
+            # Execute command directly as universal user
+            full_command = f"sudo -u {universal_user} bash -c 'cd {datastore_path} 2>/dev/null; {args.command}'"
+            ssh_cmd.append(full_command)
+            print(colorize(f"Executing command as {universal_user}: {args.command}", 'BLUE'))
+            print(colorize(f"Working directory: {datastore_path}", 'BLUE'))
+        else:
+            # Interactive session with automatic switch to universal user
+            # Create a single command that displays the welcome message and starts bash
+            welcome_cmd = (
+                f"sudo -u {universal_user} bash -c '"
+                f"clear && "
+                f"echo -e \"\\033[1;36m━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━\\033[0m\" && "
+                f"echo -e \"\\033[1;32mConnected to Rediacc Machine:\\033[0m \\033[1;33m{args.machine}\\033[0m\" && "
+                f"echo -e \"\\033[1;36m━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━\\033[0m\" && "
+                f"echo && "
+                f"echo -e \"\\033[1;34mMachine Info:\\033[0m\" && "
+                f"echo \"  • IP: {connection_info['ip']}\" && "
+                f"echo \"  • Connected as: {connection_info['user']}\" && "
+                f"echo \"  • Switched to: {universal_user}\" && "
+                f"echo \"  • Datastore: {datastore_path}\" && "
+                f"echo && "
+                f"echo -e \"\\033[1;33mUseful Commands:\\033[0m\" && "
+                f"echo \"  • ls -la                               - List current directory\" && "
+                f"echo \"  • ls -la mounts/                       - List repository mounts\" && "
+                f"echo \"  • docker ps -a                         - List all containers\" && "
+                f"echo && "
+                f"echo -e \"\\033[1;36m━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━\\033[0m\" && "
+                f"echo && "
+                f"cd {datastore_path} 2>/dev/null || echo \"Warning: Could not change to datastore directory\" && "
+                f"exec bash -l'"
+            )
+            ssh_cmd.append(welcome_cmd)
+            print(colorize("Opening interactive terminal...", 'BLUE'))
+            print(colorize("Type 'exit' to disconnect.", 'YELLOW'))
+        
+        # Execute SSH connection
+        result = subprocess.run(ssh_cmd)
+        
+        if result.returncode != 0:
+            print(colorize(f"\nDisconnected from machine (exit code: {result.returncode})", 'YELLOW'))
+        else:
+            print(colorize("\nDisconnected from machine.", 'GREEN'))
+            
+    finally:
+        # Clean up SSH key and known_hosts files
+        cleanup_ssh_key(ssh_key_file, known_hosts_file)
+
+
 def connect_to_terminal(args):
     """Connect to repository terminal via SSH"""
     print(colorize(f"Connecting to repository '{args.repo}' on machine '{args.machine}'...", 'HEADER'))
@@ -25,7 +124,16 @@ def connect_to_terminal(args):
     conn.connect()
     
     # Set up SSH
+    # In dev mode, temporarily disable host key checking
+    if args.dev:
+        original_host_entry = conn.connection_info.get('host_entry')
+        conn.connection_info['host_entry'] = None
+    
     ssh_opts, ssh_key_file, known_hosts_file = conn.setup_ssh()
+    
+    # Restore original host entry
+    if args.dev and 'original_host_entry' in locals():
+        conn.connection_info['host_entry'] = original_host_entry
     
     try:
         # Build environment variables for the repository using paths from connection
@@ -159,10 +267,16 @@ echo ""
 
 def main():
     parser = argparse.ArgumentParser(
-        description='Rediacc CLI Terminal - Interactive terminal access to repository Docker environments',
+        description='Rediacc CLI Terminal - Interactive terminal access to Rediacc machines and repository Docker environments',
         formatter_class=argparse.RawDescriptionHelpFormatter,
         epilog="""
 Examples:
+  Connect to machine only (no repository):
+    %(prog)s --token=<GUID> --machine=server1
+    
+  Execute a command on machine:
+    %(prog)s --token=<GUID> --machine=server1 --command="ls -la mounts/"
+    
   Connect to repository terminal:
     %(prog)s --token=<GUID> --machine=server1 --repo=myrepo
     
@@ -175,28 +289,39 @@ Examples:
   Check Docker status:
     %(prog)s --token=<GUID> --machine=server1 --repo=myrepo --command="docker stats --no-stream"
 
-Environment Variables Set:
-  REPO_PATH       - Repository mount path
-  DOCKER_HOST     - Repository's Docker socket
-  DOCKER_FOLDER   - Docker configuration folder
-  DOCKER_SOCKET   - Docker socket path
-  DOCKER_DATA     - Docker data directory
-  DOCKER_EXEC     - Docker exec directory
+When connected to a repository:
+  Environment Variables Set:
+    REPO_PATH       - Repository mount path
+    DOCKER_HOST     - Repository's Docker socket
+    DOCKER_FOLDER   - Docker configuration folder
+    DOCKER_SOCKET   - Docker socket path
+    DOCKER_DATA     - Docker data directory
+    DOCKER_EXEC     - Docker exec directory
+    
+When connected to machine only:
+  - Automatically switches to universal user (e.g., rediacc)
+  - Changes to user's datastore directory (e.g., /mnt/datastore/7111)
+  - Commands are executed in this context
+  - Useful for managing repositories and datastore
 """
     )
     
     parser.add_argument('--token', required=True, help='Authentication token (GUID)')
     parser.add_argument('--machine', required=True, help='Target machine name')
-    parser.add_argument('--repo', required=True, help='Target repository name')
+    parser.add_argument('--repo', help='Target repository name (optional - if not specified, connects to machine only)')
     parser.add_argument('--command', help='Command to execute (interactive shell if not specified)')
+    parser.add_argument('--dev', action='store_true', help='Development mode - relaxes SSH host key checking')
     
     args = parser.parse_args()
     
     # Validate CLI tool exists
     validate_cli_tool()
     
-    # Connect to terminal
-    connect_to_terminal(args)
+    # Connect to terminal or machine
+    if args.repo:
+        connect_to_terminal(args)
+    else:
+        connect_to_machine(args)
 
 if __name__ == '__main__':
     main()

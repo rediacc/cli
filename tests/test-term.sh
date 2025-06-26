@@ -114,18 +114,76 @@ else
 fi
 echo ""
 
+# Test 7: Test machine-only connection (no repository)
+echo "=== Test 7: Test machine-only connection ==="
+../rediacc-cli-term --token "$TOKEN" --machine "$MACHINE" --command "pwd && whoami && echo 'Machine: '\$(hostname)"
+if [ $? -eq 0 ]; then
+    echo "✓ Successfully connected to machine without repository"
+    echo "✓ Automatically switched to universal user and datastore"
+else
+    echo "✗ Failed to connect to machine"
+fi
+echo ""
+
+# Test 8: Check machine system info
+echo "=== Test 8: Check machine system info ==="
+../rediacc-cli-term --token "$TOKEN" --machine "$MACHINE" --command "uname -a && df -h /mnt/datastore | tail -1"
+if [ $? -eq 0 ]; then
+    echo "✓ Successfully retrieved machine system info"
+else
+    echo "✗ Failed to get machine system info"
+fi
+echo ""
+
+# Test 9: List all Docker containers on machine
+echo "=== Test 9: List all Docker containers on machine ==="
+../rediacc-cli-term --token "$TOKEN" --machine "$MACHINE" --command "docker ps -a --format 'table {{.Names}}\t{{.Image}}\t{{.Status}}' || echo 'Docker not accessible'"
+if [ $? -eq 0 ]; then
+    echo "✓ Successfully listed all containers on machine"
+else
+    echo "✗ Failed to list containers on machine"
+fi
+echo ""
+
+# Test 10: Test development mode (--dev flag)
+echo "=== Test 10: Test development mode (--dev flag) ==="
+../rediacc-cli-term --token "$TOKEN" --machine "$MACHINE" --dev --command "echo 'Dev mode test: hostname is '\$(hostname)"
+if [ $? -eq 0 ]; then
+    echo "✓ Successfully connected in development mode"
+else
+    echo "✗ Failed to connect in development mode"
+fi
+echo ""
+
+# Test 11: Test repository connection with --dev flag
+echo "=== Test 11: Test repository connection with --dev flag ==="
+../rediacc-cli-term --token "$TOKEN" --machine "$MACHINE" --repo "$REPO" --dev --command "echo 'Dev mode repo test: REPO_PATH='\$REPO_PATH"
+if [ $? -eq 0 ]; then
+    echo "✓ Successfully connected to repository in development mode"
+else
+    echo "✗ Failed to connect to repository in development mode"
+fi
+echo ""
+
 # Summary
 echo "=== Test Summary ==="
 echo "All automated tests completed."
 echo ""
-echo "To test interactive terminal session, run:"
-echo "  ../rediacc-cli-term --token $TOKEN --machine $MACHINE --repo $REPO"
+echo "To test interactive sessions:"
+echo "  1. Repository session: ../rediacc-cli-term --token $TOKEN --machine $MACHINE --repo $REPO"
+echo "  2. Machine session:    ../rediacc-cli-term --token $TOKEN --machine $MACHINE"
+echo "  3. Dev mode (relaxed SSH): ../rediacc-cli-term --token $TOKEN --machine $MACHINE --dev"
 echo ""
-echo "In the interactive session, you can try:"
+echo "In repository session, you can try:"
 echo "  - status              # Show repository status"
-echo "  - docker ps           # List containers"
+echo "  - docker ps           # List containers (repository-specific)"
 echo "  - enter_container plugin-Terminal  # Enter a container"
 echo "  - logs plugin-Browser # View container logs"
+echo ""
+echo "In machine session, you can try:"
+echo "  - sudo -u rediacc -i  # Switch to universal user"
+echo "  - docker ps -a        # List all containers on machine"
+echo "  - ls /mnt/datastore   # Explore datastore"
 echo ""
 
 # Test if repository is not mounted
