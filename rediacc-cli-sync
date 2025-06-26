@@ -256,8 +256,17 @@ def upload(args):
     conn.connect()
     
     # Set up SSH
+    # In dev mode, temporarily disable host key checking
+    if args.dev:
+        original_host_entry = conn.connection_info.get('host_entry')
+        conn.connection_info['host_entry'] = None
+    
     ssh_opts, ssh_key_file, known_hosts_file = conn.setup_ssh()
     ssh_cmd = f"ssh {ssh_opts}"
+    
+    # Restore original host entry
+    if args.dev and 'original_host_entry' in locals():
+        conn.connection_info['host_entry'] = original_host_entry
     
     try:
         # Build destination path using repository paths
@@ -300,8 +309,17 @@ def download(args):
     conn.connect()
     
     # Set up SSH
+    # In dev mode, temporarily disable host key checking
+    if args.dev:
+        original_host_entry = conn.connection_info.get('host_entry')
+        conn.connection_info['host_entry'] = None
+    
     ssh_opts, ssh_key_file, known_hosts_file = conn.setup_ssh()
     ssh_cmd = f"ssh {ssh_opts}"
+    
+    # Restore original host entry
+    if args.dev and 'original_host_entry' in locals():
+        conn.connection_info['host_entry'] = original_host_entry
     
     try:
         # Build source path using repository paths
@@ -368,6 +386,7 @@ Examples:
     upload_parser.add_argument('--mirror', action='store_true', help='Delete remote files not present locally')
     upload_parser.add_argument('--verify', action='store_true', help='Verify all transfers with checksums')
     upload_parser.add_argument('--confirm', action='store_true', help='Preview changes and ask for confirmation')
+    upload_parser.add_argument('--dev', action='store_true', help='Development mode - relaxes SSH host key checking')
     upload_parser.set_defaults(func=upload)
     
     # Download command
@@ -379,6 +398,7 @@ Examples:
     download_parser.add_argument('--mirror', action='store_true', help='Delete local files not present remotely')
     download_parser.add_argument('--verify', action='store_true', help='Verify all transfers with checksums')
     download_parser.add_argument('--confirm', action='store_true', help='Preview changes and ask for confirmation')
+    download_parser.add_argument('--dev', action='store_true', help='Development mode - relaxes SSH host key checking')
     download_parser.set_defaults(func=download)
     
     args = parser.parse_args()

@@ -56,16 +56,35 @@ Command-line interface tools for Rediacc middleware system.
 
 # Download files
 ./rediacc-cli-sync download --token TOKEN --machine rediacc11 --repo myrepo --local /local/path
+
+# Development mode - relaxes SSH host key checking
+./rediacc-cli-sync upload --token TOKEN --local /path/to/files --machine rediacc11 --repo myrepo --dev
+./rediacc-cli-sync download --token TOKEN --machine rediacc11 --repo myrepo --local /local/path --dev
 ```
 
 ### Terminal Access
 ```bash
-# Interactive session
+# Interactive session to repository (with Docker environment)
 ./rediacc-cli-term --token TOKEN --machine rediacc11 --repo myrepo
 
-# Execute single command
+# Interactive session to machine only (automatically switches to universal user and datastore)
+./rediacc-cli-term --token TOKEN --machine rediacc11
+
+# Execute single command in repository
 ./rediacc-cli-term --token TOKEN --machine rediacc11 --repo myrepo --command "docker ps"
+
+# Execute single command on machine (runs as universal user in datastore)
+./rediacc-cli-term --token TOKEN --machine rediacc11 --command "ls -la mounts/"
+
+# Development mode - relaxes SSH host key checking
+./rediacc-cli-term --token TOKEN --machine rediacc11 --dev
+./rediacc-cli-term --token TOKEN --machine rediacc11 --repo myrepo --dev --command "docker ps"
 ```
+
+**Note**: When connecting to a machine without specifying a repository:
+- Automatically switches to the universal user (e.g., `rediacc`)
+- Changes directory to the user's datastore (e.g., `/mnt/datastore/7111`)
+- Commands are executed in this context
 
 ## Testing
 

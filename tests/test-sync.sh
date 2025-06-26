@@ -261,7 +261,28 @@ fi
 echo -e "\nTesting Docker access in repository:"
 ${TERM} --token="${TOKEN}" --machine="${TEST_MACHINE}" --repo="${TEST_REPO}" --command="docker ps || echo 'Docker not running'"
 
-# 8. Test Error Handling
+# 8. Test Development Mode
+print_section "Testing Development Mode (--dev flag)"
+
+echo -e "\n1. Test upload with --dev flag:"
+${SYNC} upload --token="${TOKEN}" --local="${TEST_DIR}" --machine="${TEST_MACHINE}" --repo="${TEST_REPO}" --dev
+if [ $? -eq 0 ]; then
+    print_status "Upload in dev mode successful"
+else
+    print_error "Upload in dev mode failed"
+fi
+
+echo -e "\n2. Test download with --dev flag:"
+DEV_DOWNLOAD_DIR="test-dev-download-${TIMESTAMP}"
+${SYNC} download --token="${TOKEN}" --machine="${TEST_MACHINE}" --repo="${TEST_REPO}" --local="${DEV_DOWNLOAD_DIR}" --dev
+if [ $? -eq 0 ]; then
+    print_status "Download in dev mode successful"
+    rm -rf "${DEV_DOWNLOAD_DIR}"
+else
+    print_error "Download in dev mode failed"
+fi
+
+# 9. Test Error Handling
 print_section "Testing Error Handling"
 
 echo -e "\n1. Test with invalid machine:"
@@ -288,7 +309,7 @@ else
     print_error "Did not properly handle invalid local path"
 fi
 
-# 9. Cleanup
+# 10. Cleanup
 print_section "Cleanup"
 
 echo "Cleaning up test directories..."

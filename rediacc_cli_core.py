@@ -238,8 +238,9 @@ def get_machine_connection_info(machine_info: Dict[str, Any]) -> Dict[str, Any]:
     # Get SSH user from vault (this is the user we SSH as)
     ssh_user = vault.get('user') or vault.get('USER')
     
-    # Get universal user from company vault (this is the user we sudo to)
+    # Get universal user and ID from company vault (this is the user we sudo to)
     universal_user = None
+    universal_user_id = None
     config_path = Path.home() / '.rediacc' / 'config.json'
     if config_path.exists():
         try:
@@ -249,6 +250,7 @@ def get_machine_connection_info(machine_info: Dict[str, Any]) -> Dict[str, Any]:
                 if vault_company:
                     vault_data = json.loads(vault_company)
                     universal_user = vault_data.get('UNIVERSAL_USER_NAME')
+                    universal_user_id = vault_data.get('UNIVERSAL_USER_ID')
         except (json.JSONDecodeError, IOError):
             pass
     
@@ -275,6 +277,7 @@ def get_machine_connection_info(machine_info: Dict[str, Any]) -> Dict[str, Any]:
         'ip': ip,
         'user': ssh_user,  # SSH connection user
         'universal_user': universal_user,  # User to sudo to for operations
+        'universal_user_id': universal_user_id,  # User ID for datastore path
         'datastore': datastore,
         'team': machine_info.get('teamName'),
         'host_entry': host_entry

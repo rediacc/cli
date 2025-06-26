@@ -12,8 +12,20 @@ This directory contains test scripts for the Rediacc CLI tools.
 ### Tool-Specific Tests
 
 - **`test-sync.sh`** - Full test suite for `rediacc-cli-sync` file synchronization
+  - Tests upload/download operations
+  - Tests mirror mode and checksum verification
+  - Tests development mode (--dev flag)
 - **`test-term.sh`** - Full test suite for `rediacc-cli-term` terminal access
+  - Tests repository connections with Docker environment
+  - Tests machine-only connections
+  - Tests command execution and interactive sessions
+  - Tests development mode (--dev flag)
 - **`test-term-demo.sh`** - Demo script showing terminal functionality examples
+  - Repository connection examples
+  - Machine-only connection examples
+- **`test-dev-mode.sh`** - Dedicated test for development mode functionality
+  - Tests --dev flag for both sync and term tools
+  - Verifies SSH host key checking behavior
 
 ## Running Tests
 
@@ -41,6 +53,27 @@ Test scripts may create temporary files and directories:
 - `test-upload/` - Directory for upload tests
 
 These are automatically cleaned up after tests complete and are ignored by git.
+
+## Development Mode (--dev flag)
+
+Both `rediacc-cli-sync` and `rediacc-cli-term` support a `--dev` flag for development environments where SSH host fingerprints change frequently.
+
+### When to Use --dev:
+- Development environments with dynamic infrastructure
+- Testing environments where machines are frequently recreated
+- Local development with changing network configurations
+
+### Security Warning:
+**Never use --dev in production!** It relaxes SSH host key verification which could expose you to man-in-the-middle attacks.
+
+### Example Usage:
+```bash
+# Terminal with --dev
+./rediacc-cli-term --token TOKEN --machine rediacc11 --dev
+
+# Sync with --dev
+./rediacc-cli-sync upload --token TOKEN --local ./files --machine rediacc11 --repo A1 --dev
+```
 
 ## Quick Verification
 

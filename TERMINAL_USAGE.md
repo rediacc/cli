@@ -2,10 +2,15 @@
 
 ## Overview
 
-The `rediacc-cli-term` tool provides interactive terminal access to Rediacc repository Docker environments. When run without the `--command` flag, it opens a full interactive terminal session.
+The `rediacc-cli-term` tool provides interactive terminal access to:
+1. **Repository Docker environments** - When `--repo` is specified
+2. **Machines directly** - When only `--machine` is specified (no repository)
+
+When run without the `--command` flag, it opens a full interactive terminal session.
 
 ## Starting an Interactive Session
 
+### Repository Session (with Docker environment)
 ```bash
 ./rediacc-cli-term --token <YOUR_TOKEN> --machine <MACHINE_NAME> --repo <REPO_NAME>
 ```
@@ -13,6 +18,16 @@ The `rediacc-cli-term` tool provides interactive terminal access to Rediacc repo
 Example:
 ```bash
 ./rediacc-cli-term --token f1c4fe43-2a31-4411-b6dc-0fc74584cd03 --machine rediacc11 --repo A1
+```
+
+### Machine Session (direct access - NEW!)
+```bash
+./rediacc-cli-term --token <YOUR_TOKEN> --machine <MACHINE_NAME>
+```
+
+Example:
+```bash
+./rediacc-cli-term --token f1c4fe43-2a31-4411-b6dc-0fc74584cd03 --machine rediacc11
 ```
 
 ## What Happens When You Connect
@@ -152,8 +167,58 @@ Verify that the Docker socket exists and is accessible:
 ls -la $DOCKER_SOCKET
 ```
 
+## Machine-Only Session Features (NEW!)
+
+When connecting without `--repo`:
+
+### Direct Machine Access
+```bash
+# Connect to machine
+./rediacc-cli-term --token <token> --machine rediacc11
+
+# You'll see:
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+Connected to Rediacc Machine: rediacc11
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+Machine Info:
+  • IP: 192.168.111.11
+  • User: muhammed
+  • Datastore: /mnt/datastore
+
+Useful Commands:
+  • sudo -u rediacc -i                   - Switch to universal user
+  • ls -la /mnt/datastore/               - List datastore contents
+  • docker ps -a                         - List all containers
+
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+```
+
+### Common Machine-Level Operations
+
+```bash
+# List all repositories
+ls -la /mnt/datastore/7111/mounts/
+
+# Check all Docker containers on machine
+docker ps -a
+
+# Switch to universal user
+sudo -u rediacc -i
+
+# Check disk usage
+df -h /mnt/datastore
+
+# Monitor system resources
+htop
+
+# Check system logs
+journalctl -xe
+```
+
 ## Security Notes
 
-- All operations are performed as the UNIVERSAL_USER_NAME (rediacc)
-- The Docker daemon is isolated per repository
+- Repository sessions: Operations are performed as UNIVERSAL_USER_NAME (rediacc)
+- Machine sessions: Initial connection as machine user, can switch to universal user
+- The Docker daemon is isolated per repository (in repository sessions)
 - SSH keys are handled securely in memory and cleaned up after use

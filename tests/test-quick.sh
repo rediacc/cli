@@ -46,7 +46,7 @@ ls -la test-download/ | head -10
 echo ""
 
 # Test 3: Terminal - Execute simple command
-echo "=== Test 3: Terminal Command Execution ==="
+echo "=== Test 3: Terminal Command Execution (Repository) ==="
 echo "Checking repository path..."
 ../rediacc-cli-term --token "$TOKEN" --machine "$MACHINE" --repo "$REPO" --command "pwd"
 
@@ -59,10 +59,21 @@ echo "Checking Docker status..."
 ../rediacc-cli-term --token "$TOKEN" --machine "$MACHINE" --repo "$REPO" --command "docker ps --format 'Container: {{.Names}} ({{.Status}})' || echo 'No containers running'"
 
 echo ""
+# Test 4: Terminal - Machine-only connection
+echo "=== Test 4: Terminal Command Execution (Machine Only) ==="
+echo "Checking machine hostname..."
+../rediacc-cli-term --token "$TOKEN" --machine "$MACHINE" --command "hostname"
+
+echo ""
+echo "Checking datastore..."
+../rediacc-cli-term --token "$TOKEN" --machine "$MACHINE" --command "ls -la /mnt/datastore/ | head -5"
+
+echo ""
 echo "=== All Tests Completed ==="
 echo ""
-echo "To start an interactive terminal session, run:"
-echo "  ../rediacc-cli-term --token $TOKEN --machine $MACHINE --repo $REPO"
+echo "To start interactive terminal sessions:"
+echo "  1. Repository: ../rediacc-cli-term --token $TOKEN --machine $MACHINE --repo $REPO"
+echo "  2. Machine:    ../rediacc-cli-term --token $TOKEN --machine $MACHINE"
 echo ""
 echo "Cleaning up test files..."
 rm -f test-sync-*.txt
