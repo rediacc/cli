@@ -1,0 +1,52 @@
+# Git files
+.git
+.gitignore
+
+# Documentation
+*.md
+docs/
+
+# Test artifacts
+tests/
+test-*.sh
+debug-*.sh
+*.pyc
+__pycache__/
+.pytest_cache/
+*.coverage
+.coverage.*
+
+# Development files
+.env
+.env.*
+*.log
+*.tmp
+*.temp
+
+# Editor files
+.vscode/
+.idea/
+*.swp
+*.swo
+*~
+
+# OS files
+.DS_Store
+Thumbs.db
+
+# Build artifacts
+build/
+dist/
+*.egg-info/
+
+# Docker files (prevent recursive copy)
+Dockerfile*
+.dockerignore
+docker-compose*.yml
+
+# Windows-specific files (as mentioned, Windows doesn't need Docker)
+*.cmd
+*.ps1
+*.bat
+install_msys2_packages.sh
+test_windows_compat.py
