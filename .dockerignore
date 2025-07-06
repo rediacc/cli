@@ -4,7 +4,7 @@
 
 # Documentation
 *.md
-docs/
+# Note: docs/ is needed for Docker build, so not ignoring it
 
 # Test artifacts
 tests/
@@ -46,7 +46,8 @@ docker-compose*.yml
 
 # Windows-specific files (as mentioned, Windows doesn't need Docker)
 *.cmd
-*.ps1
+# Note: rediacc.ps1 is needed for Docker build, so using specific pattern
+rediacc-*.ps1
 *.bat
 install_msys2_packages.sh
 test_windows_compat.py

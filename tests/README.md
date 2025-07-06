@@ -1,122 +1,118 @@
-# Rediacc CLI Tests
+# Rediacc CLI Test Suite (Simplified)
 
-This directory contains test scripts for the Rediacc CLI tools.
+This directory contains the simplified test suite for the Rediacc CLI tools.
 
-## Test Scripts
+## Test Structure
 
-### Core Tests
+The test suite has been simplified from 14+ test files down to 6 core files:
 
-- **`test-full-api.sh`** - Comprehensive test of all Rediacc API endpoints and CLI commands
-- **`test-quick.sh`** - Quick test of sync and term tools with basic operations
-- **`test-integration.sh`** - Integration test for new token management features
-- **`test-token-management.sh`** - Comprehensive token management test suite
+### Core Test Files
 
-### Tool-Specific Tests
+1. **test-common.sh** - Shared test utilities and helper functions
+   - Color output helpers
+   - Test assertion functions
+   - Token management
+   - Test data cleanup
 
-- **`test-sync.sh`** - Full test suite for `rediacc-cli-sync` file synchronization
-  - Tests upload/download operations
-  - Tests mirror mode and checksum verification
-  - Tests development mode (--dev flag)
-- **`test-term.sh`** - Full test suite for `rediacc-cli-term` terminal access
-  - Tests repository connections with Docker environment
-  - Tests machine-only connections
-  - Tests command execution and interactive sessions
-  - Tests development mode (--dev flag)
-- **`test-term-demo.sh`** - Demo script showing terminal functionality examples
-  - Repository connection examples
-  - Machine-only connection examples
-- **`test-dev-mode.sh`** - Dedicated test for development mode functionality
-  - Tests --dev flag for both sync and term tools
-  - Verifies SSH host key checking behavior
+2. **test-core.sh** - Core CLI functionality tests
+   - Basic CLI operations (help, version)
+   - Token management (parameter, env var, config)
+   - Basic API operations (list teams, companies, user info)
+   - Error handling and output formats
+
+3. **test-api.sh** - API endpoint tests (simplified)
+   - CRUD operations for main entities
+   - Vault operations
+   - Search functionality
+   - Pagination tests
+   - API error handling
+
+4. **test-sync.sh** - File synchronization tests
+   - Upload/download operations
+   - Mirror mode
+   - File exclusions
+   - Verify mode
+   - Error handling
+
+5. **test-term.sh** - Terminal access tests
+   - SSH connections
+   - Command execution
+   - Repository environments
+   - Docker integration
+   - Special character handling
+
+6. **run-all-tests.sh** - Master test runner
+   - Runs all test suites in order
+   - Aggregates results
+   - Provides overall summary
 
 ## Running Tests
 
-### With Token
-If you have a valid token:
+### Run All Tests
 ```bash
-./test-quick.sh YOUR_TOKEN
-./test-sync.sh YOUR_TOKEN
-./test-term.sh YOUR_TOKEN
+./run-all-tests.sh <TOKEN>
+# or with env var
+export REDIACC_TOKEN=your-token
+./run-all-tests.sh
 ```
 
-### Without Token (Auto-login)
-The test scripts will automatically login using admin credentials:
+### Run Individual Test Suites
 ```bash
-./test-sync.sh
-./test-term.sh
-./test-full-api.sh
+# Core functionality (can run without token)
+./test-core.sh [TOKEN]
+
+# API tests (requires token)
+./test-api.sh <TOKEN>
+
+# Sync tests (requires token and test infrastructure)
+./test-sync.sh <TOKEN>
+
+# Terminal tests (requires token and test infrastructure)
+./test-term.sh <TOKEN>
 ```
 
-## Test Artifacts
+## Test Requirements
 
-Test scripts may create temporary files and directories:
-- `test*.txt` - Test files for sync operations
-- `test-download/` - Directory for download tests
-- `test-upload/` - Directory for upload tests
+- **Token**: Valid Rediacc API token (via parameter or REDIACC_TOKEN env var)
+- **Test Infrastructure**: Some tests require:
+  - Test team (default: "Default")
+  - Test machine (default: "test-machine")
+  - Test repository (default: "test-repo")
 
-These are automatically cleaned up after tests complete and are ignored by git.
+## Environment Variables
 
-## Development Mode (--dev flag)
+- `REDIACC_TOKEN` - API token for authentication
+- `TEST_TEAM` - Team to use for tests (default: "Default")
+- `TEST_MACHINE` - Machine to use for tests (default: "test-machine")
+- `TEST_REPO` - Repository to use for tests (default: "test-repo")
+- `TEST_TIMEOUT` - Timeout for operations (default: 30 seconds)
 
-Both `rediacc-cli-sync` and `rediacc-cli-term` support a `--dev` flag for development environments where SSH host fingerprints change frequently.
+## Test Output
 
-### When to Use --dev:
-- Development environments with dynamic infrastructure
-- Testing environments where machines are frequently recreated
-- Local development with changing network configurations
+Tests use colored output for clarity:
+- ✓ Green - Test passed
+- ✗ Red - Test failed  
+- ⚠ Yellow - Test skipped/warning
+- ℹ Blue - Information
 
-### Security Warning:
-**Never use --dev in production!** It relaxes SSH host key verification which could expose you to man-in-the-middle attacks.
+Each test suite provides:
+- Individual test results
+- Summary of passed/failed tests
+- Clear error messages for failures
 
-### Example Usage:
+## Cleaning Up Old Tests
+
+To remove the old redundant test files after migration:
 ```bash
-# Terminal with --dev
-./rediacc-cli-term --token TOKEN --machine rediacc11 --dev
-
-# Sync with --dev
-./rediacc-cli-sync upload --token TOKEN --local ./files --machine rediacc11 --repo A1 --dev
+./cleanup-old-tests.sh
 ```
 
-## Quick Verification
+This will show which files will be removed and ask for confirmation.
 
-To quickly verify all tools are working:
-```bash
-cd tests
-./test-quick.sh $(../rediacc-cli login --email admin@rediacc.io --password 111111 --output json | grep -o '"token":"[^"]*' | cut -d'"' -f4)
-```
+## Benefits of Simplification
 
-## Token Management Features
-
-The new token management system supports:
-
-### 1. Command Line Override
-```bash
-# Override saved token
-./rediacc-cli --token YOUR_TOKEN list teams
-```
-
-### 2. Environment Variables
-```bash
-# Use environment variable
-export REDIACC_TOKEN="YOUR_TOKEN"
-./rediacc-cli list teams
-```
-
-### 3. Token Validation
-- All tokens are validated as GUIDs before use
-- Invalid tokens are rejected with clear error messages
-- Tokens are masked in all output (only first 8 chars shown)
-
-### 4. Secure Storage
-- Config files have 0o600 permissions (owner read/write only)
-- Config directory has 0o700 permissions
-- Tokens from --token or env vars are never saved to disk
-
-### 5. Testing Token Management
-```bash
-# Run integration test
-./test-integration.sh
-
-# Run comprehensive test suite
-./test-token-management.sh
-```
+1. **Reduced Maintenance** - Fewer files to update when APIs change
+2. **Faster Execution** - Eliminated duplicate tests
+3. **Clearer Purpose** - Each test file has a specific focus
+4. **Better Reliability** - Less dependency on infrastructure
+5. **Easier Debugging** - Simpler test logic and clearer output
