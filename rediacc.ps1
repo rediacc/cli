@@ -4,7 +4,7 @@
 [CmdletBinding()]
 param(
     [Parameter(Position=0)]
-    [ValidateSet('setup', 'login', 'sync', 'term', 'test', 'help')]
+    [ValidateSet('setup', 'login', 'sync', 'term', 'test', 'gui', 'help')]
     [string]$Command = 'help',
     
     [Parameter(Position=1, ValueFromRemainingArguments=$true)]
@@ -16,18 +16,6 @@ param(
 
 $ErrorActionPreference = "Stop"
 
-# Script configuration
-$script:MSYS2_PATHS = @(
-    "C:\msys64",
-    "C:\msys2",
-    "$env:USERPROFILE\msys64",
-    "$env:USERPROFILE\msys2"
-)
-
-if ($env:MSYS2_ROOT) {
-    $script:MSYS2_PATHS = @($env:MSYS2_ROOT) + $script:MSYS2_PATHS
-}
-
 # Helper functions
 function Write-ColorOutput {
     param(
@@ -35,6 +23,50 @@ function Write-ColorOutput {
         [ConsoleColor]$Color = 'White'
     )
     Write-Host $Message -ForegroundColor $Color
+}
+
+# Load configuration from .env file
+function Load-EnvFile {
+    $envPaths = @(
+        ".\.env",
+        "$PSScriptRoot\.env",
+        "$PSScriptRoot\..\.env",
+        "$env:USERPROFILE\.rediacc\.env"
+    )
+    
+    foreach ($envPath in $envPaths) {
+        if (Test-Path $envPath) {
+            Get-Content $envPath | ForEach-Object {
+                if ($_ -match '^([^#][^=]+)=(.*)$') {
+                    $key = $matches[1].Trim()
+                    $value = $matches[2].Trim().Trim('"''')
+                    if (-not [Environment]::GetEnvironmentVariable($key)) {
+                        [Environment]::SetEnvironmentVariable($key, $value)
+                    }
+                }
+            }
+            break
+        }
+    }
+}
+
+# Load environment if needed
+if (-not $env:REDIACC_MSYS2_ROOT) {
+    Load-EnvFile
+}
+
+# Script configuration
+if ($env:REDIACC_MSYS2_ROOT) {
+    $script:MSYS2_PATHS = @($env:REDIACC_MSYS2_ROOT)
+} else {
+    Write-ColorOutput "Warning: REDIACC_MSYS2_ROOT not set. Please configure your .env file." "Yellow"
+    # Still try common paths as last resort
+    $script:MSYS2_PATHS = @(
+        "C:\msys64",
+        "C:\msys2",
+        "$env:USERPROFILE\msys64",
+        "$env:USERPROFILE\msys2"
+    )
 }
 
 function Find-MSYS2 {
@@ -228,7 +260,7 @@ function Invoke-RediaccCLI {
     }
     
     # Build script path
-    $scriptPath = Join-Path $PSScriptRoot $Tool
+    $scriptPath = Join-Path (Join-Path $PSScriptRoot "src\cli") $Tool
     
     # Execute
     & $pythonCmd.Source $scriptPath $Arguments
@@ -247,6 +279,7 @@ COMMANDS:
     sync        File synchronization operations
     term        Terminal access to repositories
     test        Test Windows compatibility
+    gui         Launch graphical user interface
     help        Show this help message
 
 SETUP:
@@ -267,6 +300,9 @@ TERMINAL ACCESS:
 
 TEST INSTALLATION:
     .\rediacc-cli.ps1 test
+
+GRAPHICAL USER INTERFACE:
+    .\rediacc-cli.ps1 gui
 
 EXAMPLES:
     # First time setup
@@ -308,7 +344,7 @@ switch ($Command) {
     }
     
     'test' {
-        $testScript = Join-Path $PSScriptRoot "test_windows_compat.py"
+        $testScript = Join-Path (Join-Path $PSScriptRoot "scripts") "test_windows_compat.py"
         $pythonCmd = Get-Command python -ErrorAction SilentlyContinue
         if (-not $pythonCmd) {
             $pythonCmd = Get-Command py -ErrorAction SilentlyContinue
@@ -319,6 +355,10 @@ switch ($Command) {
         } else {
             Write-ColorOutput "ERROR: Python not found" -Color Red
         }
+    }
+    
+    'gui' {
+        Invoke-RediaccCLI -Tool "rediacc-cli" -Arguments @('--gui')
     }
     
     'help' {

@@ -1,0 +1,55 @@
+version: '3.8'
+
+services:
+  cli:
+    build:
+      context: ..
+      dockerfile: docker/Dockerfile
+      args:
+        REDIACC_LINUX_USER: rediacc
+        REDIACC_LINUX_GROUP: rediacc
+    image: rediacc/cli:latest
+    container_name: rediacc-cli
+    env_file:
+      - ../.env
+    environment:
+      - SYSTEM_HTTP_PORT=${SYSTEM_HTTP_PORT}
+      - REDIACC_API_URL=${REDIACC_API_URL}
+    volumes:
+      - ~/.rediacc:/home/rediacc/.rediacc
+      - ~/.ssh:/home/rediacc/.ssh:ro
+      - .:/workspace
+    working_dir: /workspace
+    network_mode: host
+    stdin_open: true
+    tty: true
+    command: ./rediacc help
+
+  # Development shell service
+  cli-shell:
+    extends: cli
+    container_name: rediacc-cli-shell
+    command: /bin/bash
+
+  # Service for running tests
+  cli-test:
+    extends: cli
+    container_name: rediacc-cli-test
+    command: ./rediacc test
+
+  # Service with GUI support (X11 forwarding)
+  cli-gui:
+    build:
+      context: ..
+      dockerfile: docker/Dockerfile.gui
+    image: rediacc/cli-gui:latest
+    container_name: rediacc-cli-gui
+    extends: cli
+    environment:
+      - DISPLAY=${DISPLAY}
+    volumes:
+      - /tmp/.X11-unix:/tmp/.X11-unix:rw
+      - ~/.Xauthority:/home/rediacc/.Xauthority:ro
+    devices:
+      - /dev/dri:/dev/dri
+    command: ./rediacc gui

@@ -1,0 +1,50 @@
+# Dockerfile for Rediacc CLI with GUI support (X11 forwarding)
+# This extends the base CLI image with X11 libraries for GUI testing
+
+FROM rediacc/cli:latest AS gui
+
+# Switch to root to install packages
+USER root
+
+# Install X11 and tkinter dependencies
+RUN apk add --no-cache \
+    tk \
+    tcl \
+    xvfb \
+    xauth \
+    xhost \
+    fontconfig \
+    ttf-dejavu \
+    && rm -rf /var/cache/apk/*
+
+# Create X11 unix socket directory
+RUN mkdir -p /tmp/.X11-unix && \
+    chmod 1777 /tmp/.X11-unix
+
+# Create .rediacc directory for GUI config with proper permissions
+RUN mkdir -p /home/rediacc/.rediacc && \
+    chown -R rediacc:rediacc /home/rediacc/.rediacc
+
+# Switch back to non-root user
+USER rediacc
+
+# Set display environment variable
+ENV DISPLAY=:0
+
+# Add a note about X11 requirements
+LABEL org.opencontainers.image.description="Rediacc CLI with GUI support (requires X11 forwarding)"
+LABEL org.opencontainers.image.title="Rediacc CLI GUI"
+
+# Note about running Rediacc Desktop
+# To run Rediacc Desktop on Linux/macOS:
+# docker run -it --rm \
+#   -e DISPLAY=$DISPLAY \
+#   -v /tmp/.X11-unix:/tmp/.X11-unix:rw \
+#   -v ~/.rediacc:/home/rediacc/.rediacc \
+#   rediacc/cli-gui ./rediacc gui
+
+# To run Rediacc Desktop on Windows (with X server like VcXsrv):
+# docker run -it --rm \
+#   -e DISPLAY=host.docker.internal:0 \
+#   -v ~/.rediacc:/home/rediacc/.rediacc \
+#   rediacc/cli-gui ./rediacc gui

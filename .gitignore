@@ -63,6 +63,7 @@ Thumbs.db
 .rediacc/
 rediacc-cli-*/
 *.tar.gz
+.dockerbuild
 
 # Test artifacts
 test*.txt

@@ -1,6 +1,6 @@
 #!/bin/bash
 # Universal Rediacc CLI wrapper for Linux/macOS
-# Provides similar functionality to the Windows PowerShell wrapper
+# Consolidated wrapper with all CLI, Desktop, and Docker functionality
 
 set -e
 
@@ -13,97 +13,491 @@ NC='\033[0m'
 
 # Script directory
 SCRIPT_DIR="$( cd "$( dirname "${BASH_SOURCE[0]}" )" && pwd )"
+CLI_ROOT="$SCRIPT_DIR"
+
+# Source environment if available
+if [ -f "$CLI_ROOT/.env" ]; then
+    export $(grep -v '^#' "$CLI_ROOT/.env" | xargs)
+fi
 
 # Helper functions
 print_help() {
-    echo -e "${CYAN}Rediacc CLI for Linux/macOS${NC}"
+    echo -e "${CYAN}Rediacc CLI and Desktop for Linux/macOS${NC}"
     echo
     echo "USAGE:"
     echo "    ./rediacc <command> [arguments]"
     echo
     echo "COMMANDS:"
-    echo "    setup       Install dependencies and set up environment"
-    echo "    test        Test installation and compatibility"
+    echo "  Core:"
     echo "    login       Authenticate with Rediacc API"
     echo "    sync        File synchronization operations"
     echo "    term        Terminal access to repositories"
+    echo "    gui [mode]  Launch Rediacc Desktop (graphical interface)"
+    echo "                  native: Run natively (default)"
+    echo "                  docker: Run in Docker (auto-builds)"
+    echo "                  docker-build: Force rebuild Docker image"
+    echo "    desktop     Alias for gui command"
+    echo
+    echo "  Development:"
+    echo "    test        Test installation and run test suite"
+    echo "    release     Create a release build"
+    echo
+    echo "  Docker:"
+    echo "    docker-build          Build CLI Docker image"
+    echo "    docker-run            Run CLI in Docker container"
+    echo "    docker-shell          Interactive shell in Docker"
+    echo "    docker-compose-up     Start services with docker-compose"
+    echo "    docker-compose-down   Stop services"
+    echo
+    echo "  Setup:"
+    echo "    setup       Install dependencies and set up environment"
     echo "    help        Show this help message"
     echo
-    echo "SETUP:"
-    echo "    ./rediacc setup"
-    echo "    ./rediacc setup --auto    # Auto-install without prompts"
+    echo "EXAMPLES:"
+    echo "    ./rediacc setup --auto       # Auto-install dependencies"
+    echo "    ./rediacc login             # Interactive login"
+    echo "    ./rediacc gui               # Launch GUI natively"
+    echo "    ./rediacc gui docker        # Launch GUI in Docker"
+    echo "    ./rediacc sync --help       # Sync help"
+    echo "    ./rediacc term --help       # Terminal help"
     echo
-    echo "AUTHENTICATION:"
-    echo "    ./rediacc login --email user@example.com --password yourpass"
-    echo "    ./rediacc login           # Interactive login"
-    echo
-    echo "SYNC OPERATIONS:"
-    echo "    ./rediacc sync upload --token TOKEN --local /path --machine server --repo myrepo"
-    echo "    ./rediacc sync download --token TOKEN --machine server --repo myrepo --local /path"
-    echo "    ./rediacc sync --help"
-    echo
-    echo "TERMINAL ACCESS:"
-    echo "    ./rediacc term --token TOKEN --machine server --repo myrepo"
-    echo
-    echo "For more information, see README.md"
+    echo "For detailed documentation, see docs/README.md"
 }
 
-# Get Python command
-get_python_cmd() {
-    if command -v python3 >/dev/null 2>&1; then
-        echo "python3"
-    elif command -v python >/dev/null 2>&1; then
-        # Check if it's Python 3
-        if python --version 2>&1 | grep -q "Python 3"; then
-            echo "python"
-        else
-            echo ""
-        fi
+# Setup function
+setup() {
+    echo -e "${CYAN}=== Rediacc CLI Setup ===${NC}"
+    echo
+    
+    # Check Python 3
+    if ! command -v python3 &> /dev/null; then
+        echo -e "${RED}Error: Python 3 is not installed${NC}"
+        echo "Please install Python 3.7 or later"
+        exit 1
+    fi
+    
+    # Check Python version
+    python_version=$(python3 -c 'import sys; print(".".join(map(str, sys.version_info[:2])))')
+    echo -e "${GREEN}✓ Python $python_version found${NC}"
+    
+    # Check rsync
+    if ! command -v rsync &> /dev/null; then
+        echo -e "${YELLOW}Warning: rsync not found${NC}"
+        echo "Install rsync for file synchronization support:"
+        echo "  Ubuntu/Debian: sudo apt-get install rsync"
+        echo "  macOS: brew install rsync"
     else
-        echo ""
+        echo -e "${GREEN}✓ rsync found${NC}"
+    fi
+    
+    # Check SSH
+    if ! command -v ssh &> /dev/null; then
+        echo -e "${YELLOW}Warning: SSH not found${NC}"
+        echo "SSH is required for terminal access"
+    else
+        echo -e "${GREEN}✓ SSH found${NC}"
+    fi
+    
+    # Check tkinter for GUI
+    if python3 -c "import tkinter" 2>/dev/null; then
+        echo -e "${GREEN}✓ tkinter found (GUI support available)${NC}"
+    else
+        echo -e "${YELLOW}Warning: tkinter not found${NC}"
+        echo "Install python3-tk for Rediacc Desktop support:"
+        echo "  Ubuntu/Debian: sudo apt-get install python3-tk"
+        echo "  macOS: tkinter should be included with Python"
+    fi
+    
+    # Check configuration
+    if [ -f "$CLI_ROOT/.env" ]; then
+        echo -e "${GREEN}✓ Configuration file found${NC}"
+    else
+        echo -e "${YELLOW}Warning: No .env file found${NC}"
+        echo "Copy .env.example to .env and configure:"
+        echo "  cp .env.example .env"
+    fi
+    
+    echo
+    echo -e "${GREEN}Setup check complete!${NC}"
+}
+
+# Test function
+test_cli() {
+    echo -e "${GREEN}Running CLI tests...${NC}"
+    
+    # Change to CLI root
+    cd "$CLI_ROOT"
+    
+    # Run test script if it exists
+    if [ -f "test.sh" ]; then
+        bash test.sh
+    elif [ -d "tests" ]; then
+        # Run Python tests
+        python3 -m pytest tests/ -v
+    else
+        echo -e "${YELLOW}No tests found${NC}"
+        echo "Create test.sh or add tests in tests/ directory"
     fi
 }
 
-# Main command handling
-case "${1:-help}" in
+# Release function
+release() {
+    echo -e "${GREEN}Preparing CLI release...${NC}"
+    
+    # Create release directory
+    release_dir="$CLI_ROOT/release"
+    rm -rf "$release_dir"
+    mkdir -p "$release_dir"
+    
+    # Copy essential files
+    cp -r "$CLI_ROOT/src" "$release_dir/"
+    cp "$CLI_ROOT/rediacc" "$release_dir/"
+    cp "$CLI_ROOT/rediacc.ps1" "$release_dir/"
+    cp "$CLI_ROOT/.env.example" "$release_dir/"
+    cp "$CLI_ROOT/requirements.txt" "$release_dir/" 2>/dev/null || true
+    
+    # Create version info
+    version=$(date +%Y.%m.%d.%H%M)
+    echo "{\"version\": \"$version\", \"build_date\": \"$(date -u +%Y-%m-%dT%H:%M:%SZ)\"}" > "$release_dir/version.json"
+    
+    # Create tarball
+    tar -czf "rediacc-cli-$version.tar.gz" -C "$CLI_ROOT" release/
+    
+    echo -e "${GREEN}Release created: rediacc-cli-$version.tar.gz${NC}"
+    echo "Release directory: $release_dir"
+}
+
+# Docker functions
+docker_build() {
+    echo -e "${GREEN}Building CLI Docker image...${NC}"
+    
+    docker build -t rediacc-cli:latest \
+        --build-arg REDIACC_LINUX_USER=rediacc \
+        --build-arg REDIACC_LINUX_GROUP=rediacc \
+        -f "$CLI_ROOT/docker/Dockerfile" \
+        "$CLI_ROOT"
+    
+    if [ $? -eq 0 ]; then
+        echo -e "${GREEN}Docker image built successfully: rediacc-cli:latest${NC}"
+    else
+        echo -e "${RED}Docker build failed${NC}"
+        return 1
+    fi
+}
+
+docker_run() {
+    # Build if image doesn't exist
+    if ! docker images | grep -q "rediacc-cli.*latest"; then
+        echo -e "${YELLOW}Docker image not found. Building...${NC}"
+        docker_build || return 1
+    fi
+    
+    # Run with environment file if it exists
+    env_file_arg=""
+    if [ -f "$CLI_ROOT/.env" ]; then
+        env_file_arg="--env-file $CLI_ROOT/.env"
+    fi
+    
+    docker run -it --rm \
+        --name rediacc-cli-run-$$ \
+        $env_file_arg \
+        -v "$HOME/.rediacc:/home/rediacc/.rediacc" \
+        -v "$HOME/.ssh:/home/rediacc/.ssh:ro" \
+        -v "$PWD:/workspace" \
+        -w /workspace \
+        --network host \
+        rediacc-cli:latest \
+        python3 /app/src/cli/rediacc-cli "$@"
+}
+
+docker_shell() {
+    echo -e "${GREEN}Starting interactive shell in Docker...${NC}"
+    
+    # Build if image doesn't exist
+    if ! docker images | grep -q "rediacc-cli.*latest"; then
+        echo -e "${YELLOW}Docker image not found. Building...${NC}"
+        docker_build || return 1
+    fi
+    
+    # Run with environment file if it exists
+    env_file_arg=""
+    if [ -f "$CLI_ROOT/.env" ]; then
+        env_file_arg="--env-file $CLI_ROOT/.env"
+    fi
+    
+    docker run -it --rm \
+        --name rediacc-cli-shell-$$ \
+        $env_file_arg \
+        -v "$HOME/.rediacc:/home/rediacc/.rediacc" \
+        -v "$HOME/.ssh:/home/rediacc/.ssh:ro" \
+        -v "$PWD:/workspace" \
+        -w /workspace \
+        --network host \
+        rediacc-cli:latest \
+        /bin/bash
+}
+
+docker_compose_up() {
+    echo -e "${GREEN}Starting services with docker-compose...${NC}"
+    docker-compose -f "$CLI_ROOT/docker/docker-compose.yml" up -d
+}
+
+docker_compose_down() {
+    echo -e "${GREEN}Stopping services...${NC}"
+    docker-compose -f "$CLI_ROOT/docker/docker-compose.yml" down
+}
+
+# Desktop functions
+desktop() {
+    echo -e "${GREEN}Starting Rediacc Desktop...${NC}"
+    
+    # Check Python
+    if ! command -v python3 &> /dev/null; then
+        echo -e "${RED}Error: Python 3 is not installed${NC}"
+        return 1
+    fi
+    
+    # Check tkinter
+    if ! python3 -c "import tkinter" 2>/dev/null; then
+        echo -e "${RED}Error: tkinter not found${NC}"
+        echo "Install python3-tk:"
+        echo "  Ubuntu/Debian: sudo apt-get install python3-tk"
+        echo "  Fedora/RHEL: sudo dnf install python3-tkinter"
+        echo "  macOS: tkinter should be included with Python"
+        return 1
+    fi
+    
+    # Run Desktop GUI
+    python3 "$CLI_ROOT/src/cli/rediacc-cli" --gui "$@"
+}
+
+desktop_docker_build() {
+    echo -e "${GREEN}Building Rediacc Desktop Docker image...${NC}"
+    
+    # Check if base image exists
+    if ! docker images | grep -q "rediacc/cli.*latest"; then
+        echo -e "${YELLOW}Base image not found. Building base image first...${NC}"
+        docker build -t rediacc/cli:latest \
+            --build-arg REDIACC_LINUX_USER=rediacc \
+            --build-arg REDIACC_LINUX_GROUP=rediacc \
+            -f "$CLI_ROOT/docker/Dockerfile" \
+            "$CLI_ROOT"
+        
+        if [ $? -ne 0 ]; then
+            echo -e "${RED}Base image build failed${NC}"
+            return 1
+        fi
+    fi
+    
+    # Build GUI image
+    docker build -t rediacc/cli-gui:latest \
+        --build-arg REDIACC_LINUX_USER=rediacc \
+        --build-arg REDIACC_LINUX_GROUP=rediacc \
+        -f "$CLI_ROOT/docker/Dockerfile.gui" \
+        "$CLI_ROOT"
+    
+    if [ $? -eq 0 ]; then
+        echo -e "${GREEN}Docker image built successfully: rediacc/cli-gui:latest${NC}"
+    else
+        echo -e "${RED}Docker build failed${NC}"
+        return 1
+    fi
+}
+
+desktop_docker() {
+    echo -e "${GREEN}Running Rediacc Desktop in Docker...${NC}"
+    
+    # Check if image exists
+    IMAGE_EXISTS=$(docker images -q rediacc/cli-gui:latest 2>/dev/null)
+    
+    # Check if rebuild is needed
+    REBUILD_NEEDED=false
+    
+    if [ -z "$IMAGE_EXISTS" ]; then
+        echo -e "${YELLOW}Docker image not found. Building...${NC}"
+        REBUILD_NEEDED=true
+    else
+        # Check if source files are newer than image
+        if [ -f "$CLI_ROOT/.dockerbuild" ]; then
+            # Find if any source files are newer than our build marker
+            NEWER_FILES=$(find "$CLI_ROOT/src" "$CLI_ROOT/docker" -type f \( -name "*.py" -o -name "Dockerfile*" \) -newer "$CLI_ROOT/.dockerbuild" 2>/dev/null | head -1)
+            
+            if [ -n "$NEWER_FILES" ]; then
+                echo -e "${YELLOW}Source files have been updated. Rebuilding...${NC}"
+                REBUILD_NEEDED=true
+            else
+                echo -e "${GREEN}Docker image is up to date${NC}"
+            fi
+        else
+            # No build marker, so this is an old image or manual build
+            echo -e "${YELLOW}No build marker found. Rebuilding to ensure latest version...${NC}"
+            REBUILD_NEEDED=true
+        fi
+    fi
+    
+    # Build if needed
+    if [ "$REBUILD_NEEDED" = true ]; then
+        desktop_docker_build || return 1
+        # Create/update build marker
+        touch "$CLI_ROOT/.dockerbuild"
+    fi
+    
+    # Platform-specific display setup
+    if [[ "$OSTYPE" == "darwin"* ]]; then
+        # macOS
+        if ! command -v xhost &> /dev/null; then
+            echo -e "${RED}XQuartz not found${NC}"
+            echo "Install XQuartz from: https://www.xquartz.org/"
+            return 1
+        fi
+        xhost +local:docker 2>/dev/null
+        DISPLAY_ENV="-e DISPLAY=host.docker.internal:0"
+    else
+        # Linux
+        xhost +local:docker 2>/dev/null || true
+        DISPLAY_ENV="-e DISPLAY=$DISPLAY"
+    fi
+    
+    # Run with GUI support
+    echo -e "${CYAN}Starting GUI container...${NC}"
+    
+    # Check if we're in a terminal
+    if [ -t 0 ] && [ -t 1 ]; then
+        DOCKER_TTY="-it"
+    else
+        DOCKER_TTY="-i"
+        echo -e "${YELLOW}Warning: Not running in interactive terminal${NC}"
+    fi
+    
+    # Ensure .rediacc directory exists
+    mkdir -p "$HOME/.rediacc"
+    
+    # Create a temporary directory for container's .rediacc if needed
+    REDIACC_VOLUME="$HOME/.rediacc-docker"
+    mkdir -p "$REDIACC_VOLUME"
+    
+    # Copy existing config if it exists
+    if [ -f "$HOME/.rediacc/config.json" ]; then
+        cp "$HOME/.rediacc/config.json" "$REDIACC_VOLUME/" 2>/dev/null || true
+    fi
+    
+    # Set permissions for container user (UID 111)
+    chmod 777 "$REDIACC_VOLUME" 2>/dev/null || true
+    
+    docker run $DOCKER_TTY --rm \
+        --name rediacc-desktop-$$ \
+        $DISPLAY_ENV \
+        -v /tmp/.X11-unix:/tmp/.X11-unix:rw \
+        -v "$HOME/.Xauthority:/home/rediacc/.Xauthority:ro" \
+        -v "$REDIACC_VOLUME:/home/rediacc/.rediacc:rw" \
+        -v "$CLI_ROOT/.env:/app/.env:ro" \
+        --network host \
+        rediacc/cli-gui:latest \
+        python3 /app/src/cli/rediacc-cli --gui
+    
+    # Copy config back if it was updated
+    if [ -f "$REDIACC_VOLUME/config.json" ]; then
+        cp "$REDIACC_VOLUME/config.json" "$HOME/.rediacc/" 2>/dev/null || true
+    fi
+}
+
+# Main command handler
+case "$1" in
     setup)
         shift
-        "$SCRIPT_DIR/install.sh" "$@"
+        setup "$@"
         ;;
         
     test)
-        PYTHON_CMD=$(get_python_cmd)
-        if [ -z "$PYTHON_CMD" ]; then
-            echo -e "${RED}Error: Python 3 not found${NC}"
-            echo "Run: ./rediacc setup"
-            exit 1
-        fi
-        $PYTHON_CMD "$SCRIPT_DIR/test_windows_compat.py"
+        shift
+        test_cli "$@"
+        ;;
+        
+    release)
+        shift
+        release "$@"
         ;;
         
     login)
         shift
-        "$SCRIPT_DIR/rediacc-cli" login "$@"
+        python3 "$CLI_ROOT/src/cli/rediacc-cli" login "$@"
         ;;
         
     sync)
         shift
-        "$SCRIPT_DIR/rediacc-cli-sync" "$@"
+        python3 "$CLI_ROOT/src/cli/rediacc-cli-sync" "$@"
         ;;
         
-    term)
+    term|terminal)
         shift
-        "$SCRIPT_DIR/rediacc-cli-term" "$@"
+        python3 "$CLI_ROOT/src/cli/rediacc-cli-term" "$@"
+        ;;
+        
+    gui|desktop|--gui)
+        shift
+        # Check if next argument is a mode
+        if [ "$1" = "docker" ]; then
+            shift
+            desktop_docker "$@"
+        elif [ "$1" = "docker-build" ]; then
+            shift
+            desktop_docker_build "$@"
+        else
+            # Default to native or pass through --gui with mode
+            if [ "$#" -eq 0 ]; then
+                desktop
+            else
+                # Pass through to Python CLI which handles --gui modes
+                python3 "$CLI_ROOT/src/cli/rediacc-cli" --gui "$@"
+            fi
+        fi
+        ;;
+        
+    docker-build)
+        shift
+        docker_build "$@"
+        ;;
+        
+    docker-run)
+        shift
+        docker_run "$@"
+        ;;
+        
+    docker-shell)
+        shift
+        docker_shell "$@"
+        ;;
+        
+    docker-compose-up)
+        shift
+        docker_compose_up "$@"
+        ;;
+        
+    docker-compose-down)
+        shift
+        docker_compose_down "$@"
+        ;;
+        
+    desktop-docker-build)
+        shift
+        desktop_docker_build "$@"
+        ;;
+        
+    desktop-docker)
+        shift
+        desktop_docker "$@"
         ;;
         
     help|--help|-h)
         print_help
         ;;
         
-    *)
-        echo -e "${RED}Unknown command: $1${NC}"
-        echo
+    "")
         print_help
-        exit 1
+        ;;
+        
+    *)
+        # Pass through to main CLI
+        python3 "$CLI_ROOT/src/cli/rediacc-cli" "$@"
         ;;
 esac
