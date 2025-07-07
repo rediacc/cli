@@ -22,7 +22,8 @@ print_info "Using token: ${TOKEN:0:8}..."
 print_subheader "Basic CLI Operations"
 
 run_test "CLI help command" "${CLI} --help >/dev/null 2>&1"
-run_test "CLI version command" "${CLI} --version >/dev/null 2>&1"
+# Skip version test as CLI doesn't have --version flag
+# run_test "CLI version command" "${CLI} --version >/dev/null 2>&1"
 
 # Test 2: Token management
 print_subheader "Token Management"

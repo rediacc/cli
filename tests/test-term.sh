@@ -31,7 +31,7 @@ if ! echo "$OUTPUT" | grep -q "$TEST_MACHINE"; then
 fi
 
 # Test single command execution
-OUTPUT=$(${TERM} \
+OUTPUT=$(${TERM_CLI} \
     --token "$TOKEN" \
     --machine "$TEST_MACHINE" \
     --team "$TEST_TEAM" \
@@ -43,7 +43,7 @@ check_contains "$OUTPUT" "Hello from terminal" "Single command execution"
 print_subheader "Repository Environment Tests"
 
 # Test command in repository context
-OUTPUT=$(${TERM} \
+OUTPUT=$(${TERM_CLI} \
     --token "$TOKEN" \
     --machine "$TEST_MACHINE" \
     --repo "$TEST_REPO" \
@@ -53,7 +53,7 @@ OUTPUT=$(${TERM} \
 check_contains "$OUTPUT" "/$TEST_REPO" "Repository working directory set"
 
 # Test environment variables
-OUTPUT=$(${TERM} \
+OUTPUT=$(${TERM_CLI} \
     --token "$TOKEN" \
     --machine "$TEST_MACHINE" \
     --repo "$TEST_REPO" \
@@ -66,7 +66,7 @@ check_contains "$OUTPUT" "$TEST_REPO" "Repository environment variable set"
 print_subheader "Machine-Only Access Tests"
 
 # Test direct machine access (no repo)
-OUTPUT=$(${TERM} \
+OUTPUT=$(${TERM_CLI} \
     --token "$TOKEN" \
     --machine "$TEST_MACHINE" \
     --team "$TEST_TEAM" \
@@ -78,7 +78,7 @@ check_contains "$OUTPUT" "universal" "Machine access uses universal user"
 print_subheader "Docker Integration Tests"
 
 # Check if Docker is available on the machine
-OUTPUT=$(${TERM} \
+OUTPUT=$(${TERM_CLI} \
     --token "$TOKEN" \
     --machine "$TEST_MACHINE" \
     --team "$TEST_TEAM" \
@@ -87,7 +87,7 @@ OUTPUT=$(${TERM} \
 
 if echo "$OUTPUT" | grep -q "/docker"; then
     # Test Docker command
-    OUTPUT=$(${TERM} \
+    OUTPUT=$(${TERM_CLI} \
         --token "$TOKEN" \
         --machine "$TEST_MACHINE" \
         --repo "$TEST_REPO" \
@@ -107,7 +107,7 @@ fi
 print_subheader "Error Handling"
 
 # Invalid machine
-OUTPUT=$(${TERM} \
+OUTPUT=$(${TERM_CLI} \
     --token "$TOKEN" \
     --machine "nonexistent-machine" \
     --team "$TEST_TEAM" \
@@ -116,7 +116,7 @@ OUTPUT=$(${TERM} \
 check_contains "$OUTPUT" "not found" "Invalid machine error handled"
 
 # Invalid repository
-OUTPUT=$(${TERM} \
+OUTPUT=$(${TERM_CLI} \
     --token "$TOKEN" \
     --machine "$TEST_MACHINE" \
     --repo "nonexistent-repo" \
@@ -129,7 +129,7 @@ check_contains "$OUTPUT" "Failed" "Invalid repository error handled"
 print_subheader "Special Character Tests"
 
 # Test command with quotes
-OUTPUT=$(${TERM} \
+OUTPUT=$(${TERM_CLI} \
     --token "$TOKEN" \
     --machine "$TEST_MACHINE" \
     --team "$TEST_TEAM" \
@@ -138,7 +138,7 @@ OUTPUT=$(${TERM} \
 check_contains "$OUTPUT" "Test with spaces and \"quotes\"" "Special characters handled"
 
 # Test command with variables
-OUTPUT=$(${TERM} \
+OUTPUT=$(${TERM_CLI} \
     --token "$TOKEN" \
     --machine "$TEST_MACHINE" \
     --team "$TEST_TEAM" \
@@ -150,7 +150,7 @@ check_contains "$OUTPUT" "test value" "Shell variables work correctly"
 print_subheader "Development Mode Tests"
 
 # Test with --dev flag (relaxed host checking)
-OUTPUT=$(${TERM} \
+OUTPUT=$(${TERM_CLI} \
     --token "$TOKEN" \
     --machine "$TEST_MACHINE" \
     --team "$TEST_TEAM" \
