@@ -17,9 +17,9 @@ export TEST_REPO="${TEST_REPO:-test-repo}"
 export TEST_TIMEOUT="${TEST_TIMEOUT:-30}"
 
 # Tool paths
-export CLI="${CLI:-../rediacc-cli}"
-export SYNC="${SYNC:-../rediacc-cli-sync}"
-export TERM="${TERM:-../rediacc-cli-term}"
+export CLI="${CLI:-../src/cli/rediacc-cli}"
+export SYNC="${SYNC:-../src/cli/rediacc-cli-sync}"
+export TERM_CLI="${TERM_CLI:-../src/cli/rediacc-cli-term}"
 
 # Test counters
 export TESTS_RUN=0
@@ -48,6 +48,10 @@ print_info() {
 
 print_warn() {
     echo -e "${YELLOW}⚠${NC} $1"
+}
+
+print_error() {
+    echo -e "${RED}✗${NC} $1"
 }
 
 print_header() {
@@ -132,10 +136,13 @@ get_token() {
     if [ -z "$token" ] && [ -f ~/.rediacc/config.json ]; then
         token=$(python3 -c "
 import json
-with open('$HOME/.rediacc/config.json', 'r') as f:
-    config = json.load(f)
-    if 'token' in config:
-        print(config['token'])
+try:
+    with open('$HOME/.rediacc/config.json', 'r') as f:
+        config = json.load(f)
+        if 'token' in config and config['token']:
+            print(config['token'])
+except:
+    pass
 " 2>/dev/null || echo "")
     fi
     
@@ -212,7 +219,7 @@ safe_cleanup() {
 }
 
 # Export common functions for use in sourcing scripts
-export -f print_pass print_fail print_info print_warn
+export -f print_pass print_fail print_info print_warn print_error
 export -f print_header print_subheader
 export -f run_test check_success check_contains check_not_contains
 export -f get_token require_token

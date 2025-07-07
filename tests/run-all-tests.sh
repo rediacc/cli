@@ -3,7 +3,8 @@
 # Master test runner for Rediacc CLI
 # Runs all simplified test suites
 
-set -e  # Exit on error
+# Temporarily disable exit on error for debugging
+# set -e  # Exit on error
 
 # Get script directory
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
@@ -12,16 +13,59 @@ cd "$SCRIPT_DIR"
 # Source common test utilities
 source ./test-common.sh
 
+# Load environment variables from .env file
+if [ -f "../../.env" ]; then
+    # Load each line separately to handle quotes properly
+    while IFS='=' read -r key value; do
+        # Skip comments and empty lines
+        if [[ ! "$key" =~ ^[[:space:]]*# ]] && [[ -n "$key" ]]; then
+            # Remove leading/trailing whitespace
+            key=$(echo "$key" | sed 's/^[[:space:]]*//;s/[[:space:]]*$//')
+            value=$(echo "$value" | sed 's/^[[:space:]]*//;s/[[:space:]]*$//')
+            # Remove surrounding quotes from value
+            value=$(echo "$value" | sed 's/^"\(.*\)"$/\1/')
+            # Export the variable
+            export "$key=$value"
+        fi
+    done < "../../.env"
+fi
+
 print_header "Rediacc CLI Test Suite"
 print_info "Running simplified test suite..."
 
 # Get token
 TOKEN=$(get_token "$1")
 if [ -z "$TOKEN" ]; then
-    print_warn "No token provided. Some tests may be skipped."
-    print_info "Usage: $0 <TOKEN>"
-    print_info "Or set REDIACC_TOKEN environment variable"
-    echo ""
+    print_info "No token provided. Attempting to login..."
+    
+    # Get credentials from .env file
+    ADMIN_EMAIL="${SYSTEM_ADMIN_EMAIL:-admin@rediacc.io}"
+    ADMIN_PASSWORD="${SYSTEM_ADMIN_PASSWORD:-admin}"
+    
+    # Try to login
+    print_info "Logging in with email: $ADMIN_EMAIL"
+    # Set correct CLI path
+    CLI="${CLI:-../src/cli/rediacc-cli}"
+    LOGIN_OUTPUT=$($CLI login --email "$ADMIN_EMAIL" --password "$ADMIN_PASSWORD" 2>&1)
+    
+    if echo "$LOGIN_OUTPUT" | grep -qi "successfully logged in\|authentication successful\|logged in as"; then
+        print_pass "Successfully logged in"
+        
+        # Try to get token again after login
+        TOKEN=$(get_token)
+        
+        if [ -z "$TOKEN" ]; then
+            print_error "Failed to retrieve token after login"
+            print_info "Login output: $LOGIN_OUTPUT"
+            exit 1
+        fi
+    else
+        print_error "Failed to login with credentials from .env"
+        print_info "Login output: $LOGIN_OUTPUT"
+        print_info "Usage: $0 <TOKEN>"
+        print_info "Or set REDIACC_TOKEN environment variable"
+        exit 1
+    fi
 fi
 
 # Track overall results
