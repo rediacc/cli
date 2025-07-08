@@ -405,13 +405,19 @@ class MainWindow(BaseWindow):
         
         self.mirror_var = tk.BooleanVar()
         self.mirror_check = tk.Checkbutton(option_container, text=i18n.get('mirror_delete'),
-                      variable=self.mirror_var)
+                      variable=self.mirror_var,
+                      command=self.on_mirror_changed)
         self.mirror_check.pack(side='left', padx=10)
         
         self.verify_var = tk.BooleanVar()
         self.verify_check = tk.Checkbutton(option_container, text=i18n.get('verify_transfer'),
                       variable=self.verify_var)
         self.verify_check.pack(side='left', padx=10)
+        
+        self.confirm_var = tk.BooleanVar()
+        self.confirm_check = tk.Checkbutton(option_container, text=i18n.get('preview_changes'),
+                      variable=self.confirm_var)
+        self.confirm_check.pack(side='left', padx=10)
         
         # Sync button
         self.sync_button = ttk.Button(control_frame, text=i18n.get('start_sync'),
@@ -927,6 +933,16 @@ cd {cli_dir}
         command = f'term --team "{team}" --machine "{machine}"'
         self._launch_terminal(command, i18n.get('an_interactive_machine_terminal'))
     
+    def on_mirror_changed(self):
+        """Handle mirror checkbox change"""
+        if self.mirror_var.get():
+            # When mirror is enabled, force confirm on and disable the checkbox
+            self.confirm_var.set(True)
+            self.confirm_check.config(state='disabled')
+        else:
+            # When mirror is disabled, re-enable the confirm checkbox
+            self.confirm_check.config(state='normal')
+    
     def browse_local_path(self):
         """Browse for local directory"""
         if self.sync_direction.get() == 'upload':
@@ -961,9 +977,11 @@ cd {cli_dir}
                    '--repo', repo, '--local', local_path]
             
             if self.mirror_var.get():
-                cmd.extend(['--mirror', '--confirm'])
+                cmd.append('--mirror')
             if self.verify_var.get():
                 cmd.append('--verify')
+            if self.confirm_var.get():
+                cmd.append('--confirm')
             
             result = self.runner.run_command(cmd)
             output = result.get('output', '') + result.get('error', '')
@@ -1341,6 +1359,7 @@ cd {cli_dir}
         self.options_frame.config(text=i18n.get('options'))
         self.mirror_check.config(text=i18n.get('mirror_delete'))
         self.verify_check.config(text=i18n.get('verify_transfer'))
+        self.confirm_check.config(text=i18n.get('preview_changes'))
         self.sync_button.config(text=i18n.get('start_sync'))
         self.sync_output_label.config(text=i18n.get('output'))
 
