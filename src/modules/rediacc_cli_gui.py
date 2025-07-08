@@ -22,13 +22,16 @@ from token_manager import TokenManager
 # Import subprocess runner for CLI commands
 from subprocess_runner import SubprocessRunner
 
+# Import internationalization
+from i18n import i18n
+
 
 
 class BaseWindow:
     """Base class for all GUI windows"""
-    def __init__(self, root: tk.Tk, title: str = "Rediacc CLI Tools"):
+    def __init__(self, root: tk.Tk, title: str = None):
         self.root = root
-        self.root.title(title)
+        self.root.title(title or i18n.get('app_title'))
         
         # Set up proper window close handling
         self.root.protocol("WM_DELETE_WINDOW", self.on_closing)
@@ -59,9 +62,13 @@ class BaseWindow:
 class LoginWindow(BaseWindow):
     """Simple login window"""
     def __init__(self, on_login_success: Callable):
-        super().__init__(tk.Tk(), "Rediacc CLI - Login")
+        super().__init__(tk.Tk(), i18n.get('login_title'))
         self.on_login_success = on_login_success
-        self.center_window(400, 300)
+        self.center_window(400, 350)  # Increased height for language selector
+        
+        # Register for language changes
+        i18n.register_observer(self.update_texts)
+        
         self.create_widgets()
     
     def create_widgets(self):
@@ -70,23 +77,38 @@ class LoginWindow(BaseWindow):
         main_frame = tk.Frame(self.root)
         main_frame.pack(expand=True, fill='both', padx=20, pady=20)
         
+        # Language selector at top
+        lang_frame = tk.Frame(main_frame)
+        lang_frame.pack(fill='x', pady=(0, 10))
+        
+        self.lang_label = tk.Label(lang_frame, text=i18n.get('language') + ':')
+        self.lang_label.pack(side='left', padx=5)
+        
+        self.lang_combo = ttk.Combobox(lang_frame, state='readonly', width=15)
+        self.lang_combo['values'] = [i18n.get_language_name(code) for code in i18n.get_language_codes()]
+        self.lang_combo.set(i18n.get_language_name(i18n.current_language))
+        self.lang_combo.pack(side='left')
+        self.lang_combo.bind('<<ComboboxSelected>>', self.on_language_changed)
+        
         # Title
-        title = tk.Label(main_frame, text="Rediacc CLI Login",
+        self.title_label = tk.Label(main_frame, text=i18n.get('login_header'),
                         font=('Arial', 16, 'bold'))
-        title.pack(pady=20)
+        self.title_label.pack(pady=20)
         
         # Email field
-        tk.Label(main_frame, text="Email:").pack(anchor='w', pady=5)
+        self.email_label = tk.Label(main_frame, text=i18n.get('email'))
+        self.email_label.pack(anchor='w', pady=5)
         self.email_entry = ttk.Entry(main_frame, width=40)
         self.email_entry.pack(fill='x', pady=5)
         
         # Password field
-        tk.Label(main_frame, text="Password:").pack(anchor='w', pady=5)
+        self.password_label = tk.Label(main_frame, text=i18n.get('password'))
+        self.password_label.pack(anchor='w', pady=5)
         self.password_entry = ttk.Entry(main_frame, width=40, show='*')
         self.password_entry.pack(fill='x', pady=5)
         
         # Login button
-        self.login_button = ttk.Button(main_frame, text="Login", command=self.login)
+        self.login_button = ttk.Button(main_frame, text=i18n.get('login'), command=self.login)
         self.login_button.pack(pady=20)
         
         # Status label
@@ -105,11 +127,11 @@ class LoginWindow(BaseWindow):
         password = self.password_entry.get()
         
         if not email or not password:
-            messagebox.showerror("Error", "Please enter both email and password")
+            messagebox.showerror(i18n.get('error'), i18n.get('please_enter_credentials'))
             return
         
         self.login_button.config(state='disabled')
-        self.status_label.config(text="Logging in...")
+        self.status_label.config(text=i18n.get('logging_in'))
         
         # Run login in thread
         thread = threading.Thread(target=self._do_login, args=(email, password))
@@ -126,32 +148,62 @@ class LoginWindow(BaseWindow):
                 # Login successful - token is already saved by CLI
                 self.root.after(0, self.login_success)
             else:
-                error = result.get('error', 'Login failed')
+                error = result.get('error', i18n.get('login_failed'))
                 self.root.after(0, lambda: self.login_error(error))
         except Exception as e:
             self.root.after(0, lambda: self.login_error(str(e)))
     
     def login_success(self):
         """Handle successful login"""
-        self.status_label.config(text="Login successful!", fg='green')
+        self.status_label.config(text=i18n.get('login_successful'), fg='green')
+        # Unregister observer before closing
+        i18n.unregister_observer(self.update_texts)
         self.root.withdraw()
         self.on_login_success()
     
     def login_error(self, error: str):
         """Handle login error"""
         self.login_button.config(state='normal')
-        self.status_label.config(text=f"Error: {error}", fg='red')
+        self.status_label.config(text=f"{i18n.get('error')}: {error}", fg='red')
+    
+    def on_language_changed(self, event):
+        """Handle language selection change"""
+        selected_name = self.lang_combo.get()
+        # Find the language code for the selected name
+        for code in i18n.get_language_codes():
+            if i18n.get_language_name(code) == selected_name:
+                i18n.set_language(code)
+                break
+    
+    def update_texts(self):
+        """Update all texts when language changes"""
+        self.root.title(i18n.get('login_title'))
+        self.lang_label.config(text=i18n.get('language') + ':')
+        self.title_label.config(text=i18n.get('login_header'))
+        self.email_label.config(text=i18n.get('email'))
+        self.password_label.config(text=i18n.get('password'))
+        self.login_button.config(text=i18n.get('login'))
+        
+        # Update status label if it has login-related text
+        current_text = self.status_label.cget('text')
+        if 'Logging in' in current_text or 'جار تسجيل الدخول' in current_text:
+            self.status_label.config(text=i18n.get('logging_in'))
+        elif 'Login successful' in current_text or 'تم تسجيل الدخول بنجاح' in current_text:
+            self.status_label.config(text=i18n.get('login_successful'))
 
 
 class MainWindow(BaseWindow):
     """Main window with Terminal and File Sync tools"""
     def __init__(self):
-        super().__init__(tk.Tk(), "Rediacc CLI Tools")
+        super().__init__(tk.Tk(), i18n.get('app_title'))
         self.runner = SubprocessRunner()
         self.center_window(1024, 768)
         
         # Initialize plugin tracking
         self.plugins_loaded_for = None
+        
+        # Register for language changes
+        i18n.register_observer(self.update_all_texts)
         
         self.create_widgets()
         
@@ -180,9 +232,9 @@ class MainWindow(BaseWindow):
         """Handle API errors, especially authentication errors"""
         # Check if it's an authentication error
         if '401' in str(error_msg) or 'Not authenticated' in error_msg or 'Invalid request credential' in error_msg:
-            self.status_bar.config(text="Authentication expired. Please login again.", fg='red')
-            messagebox.showerror("Authentication Error", 
-                               "Your session has expired. Please login again.")
+            self.status_bar.config(text=i18n.get('authentication_expired'), fg='red')
+            messagebox.showerror(i18n.get('error'), 
+                               i18n.get('session_expired'))
             # Clear token and restart GUI
             TokenManager.clear_token()
             self.root.destroy()
@@ -198,36 +250,51 @@ class MainWindow(BaseWindow):
         
         # User info
         auth_info = TokenManager.get_auth_info()
-        user_text = f"User: {auth_info.get('email', 'Unknown')}"
-        tk.Label(top_frame, text=user_text).pack(side='left', padx=10)
+        user_text = f"{i18n.get('user')} {auth_info.get('email', 'Unknown')}"
+        self.user_label = tk.Label(top_frame, text=user_text)
+        self.user_label.pack(side='left', padx=10)
         
         # Logout button
-        ttk.Button(top_frame, text="Logout", command=self.logout).pack(side='right', padx=10)
+        self.logout_button = ttk.Button(top_frame, text=i18n.get('logout'), command=self.logout)
+        self.logout_button.pack(side='right', padx=10)
+        
+        # Language selector
+        self.lang_combo = ttk.Combobox(top_frame, state='readonly', width=15)
+        self.lang_combo['values'] = [i18n.get_language_name(code) for code in i18n.get_language_codes()]
+        self.lang_combo.set(i18n.get_language_name(i18n.current_language))
+        self.lang_combo.pack(side='right', padx=5)
+        self.lang_combo.bind('<<ComboboxSelected>>', self.on_language_changed)
+        
+        self.lang_label = tk.Label(top_frame, text=i18n.get('language') + ':')
+        self.lang_label.pack(side='right')
         
         # Common selection frame
-        common_frame = tk.LabelFrame(self.root, text="Resource Selection")
-        common_frame.pack(fill='x', padx=10, pady=5)
+        self.common_frame = tk.LabelFrame(self.root, text=i18n.get('resource_selection'))
+        self.common_frame.pack(fill='x', padx=10, pady=5)
         
         # Team selection
-        team_frame = tk.Frame(common_frame)
+        team_frame = tk.Frame(self.common_frame)
         team_frame.pack(fill='x', padx=10, pady=5)
-        tk.Label(team_frame, text="Team:", width=12, anchor='w').pack(side='left', padx=5)
+        self.team_label = tk.Label(team_frame, text=i18n.get('team'), width=12, anchor='w')
+        self.team_label.pack(side='left', padx=5)
         self.team_combo = ttk.Combobox(team_frame, width=40, state='readonly')
         self.team_combo.pack(side='left', padx=5, fill='x', expand=True)
         self.team_combo.bind('<<ComboboxSelected>>', lambda e: self.on_team_changed())
         
         # Machine selection
-        machine_frame = tk.Frame(common_frame)
+        machine_frame = tk.Frame(self.common_frame)
         machine_frame.pack(fill='x', padx=10, pady=5)
-        tk.Label(machine_frame, text="Machine:", width=12, anchor='w').pack(side='left', padx=5)
+        self.machine_label = tk.Label(machine_frame, text=i18n.get('machine'), width=12, anchor='w')
+        self.machine_label.pack(side='left', padx=5)
         self.machine_combo = ttk.Combobox(machine_frame, width=40, state='readonly')
         self.machine_combo.pack(side='left', padx=5, fill='x', expand=True)
         self.machine_combo.bind('<<ComboboxSelected>>', lambda e: self.on_machine_changed())
         
         # Repository selection
-        repo_frame = tk.Frame(common_frame)
+        repo_frame = tk.Frame(self.common_frame)
         repo_frame.pack(fill='x', padx=10, pady=5)
-        tk.Label(repo_frame, text="Repository:", width=12, anchor='w').pack(side='left', padx=5)
+        self.repo_label = tk.Label(repo_frame, text=i18n.get('repository'), width=12, anchor='w')
+        self.repo_label.pack(side='left', padx=5)
         self.repo_combo = ttk.Combobox(repo_frame, width=40, state='readonly')
         self.repo_combo.pack(side='left', padx=5, fill='x', expand=True)
         self.repo_combo.bind('<<ComboboxSelected>>', lambda e: self.on_repository_changed())
@@ -241,21 +308,21 @@ class MainWindow(BaseWindow):
         
         # Plugin Manager tab (first)
         self.plugin_frame = tk.Frame(self.notebook)
-        self.notebook.add(self.plugin_frame, text="Plugin Manager")
+        self.notebook.add(self.plugin_frame, text=i18n.get('plugin_manager'))
         self.create_plugin_tab()
         
         # Terminal tab (second)
         self.terminal_frame = tk.Frame(self.notebook)
-        self.notebook.add(self.terminal_frame, text="Terminal Access")
+        self.notebook.add(self.terminal_frame, text=i18n.get('terminal_access'))
         self.create_terminal_tab()
         
         # File Sync tab (third)
         self.sync_frame = tk.Frame(self.notebook)
-        self.notebook.add(self.sync_frame, text="File Sync")
+        self.notebook.add(self.sync_frame, text=i18n.get('file_sync'))
         self.create_sync_tab()
         
         # Status bar
-        self.status_bar = tk.Label(self.root, text="Ready",
+        self.status_bar = tk.Label(self.root, text=i18n.get('ready'),
                                  anchor='w', padx=10)
         self.status_bar.pack(side='bottom', fill='x')
     
@@ -268,7 +335,8 @@ class MainWindow(BaseWindow):
         # Command input
         command_frame = tk.Frame(control_frame)
         command_frame.pack(fill='x', pady=5)
-        tk.Label(command_frame, text="Command:", width=12, anchor='w').pack(side='left', padx=5)
+        self.terminal_command_label = tk.Label(command_frame, text=i18n.get('command'), width=12, anchor='w')
+        self.terminal_command_label.pack(side='left', padx=5)
         self.command_entry = ttk.Entry(command_frame)
         self.command_entry.pack(side='left', padx=5, fill='x', expand=True)
         
@@ -276,18 +344,22 @@ class MainWindow(BaseWindow):
         button_frame = tk.Frame(control_frame)
         button_frame.pack(pady=10)
         
-        ttk.Button(button_frame, text="Execute Command",
-                  command=self.execute_terminal_command).pack(side='left', padx=5)
-        ttk.Button(button_frame, text="Open Interactive Repo Terminal",
-                  command=self.open_repo_terminal).pack(side='left', padx=5)
-        ttk.Button(button_frame, text="Open Interactive Machine Terminal",
-                  command=self.open_machine_terminal).pack(side='left', padx=5)
+        self.execute_cmd_button = ttk.Button(button_frame, text=i18n.get('execute_command'),
+                  command=self.execute_terminal_command)
+        self.execute_cmd_button.pack(side='left', padx=5)
+        self.open_repo_term_button = ttk.Button(button_frame, text=i18n.get('open_repo_terminal'),
+                  command=self.open_repo_terminal)
+        self.open_repo_term_button.pack(side='left', padx=5)
+        self.open_machine_term_button = ttk.Button(button_frame, text=i18n.get('open_machine_terminal'),
+                  command=self.open_machine_terminal)
+        self.open_machine_term_button.pack(side='left', padx=5)
         
         # Output area
         output_frame = tk.Frame(self.terminal_frame)
         output_frame.pack(fill='both', expand=True, padx=10, pady=10)
         
-        tk.Label(output_frame, text="Output:").pack(anchor='w')
+        self.terminal_output_label = tk.Label(output_frame, text=i18n.get('output'))
+        self.terminal_output_label.pack(anchor='w')
         
         self.terminal_output = scrolledtext.ScrolledText(output_frame, height=15,
                                                        font=('Consolas', 10))
@@ -303,39 +375,46 @@ class MainWindow(BaseWindow):
         # Sync direction
         direction_frame = tk.Frame(control_frame)
         direction_frame.pack(fill='x', pady=5)
-        tk.Label(direction_frame, text="Direction:", width=12, anchor='w').pack(side='left', padx=5)
+        self.sync_direction_label = tk.Label(direction_frame, text=i18n.get('direction'), width=12, anchor='w')
+        self.sync_direction_label.pack(side='left', padx=5)
         self.sync_direction = tk.StringVar(value='upload')
-        ttk.Radiobutton(direction_frame, text="Upload", variable=self.sync_direction,
-                       value='upload').pack(side='left', padx=5)
-        ttk.Radiobutton(direction_frame, text="Download", variable=self.sync_direction,
-                       value='download').pack(side='left', padx=5)
+        self.upload_radio = ttk.Radiobutton(direction_frame, text=i18n.get('upload'), variable=self.sync_direction,
+                       value='upload')
+        self.upload_radio.pack(side='left', padx=5)
+        self.download_radio = ttk.Radiobutton(direction_frame, text=i18n.get('download'), variable=self.sync_direction,
+                       value='download')
+        self.download_radio.pack(side='left', padx=5)
         
         # Local path
         path_frame = tk.Frame(control_frame)
         path_frame.pack(fill='x', pady=5)
-        tk.Label(path_frame, text="Local Path:", width=12, anchor='w').pack(side='left', padx=5)
+        self.local_path_label = tk.Label(path_frame, text=i18n.get('local_path'), width=12, anchor='w')
+        self.local_path_label.pack(side='left', padx=5)
         self.local_path_entry = ttk.Entry(path_frame)
         self.local_path_entry.pack(side='left', padx=5, fill='x', expand=True)
-        ttk.Button(path_frame, text="Browse...",
-                  command=self.browse_local_path).pack(side='left', padx=5)
+        self.browse_button = ttk.Button(path_frame, text=i18n.get('browse'),
+                  command=self.browse_local_path)
+        self.browse_button.pack(side='left', padx=5)
         
         # Options
-        options_frame = tk.LabelFrame(control_frame, text="Options")
-        options_frame.pack(fill='x', pady=10)
+        self.options_frame = tk.LabelFrame(control_frame, text=i18n.get('options'))
+        self.options_frame.pack(fill='x', pady=10)
         
-        option_container = tk.Frame(options_frame)
+        option_container = tk.Frame(self.options_frame)
         option_container.pack(pady=5)
         
         self.mirror_var = tk.BooleanVar()
-        tk.Checkbutton(option_container, text="Mirror (delete extra files)",
-                      variable=self.mirror_var).pack(side='left', padx=10)
+        self.mirror_check = tk.Checkbutton(option_container, text=i18n.get('mirror_delete'),
+                      variable=self.mirror_var)
+        self.mirror_check.pack(side='left', padx=10)
         
         self.verify_var = tk.BooleanVar()
-        tk.Checkbutton(option_container, text="Verify after transfer",
-                      variable=self.verify_var).pack(side='left', padx=10)
+        self.verify_check = tk.Checkbutton(option_container, text=i18n.get('verify_transfer'),
+                      variable=self.verify_var)
+        self.verify_check.pack(side='left', padx=10)
         
         # Sync button
-        self.sync_button = ttk.Button(control_frame, text="Start Sync",
+        self.sync_button = ttk.Button(control_frame, text=i18n.get('start_sync'),
                                     command=self.start_sync)
         self.sync_button.pack(pady=10)
         
@@ -343,7 +422,8 @@ class MainWindow(BaseWindow):
         output_frame = tk.Frame(self.sync_frame)
         output_frame.pack(fill='both', expand=True, padx=10, pady=10)
         
-        tk.Label(output_frame, text="Output:").pack(anchor='w')
+        self.sync_output_label = tk.Label(output_frame, text=i18n.get('output'))
+        self.sync_output_label.pack(anchor='w')
         
         self.sync_output = scrolledtext.ScrolledText(output_frame, height=15,
                                                     font=('Consolas', 10))
@@ -357,11 +437,11 @@ class MainWindow(BaseWindow):
         paned.pack(fill='both', expand=True, padx=5, pady=5)
         
         # Top section - Plugin Management
-        plugin_management_frame = tk.LabelFrame(self.plugin_frame, text="Plugin Management")
-        paned.add(plugin_management_frame, minsize=300)
+        self.plugin_management_frame = tk.LabelFrame(self.plugin_frame, text=i18n.get('plugin_management'))
+        paned.add(self.plugin_management_frame, minsize=300)
         
         # Create two columns inside the plugin management frame
-        columns_frame = tk.Frame(plugin_management_frame)
+        columns_frame = tk.Frame(self.plugin_management_frame)
         columns_frame.pack(fill='both', expand=True, padx=10, pady=10)
         
         # Left column - Available plugins
@@ -369,7 +449,8 @@ class MainWindow(BaseWindow):
         left_column.pack(side='left', fill='both', expand=True, padx=(0, 10))
         
         # Available plugins label
-        tk.Label(left_column, text="Available Plugins", font=('Arial', 10, 'bold')).pack(anchor='w', pady=(0, 5))
+        self.available_plugins_label = tk.Label(left_column, text=i18n.get('available_plugins'), font=('Arial', 10, 'bold'))
+        self.available_plugins_label.pack(anchor='w', pady=(0, 5))
         
         # Available plugins listbox with scrollbar
         list_frame = tk.Frame(left_column)
@@ -386,44 +467,49 @@ class MainWindow(BaseWindow):
         self.plugin_listbox.bind('<<ListboxSelect>>', self.on_plugin_selected)
         
         # Refresh button
-        ttk.Button(left_column, text="Refresh Plugins",
-                  command=self.refresh_plugins).pack(pady=(10, 0))
+        self.refresh_plugins_button = ttk.Button(left_column, text=i18n.get('refresh_plugins'),
+                  command=self.refresh_plugins)
+        self.refresh_plugins_button.pack(pady=(10, 0))
         
         # Right column - Connect to plugin
         right_column = tk.Frame(columns_frame)
         right_column.pack(side='right', fill='both', expand=True, padx=(10, 0))
         
         # Connect to plugin label
-        tk.Label(right_column, text="Connect to Plugin", font=('Arial', 10, 'bold')).pack(anchor='w', pady=(0, 5))
+        self.connect_plugin_label = tk.Label(right_column, text=i18n.get('connect_to_plugin'), font=('Arial', 10, 'bold'))
+        self.connect_plugin_label.pack(anchor='w', pady=(0, 5))
         
         # Plugin selection
         plugin_select_frame = tk.Frame(right_column)
         plugin_select_frame.pack(fill='x', pady=(10, 5))
         
-        tk.Label(plugin_select_frame, text="Plugin:", width=12, anchor='w').pack(side='left')
+        self.plugin_select_label = tk.Label(plugin_select_frame, text=i18n.get('plugin'), width=12, anchor='w')
+        self.plugin_select_label.pack(side='left')
         self.plugin_combo = ttk.Combobox(plugin_select_frame, width=20, state='readonly')
         self.plugin_combo.pack(side='left', fill='x', expand=True)
         
         # Port selection frame
-        port_frame = tk.LabelFrame(right_column, text="Local Port")
-        port_frame.pack(fill='x', pady=5)
+        self.port_frame = tk.LabelFrame(right_column, text=i18n.get('local_port'))
+        self.port_frame.pack(fill='x', pady=5)
         
         # Port mode variable
         self.port_mode = tk.StringVar(value='auto')
         
         # Auto port radio button
-        auto_frame = tk.Frame(port_frame)
+        auto_frame = tk.Frame(self.port_frame)
         auto_frame.pack(fill='x', padx=10, pady=5)
-        ttk.Radiobutton(auto_frame, text="Auto (7111-9111)", 
+        self.auto_port_radio = ttk.Radiobutton(auto_frame, text=i18n.get('auto_port'), 
                        variable=self.port_mode, value='auto',
-                       command=self.on_port_mode_changed).pack(side='left')
+                       command=self.on_port_mode_changed)
+        self.auto_port_radio.pack(side='left')
         
         # Manual port radio button and entry
-        manual_frame = tk.Frame(port_frame)
+        manual_frame = tk.Frame(self.port_frame)
         manual_frame.pack(fill='x', padx=10, pady=5)
-        ttk.Radiobutton(manual_frame, text="Manual:", 
+        self.manual_port_radio = ttk.Radiobutton(manual_frame, text=i18n.get('manual_port'), 
                        variable=self.port_mode, value='manual',
-                       command=self.on_port_mode_changed).pack(side='left')
+                       command=self.on_port_mode_changed)
+        self.manual_port_radio.pack(side='left')
         
         # Port entry with validation
         vcmd = (self.root.register(self.validate_port), '%P')
@@ -434,16 +520,16 @@ class MainWindow(BaseWindow):
         self.port_entry.config(state='disabled')  # Initially disabled
         
         # Connect button
-        self.connect_button = ttk.Button(right_column, text="Connect",
+        self.connect_button = ttk.Button(right_column, text=i18n.get('connect'),
                                        command=self.connect_plugin)
         self.connect_button.pack(pady=(10, 10))
         
         # Middle section - Active connections
-        connections_frame = tk.LabelFrame(self.plugin_frame, text="Active Connections")
-        paned.add(connections_frame, minsize=200)
+        self.connections_frame = tk.LabelFrame(self.plugin_frame, text=i18n.get('active_connections'))
+        paned.add(self.connections_frame, minsize=200)
         
         # Treeview for connections
-        tree_frame = tk.Frame(connections_frame)
+        tree_frame = tk.Frame(self.connections_frame)
         tree_frame.pack(fill='both', expand=True, padx=10, pady=10)
         
         # Create treeview with columns
@@ -479,31 +565,32 @@ class MainWindow(BaseWindow):
         self.connections_tree.bind('<<TreeviewSelect>>', self.on_connection_selected)
         
         # Connection action buttons
-        action_frame = tk.Frame(connections_frame)
+        action_frame = tk.Frame(self.connections_frame)
         action_frame.pack(pady=5)
         
         # Create buttons with references so we can enable/disable them
-        self.open_browser_button = ttk.Button(action_frame, text="Open in Browser",
+        self.open_browser_button = ttk.Button(action_frame, text=i18n.get('open_in_browser'),
                                             command=self.open_plugin_url, state='disabled')
         self.open_browser_button.pack(side='left', padx=5)
         
-        self.copy_url_button = ttk.Button(action_frame, text="Copy URL",
+        self.copy_url_button = ttk.Button(action_frame, text=i18n.get('copy_url'),
                                          command=self.copy_plugin_url, state='disabled')
         self.copy_url_button.pack(side='left', padx=5)
         
-        self.disconnect_button = ttk.Button(action_frame, text="Disconnect",
+        self.disconnect_button = ttk.Button(action_frame, text=i18n.get('disconnect'),
                                           command=self.disconnect_plugin, state='disabled')
         self.disconnect_button.pack(side='left', padx=5)
         
         # Refresh button is always enabled
-        ttk.Button(action_frame, text="Refresh Status",
-                  command=self.refresh_connections).pack(side='left', padx=5)
+        self.refresh_status_button = ttk.Button(action_frame, text=i18n.get('refresh_status'),
+                  command=self.refresh_connections)
+        self.refresh_status_button.pack(side='left', padx=5)
         
         # Info label about shortcuts
-        info_label = tk.Label(connections_frame, 
-                            text="Tip: Double-click to open URL • Ctrl+C to copy URL",
+        self.plugin_info_label = tk.Label(self.connections_frame, 
+                            text=i18n.get('plugin_tip'),
                             font=('Arial', 9), fg='gray')
-        info_label.pack(pady=(0, 5))
+        self.plugin_info_label.pack(pady=(0, 5))
     
     def on_tab_changed(self, event):
         """Handle tab change event"""
@@ -523,7 +610,7 @@ class MainWindow(BaseWindow):
     
     def load_teams(self):
         """Load available teams"""
-        self.status_bar.config(text="Loading teams...")
+        self.status_bar.config(text=i18n.get('loading_teams'))
         self.root.update()
         
         result = self.runner.run_cli_command(['--output', 'json', 'list', 'teams'])
@@ -531,9 +618,9 @@ class MainWindow(BaseWindow):
             teams = [self._get_name(team, 'teamName', 'name') for team in result['data']]
             self.update_teams(teams)
         else:
-            error_msg = result.get('error', 'Failed to load teams')
+            error_msg = result.get('error', i18n.get('failed_to_load_teams'))
             if not self._handle_api_error(error_msg):
-                self.status_bar.config(text=f"Error: {error_msg}", fg='red')
+                self.status_bar.config(text=f"{i18n.get('error')}: {error_msg}", fg='red')
     
     def on_team_changed(self):
         """Handle team selection change"""
@@ -605,7 +692,7 @@ class MainWindow(BaseWindow):
         if teams:
             self.team_combo.set(teams[0])
             self.on_team_changed()
-        self.status_bar.config(text="Ready")
+        self.status_bar.config(text=i18n.get('ready'))
     
     def load_machines(self):
         """Load machines for selected team"""
@@ -613,7 +700,7 @@ class MainWindow(BaseWindow):
         if not team:
             return
         
-        self.status_bar.config(text=f"Loading machines for {team}...")
+        self.status_bar.config(text=i18n.get('loading_machines', team=team))
         self.root.update()
         
         result = self.runner.run_cli_command(['--output', 'json', 'list', 'team-machines', team])
@@ -621,9 +708,9 @@ class MainWindow(BaseWindow):
             machines = [self._get_name(m, 'machineName', 'name') for m in result['data']]
             self.update_machines(machines)
         else:
-            error_msg = result.get('error', 'Failed to load machines')
+            error_msg = result.get('error', i18n.get('failed_to_load_machines'))
             if not self._handle_api_error(error_msg):
-                self.status_bar.config(text=f"Error: {error_msg}", fg='red')
+                self.status_bar.config(text=f"{i18n.get('error')}: {error_msg}", fg='red')
     
     def update_machines(self, machines: list):
         """Update machine dropdown"""
@@ -631,7 +718,7 @@ class MainWindow(BaseWindow):
         if machines:
             self.machine_combo.set(machines[0])
             self.load_repositories()
-        self.status_bar.config(text="Ready")
+        self.status_bar.config(text=i18n.get('ready'))
     
     def load_repositories(self):
         """Load repositories for selected team"""
@@ -639,7 +726,7 @@ class MainWindow(BaseWindow):
         if not team:
             return
         
-        self.status_bar.config(text=f"Loading repositories for {team}...")
+        self.status_bar.config(text=i18n.get('loading_repositories', team=team))
         self.root.update()
         
         result = self.runner.run_cli_command(['--output', 'json', 'list', 'team-repositories', team])
@@ -647,16 +734,16 @@ class MainWindow(BaseWindow):
             repos = [self._get_name(r, 'repositoryName', 'name', 'repoName') for r in result['data']]
             self.update_repositories(repos)
         else:
-            error_msg = result.get('error', 'Failed to load repositories')
+            error_msg = result.get('error', i18n.get('failed_to_load_repositories'))
             if not self._handle_api_error(error_msg):
-                self.status_bar.config(text=f"Error: {error_msg}", fg='red')
+                self.status_bar.config(text=f"{i18n.get('error')}: {error_msg}", fg='red')
     
     def update_repositories(self, repos: list):
         """Update repository dropdown"""
         self.repo_combo['values'] = repos
         if repos:
             self.repo_combo.set(repos[0])
-        self.status_bar.config(text="Ready")
+        self.status_bar.config(text=i18n.get('ready'))
     
     
     def execute_terminal_command(self):
@@ -667,13 +754,13 @@ class MainWindow(BaseWindow):
         command = self.command_entry.get().strip()
         
         if not team or not machine or not repo or not command:
-            messagebox.showerror("Error", "Please select team, machine, repository and enter a command")
+            messagebox.showerror(i18n.get('error'), i18n.get('select_all_fields'))
             return
         
         self.terminal_output.config(state='normal')  # Enable for clearing
         self.terminal_output.delete(1.0, tk.END)
         self.terminal_output.config(state='disabled')  # Disable again
-        self.status_bar.config(text="Executing command...")
+        self.status_bar.config(text=i18n.get('executing_command'))
         
         def execute():
             cmd = ['term', '--team', team, '--machine', machine, '--repo', repo, '--command', command]
@@ -696,7 +783,7 @@ class MainWindow(BaseWindow):
         self.terminal_output.insert(tk.END, output)
         self.terminal_output.see(tk.END)
         self.terminal_output.config(state='disabled')  # Disable again
-        self.status_bar.config(text="Command executed")
+        self.status_bar.config(text=i18n.get('command_executed'))
     
     def _launch_terminal(self, command: str, description: str):
         """Common method to launch terminal with given command"""
@@ -711,9 +798,9 @@ class MainWindow(BaseWindow):
         # Show command in output area
         self.terminal_output.config(state='normal')  # Enable for writing
         self.terminal_output.delete(1.0, tk.END)
-        self.terminal_output.insert(tk.END, f"To open {description}, run this command in a terminal window:\n\n")
+        self.terminal_output.insert(tk.END, i18n.get('terminal_instructions', description=description) + "\n\n")
         self.terminal_output.insert(tk.END, simple_cmd + "\n\n")
-        self.terminal_output.insert(tk.END, "Or from any directory:\n\n")
+        self.terminal_output.insert(tk.END, i18n.get('or_from_any_directory') + "\n\n")
         self.terminal_output.insert(tk.END, f'cd {cli_dir} && {simple_cmd}\n\n')
         self.terminal_output.config(state='disabled')  # Disable again
         
@@ -755,7 +842,7 @@ cd {cli_dir}
                     wt_cmd = f'wt.exe new-tab wsl.exe {script_path}'
                     subprocess.Popen(['cmd.exe', '/c', wt_cmd], stderr=subprocess.DEVNULL, stdout=subprocess.DEVNULL)
                     self.terminal_output.config(state='normal')
-                    self.terminal_output.insert(tk.END, f"\nLaunched in Windows Terminal...\n")
+                    self.terminal_output.insert(tk.END, f"\n{i18n.get('launched_wt')}\n")
                     self.terminal_output.config(state='disabled')
                     
                     # Clean up script after a delay
@@ -776,7 +863,7 @@ cd {cli_dir}
                         ps_cmd = f'start wsl bash -c "cd {cli_dir} && {simple_cmd}; read -p \'Press Enter to close...\'"'
                         subprocess.Popen(['powershell.exe', '-Command', ps_cmd], stderr=subprocess.DEVNULL, stdout=subprocess.DEVNULL)
                         self.terminal_output.config(state='normal')
-                        self.terminal_output.insert(tk.END, f"\nLaunched in new WSL window...\n")
+                        self.terminal_output.insert(tk.END, f"\n{i18n.get('launched_wsl')}\n")
                         self.terminal_output.config(state='disabled')
                     except:
                         # Last resort: use cmd.exe directly
@@ -784,11 +871,11 @@ cd {cli_dir}
                             cmd_cmd = f'start cmd /c wsl bash -c "cd {cli_dir} && {simple_cmd}; read -p \'Press Enter to close...\'"'
                             subprocess.Popen(['cmd.exe', '/c', cmd_cmd], stderr=subprocess.DEVNULL, stdout=subprocess.DEVNULL)
                             self.terminal_output.config(state='normal')
-                            self.terminal_output.insert(tk.END, f"\nLaunched in new window...\n")
+                            self.terminal_output.insert(tk.END, f"\n{i18n.get('launched_terminal')}\n")
                             self.terminal_output.config(state='disabled')
                         except:
                             self.terminal_output.config(state='normal')
-                            self.terminal_output.insert(tk.END, f"\nNote: Could not launch terminal automatically in WSL.\n")
+                            self.terminal_output.insert(tk.END, f"\n{i18n.get('could_not_launch')}\n")
                             self.terminal_output.config(state='disabled')
             elif sys.platform.startswith('linux'):
                 # Regular Linux
@@ -806,7 +893,7 @@ cd {cli_dir}
                     try:
                         subprocess.Popen(term_cmd, stderr=subprocess.DEVNULL, stdout=subprocess.DEVNULL)
                         self.terminal_output.config(state='normal')
-                        self.terminal_output.insert(tk.END, f"\nLaunched terminal window...\n")
+                        self.terminal_output.insert(tk.END, f"\n{i18n.get('launched_terminal')}\n")
                         self.terminal_output.config(state='disabled')
                         break
                     except:
@@ -822,11 +909,11 @@ cd {cli_dir}
         repo = self.repo_combo.get()
         
         if not team or not machine or not repo:
-            messagebox.showerror("Error", "Please select team, machine and repository")
+            messagebox.showerror(i18n.get('error'), i18n.get('select_team_machine_repo'))
             return
         
         command = f'term --team "{team}" --machine "{machine}" --repo "{repo}"'
-        self._launch_terminal(command, "an interactive repository terminal")
+        self._launch_terminal(command, i18n.get('an_interactive_repo_terminal'))
     
     def open_machine_terminal(self):
         """Open interactive machine terminal in new window (without repository)"""
@@ -834,11 +921,11 @@ cd {cli_dir}
         machine = self.machine_combo.get()
         
         if not team or not machine:
-            messagebox.showerror("Error", "Please select team and machine")
+            messagebox.showerror(i18n.get('error'), i18n.get('select_team_machine'))
             return
         
         command = f'term --team "{team}" --machine "{machine}"'
-        self._launch_terminal(command, "an interactive machine terminal")
+        self._launch_terminal(command, i18n.get('an_interactive_machine_terminal'))
     
     def browse_local_path(self):
         """Browse for local directory"""
@@ -860,14 +947,14 @@ cd {cli_dir}
         local_path = self.local_path_entry.get().strip()
         
         if not all([team, machine, repo, local_path]):
-            messagebox.showerror("Error", "Please fill in all fields")
+            messagebox.showerror(i18n.get('error'), i18n.get('fill_all_fields'))
             return
         
         self.sync_output.config(state='normal')  # Enable for clearing
         self.sync_output.delete(1.0, tk.END)
         self.sync_output.config(state='disabled')  # Disable again
         self.sync_button.config(state='disabled')
-        self.status_bar.config(text=f"Starting {direction}...")
+        self.status_bar.config(text=i18n.get('starting_sync', direction=i18n.get(direction)))
         
         def sync():
             cmd = ['sync', direction, '--team', team, '--machine', machine, 
@@ -893,7 +980,7 @@ cd {cli_dir}
         self.sync_output.see(tk.END)
         self.sync_output.config(state='disabled')  # Disable again
         self.sync_button.config(state='normal')
-        self.status_bar.config(text="Sync completed")
+        self.status_bar.config(text=i18n.get('sync_completed'))
     
     # Plugin management methods
     def refresh_plugins(self):
@@ -903,10 +990,10 @@ cd {cli_dir}
         repo = self.repo_combo.get()
         
         if not all([team, machine, repo]):
-            messagebox.showerror("Error", "Please select team, machine and repository")
+            messagebox.showerror(i18n.get('error'), i18n.get('select_team_machine_repo'))
             return
         
-        self.status_bar.config(text="Loading plugins...")
+        self.status_bar.config(text=i18n.get('loading_plugins'))
         self.plugin_listbox.delete(0, tk.END)
         self.plugin_combo['values'] = []
         
@@ -944,11 +1031,11 @@ cd {cli_dir}
         if plugins:
             self.plugin_combo.set(plugins[0])
         
-        self.status_bar.config(text=f"Found {len(plugins)} plugins")
+        self.status_bar.config(text=i18n.get('found_plugins', count=len(plugins)))
     
     def refresh_connections(self):
         """Refresh active plugin connections"""
-        self.status_bar.config(text="Refreshing connections...")
+        self.status_bar.config(text=i18n.get('refreshing_connections'))
         
         def load():
             cmd = ['plugin', 'status']
@@ -1024,7 +1111,7 @@ cd {cli_dir}
         # Update button states based on selection
         self.on_connection_selected(None)
         
-        self.status_bar.config(text=f"Found {len(connections)} active connections")
+        self.status_bar.config(text=i18n.get('found_connections', count=len(connections)))
     
     def connect_plugin(self):
         """Connect to selected plugin"""
@@ -1034,11 +1121,11 @@ cd {cli_dir}
         plugin = self.plugin_combo.get()
         
         if not all([team, machine, repo, plugin]):
-            messagebox.showerror("Error", "Please select all fields")
+            messagebox.showerror(i18n.get('error'), i18n.get('select_all_plugin_fields'))
             return
         
         self.connect_button.config(state='disabled')
-        self.status_bar.config(text=f"Connecting to {plugin}...")
+        self.status_bar.config(text=i18n.get('connecting_to', plugin=plugin))
         
         def connect():
             cmd = ['plugin', 'connect', '--team', team, '--machine', machine, 
@@ -1048,18 +1135,18 @@ cd {cli_dir}
             if self.port_mode.get() == 'manual':
                 port_text = self.port_entry.get().strip()
                 if not port_text:
-                    self.root.after(0, lambda: messagebox.showerror("Error", "Please enter a port number"))
+                    self.root.after(0, lambda: messagebox.showerror(i18n.get('error'), i18n.get('port_error')))
                     self.root.after(0, lambda: self.connect_button.config(state='normal'))
                     return
                 try:
                     port = int(port_text)
                     if not (1024 <= port <= 65535):
-                        self.root.after(0, lambda: messagebox.showerror("Error", "Port must be between 1024 and 65535"))
+                        self.root.after(0, lambda: messagebox.showerror(i18n.get('error'), i18n.get('port_range_error')))
                         self.root.after(0, lambda: self.connect_button.config(state='normal'))
                         return
                     cmd.extend(['--port', str(port)])
                 except ValueError:
-                    self.root.after(0, lambda: messagebox.showerror("Error", "Invalid port number"))
+                    self.root.after(0, lambda: messagebox.showerror(i18n.get('error'), i18n.get('invalid_port')))
                     self.root.after(0, lambda: self.connect_button.config(state='normal'))
                     return
             
@@ -1074,15 +1161,15 @@ cd {cli_dir}
                         url = line.split('Local URL:')[1].strip()
                         break
                 
-                msg = f"Successfully connected to {plugin}"
+                msg = i18n.get('successfully_connected', plugin=plugin)
                 if url:
-                    msg += f"\n\nAccess at: {url}"
+                    msg += f"\n\n{i18n.get('access_at', url=url)}"
                 
-                self.root.after(0, lambda: messagebox.showinfo("Success", msg))
+                self.root.after(0, lambda: messagebox.showinfo(i18n.get('success'), msg))
                 self.root.after(0, self.refresh_connections)
             else:
-                error = result.get('error', 'Connection failed')
-                self.root.after(0, lambda: messagebox.showerror("Error", error))
+                error = result.get('error', i18n.get('connection_failed'))
+                self.root.after(0, lambda: messagebox.showerror(i18n.get('error'), error))
             
             self.root.after(0, lambda: self.connect_button.config(state='normal'))
             self.root.after(0, lambda: self.status_bar.config(text="Ready"))
@@ -1095,25 +1182,25 @@ cd {cli_dir}
         """Disconnect selected plugin connection"""
         selection = self.connections_tree.selection()
         if not selection:
-            messagebox.showerror("Error", "Please select a connection to disconnect")
+            messagebox.showerror(i18n.get('error'), i18n.get('select_connection', action=i18n.get('disconnect').lower()))
             return
         
         item = self.connections_tree.item(selection[0])
         conn_id = item['text']
         plugin_name = item['values'][0]
         
-        if messagebox.askyesno("Confirm", f"Disconnect {plugin_name}?"):
-            self.status_bar.config(text=f"Disconnecting {plugin_name}...")
+        if messagebox.askyesno(i18n.get('confirm'), i18n.get('disconnect_confirm', plugin=plugin_name)):
+            self.status_bar.config(text=i18n.get('disconnecting', plugin=plugin_name))
             
             def disconnect():
                 cmd = ['plugin', 'disconnect', '--connection-id', conn_id]
                 result = self.runner.run_command(cmd)
                 
                 if result['success']:
-                    self.root.after(0, lambda: messagebox.showinfo("Success", f"Disconnected {plugin_name}"))
+                    self.root.after(0, lambda: messagebox.showinfo(i18n.get('success'), i18n.get('disconnected', plugin=plugin_name)))
                 else:
-                    error = result.get('error', 'Disconnect failed')
-                    self.root.after(0, lambda: messagebox.showerror("Error", error))
+                    error = result.get('error', i18n.get('disconnect_failed'))
+                    self.root.after(0, lambda: messagebox.showerror(i18n.get('error'), error))
                 
                 self.root.after(0, self.refresh_connections)
                 self.root.after(0, lambda: self.status_bar.config(text="Ready"))
@@ -1126,7 +1213,7 @@ cd {cli_dir}
         """Open plugin URL in browser"""
         selection = self.connections_tree.selection()
         if not selection:
-            messagebox.showerror("Error", "Please select a connection to open")
+            messagebox.showerror(i18n.get('error'), i18n.get('select_connection', action=i18n.get('open_in_browser').lower()))
             return
         
         item = self.connections_tree.item(selection[0])
@@ -1136,13 +1223,13 @@ cd {cli_dir}
         import webbrowser
         webbrowser.open(url)
         
-        self.status_bar.config(text=f"Opened {url} in browser")
+        self.status_bar.config(text=i18n.get('opened_in_browser', url=url))
     
     def copy_plugin_url(self):
         """Copy plugin URL to clipboard"""
         selection = self.connections_tree.selection()
         if not selection:
-            messagebox.showerror("Error", "Please select a connection to copy URL")
+            messagebox.showerror(i18n.get('error'), i18n.get('select_connection', action=i18n.get('copy_url').lower()))
             return
         
         item = self.connections_tree.item(selection[0])
@@ -1154,7 +1241,7 @@ cd {cli_dir}
         self.root.update()  # Required on Windows
         
         # Show confirmation in status bar
-        self.status_bar.config(text=f"Copied {url} to clipboard", fg='green')
+        self.status_bar.config(text=i18n.get('copied_to_clipboard', url=url), fg='green')
         
         # Reset status bar color after 2 seconds
         self.root.after(2000, lambda: self.status_bar.config(fg='black'))
@@ -1170,15 +1257,101 @@ cd {cli_dir}
     
     def logout(self):
         """Logout and return to login screen"""
-        if messagebox.askyesno("Logout", "Are you sure you want to logout?"):
+        if messagebox.askyesno(i18n.get('logout'), i18n.get('logout_confirm')):
+            # Unregister observer before closing
+            i18n.unregister_observer(self.update_all_texts)
             TokenManager.clear_token()
             self.root.destroy()
             launch_gui()
+    
+    def on_language_changed(self, event):
+        """Handle language selection change"""
+        selected_name = self.lang_combo.get()
+        # Find the language code for the selected name
+        for code in i18n.get_language_codes():
+            if i18n.get_language_name(code) == selected_name:
+                i18n.set_language(code)
+                break
+    
+    def update_all_texts(self):
+        """Update all texts when language changes"""
+        # Update window title
+        self.root.title(i18n.get('app_title'))
+        
+        # Update top frame
+        auth_info = TokenManager.get_auth_info()
+        self.user_label.config(text=f"{i18n.get('user')} {auth_info.get('email', 'Unknown')}")
+        self.logout_button.config(text=i18n.get('logout'))
+        self.lang_label.config(text=i18n.get('language') + ':')
+        
+        # Update resource selection frame
+        self.common_frame.config(text=i18n.get('resource_selection'))
+        self.team_label.config(text=i18n.get('team'))
+        self.machine_label.config(text=i18n.get('machine'))
+        self.repo_label.config(text=i18n.get('repository'))
+        
+        # Update notebook tabs
+        self.notebook.tab(0, text=i18n.get('plugin_manager'))
+        self.notebook.tab(1, text=i18n.get('terminal_access'))
+        self.notebook.tab(2, text=i18n.get('file_sync'))
+        
+        # Update status bar
+        current_text = self.status_bar.cget('text')
+        if current_text == 'Ready' or current_text == 'جاهز' or current_text == 'Bereit':
+            self.status_bar.config(text=i18n.get('ready'))
+        
+        # Update each tab's contents
+        self.update_plugin_tab_texts()
+        self.update_terminal_tab_texts()
+        self.update_sync_tab_texts()
+    
+    def update_plugin_tab_texts(self):
+        """Update all texts in plugin tab"""
+        self.plugin_management_frame.config(text=i18n.get('plugin_management'))
+        self.available_plugins_label.config(text=i18n.get('available_plugins'))
+        self.refresh_plugins_button.config(text=i18n.get('refresh_plugins'))
+        self.connect_plugin_label.config(text=i18n.get('connect_to_plugin'))
+        self.plugin_select_label.config(text=i18n.get('plugin'))
+        self.port_frame.config(text=i18n.get('local_port'))
+        self.auto_port_radio.config(text=i18n.get('auto_port'))
+        self.manual_port_radio.config(text=i18n.get('manual_port'))
+        self.connect_button.config(text=i18n.get('connect'))
+        self.connections_frame.config(text=i18n.get('active_connections'))
+        self.open_browser_button.config(text=i18n.get('open_in_browser'))
+        self.copy_url_button.config(text=i18n.get('copy_url'))
+        self.disconnect_button.config(text=i18n.get('disconnect'))
+        self.refresh_status_button.config(text=i18n.get('refresh_status'))
+        self.plugin_info_label.config(text=i18n.get('plugin_tip'))
+    
+    def update_terminal_tab_texts(self):
+        """Update all texts in terminal tab"""
+        self.terminal_command_label.config(text=i18n.get('command'))
+        self.execute_cmd_button.config(text=i18n.get('execute_command'))
+        self.open_repo_term_button.config(text=i18n.get('open_repo_terminal'))
+        self.open_machine_term_button.config(text=i18n.get('open_machine_terminal'))
+        self.terminal_output_label.config(text=i18n.get('output'))
+    
+    def update_sync_tab_texts(self):
+        """Update all texts in sync tab"""
+        self.sync_direction_label.config(text=i18n.get('direction'))
+        self.upload_radio.config(text=i18n.get('upload'))
+        self.download_radio.config(text=i18n.get('download'))
+        self.local_path_label.config(text=i18n.get('local_path'))
+        self.browse_button.config(text=i18n.get('browse'))
+        self.options_frame.config(text=i18n.get('options'))
+        self.mirror_check.config(text=i18n.get('mirror_delete'))
+        self.verify_check.config(text=i18n.get('verify_transfer'))
+        self.sync_button.config(text=i18n.get('start_sync'))
+        self.sync_output_label.config(text=i18n.get('output'))
 
 
 def launch_gui():
     """Launch the simplified GUI application"""
     import signal
+    
+    # Load saved language preference
+    saved_language = i18n.load_language_preference()
+    i18n.set_language(saved_language)
     
     # Set up signal handler for graceful shutdown
     def signal_handler(sig, frame):
