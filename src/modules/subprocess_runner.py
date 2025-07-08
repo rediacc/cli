@@ -18,6 +18,7 @@ class SubprocessRunner:
         self.cli_path = os.path.join(self.cli_dir, 'cli', 'rediacc-cli')
         self.sync_path = os.path.join(self.cli_dir, 'cli', 'rediacc-cli-sync')
         self.term_path = os.path.join(self.cli_dir, 'cli', 'rediacc-cli-term')
+        self.plugin_path = os.path.join(self.cli_dir, 'cli', 'rediacc-cli-plugin')
         self.wrapper_path = os.path.join(os.path.dirname(self.cli_dir), 'rediacc')
     
     def run_command(self, args: List[str], timeout: Optional[int] = None) -> Dict[str, Any]:
@@ -32,6 +33,10 @@ class SubprocessRunner:
                 # to avoid token rotation issues between API calls
                 term_args = args[1:]
                 cmd = [self.term_path] + term_args
+            elif args[0] == 'plugin':
+                # Don't add token - let plugin tool read from TokenManager
+                plugin_args = args[1:]
+                cmd = [self.plugin_path] + plugin_args
             else:
                 cmd = [self.wrapper_path] + args
             
