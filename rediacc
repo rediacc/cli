@@ -32,6 +32,7 @@ print_help() {
     echo "    login       Authenticate with Rediacc API"
     echo "    sync        File synchronization operations"
     echo "    term        Terminal access to repositories"
+    echo "    plugin      Manage plugin connections (SSH tunnels)"
     echo "    gui [mode]  Launch Rediacc Desktop (graphical interface)"
     echo "                  native: Run natively (default)"
     echo "                  docker: Run in Docker (auto-builds)"
@@ -60,6 +61,7 @@ print_help() {
     echo "    ./rediacc gui docker        # Launch GUI in Docker"
     echo "    ./rediacc sync --help       # Sync help"
     echo "    ./rediacc term --help       # Terminal help"
+    echo "    ./rediacc plugin --help     # Plugin help"
     echo
     echo "For detailed documentation, see docs/README.md"
 }
@@ -432,6 +434,12 @@ case "$1" in
         shift
         # Don't inject token - let the term command manage its own token from config
         python3 "$CLI_ROOT/src/cli/rediacc-cli-term" "$@"
+        ;;
+        
+    plugin)
+        shift
+        # Don't inject token - let the plugin command manage its own token from config
+        python3 "$CLI_ROOT/src/cli/rediacc-cli-plugin" "$@"
         ;;
         
     gui|desktop|--gui)
