@@ -368,10 +368,8 @@ class ConfigManager:
     
     def is_authenticated(self):
         """Check if user is authenticated"""
-        # Check environment variable first
-        if os.environ.get('REDIACC_TOKEN'):
-            return True
-        return bool(self.config.get('token'))
+        # Use TokenManager which handles env vars and file reading
+        return TokenManager.is_authenticated()
     
     def set_master_password(self, password):
         """Set master password in memory only"""
@@ -516,8 +514,8 @@ class APIClient:
     
     def token_request(self, endpoint, data=None):
         """Make a request authenticated with a token"""
-        # Check environment variable first, then config
-        token = os.environ.get('REDIACC_TOKEN') or self.config.get('token')
+        # Use TokenManager to get token (it handles env vars and file reading)
+        token = TokenManager.get_token()
         if not token:
             return {"error": "Not authenticated. Please login first.", "status_code": 401}
         
@@ -542,13 +540,14 @@ class APIClient:
             if tables and tables[0].get('data'):
                 new_token = tables[0]['data'][0].get('nextRequestCredential')
                 if new_token and self.config_manager:
-                    # Don't update if using environment variable
-                    if not os.environ.get('REDIACC_TOKEN'):
-                        self.config['token'] = new_token
-                        self.config_manager.config['token'] = new_token
-                        # Only save to config if token wasn't overridden via command line
-                        if not self.config_manager._token_overridden:
-                            self.config_manager.save_config()
+                    # Don't update if using environment variable or command line override
+                    if not os.environ.get('REDIACC_TOKEN') and not self.config_manager._token_overridden:
+                        # Use TokenManager to update token to ensure consistency
+                        TokenManager.set_token(new_token, 
+                                             email=self.config_manager.config.get('email'),
+                                             company=self.config_manager.config.get('company'),
+                                             vault_company=self.config_manager.config.get('vault_company'))
+                        # No need to update local references - always read from TokenManager
         
         return response
     
@@ -563,7 +562,7 @@ class APIClient:
             if company_info:
                 # Update config manager with vault info, but only if we have the required data
                 email = self.config_manager.config.get('email')
-                token = os.environ.get('REDIACC_TOKEN') or self.config_manager.config.get('token')
+                token = TokenManager.get_token()
                 if email and token:
                     self.config_manager.set_auth(
                         email,
@@ -1042,7 +1041,7 @@ class CommandHandler:
     def logout(self, args):
         """Log out from the Rediacc API"""
         # Delete the user request if we have a token
-        if self.config.get('token'):
+        if TokenManager.get_token():
             self.client.token_request("DeleteUserRequest")
         
         # Clear local auth data
@@ -2017,7 +2016,7 @@ def main():
         else:  # native mode (default)
             # Import and launch GUI natively
             try:
-                from rediacc_cli_gui_simple import launch_gui
+                from rediacc_cli_gui import launch_gui
                 launch_gui()
                 return 0
             except ImportError as e:
@@ -2040,14 +2039,14 @@ def main():
     
     # Handle --token override
     if args.token:
-        # Validate and set the override token
+        # Validate the override token
         if not TokenManager.validate_token(args.token):
             error = f"Invalid token format: {TokenManager.mask_token(args.token)}"
             output = format_output(None, output_format, None, error)
             print(output)
             return 1
-        # Override the token in config temporarily
-        config_manager.config['token'] = args.token
+        # Set override token in environment variable so TokenManager will use it
+        os.environ['REDIACC_TOKEN'] = args.token
         config_manager._token_overridden = True
     
     handler = CommandHandler(config_manager, output_format, include_vault=args.include_vault)

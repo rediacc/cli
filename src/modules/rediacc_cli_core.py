@@ -19,13 +19,13 @@ from pathlib import Path
 from typing import Dict, Any, Optional, Tuple
 
 # Import token manager
-from token_manager import TokenManager, get_default_token_manager
+from token_manager import TokenManager
 
 # Import configuration loader
 from config_loader import get, get_required, get_path
 
 # Configuration
-CLI_TOOL = os.path.join(os.path.dirname(os.path.abspath(__file__)), 'rediacc-cli')
+CLI_TOOL = os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))), 'cli', 'rediacc-cli')
 
 # Platform utilities
 def is_windows() -> bool:
@@ -102,7 +102,7 @@ def colorize(text: str, color: str) -> str:
     """Add color to terminal output if supported"""
     return f"{COLORS.get(color, '')}{text}{COLORS['ENDC']}" if sys.stdout.isatty() else text
 
-def run_command(cmd, capture_output=True, check=True):
+def run_command(cmd, capture_output=True, check=True, quiet=False):
     """Run a command and return the result"""
     if isinstance(cmd, str):
         cmd = cmd.split()
@@ -110,96 +110,155 @@ def run_command(cmd, capture_output=True, check=True):
     try:
         if capture_output:
             result = subprocess.run(cmd, capture_output=True, text=True, check=check)
+            if result.returncode != 0 and check:
+                # Parse JSON error if possible
+                try:
+                    error_data = json.loads(result.stdout)
+                    if error_data.get('error'):
+                        if not quiet:
+                            print(colorize(f"API Error: {error_data['error']}", 'RED'))
+                        sys.exit(1)
+                except:
+                    pass
+                # Sanitize command to hide tokens
+                if not quiet:
+                    safe_cmd = [safe_error_message(arg) for arg in cmd]
+                    print(colorize(f"Error running command: {' '.join(safe_cmd)}", 'RED'))
+                    if result.stderr:
+                        print(colorize(f"Error: {safe_error_message(result.stderr)}", 'RED'))
+                sys.exit(1)
+            
+            
             return result.stdout.strip() if result.returncode == 0 else None
         else:
             return subprocess.run(cmd, check=check)
     except subprocess.CalledProcessError as e:
         if check:
             # Sanitize command to hide tokens
-            safe_cmd = [safe_error_message(arg) for arg in cmd]
-            print(colorize(f"Error running command: {' '.join(safe_cmd)}", 'RED'))
-            if hasattr(e, 'stderr') and e.stderr:
-                print(colorize(f"Error: {safe_error_message(e.stderr)}", 'RED'))
+            if not quiet:
+                safe_cmd = [safe_error_message(arg) for arg in cmd]
+                print(colorize(f"Error running command: {' '.join(safe_cmd)}", 'RED'))
+                if hasattr(e, 'stderr') and e.stderr:
+                    print(colorize(f"Error: {safe_error_message(e.stderr)}", 'RED'))
             sys.exit(1)
         return None
 
-def get_machine_info(machine_name: str, token_manager: Optional[TokenManager] = None) -> Dict[str, Any]:
-    """Get machine information using rediacc-cli inspect command"""
-    if token_manager is None:
-        token_manager = get_default_token_manager()
+def get_machine_info_with_team(team_name: str, machine_name: str) -> Dict[str, Any]:
+    """Get machine information when team is known"""
+    max_retries = 3
+    retry_delay = 0.5  # seconds
     
-    token = token_manager.get_token()
-    if not token:
-        print(colorize("No authentication token available", 'RED'))
-        sys.exit(1)
-    
-    # First, get the list of all teams to find which team has this machine
-    teams_output = run_command([CLI_TOOL, '--token', token, '--output', 'json', 'list', 'teams'])
-    if not teams_output:
-        print(colorize("Failed to get teams list", 'RED'))
-        sys.exit(1)
-    
-    try:
-        teams_data = json.loads(teams_output)
-        if not teams_data.get('success'):
-            print(colorize(f"Error listing teams: {teams_data.get('error', 'Unknown error')}", 'RED'))
+    for attempt in range(max_retries):
+        # Get the latest token from config (TokenManager handles this statically)
+        token = TokenManager.get_token()
+        if not token:
+            print(colorize("No authentication token available", 'RED'))
             sys.exit(1)
         
-        # Search through teams to find the machine
-        for team in teams_data.get('data', []):
-            team_name = team.get('teamName')
-            if not team_name:
-                continue
-                
-            # Try to inspect the machine in this team
-            inspect_output = run_command([CLI_TOOL, '--token', token, '--include-vault', '--output', 'json', 'inspect', 'machine', team_name, machine_name])
-            if not inspect_output:
-                continue
-                
-            try:
-                inspect_data = json.loads(inspect_output)
-                if inspect_data.get('success') and inspect_data.get('data'):
-                    # Machine found in this team
-                    machine_info = inspect_data['data'][0]
-                    
-                    # Parse vault content if available
-                    vault_content = machine_info.get('vaultContent')
-                    if vault_content:
-                        if isinstance(vault_content, str):
-                            try:
-                                vault_data = json.loads(vault_content)
-                                machine_info['vault'] = vault_data
-                            except json.JSONDecodeError:
-                                pass
-                        else:
-                            machine_info['vault'] = vault_content
-                    
-                    return machine_info
-            except json.JSONDecodeError:
-                continue
+        # Directly inspect the machine in the specified team
+        # Don't pass token explicitly - let CLI read from config to avoid rotation issues
+        # Temporarily suppress run_command from exiting on error
+        original_exit = sys.exit
+        exit_called = False
+        exit_code = 0
+        def no_exit(code=0):
+            nonlocal exit_called, exit_code
+            exit_called = True
+            exit_code = code
+        sys.exit = no_exit
         
-        # Machine not found in any team
-        print(colorize(f"Machine '{machine_name}' not found", 'RED'))
-        sys.exit(1)
+        try:
+            cmd = [CLI_TOOL, '--include-vault', '--output', 'json', 'inspect', 'machine', team_name, machine_name]
+            # Use quiet mode during retries to avoid confusing error messages
+            inspect_output = run_command(cmd, quiet=(attempt > 0))
+        finally:
+            sys.exit = original_exit
         
-    except json.JSONDecodeError as e:
-        print(colorize(f"Failed to parse JSON response: {e}", 'RED'))
+        if inspect_output and not exit_called:
+            break  # Success
+        
+        # If we got a 401 error, token will be automatically reloaded on next attempt
+        # since TokenManager now always reads from file
+        
+        # Check if it's an authentication error
+        if attempt < max_retries - 1:
+            print(colorize(f"API call failed, retrying in {retry_delay}s... (attempt {attempt + 1}/{max_retries})", 'YELLOW'))
+            import time
+            time.sleep(retry_delay)
+            retry_delay *= 2  # Exponential backoff
+        else:
+            print(colorize(f"Failed to inspect machine {machine_name} in team {team_name} after {max_retries} attempts", 'RED'))
+            sys.exit(1)
+    
+    try:
+        inspect_data = json.loads(inspect_output)
+        if not inspect_data.get('success'):
+            print(colorize(f"Error inspecting machine: {inspect_data.get('error', 'Unknown error')}", 'RED'))
+            sys.exit(1)
+        
+        machine_info = inspect_data['data'][0] if inspect_data.get('data') else {}
+        
+        # Parse vault content if available
+        vault_content = machine_info.get('vaultContent')
+        if vault_content:
+            if isinstance(vault_content, str):
+                try:
+                    vault_data = json.loads(vault_content)
+                    machine_info['vault'] = vault_data
+                except json.JSONDecodeError:
+                    pass
+            else:
+                machine_info['vault'] = vault_content
+        
+        return machine_info
+    except (json.JSONDecodeError, KeyError) as e:
+        print(colorize(f"Error parsing machine data: {str(e)}", 'RED'))
         sys.exit(1)
 
-def get_repository_info(team_name: str, repo_name: str, token_manager: Optional[TokenManager] = None) -> Dict[str, Any]:
+
+def get_repository_info(team_name: str, repo_name: str) -> Dict[str, Any]:
     """Get repository information using rediacc-cli inspect command"""
-    if token_manager is None:
-        token_manager = get_default_token_manager()
+    max_retries = 3
+    retry_delay = 0.5  # seconds
     
-    token = token_manager.get_token()
+    # Get the latest token from config (TokenManager handles this statically)
+    token = TokenManager.get_token()
     if not token:
         print(colorize("No authentication token available", 'RED'))
         sys.exit(1)
     
-    inspect_output = run_command([CLI_TOOL, '--token', token, '--include-vault', '--output', 'json', 'inspect', 'repository', team_name, repo_name])
-    if not inspect_output:
-        print(colorize(f"Failed to inspect repository {repo_name}", 'RED'))
-        sys.exit(1)
+    # Don't pass token explicitly - let CLI read from config to avoid rotation issues
+    for attempt in range(max_retries):
+        # Temporarily suppress run_command from exiting on error
+        original_exit = sys.exit
+        exit_called = False
+        exit_code = 0
+        def no_exit(code=0):
+            nonlocal exit_called, exit_code
+            exit_called = True
+            exit_code = code
+        sys.exit = no_exit
+        
+        try:
+            # Use quiet mode during retries to avoid confusing error messages
+            inspect_output = run_command([CLI_TOOL, '--include-vault', '--output', 'json', 'inspect', 'repository', team_name, repo_name], quiet=(attempt > 0))
+        finally:
+            sys.exit = original_exit
+        
+        if inspect_output and not exit_called:
+            break  # Success
+        
+        # If we got a 401 error, token will be automatically reloaded on next attempt
+        # since TokenManager now always reads from file
+        
+        if attempt < max_retries - 1:
+            print(colorize(f"API call failed, retrying in {retry_delay}s... (attempt {attempt + 1}/{max_retries})", 'YELLOW'))
+            import time
+            time.sleep(retry_delay)
+            retry_delay *= 2  # Exponential backoff
+        else:
+            print(colorize(f"Failed to inspect repository {repo_name} after {max_retries} attempts", 'RED'))
+            sys.exit(1)
     
     try:
         inspect_data = json.loads(inspect_output)
@@ -229,26 +288,66 @@ def get_repository_info(team_name: str, repo_name: str, token_manager: Optional[
         print(colorize(f"Failed to parse JSON response: {e}", 'RED'))
         sys.exit(1)
 
-def get_ssh_key_from_vault(token_manager: Optional[TokenManager] = None) -> Optional[str]:
-    """Extract SSH private key from team vault"""
-    if token_manager is None:
-        token_manager = get_default_token_manager()
+def get_ssh_key_from_vault(team_name: Optional[str] = None) -> Optional[str]:
+    """Extract SSH private key from team vault
     
-    token = token_manager.get_token()
+    The SSH private key should be stored in the team's vault with the key 'SSH_PRIVATE_KEY'.
+    This is different from the machine vault which contains connection details (IP, user, etc).
+    
+    Args:
+        team_name: Optional team name to get SSH key for. If not provided, returns first found SSH key.
+    """
+    max_retries = 3
+    retry_delay = 0.5  # seconds
+    
+    # Get the latest token from config (TokenManager handles this statically)
+    token = TokenManager.get_token()
     if not token:
         print(colorize("No authentication token available", 'RED'))
         return None
     
     # Use the CLI with --include-vault flag to get team vault content
-    teams_output = run_command([CLI_TOOL, '--token', token, '--include-vault', '--output', 'json', 'list', 'teams'])
-    if not teams_output:
-        return None
+    # Don't pass token explicitly - let CLI read from config to avoid rotation issues
+    for attempt in range(max_retries):
+        # Temporarily suppress run_command from exiting on error
+        original_exit = sys.exit
+        exit_called = False
+        exit_code = 0
+        def no_exit(code=0):
+            nonlocal exit_called, exit_code
+            exit_called = True
+            exit_code = code
+        sys.exit = no_exit
+        
+        try:
+            # Use quiet mode during retries to avoid confusing error messages
+            teams_output = run_command([CLI_TOOL, '--include-vault', '--output', 'json', 'list', 'teams'], quiet=(attempt > 0))
+        finally:
+            sys.exit = original_exit
+        
+        if teams_output and not exit_called:
+            break  # Success
+        
+        # If we got a 401 error, token will be automatically reloaded on next attempt
+        # since TokenManager now always reads from file
+        
+        if attempt < max_retries - 1:
+            print(colorize(f"API call failed, retrying in {retry_delay}s... (attempt {attempt + 1}/{max_retries})", 'YELLOW'))
+            import time
+            time.sleep(retry_delay)
+            retry_delay *= 2  # Exponential backoff
+        else:
+            return None
     
     try:
         result = json.loads(teams_output)
         if result.get('success') and result.get('data'):
             # Look through teams for SSH key in vault
             for team in result.get('data', []):
+                # If team_name is specified, only check that team
+                if team_name and team.get('teamName') != team_name:
+                    continue
+                    
                 vault_content = team.get('vaultContent')
                 if vault_content:
                     # Parse vault content if it's a string
@@ -285,6 +384,9 @@ def setup_ssh_for_connection(ssh_key: str, host_entry: str = None) -> Tuple[str,
     # Create temporary SSH key file
     ssh_key_file_path = create_temp_file(suffix='_rsa', prefix='ssh_key_')
     with open(ssh_key_file_path, 'w') as f:
+        # Ensure the SSH key ends with a newline (required by OpenSSH)
+        if not ssh_key.endswith('\n'):
+            ssh_key = ssh_key + '\n'
         f.write(ssh_key)
     
     # Set proper permissions
@@ -315,6 +417,16 @@ def get_machine_connection_info(machine_info: Dict[str, Any]) -> Dict[str, Any]:
     vault = machine_info.get('vault', {})
     machine_name = machine_info.get('machineName')
     
+    # Try to parse vaultContent if vault is missing
+    if not vault:
+        vault_content = machine_info.get('vaultContent')
+        if vault_content and isinstance(vault_content, str):
+            try:
+                vault = json.loads(vault_content)
+                machine_info['vault'] = vault
+            except json.JSONDecodeError as e:
+                print(colorize(f"Failed to parse vaultContent: {e}", 'RED'))
+    
     # Get IP from vault (it's directly in the machine vault)
     ip = vault.get('ip') or vault.get('IP')
     
@@ -338,7 +450,8 @@ def get_machine_connection_info(machine_info: Dict[str, Any]) -> Dict[str, Any]:
             pass
     
     if not ssh_user:
-        raise ValueError(f"Machine user not found in vault for {machine_name}")
+        print(colorize(f"ERROR: SSH user not found in machine vault. Vault contents: {vault}", 'RED'))
+        raise ValueError(f"SSH user not found in machine vault for {machine_name}. The machine vault should contain 'user' field.")
     
     # Get datastore from vault
     datastore = vault.get('datastore') or vault.get('DATASTORE', DATASTORE_PATH)
@@ -386,8 +499,8 @@ def validate_cli_tool():
 class RepositoryConnection:
     """Helper class to manage repository connections"""
     
-    def __init__(self, machine_name: str, repo_name: str, token_manager: Optional[TokenManager] = None):
-        self.token_manager = token_manager or get_default_token_manager()
+    def __init__(self, team_name: str, machine_name: str, repo_name: str):
+        self.team_name = team_name
         self.machine_name = machine_name
         self.repo_name = repo_name
         self._machine_info = None
@@ -400,7 +513,7 @@ class RepositoryConnection:
     def connect(self):
         """Establish connection and gather all necessary information"""
         print("Fetching machine information...")
-        self._machine_info = get_machine_info(self.machine_name, self.token_manager)
+        self._machine_info = get_machine_info_with_team(self.team_name, self.machine_name)
         self._connection_info = get_machine_connection_info(self._machine_info)
         
         if not self._connection_info['ip'] or not self._connection_info['user']:
@@ -408,7 +521,7 @@ class RepositoryConnection:
             sys.exit(1)
         
         print(f"Fetching repository information for '{self.repo_name}'...")
-        self._repo_info = get_repository_info(self._connection_info['team'], self.repo_name, self.token_manager)
+        self._repo_info = get_repository_info(self._connection_info['team'], self.repo_name)
         
         # The repository GUID is in the repoGuid field or the vault's credential field
         repo_guid = self._repo_info.get('repoGuid') or self._repo_info.get('grandGuid')
@@ -439,11 +552,13 @@ class RepositoryConnection:
         self._repo_paths = get_repository_paths(repo_guid, self._connection_info['datastore'], universal_user_id)
         
         print("Retrieving SSH key...")
-        self._ssh_key = get_ssh_key_from_vault(self.token_manager)
+        # Get SSH key from the specific team's vault
+        team_name = self._connection_info.get('team', self.team_name)
+        self._ssh_key = get_ssh_key_from_vault(team_name)
         if not self._ssh_key:
-            print(colorize("SSH private key not found in team vault", 'RED'))
-            print(colorize("Please ensure SSH keys are set in team vault using GetCompanyTeams API", 'YELLOW'))
-            print(colorize("The current CLI 'list teams' command doesn't return vaultContent", 'YELLOW'))
+            print(colorize(f"SSH private key not found in vault for team '{team_name}'", 'RED'))
+            print(colorize("The team vault should contain 'SSH_PRIVATE_KEY' field with the SSH private key.", 'YELLOW'))
+            print(colorize("Please ensure SSH keys are properly configured in your team's vault settings.", 'YELLOW'))
             sys.exit(1)
     
     def setup_ssh(self) -> Tuple[str, str, str]:
