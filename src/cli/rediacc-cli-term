@@ -28,27 +28,25 @@ def connect_to_machine(args):
     print(colorize(f"Connecting to machine '{args.machine}'...", 'HEADER'))
     
     from rediacc_cli_core import (
-        get_machine_info,
+        get_machine_info_with_team,
         get_machine_connection_info,
         get_ssh_key_from_vault,
         setup_ssh_for_connection,
         cleanup_ssh_key
     )
     
-    # Create token manager with the provided token
-    token_manager = TokenManager()
-    token_manager.set_token(args.token)
+    # Token is already managed by TokenManager, no need to set it again
     
     # Get machine info
     print("Fetching machine information...")
-    machine_info = get_machine_info(args.machine, token_manager)
+    machine_info = get_machine_info_with_team(args.team, args.machine)
     connection_info = get_machine_connection_info(machine_info)
     
     # Get SSH key
     print("Retrieving SSH key...")
-    ssh_key = get_ssh_key_from_vault(token_manager)
+    ssh_key = get_ssh_key_from_vault(args.team)
     if not ssh_key:
-        print(colorize("SSH private key not found in team vault", 'RED'))
+        print(colorize(f"SSH private key not found in vault for team '{args.team}'", 'RED'))
         sys.exit(1)
     
     # Set up SSH
@@ -126,12 +124,10 @@ def connect_to_terminal(args):
     """Connect to repository terminal via SSH"""
     print(colorize(f"Connecting to repository '{args.repo}' on machine '{args.machine}'...", 'HEADER'))
     
-    # Create token manager with the provided token
-    token_manager = TokenManager()
-    token_manager.set_token(args.token)
+    # Token is already managed by TokenManager, no need to set it again
     
     # Create repository connection
-    conn = RepositoryConnection(args.machine, args.repo, token_manager)
+    conn = RepositoryConnection(args.team, args.machine, args.repo)
     conn.connect()
     
     # Set up SSH
@@ -283,22 +279,22 @@ def main():
         epilog="""
 Examples:
   Connect to machine only (no repository):
-    %(prog)s --token=<GUID> --machine=server1
+    %(prog)s --token=<GUID> --team=MyTeam --machine=server1
     
   Execute a command on machine:
-    %(prog)s --token=<GUID> --machine=server1 --command="ls -la mounts/"
+    %(prog)s --token=<GUID> --team=MyTeam --machine=server1 --command="ls -la mounts/"
     
   Connect to repository terminal:
-    %(prog)s --token=<GUID> --machine=server1 --repo=myrepo
+    %(prog)s --token=<GUID> --team=MyTeam --machine=server1 --repo=myrepo
     
   Execute a command in repository environment:
-    %(prog)s --token=<GUID> --machine=server1 --repo=myrepo --command="docker ps"
+    %(prog)s --token=<GUID> --team=MyTeam --machine=server1 --repo=myrepo --command="docker ps"
     
   Enter a specific container:
-    %(prog)s --token=<GUID> --machine=server1 --repo=myrepo --command="docker exec -it mycontainer bash"
+    %(prog)s --token=<GUID> --team=MyTeam --machine=server1 --repo=myrepo --command="docker exec -it mycontainer bash"
     
   Check Docker status:
-    %(prog)s --token=<GUID> --machine=server1 --repo=myrepo --command="docker stats --no-stream"
+    %(prog)s --token=<GUID> --team=MyTeam --machine=server1 --repo=myrepo --command="docker stats --no-stream"
 
 When connected to a repository:
   Environment Variables Set:
@@ -322,6 +318,7 @@ When connected to machine only:
                        help='Launch graphical user interface')
     
     parser.add_argument('--token', required=False, help='Authentication token (GUID)')
+    parser.add_argument('--team', required=False, help='Team name')
     parser.add_argument('--machine', required=False, help='Target machine name')
     parser.add_argument('--repo', help='Target repository name (optional - if not specified, connects to machine only)')
     parser.add_argument('--command', help='Command to execute (interactive shell if not specified)')
@@ -344,8 +341,18 @@ When connected to machine only:
             sys.exit(1)
     
     # Check required arguments for CLI mode
-    if not args.token or not args.machine:
-        parser.error("--token and --machine are required in CLI mode")
+    if not args.team or not args.machine:
+        parser.error("--team and --machine are required in CLI mode")
+    
+    # Handle token authentication
+    if args.token:
+        # If token provided via command line, set it as environment variable
+        os.environ['REDIACC_TOKEN'] = args.token
+    else:
+        # Verify token exists in TokenManager
+        token = TokenManager.get_token()
+        if not token:
+            parser.error("No authentication token available. Please login first.")
     
     # Validate CLI tool exists
     validate_cli_tool()

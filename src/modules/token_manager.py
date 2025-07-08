@@ -2,11 +2,15 @@
 """
 Token Manager for Rediacc CLI
 Handles secure token storage and retrieval with proper permissions
+Uses singleton pattern to ensure consistent token management across the application
 """
 
 import os
 import json
 import re
+import fcntl
+import time
+import threading
 from pathlib import Path
 from typing import Optional, Dict, Any
 from datetime import datetime, timezone
@@ -19,76 +23,109 @@ logger = logging.getLogger(__name__)
 
 
 class TokenManager:
-    """Centralized token management with secure storage"""
+    """Centralized token management with secure storage - Singleton implementation"""
     
-    def __init__(self, config_dir: Optional[str] = None):
-        if config_dir is None:
-            config_dir = str(get_path('REDIACC_CONFIG_DIR') or Path.home() / '.rediacc')
-        self.config_dir = Path(config_dir).expanduser()
-        self.config_file = self.config_dir / "config.json"
-        self._token_cache: Optional[str] = None
-        self._config_cache: Optional[Dict[str, Any]] = None
-        self._ensure_secure_config()
+    # Class-level attributes for singleton
+    _instance = None
+    _lock = threading.Lock()
+    _initialized = False
     
-    def _ensure_secure_config(self):
+    # Static attributes
+    _config_dir: Optional[Path] = None
+    _config_file: Optional[Path] = None
+    _lock_file: Optional[Path] = None
+    
+    def __new__(cls):
+        """Ensure only one instance exists"""
+        if cls._instance is None:
+            with cls._lock:
+                if cls._instance is None:
+                    cls._instance = super().__new__(cls)
+        return cls._instance
+    
+    def __init__(self):
+        """Initialize only once"""
+        if not TokenManager._initialized:
+            with TokenManager._lock:
+                if not TokenManager._initialized:
+                    self._initialize()
+                    TokenManager._initialized = True
+    
+    @classmethod
+    def _initialize(cls):
+        """Initialize static configuration"""
+        config_dir = str(get_path('REDIACC_CONFIG_DIR') or Path.home() / '.rediacc')
+        cls._config_dir = Path(config_dir).expanduser()
+        cls._config_file = cls._config_dir / "config.json"
+        cls._lock_file = cls._config_dir / ".config.lock"
+        cls._ensure_secure_config()
+    
+    @classmethod
+    def _ensure_secure_config(cls):
         """Ensure config directory and file have proper permissions"""
         # Create directory with secure permissions
-        self.config_dir.mkdir(mode=0o700, exist_ok=True)
+        cls._config_dir.mkdir(mode=0o700, exist_ok=True)
         
         # Set secure permissions on existing config file
-        if self.config_file.exists():
+        if cls._config_file.exists():
             try:
-                self.config_file.chmod(0o600)
+                cls._config_file.chmod(0o600)
             except OSError as e:
                 logger.warning(f"Could not set secure permissions on config file: {e}")
     
-    def _load_from_config(self) -> Dict[str, Any]:
-        """Load configuration from file"""
-        if not self.config_file.exists():
-            return {}
-        
-        try:
-            with open(self.config_file, 'r') as f:
-                self._config_cache = json.load(f)
-                return self._config_cache
-        except (json.JSONDecodeError, IOError) as e:
-            logger.error(f"Failed to load config: {e}")
-            return {}
+    @classmethod
+    def _load_from_config(cls) -> Dict[str, Any]:
+        """Load configuration from file with thread safety - NO CACHING"""
+        with cls._lock:
+            if not cls._config_file.exists():
+                return {}
+            
+            try:
+                with open(cls._config_file, 'r') as f:
+                    return json.load(f)
+            except (json.JSONDecodeError, IOError) as e:
+                logger.error(f"Failed to load config: {e}")
+                return {}
     
-    def _save_config(self, config: Dict[str, Any]):
-        """Save configuration to file with secure permissions"""
-        self.config_dir.mkdir(mode=0o700, exist_ok=True)
-        
-        # Write to temporary file first
-        temp_file = self.config_file.with_suffix('.tmp')
-        try:
-            with open(temp_file, 'w') as f:
-                json.dump(config, f, indent=2)
+    @classmethod
+    def _save_config(cls, config: Dict[str, Any]):
+        """Save configuration to file with secure permissions and thread safety"""
+        with cls._lock:
+            cls._config_dir.mkdir(mode=0o700, exist_ok=True)
             
-            # Set secure permissions before moving
-            temp_file.chmod(0o600)
-            
-            # Atomic replace
-            temp_file.replace(self.config_file)
-            self._config_cache = config
-            
-        except Exception as e:
-            logger.error(f"Failed to save config: {e}")
-            if temp_file.exists():
-                temp_file.unlink()
-            raise
+            # Write to temporary file first
+            temp_file = cls._config_file.with_suffix('.tmp')
+            try:
+                with open(temp_file, 'w') as f:
+                    json.dump(config, f, indent=2)
+                
+                # Set secure permissions before moving
+                temp_file.chmod(0o600)
+                
+                # Atomic replace
+                temp_file.replace(cls._config_file)
+                
+            except Exception as e:
+                logger.error(f"Failed to save config: {e}")
+                if temp_file.exists():
+                    temp_file.unlink()
+                raise
     
-    def get_token(self, override_token: Optional[str] = None) -> Optional[str]:
+    @classmethod
+    def get_token(cls, override_token: Optional[str] = None) -> Optional[str]:
         """
-        Get token with clear precedence:
+        Get token with clear precedence - ALWAYS READ FROM FILE:
         1. Override token (from command line)
         2. Environment variable (REDIACC_TOKEN)
-        3. Cached token (in memory)
-        4. Config file
+        3. Config file (always read fresh)
         """
+        # Ensure initialization
+        if not cls._initialized:
+            TokenManager()
+        
         # 1. Override token has highest priority
         if override_token:
-            if TokenManager.validate_token(override_token):
+            if cls.validate_token(override_token):
                 return override_token
             else:
                 logger.warning("Invalid override token format")
@@ -97,32 +134,31 @@ class TokenManager:
         # 2. Check environment variable
         env_token = os.environ.get('REDIACC_TOKEN')
         if env_token:
-            if TokenManager.validate_token(env_token):
-                self._token_cache = env_token
+            if cls.validate_token(env_token):
                 return env_token
             else:
                 logger.warning("Invalid token in REDIACC_TOKEN environment variable")
         
-        # 3. Return cached token if available
-        if self._token_cache:
-            return self._token_cache
-        
-        # 4. Load from config file
-        config = self._load_from_config()
+        # 3. Always load fresh from config file - NO CACHING
+        config = cls._load_from_config()
         token = config.get('token')
-        if token and TokenManager.validate_token(token):
-            self._token_cache = token
+        if token and cls.validate_token(token):
             return token
         
         return None
     
-    def set_token(self, token: str, email: Optional[str] = None, 
+    @classmethod
+    def set_token(cls, token: str, email: Optional[str] = None, 
                   company: Optional[str] = None, vault_company: Optional[str] = None):
         """Store token and related auth info securely"""
-        if not TokenManager.validate_token(token):
+        # Ensure initialization
+        if not cls._initialized:
+            TokenManager()
+            
+        if not cls.validate_token(token):
             raise ValueError("Invalid token format")
         
-        config = self._load_from_config()
+        config = cls._load_from_config()
         
         # Update auth information
         config['token'] = token
@@ -135,26 +171,34 @@ class TokenManager:
         if vault_company is not None:
             config['vault_company'] = vault_company
         
-        self._save_config(config)
-        self._token_cache = token
+        cls._save_config(config)
     
-    def clear_token(self):
+    @classmethod
+    def clear_token(cls):
         """Clear token and authentication information"""
-        config = self._load_from_config()
+        # Ensure initialization
+        if not cls._initialized:
+            TokenManager()
+            
+        config = cls._load_from_config()
         
         # Remove auth-related fields
         auth_fields = ['token', 'token_updated_at', 'email', 'company', 'vault_company']
         for field in auth_fields:
             config.pop(field, None)
         
-        self._save_config(config)
-        self._token_cache = None
+        cls._save_config(config)
     
-    def get_auth_info(self) -> Dict[str, Any]:
+    @classmethod
+    def get_auth_info(cls) -> Dict[str, Any]:
         """Get all authentication-related information"""
-        config = self._load_from_config()
+        # Ensure initialization
+        if not cls._initialized:
+            TokenManager()
+            
+        config = cls._load_from_config()
         return {
-            'token': self.mask_token(config.get('token')),
+            'token': cls.mask_token(config.get('token')),
             'email': config.get('email'),
             'company': config.get('company'),
             'has_vault': bool(config.get('vault_company')),
@@ -178,28 +222,34 @@ class TokenManager:
             return None
         return f"{token[:8]}..."
     
-    def is_authenticated(self) -> bool:
+    @classmethod
+    def is_authenticated(cls) -> bool:
         """Check if a valid token is available"""
-        return self.get_token() is not None
+        return cls.get_token() is not None
     
-    def get_config_value(self, key: str) -> Any:
+    @classmethod
+    def get_config_value(cls, key: str) -> Any:
         """Get any config value"""
-        config = self._load_from_config()
+        # Ensure initialization
+        if not cls._initialized:
+            TokenManager()
+            
+        config = cls._load_from_config()
         return config.get(key)
     
-    def set_config_value(self, key: str, value: Any):
+    @classmethod
+    def set_config_value(cls, key: str, value: Any):
         """Set any config value"""
-        config = self._load_from_config()
+        # Ensure initialization
+        if not cls._initialized:
+            TokenManager()
+            
+        config = cls._load_from_config()
         config[key] = value
-        self._save_config(config)
+        cls._save_config(config)
 
 
-# Singleton instance
-_default_manager = None
-
+# For backward compatibility - these functions now use the singleton
 def get_default_token_manager() -> TokenManager:
     """Get the default token manager instance"""
-    global _default_manager
-    if _default_manager is None:
-        _default_manager = TokenManager()
-    return _default_manager
+    return TokenManager()

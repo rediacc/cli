@@ -430,6 +430,7 @@ case "$1" in
         
     term|terminal)
         shift
+        # Don't inject token - let the term command manage its own token from config
         python3 "$CLI_ROOT/src/cli/rediacc-cli-term" "$@"
         ;;
         
@@ -497,7 +498,14 @@ case "$1" in
         ;;
         
     *)
-        # Pass through to main CLI
-        python3 "$CLI_ROOT/src/cli/rediacc-cli" "$@"
+        # Pass through to main CLI with token injection if needed
+        token_arg=""
+        if [[ ! " $@ " =~ " --token " ]]; then
+            token=$(python3 -c "import sys; sys.path.insert(0, '$CLI_ROOT/src/modules'); from token_manager import TokenManager; print(TokenManager().get_token() or '')" 2>/dev/null)
+            if [ -n "$token" ]; then
+                token_arg="--token $token"
+            fi
+        fi
+        python3 "$CLI_ROOT/src/cli/rediacc-cli" $token_arg "$@"
         ;;
 esac

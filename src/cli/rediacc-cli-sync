@@ -372,12 +372,10 @@ def upload(args):
         print(colorize(f"Local path '{args.local}' does not exist", 'RED'))
         sys.exit(1)
     
-    # Create token manager with the provided token
-    token_manager = TokenManager()
-    token_manager.set_token(args.token)
+    # Token is already managed by TokenManager, no need to set it again
     
     # Create repository connection
-    conn = RepositoryConnection(args.machine, args.repo, token_manager)
+    conn = RepositoryConnection(args.team, args.machine, args.repo)
     conn.connect()
     
     # Set up SSH
@@ -429,12 +427,10 @@ def download(args):
     dest_path = Path(args.local)
     dest_path.mkdir(parents=True, exist_ok=True)
     
-    # Create token manager with the provided token
-    token_manager = TokenManager()
-    token_manager.set_token(args.token)
+    # Token is already managed by TokenManager, no need to set it again
     
     # Create repository connection
-    conn = RepositoryConnection(args.machine, args.repo, token_manager)
+    conn = RepositoryConnection(args.team, args.machine, args.repo)
     conn.connect()
     
     # Set up SSH
@@ -512,7 +508,8 @@ Examples:
     
     # Upload command
     upload_parser = subparsers.add_parser('upload', help='Upload files to repository')
-    upload_parser.add_argument('--token', required=True, help='Authentication token (GUID)')
+    upload_parser.add_argument('--token', required=False, help='Authentication token (GUID) - uses saved token if not specified')
+    upload_parser.add_argument('--team', required=True, help='Team name')
     upload_parser.add_argument('--local', required=True, help='Local path to upload from')
     upload_parser.add_argument('--machine', required=True, help='Target machine name')
     upload_parser.add_argument('--repo', required=True, help='Target repository name')
@@ -524,7 +521,8 @@ Examples:
     
     # Download command
     download_parser = subparsers.add_parser('download', help='Download files from repository')
-    download_parser.add_argument('--token', required=True, help='Authentication token (GUID)')
+    download_parser.add_argument('--token', required=False, help='Authentication token (GUID) - uses saved token if not specified')
+    download_parser.add_argument('--team', required=True, help='Team name')
     download_parser.add_argument('--machine', required=True, help='Source machine name')
     download_parser.add_argument('--repo', required=True, help='Source repository name')
     download_parser.add_argument('--local', required=True, help='Local path to download to')
@@ -553,6 +551,17 @@ Examples:
     if not args.command:
         parser.print_help()
         sys.exit(1)
+    
+    # Handle token authentication
+    if hasattr(args, 'token'):
+        if args.token:
+            # If token provided via command line, set it as environment variable
+            os.environ['REDIACC_TOKEN'] = args.token
+        else:
+            # Verify token exists in TokenManager
+            token = TokenManager.get_token()
+            if not token:
+                parser.error("No authentication token available. Please login first.")
     
     # Validate CLI tool exists
     validate_cli_tool()
