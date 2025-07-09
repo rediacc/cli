@@ -247,6 +247,29 @@ class TokenManager:
         config = cls._load_from_config()
         config[key] = value
         cls._save_config(config)
+    
+    @classmethod
+    def set_api_url(cls, api_url: str):
+        """Set API URL in config (compatible with desktop app)"""
+        # Ensure initialization
+        if not cls._initialized:
+            TokenManager()
+            
+        config = cls._load_from_config()
+        # Save in snake_case for CLI compatibility
+        config['api_url'] = api_url
+        cls._save_config(config)
+    
+    @classmethod
+    def get_api_url(cls) -> Optional[str]:
+        """Get API URL from config"""
+        # Ensure initialization
+        if not cls._initialized:
+            TokenManager()
+            
+        config = cls._load_from_config()
+        # Support both snake_case and camelCase
+        return config.get('api_url') or config.get('apiUrl')
 
 
 # For backward compatibility - these functions now use the singleton
