@@ -5,6 +5,7 @@ Loads configuration from .env files and environment variables
 """
 import os
 import sys
+import json
 from pathlib import Path
 from typing import Dict, Optional
 
@@ -111,6 +112,26 @@ class Config:
         for key in all_keys:
             if key in os.environ:
                 self._config[key] = os.environ[key]
+        
+        # Try to load API URL from shared config file if not set
+        if 'REDIACC_API_URL' not in self._config:
+            api_url = self._load_api_url_from_shared_config()
+            if api_url:
+                self._config['REDIACC_API_URL'] = api_url
+    
+    def _load_api_url_from_shared_config(self) -> Optional[str]:
+        """Load API URL from shared config file (same as desktop app)"""
+        try:
+            config_path = Path.home() / '.rediacc' / 'config.json'
+            if config_path.exists():
+                with open(config_path, 'r') as f:
+                    config = json.load(f)
+                    # Support both snake_case and camelCase
+                    return config.get('api_url') or config.get('apiUrl')
+        except Exception:
+            # Silently ignore errors
+            pass
+        return None
     
     def _validate(self):
         """Validate that all required configuration is present"""
