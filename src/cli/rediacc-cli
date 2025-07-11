@@ -47,7 +47,18 @@ except ConfigError as e:
 HTTP_PORT = get_required('SYSTEM_HTTP_PORT')
 BASE_URL = get_required('REDIACC_API_URL')
 API_PREFIX = '/StoredProcedure'
-CONFIG_DIR = str(get_path('REDIACC_CONFIG_DIR') or Path.home() / '.rediacc')
+# Use same local directory logic as TokenManager
+def _get_config_dir():
+    explicit_config_dir = get_path('REDIACC_CONFIG_DIR')
+    if explicit_config_dir:
+        return str(explicit_config_dir)
+    else:
+        # Use local config directory in CLI folder (same as TokenManager)
+        current_file = Path(__file__).resolve()
+        cli_root = current_file.parent.parent.parent  # cli/rediacc-cli -> cli/src -> cli
+        return str(cli_root / '.rediacc')
+
+CONFIG_DIR = _get_config_dir()
 CONFIG_FILE = os.path.join(CONFIG_DIR, 'config.json')
 REQUEST_TIMEOUT = 30
 TEST_ACTIVATION_CODE = get('REDIACC_TEST_ACTIVATION_CODE') or '111111'
@@ -62,10 +73,14 @@ def colorize(text, color):
     """Add color to terminal output if supported"""
     return f"{COLORS.get(color, '')}{text}{COLORS['ENDC']}" if sys.stdout.isatty() else text
 
-# Print crypto warning if needed
+# Print crypto warning if needed (to stderr to avoid contaminating JSON output)
 if not CRYPTO_AVAILABLE:
-    print(colorize("Warning: cryptography library not installed. Vault encryption will not be available.", 'YELLOW'))
-    print(colorize("Install with: pip install cryptography", 'YELLOW'))
+    print(colorize("Warning: cryptography library not installed. Vault encryption will not be available.", 'YELLOW'), file=sys.stderr)
+    # Check if we're in MSYS2 environment
+    if os.environ.get('MSYSTEM') or (sys.platform == 'win32' and ('/msys' in sys.executable.lower() or '/mingw' in sys.executable.lower())):
+        print(colorize("For MSYS2: Run 'pacman -S mingw-w64-x86_64-python-cryptography' or './scripts/install_msys2_packages.sh'", 'YELLOW'), file=sys.stderr)
+    else:
+        print(colorize("Install with: pip install cryptography", 'YELLOW'), file=sys.stderr)
 
 # Load CLI configuration from JSON file
 CLI_CONFIG_PATH = Path(__file__).parent.parent / 'config' / 'rediacc-cli.json'
@@ -291,144 +306,9 @@ def reconstruct_arg_defs():
 CMD_CONFIG = reconstruct_cmd_config()
 ARG_DEFS = reconstruct_arg_defs()
 
-class ConfigManager:
-    """Manages configuration and authentication state"""
-    def __init__(self):
-        self.config = self._load_config()
-        # Master password stored only in memory, never persisted
-        self._master_password = None
-        # VaultCompany value for validation
-        self._vault_company = None
-        # Company name for validation
-        self._company_name = None
-        # Flag to track if we've fetched vault info this session
-        self._vault_info_fetched = False
-        # Flag to track if token was overridden via command line
-        self._token_overridden = False
-    
-    def _load_config(self):
-        """Load configuration from file"""
-        if not os.path.exists(CONFIG_FILE):
-            return {}
-        
-        # Ensure config file has secure permissions
-        try:
-            os.chmod(CONFIG_FILE, 0o600)
-        except OSError:
-            pass  # May fail on some systems, continue anyway
-        
-        try:
-            with open(CONFIG_FILE, 'r') as f:
-                return json.load(f)
-        except (json.JSONDecodeError, IOError):
-            return {}
-    
-    def save_config(self):
-        """Save current configuration to file"""
-        os.makedirs(CONFIG_DIR, mode=0o700, exist_ok=True)
-        
-        # Write to temporary file first for atomic operation
-        temp_file = CONFIG_FILE + '.tmp'
-        try:
-            with open(temp_file, 'w') as f:
-                json.dump(self.config, f, indent=2)
-            
-            # Set secure permissions
-            os.chmod(temp_file, 0o600)
-            
-            # Atomic replace
-            os.replace(temp_file, CONFIG_FILE)
-        except Exception as e:
-            if os.path.exists(temp_file):
-                os.unlink(temp_file)
-            raise
-    
-    def set_auth(self, email, token, company=None, vault_company=None):
-        """Update authentication information"""
-        # Validate token format before saving
-        if not TokenManager.validate_token(token):
-            raise ValueError(f"Invalid token format: {TokenManager.mask_token(token)}")
-        
-        self.config.update({'email': email, 'token': token, 'company': company})
-        if vault_company is not None:
-            self.config['vault_company'] = vault_company
-        self._company_name = company
-        self._vault_company = vault_company
-        self.save_config()
-    
-    def clear_auth(self):
-        """Clear authentication information"""
-        for key in ['email', 'token', 'company', 'vault_company']:
-            self.config.pop(key, None)
-        self._master_password = None
-        self._vault_company = None
-        self._company_name = None
-        self._vault_info_fetched = False
-        self.save_config()
-    
-    def is_authenticated(self):
-        """Check if user is authenticated"""
-        # Use TokenManager which handles env vars and file reading
-        return TokenManager.is_authenticated()
-    
-    def set_master_password(self, password):
-        """Set master password in memory only"""
-        self._master_password = password
-    
-    def get_master_password(self):
-        """Get master password from memory"""
-        return self._master_password
-    
-    def clear_master_password(self):
-        """Clear master password from memory"""
-        self._master_password = None
-    
-    def has_vault_encryption(self):
-        """Check if company has vault encryption enabled"""
-        # Try to get vault company from memory first, then config
-        vault_company = self._vault_company or self.config.get('vault_company')
-        return vault_company and is_encrypted(vault_company)
-    
-    def get_vault_company(self):
-        """Get vault company value"""
-        return self._vault_company or self.config.get('vault_company')
-    
-    def needs_vault_info_fetch(self):
-        """Check if we need to fetch vault info"""
-        # Need to fetch if authenticated but don't have vault info
-        return self.is_authenticated() and not self._vault_info_fetched and not self.get_vault_company()
-    
-    def mark_vault_info_fetched(self):
-        """Mark that we've attempted to fetch vault info this session"""
-        self._vault_info_fetched = True
-    
-    def load_vault_info_from_config(self):
-        """Load vault info from saved config"""
-        if 'vault_company' in self.config:
-            self._vault_company = self.config['vault_company']
-        if 'company' in self.config:
-            self._company_name = self.config['company']
-    
-    def validate_master_password(self, password):
-        """Validate master password against VaultCompany"""
-        vault_company = self.get_vault_company()
-        
-        if not vault_company:
-            return False
-        
-        if not is_encrypted(vault_company):
-            return True  # No encryption required
-        
-        try:
-            # Try to decrypt the vault content
-            decrypted = decrypt_string(vault_company, password)
-            # If decryption succeeds, the password is valid
-            # The decrypted content should be valid JSON (even if it's just {})
-            json.loads(decrypted)
-            return True
-        except:
-            # Decryption failed or result is not valid JSON - wrong password
-            return False
+# NOTE: ConfigManager class was removed and consolidated into TokenManager
+# All configuration management is now handled by TokenManager in src/modules/token_manager.py
+# This eliminates code duplication and provides better thread safety and token management
 
 class APIClient:
     """Client for interacting with the Rediacc Middleware API"""
@@ -541,7 +421,7 @@ class APIClient:
                 new_token = tables[0]['data'][0].get('nextRequestCredential')
                 if new_token and self.config_manager:
                     # Don't update if using environment variable or command line override
-                    if not os.environ.get('REDIACC_TOKEN') and not self.config_manager._token_overridden:
+                    if not os.environ.get('REDIACC_TOKEN') and not self.config_manager.is_token_overridden():
                         # Use TokenManager to update token to ensure consistency
                         TokenManager.set_token(new_token, 
                                              email=self.config_manager.config.get('email'),
@@ -889,6 +769,101 @@ def build_queue_vault_data(function_name, args):
     
     return json.dumps(vault_data)
 
+# License Management Functions
+def generate_hardware_id():
+    """Generate hardware ID by calling the middleware API"""
+    # Try multiple possible middleware URLs
+    possible_urls = [
+        "http://localhost:7322/api/health/hardware-id",  # Default local with nginx
+        "http://localhost:5000/api/health/hardware-id",  # Direct middleware port
+        "http://localhost:80/api/health/hardware-id",    # Alternative port
+    ]
+    
+    last_error = None
+    for hardware_id_url in possible_urls:
+        try:
+            req = urllib.request.Request(hardware_id_url)
+            with urllib.request.urlopen(req, timeout=5) as response:
+                data = json.loads(response.read().decode('utf-8'))
+                return data['hardwareId']
+        except urllib.error.URLError as e:
+            last_error = e
+            continue
+        except Exception as e:
+            last_error = e
+            continue
+    
+    # If all URLs failed, provide helpful error message
+    raise Exception(
+        f"Failed to generate hardware ID. Please ensure the middleware is running.\n"
+        f"Try: ./go system up middleware\n"
+        f"Last error: {str(last_error)}"
+    )
+
+def request_license_from_server(hardware_id, base_url=None):
+    """Request license from the license server"""
+    if not base_url:
+        base_url = BASE_URL
+    
+    # Remove /api/StoredProcedure suffix if present
+    if base_url.endswith('/api/StoredProcedure'):
+        base_url = base_url[:-len('/api/StoredProcedure')]
+    elif base_url.endswith('/api'):
+        base_url = base_url[:-4]
+    
+    license_url = f"{base_url}/api/license/request"
+    
+    data = json.dumps({"HardwareId": hardware_id})
+    req = urllib.request.Request(
+        license_url,
+        data=data.encode('utf-8'),
+        headers={'Content-Type': 'application/json'}
+    )
+    
+    try:
+        with urllib.request.urlopen(req, timeout=REQUEST_TIMEOUT) as response:
+            return json.loads(response.read().decode('utf-8'))
+    except urllib.error.HTTPError as e:
+        error_body = e.read().decode('utf-8')
+        raise Exception(f"License server error {e.code}: {error_body}")
+    except Exception as e:
+        raise Exception(f"Failed to connect to license server: {str(e)}")
+
+def install_license_file(license_file, target_path=None):
+    """Install license file to the specified location"""
+    if not os.path.exists(license_file):
+        raise FileNotFoundError(f"License file not found: {license_file}")
+    
+    # If no target specified, try to detect middleware directory
+    if not target_path:
+        # Check common locations
+        possible_paths = [
+            ".",  # Current directory
+            "./bin",  # Binary directory
+            "../middleware",  # Sibling middleware directory
+            "../middleware/bin/Debug/net8.0",
+            "../middleware/bin/Release/net8.0",
+        ]
+        
+        # Find a suitable location
+        for path in possible_paths:
+            if os.path.exists(path) and os.path.isdir(path):
+                target_path = path
+                break
+        
+        if not target_path:
+            target_path = "."  # Default to current directory
+    
+    # Ensure target directory exists
+    os.makedirs(target_path, exist_ok=True)
+    
+    # Copy license file
+    target_file = os.path.join(target_path, "license.lic")
+    import shutil
+    shutil.copy2(license_file, target_file)
+    
+    return target_file
+
 class CommandHandler:
     """Unified command handler"""
     def __init__(self, config_manager, output_format='text', include_vault=False):
@@ -983,12 +958,60 @@ class CommandHandler:
             print(output)
             return 1
         
+        # Check if 2FA is required
+        is_authorized = auth_data.get('isAuthorized', True)
+        authentication_status = auth_data.get('authenticationStatus', '')
+        
+        if authentication_status == '2FA_REQUIRED' and not is_authorized:
+            # 2FA is required
+            if not hasattr(args, 'tfa_code') or not args.tfa_code:
+                # No TFA code provided, prompt for it
+                if self.output_format != 'json':
+                    # Import i18n module for translation
+                    from modules.i18n import I18n
+                    i18n = I18n()
+                    tfa_code = input(i18n.get('enter_tfa_code'))
+                else:
+                    error_msg = "2FA_REQUIRED. Please provide --tfa-code parameter."
+                    output = format_output(None, self.output_format, None, error_msg)
+                    print(output)
+                    return 1
+                
+                # Retry login with 2FA code
+                login_params['2FACode'] = tfa_code
+                response = self.client.auth_request(
+                    "CreateAuthenticationRequest", 
+                    email, hash_pwd, 
+                    login_params
+                )
+                
+                if response.get('error'):
+                    output = format_output(None, self.output_format, None, f"2FA verification failed: {response['error']}")
+                    print(output)
+                    return 1
+                
+                # Extract updated token after 2FA
+                tables = response.get('tables', [])
+                if not tables or not tables[0].get('data'):
+                    error_msg = "2FA verification failed: Could not get authentication token"
+                    output = format_output(None, self.output_format, None, error_msg)
+                    print(output)
+                    return 1
+                
+                auth_data = tables[0]['data'][0]
+                token = auth_data.get('nextRequestCredential')
+                if not token:
+                    error_msg = "2FA verification failed: Invalid authentication token"
+                    output = format_output(None, self.output_format, None, error_msg)
+                    print(output)
+                    return 1
+        
         # Extract company information and VaultCompany from the response
         company = auth_data.get('companyName')
         vault_company = auth_data.get('vaultCompany') or auth_data.get('VaultCompany')
         
         # Save authentication data first (without master password)
-        self.config_manager.set_auth(email, token, company, vault_company)
+        self.config_manager.set_token_with_auth(token, email, company, vault_company)
         
         # Check if company has vault encryption enabled
         if vault_company and is_encrypted(vault_company):
@@ -1050,6 +1073,127 @@ class CommandHandler:
         output = format_output({}, self.output_format, "Successfully logged out")
         print(output)
         return 0
+    
+    def handle_license_command(self, args):
+        """Handle license-related commands"""
+        if args.license_command == 'generate-id':
+            try:
+                if self.output_format != 'json':
+                    print(colorize("Connecting to middleware to generate hardware ID...", 'BLUE'))
+                
+                hardware_id = generate_hardware_id()
+                output_file = args.output or 'hardware-id.txt'
+                
+                # Write to file
+                with open(output_file, 'w') as f:
+                    f.write(hardware_id)
+                
+                if self.output_format == 'json':
+                    result = {
+                        "success": True,
+                        "hardware_id": hardware_id,
+                        "output_file": output_file
+                    }
+                    print(json.dumps(result))
+                else:
+                    print(colorize("Hardware ID generated successfully!", 'GREEN'))
+                    print(colorize(f"Hardware ID: {hardware_id}", 'GREEN'))
+                    print(colorize(f"Saved to: {output_file}", 'GREEN'))
+                    print()
+                    print(colorize("Next steps:", 'BLUE'))
+                    print("1. Transfer this file to a machine with internet access")
+                    print("2. Run: ./rediacc license request --hardware-id " + output_file)
+                    print("3. Transfer the resulting license.lic back to this machine")
+                    print("4. Run: ./rediacc license install --file license.lic")
+                return 0
+            except Exception as e:
+                error_msg = str(e)
+                if self.output_format == 'json':
+                    print(json.dumps({"success": False, "error": error_msg}))
+                else:
+                    print(colorize("Failed to generate hardware ID", 'RED'))
+                    print(colorize(error_msg, 'RED'))
+                return 1
+                
+        elif args.license_command == 'request':
+            try:
+                # Read hardware ID from file or argument
+                if os.path.isfile(args.hardware_id):
+                    with open(args.hardware_id, 'r') as f:
+                        hardware_id = f.read().strip()
+                else:
+                    hardware_id = args.hardware_id
+                
+                # Request license from server
+                print(colorize("Requesting license from server...", 'BLUE'))
+                license_data = request_license_from_server(hardware_id, args.server_url)
+                
+                # Save license
+                output_file = args.output or 'license.lic'
+                with open(output_file, 'w') as f:
+                    # Handle both uppercase and lowercase field names
+                    lic_data = license_data.get('licenseData') or license_data.get('LicenseData')
+                    if not lic_data:
+                        raise Exception("License data not found in response")
+                    f.write(lic_data)
+                
+                if self.output_format == 'json':
+                    result = {
+                        "success": True,
+                        "license_key": license_data.get('licenseKey') or license_data.get('LicenseKey'),
+                        "expiration_date": license_data.get('expirationDate') or license_data.get('ExpirationDate'),
+                        "is_new_license": license_data.get('isNewLicense', license_data.get('IsNewLicense', False)),
+                        "output_file": output_file
+                    }
+                    print(json.dumps(result))
+                else:
+                    print(colorize("License obtained successfully!", 'GREEN'))
+                    lic_key = license_data.get('licenseKey') or license_data.get('LicenseKey')
+                    exp_date = license_data.get('expirationDate') or license_data.get('ExpirationDate')
+                    is_new = license_data.get('isNewLicense', license_data.get('IsNewLicense', False))
+                    print(colorize(f"License Key: {lic_key}", 'GREEN'))
+                    print(colorize(f"Expires: {exp_date}", 'GREEN'))
+                    if is_new:
+                        print(colorize("This is a new license", 'BLUE'))
+                    print(colorize(f"Saved to: {output_file}", 'GREEN'))
+                return 0
+            except Exception as e:
+                error = f"Failed to request license: {str(e)}"
+                if self.output_format == 'json':
+                    print(json.dumps({"success": False, "error": error}))
+                else:
+                    print(colorize(error, 'RED'))
+                return 1
+                
+        elif args.license_command == 'install':
+            try:
+                # Install license file
+                target_file = install_license_file(args.file, args.target)
+                
+                if self.output_format == 'json':
+                    result = {
+                        "success": True,
+                        "installed_to": target_file
+                    }
+                    print(json.dumps(result))
+                else:
+                    print(colorize(f"License installed successfully to: {target_file}", 'GREEN'))
+                return 0
+            except Exception as e:
+                error = f"Failed to install license: {str(e)}"
+                if self.output_format == 'json':
+                    print(json.dumps({"success": False, "error": error}))
+                else:
+                    print(colorize(error, 'RED'))
+                return 1
+        
+        else:
+            error = f"Unknown license command: {args.license_command}"
+            if self.output_format == 'json':
+                print(json.dumps({"success": False, "error": error}))
+            else:
+                print(colorize(error, 'RED'))
+            return 1
     
     def queue_add(self, args):
         """Add a bash function to the queue"""
@@ -1976,6 +2120,25 @@ def setup_parser():
                         if subcmd_name == 'machine':
                             subcmd_parser.add_argument('--new-bridge', help='New bridge name for machine')
     
+    # Add license command
+    license_parser = subparsers.add_parser('license', help='License management commands')
+    license_subparsers = license_parser.add_subparsers(dest='license_command', help='License commands')
+    
+    # generate-id command
+    generate_id_parser = license_subparsers.add_parser('generate-id', help='Generate hardware ID for offline licensing')
+    generate_id_parser.add_argument('--output', '-o', help='Output file (default: hardware-id.txt)')
+    
+    # request command
+    request_parser = license_subparsers.add_parser('request', help='Request license using hardware ID')
+    request_parser.add_argument('--hardware-id', '-i', required=True, help='Hardware ID or file containing it')
+    request_parser.add_argument('--output', '-o', help='Output file (default: license.lic)')
+    request_parser.add_argument('--server-url', '-s', help='License server URL (optional)')
+    
+    # install command
+    install_parser = license_subparsers.add_parser('install', help='Install license file')
+    install_parser.add_argument('--file', '-f', required=True, help='License file to install')
+    install_parser.add_argument('--target', '-t', help='Target directory (default: auto-detect)')
+    
     return parser
 
 def main():
@@ -2034,8 +2197,10 @@ def main():
     # Get output format
     output_format = args.output
     
-    # Load configuration
-    config_manager = ConfigManager()
+    # Load configuration - use TokenManager instead of ConfigManager
+    config_manager = TokenManager()
+    # Load vault info from config for compatibility
+    config_manager.load_vault_info_from_config()
     
     # Handle --token override
     if args.token:
@@ -2047,7 +2212,7 @@ def main():
             return 1
         # Set override token in environment variable so TokenManager will use it
         os.environ['REDIACC_TOKEN'] = args.token
-        config_manager._token_overridden = True
+        config_manager.set_token_overridden(True)
     
     handler = CommandHandler(config_manager, output_format, include_vault=args.include_vault)
     
@@ -2056,6 +2221,9 @@ def main():
         return handler.login(args)
     elif args.command == 'logout':
         return handler.logout(args)
+    elif args.command == 'license':
+        # License commands don't require authentication
+        return handler.handle_license_command(args)
     
     # Check if command requires authentication
     auth_not_required_commands = {

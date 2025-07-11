@@ -325,15 +325,35 @@
         "params": "lambda args: {'teamName': args.team, 'repoName': args.name, 'newRepoName': args.new_name}",
         "success_msg": "Successfully updated repository name: {name} → {new_name}"
       },
+      "repository-vault": {
+        "endpoint": "UpdateRepositoryVault",
+        "params": "lambda args: {'teamName': args.team, 'repoName': args.name, 'repoVault': get_vault_data(args) or '{}', 'vaultVersion': getattr(args, 'vault_version', 1)}",
+        "success_msg": "Successfully updated repository vault: {name}"
+      },
       "storage": {
         "endpoint": "UpdateStorageName",
         "params": "lambda args: {'teamName': args.team, 'storageName': args.name, 'newStorageName': args.new_name}",
         "success_msg": "Successfully updated storage name: {name} → {new_name}"
       },
+      "storage-vault": {
+        "endpoint": "UpdateStorageVault",
+        "params": "lambda args: {'teamName': args.team, 'storageName': args.name, 'storageVault': get_vault_data(args) or '{}', 'vaultVersion': getattr(args, 'vault_version', 1)}",
+        "success_msg": "Successfully updated storage vault: {name}"
+      },
       "schedule": {
         "endpoint": "UpdateScheduleName",
         "params": "lambda args: {'teamName': args.team, 'scheduleName': args.name, 'newScheduleName': args.new_name}",
         "success_msg": "Successfully updated schedule name: {name} → {new_name}"
+      },
+      "schedule-vault": {
+        "endpoint": "UpdateScheduleVault",
+        "params": "lambda args: {'teamName': args.team, 'scheduleName': args.name, 'scheduleVault': get_vault_data(args) or '{}', 'vaultVersion': getattr(args, 'vault_version', 1)}",
+        "success_msg": "Successfully updated schedule vault: {name}"
+      },
+      "machine-status": {
+        "endpoint": "UpdateMachineStatus",
+        "params": "lambda args: {'teamName': args.team, 'machineName': args.name, 'status': args.status}",
+        "success_msg": "Successfully updated machine status: {name}"
       }
     },
     "vault": {
@@ -350,6 +370,48 @@
         },
         "params": "lambda args: get_vault_set_params(args)",
         "success_msg": "Successfully updated {resource_type} vault"
+      }
+    },
+    "distributed-storage": {
+      "create-cluster": {
+        "endpoint": "CreateDistributedStorageCluster",
+        "params": "lambda args: {'teamName': args.team, 'clusterName': args.name, 'clusterVault': get_vault_data(args) or '{}'}",
+        "success_msg": "Successfully created distributed storage cluster: {name} for team {team}"
+      },
+      "delete-cluster": {
+        "endpoint": "DeleteDistributedStorageCluster",
+        "params": "lambda args: {'teamName': args.team, 'clusterName': args.name}",
+        "confirm_msg": "Are you sure you want to delete distributed storage cluster '{name}' from team '{team}'?",
+        "success_msg": "Successfully deleted distributed storage cluster: {name}"
+      },
+      "get-cluster": {
+        "endpoint": "GetDistributedStorageCluster",
+        "params": "lambda args: {'teamName': args.team, 'clusterName': args.name}"
+      },
+      "list-clusters": {
+        "endpoint": "ListDistributedStorageClusters",
+        "params": "lambda args: {'teamName': args.team}"
+      },
+      "add-machines": {
+        "endpoint": "AddMachinesToDistributedStorage",
+        "params": "lambda args: {'teamName': args.team, 'clusterName': args.cluster, 'machineNames': args.machines}",
+        "success_msg": "Successfully added machines to distributed storage cluster: {cluster}"
+      },
+      "remove-machines": {
+        "endpoint": "RemoveMachinesFromDistributedStorage",
+        "params": "lambda args: {'teamName': args.team, 'clusterName': args.cluster, 'machineNames': args.machines}",
+        "confirm_msg": "Are you sure you want to remove machines from cluster '{cluster}'?",
+        "success_msg": "Successfully removed machines from distributed storage cluster: {cluster}"
+      },
+      "update-status": {
+        "endpoint": "UpdateDistributedStorageClusterStatus",
+        "params": "lambda args: {'teamName': args.team, 'clusterName': args.cluster, 'status': args.status}",
+        "success_msg": "Successfully updated distributed storage cluster status: {cluster}"
+      },
+      "update-vault": {
+        "endpoint": "UpdateDistributedStorageClusterVault",
+        "params": "lambda args: {'teamName': args.team, 'clusterName': args.cluster, 'clusterVault': get_vault_data(args) or '{}', 'vaultVersion': getattr(args, 'vault_version', 1)}",
+        "success_msg": "Successfully updated distributed storage cluster vault: {cluster}"
       }
     },
     "permission": {
@@ -443,6 +505,17 @@
         "endpoint": "UpdateUser2FA",
         "params": "lambda args: {'enable': args.enable, 'userHash': pwd_hash(args.password), 'currentCode': getattr(args, 'current_code', None)}",
         "success_msg": "Successfully updated 2FA settings"
+      }
+    },
+    "auth": {
+      "status": {
+        "endpoint": "GetRequestAuthenticationStatus",
+        "params": "lambda args: {'requestHash': args.request_hash}"
+      },
+      "privilege": {
+        "endpoint": "PrivilegeAuthenticationRequest",
+        "params": "lambda args: {'requestHash': args.request_hash, 'privilege': args.privilege}",
+        "success_msg": "Successfully privileged authentication request"
       }
     },
     "team-member": {
@@ -650,6 +723,32 @@
         {"name": "team", "help": "Team name"},
         {"name": "name", "help": "Schedule name"},
         {"name": "new_name", "help": "New schedule name"}
+      ],
+      "repository-vault": [
+        {"name": "team", "help": "Team name"},
+        {"name": "name", "help": "Repository name"},
+        {"name": "--vault", "help": "JSON vault data"},
+        {"name": "--vault-file", "help": "File containing JSON vault data"},
+        {"name": "--vault-version", "type": "int", "help": "Vault version"}
+      ],
+      "storage-vault": [
+        {"name": "team", "help": "Team name"},
+        {"name": "name", "help": "Storage name"},
+        {"name": "--vault", "help": "JSON vault data"},
+        {"name": "--vault-file", "help": "File containing JSON vault data"},
+        {"name": "--vault-version", "type": "int", "help": "Vault version"}
+      ],
+      "schedule-vault": [
+        {"name": "team", "help": "Team name"},
+        {"name": "name", "help": "Schedule name"},
+        {"name": "--vault", "help": "JSON vault data"},
+        {"name": "--vault-file", "help": "File containing JSON vault data"},
+        {"name": "--vault-version", "type": "int", "help": "Vault version"}
+      ],
+      "machine-status": [
+        {"name": "team", "help": "Team name"},
+        {"name": "name", "help": "Machine name"},
+        {"name": "status", "help": "New status value"}
       ]
     },
     "rm": {
@@ -850,6 +949,58 @@
       "repository": [
         {"name": "team", "help": "Team name"},
         {"name": "name", "help": "Repository name"}
+      ]
+    },
+    "distributed-storage": {
+      "create-cluster": [
+        {"name": "team", "help": "Team name"},
+        {"name": "name", "help": "Cluster name"},
+        {"name": "--vault", "help": "JSON vault data"},
+        {"name": "--vault-file", "help": "File containing JSON vault data"}
+      ],
+      "delete-cluster": [
+        {"name": "team", "help": "Team name"},
+        {"name": "name", "help": "Cluster name"},
+        {"name": "--force", "action": "store_true", "help": "Skip confirmation"}
+      ],
+      "get-cluster": [
+        {"name": "team", "help": "Team name"},
+        {"name": "name", "help": "Cluster name"}
+      ],
+      "list-clusters": [
+        {"name": "team", "help": "Team name"}
+      ],
+      "add-machines": [
+        {"name": "team", "help": "Team name"},
+        {"name": "cluster", "help": "Cluster name"},
+        {"name": "machines", "help": "Comma-separated list of machine names"}
+      ],
+      "remove-machines": [
+        {"name": "team", "help": "Team name"},
+        {"name": "cluster", "help": "Cluster name"},
+        {"name": "machines", "help": "Comma-separated list of machine names"},
+        {"name": "--force", "action": "store_true", "help": "Skip confirmation"}
+      ],
+      "update-status": [
+        {"name": "team", "help": "Team name"},
+        {"name": "cluster", "help": "Cluster name"},
+        {"name": "status", "help": "New status value"}
+      ],
+      "update-vault": [
+        {"name": "team", "help": "Team name"},
+        {"name": "cluster", "help": "Cluster name"},
+        {"name": "--vault", "help": "JSON vault data"},
+        {"name": "--vault-file", "help": "File containing JSON vault data"},
+        {"name": "--vault-version", "type": "int", "help": "Vault version (default: 1)"}
+      ]
+    },
+    "auth": {
+      "status": [
+        {"name": "request_hash", "help": "Request hash to check status for"}
+      ],
+      "privilege": [
+        {"name": "request_hash", "help": "Request hash to privilege"},
+        {"name": "privilege", "help": "Privilege level to grant"}
       ]
     }
   }

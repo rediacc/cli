@@ -21,6 +21,67 @@ if [ -f "$CLI_ROOT/.env" ]; then
 fi
 
 # Helper functions
+find_python() {
+    # Check if we're in MSYS2 and should use MinGW64 Python
+    if [ -n "$MSYSTEM" ] && [ -x "/mingw64/bin/python3" ]; then
+        echo "/mingw64/bin/python3"
+        return 0
+    fi
+    
+    # Try different Python commands in order of preference
+    for cmd in python3 python; do
+        if command -v "$cmd" &> /dev/null; then
+            if "$cmd" --version 2>&1 | grep -q "Python [0-9]"; then
+                echo "$cmd"
+                return 0
+            fi
+        fi
+    done
+    return 1
+}
+
+install_python_packages() {
+    local python_cmd="$1"
+    local requirements_file="$CLI_ROOT/requirements.txt"
+    
+    if [ ! -f "$requirements_file" ]; then
+        echo -e "${YELLOW}Warning: requirements.txt not found, skipping package installation${NC}"
+        return 0
+    fi
+    
+    echo -e "${CYAN}Installing Python packages from requirements.txt...${NC}"
+    
+    # Upgrade pip first
+    if ! "$python_cmd" -m pip install --upgrade pip --quiet; then
+        echo -e "${YELLOW}Warning: Failed to upgrade pip${NC}"
+    fi
+    
+    # Install requirements
+    if "$python_cmd" -m pip install -r "$requirements_file" --quiet; then
+        echo -e "${GREEN}✓ Python packages installed successfully${NC}"
+    else
+        echo -e "${YELLOW}Warning: Some Python packages may not have installed correctly${NC}"
+    fi
+}
+
+get_python_command() {
+    # Return the detected Python command, or exit with error
+    if python_cmd=$(find_python); then
+        echo "$python_cmd"
+    else
+        echo -e "${RED}Error: Python not found. Run: ./rediacc setup${NC}" >&2
+        exit 1
+    fi
+}
+
+# Get Python command once at the start
+PYTHON_CMD=$(get_python_command)
+
+# Debug: Show which Python is being used (only if REDIACC_DEBUG is set)
+if [ -n "$REDIACC_DEBUG" ]; then
+    echo -e "${CYAN}[DEBUG] Using Python: $PYTHON_CMD${NC}" >&2
+fi
+
 print_help() {
     echo -e "${CYAN}Rediacc CLI and Desktop for Linux/macOS${NC}"
     echo
@@ -38,6 +99,11 @@ print_help() {
     echo "                  docker: Run in Docker (auto-builds)"
     echo "                  docker-build: Force rebuild Docker image"
     echo "    desktop     Alias for gui command"
+    echo
+    echo "  License Management:"
+    echo "    license generate-id   Generate hardware ID for offline licensing"
+    echo "    license request       Request license using hardware ID"
+    echo "    license install       Install license file"
     echo
     echo "  Development:"
     echo "    test        Test installation and run test suite"
@@ -63,6 +129,11 @@ print_help() {
     echo "    ./rediacc term --help       # Terminal help"
     echo "    ./rediacc plugin --help     # Plugin help"
     echo
+    echo "  License Management:"
+    echo "    ./rediacc license generate-id           # Generate hardware ID"
+    echo "    ./rediacc license request -i hw-id.txt  # Request license"
+    echo "    ./rediacc license install -f license.lic # Install license"
+    echo
     echo "For detailed documentation, see docs/README.md"
 }
 
@@ -71,16 +142,18 @@ setup() {
     echo -e "${CYAN}=== Rediacc CLI Setup ===${NC}"
     echo
     
-    # Check Python 3
-    if ! command -v python3 &> /dev/null; then
-        echo -e "${RED}Error: Python 3 is not installed${NC}"
+    # Check Python
+    if python_cmd=$(find_python); then
+        python_version=$("$python_cmd" -c 'import sys; print(".".join(map(str, sys.version_info[:2])))')
+        echo -e "${GREEN}✓ Python $python_version found ($python_cmd)${NC}"
+        
+        # Install Python packages
+        install_python_packages "$python_cmd"
+    else
+        echo -e "${RED}Error: Python is not installed${NC}"
         echo "Please install Python 3.7 or later"
         exit 1
     fi
-    
-    # Check Python version
-    python_version=$(python3 -c 'import sys; print(".".join(map(str, sys.version_info[:2])))')
-    echo -e "${GREEN}✓ Python $python_version found${NC}"
     
     # Check rsync
     if ! command -v rsync &> /dev/null; then
@@ -101,7 +174,7 @@ setup() {
     fi
     
     # Check tkinter for GUI
-    if python3 -c "import tkinter" 2>/dev/null; then
+    if "$python_cmd" -c "import tkinter" 2>/dev/null; then
         echo -e "${GREEN}✓ tkinter found (GUI support available)${NC}"
     else
         echo -e "${YELLOW}Warning: tkinter not found${NC}"
@@ -270,7 +343,7 @@ desktop() {
     fi
     
     # Run Desktop GUI
-    python3 "$CLI_ROOT/src/cli/rediacc-cli" --gui "$@"
+    "$PYTHON_CMD" "$CLI_ROOT/src/cli/rediacc-cli" --gui "$@"
 }
 
 desktop_docker_build() {
@@ -422,24 +495,24 @@ case "$1" in
         
     login)
         shift
-        python3 "$CLI_ROOT/src/cli/rediacc-cli" login "$@"
+        "$PYTHON_CMD" "$CLI_ROOT/src/cli/rediacc-cli" login "$@"
         ;;
         
     sync)
         shift
-        python3 "$CLI_ROOT/src/cli/rediacc-cli-sync" "$@"
+        "$PYTHON_CMD" "$CLI_ROOT/src/cli/rediacc-cli-sync" "$@"
         ;;
         
     term|terminal)
         shift
         # Don't inject token - let the term command manage its own token from config
-        python3 "$CLI_ROOT/src/cli/rediacc-cli-term" "$@"
+        "$PYTHON_CMD" "$CLI_ROOT/src/cli/rediacc-cli-term" "$@"
         ;;
         
     plugin)
         shift
         # Don't inject token - let the plugin command manage its own token from config
-        python3 "$CLI_ROOT/src/cli/rediacc-cli-plugin" "$@"
+        "$PYTHON_CMD" "$CLI_ROOT/src/cli/rediacc-cli-plugin" "$@"
         ;;
         
     gui|desktop|--gui)
@@ -457,7 +530,7 @@ case "$1" in
                 desktop
             else
                 # Pass through to Python CLI which handles --gui modes
-                python3 "$CLI_ROOT/src/cli/rediacc-cli" --gui "$@"
+                "$PYTHON_CMD" "$CLI_ROOT/src/cli/rediacc-cli" --gui "$@"
             fi
         fi
         ;;
@@ -514,6 +587,6 @@ case "$1" in
                 token_arg="--token $token"
             fi
         fi
-        python3 "$CLI_ROOT/src/cli/rediacc-cli" $token_arg "$@"
+        "$PYTHON_CMD" "$CLI_ROOT/src/cli/rediacc-cli" $token_arg "$@"
         ;;
 esac
