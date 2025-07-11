@@ -56,11 +56,18 @@ class I18n:
                 'login_header': 'Rediacc CLI Login',
                 'email': 'Email:',
                 'password': 'Password:',
+                'master_password': 'Master Password:',
                 'login': 'Login',
                 'logging_in': 'Logging in...',
                 'login_successful': 'Login successful!',
                 'login_failed': 'Login failed',
                 'please_enter_credentials': 'Please enter both email and password',
+                
+                # 2FA translations
+                'tfa_code': '2FA Code',
+                'tfa_help': 'Enter the 6-digit code from your authenticator app',
+                'tfa_required': 'Two-factor authentication required. Please enter your 6-digit code.',
+                'enter_tfa_code': 'Enter 2FA code: ',
                 
                 # Main window
                 'user': 'User:',
@@ -180,11 +187,18 @@ class I18n:
                 'login_header': 'Rediacc CLI Anmeldung',
                 'email': 'E-Mail:',
                 'password': 'Passwort:',
+                'master_password': 'Master-Passwort:',
                 'login': 'Anmelden',
                 'logging_in': 'Anmeldung läuft...',
                 'login_successful': 'Anmeldung erfolgreich!',
                 'login_failed': 'Anmeldung fehlgeschlagen',
                 'please_enter_credentials': 'Bitte geben Sie E-Mail und Passwort ein',
+                
+                # 2FA translations
+                'tfa_code': '2FA-Code',
+                'tfa_help': 'Geben Sie den 6-stelligen Code aus Ihrer Authenticator-App ein',
+                'tfa_required': 'Zwei-Faktor-Authentifizierung erforderlich. Bitte geben Sie Ihren 6-stelligen Code ein.',
+                'enter_tfa_code': '2FA-Code eingeben: ',
                 
                 # Main window
                 'user': 'Benutzer:',
@@ -304,11 +318,18 @@ class I18n:
                 'login_header': 'Inicio de sesión de Rediacc CLI',
                 'email': 'Correo electrónico:',
                 'password': 'Contraseña:',
+                'master_password': 'Contraseña Maestra:',
                 'login': 'Iniciar sesión',
                 'logging_in': 'Iniciando sesión...',
                 'login_successful': '¡Inicio de sesión exitoso!',
                 'login_failed': 'Error al iniciar sesión',
                 'please_enter_credentials': 'Por favor ingrese correo electrónico y contraseña',
+                
+                # 2FA translations
+                'tfa_code': 'Código 2FA',
+                'tfa_help': 'Ingrese el código de 6 dígitos de su aplicación de autenticación',
+                'tfa_required': 'Se requiere autenticación de dos factores. Por favor ingrese su código de 6 dígitos.',
+                'enter_tfa_code': 'Ingrese el código 2FA: ',
                 
                 # Main window
                 'user': 'Usuario:',
@@ -428,11 +449,18 @@ class I18n:
                 'login_header': 'Connexion Rediacc CLI',
                 'email': 'E-mail :',
                 'password': 'Mot de passe :',
+                'master_password': 'Mot de passe maître :',
                 'login': 'Se connecter',
                 'logging_in': 'Connexion en cours...',
                 'login_successful': 'Connexion réussie !',
                 'login_failed': 'Échec de la connexion',
                 'please_enter_credentials': 'Veuillez entrer l\'e-mail et le mot de passe',
+                
+                # 2FA translations
+                'tfa_code': 'Code 2FA',
+                'tfa_help': 'Entrez le code à 6 chiffres de votre application d\'authentification',
+                'tfa_required': 'Authentification à deux facteurs requise. Veuillez entrer votre code à 6 chiffres.',
+                'enter_tfa_code': 'Entrez le code 2FA : ',
                 
                 # Main window
                 'user': 'Utilisateur :',
@@ -552,11 +580,18 @@ class I18n:
                 'login_header': 'Rediacc CLI ログイン',
                 'email': 'メールアドレス：',
                 'password': 'パスワード：',
+                'master_password': 'マスターパスワード：',
                 'login': 'ログイン',
                 'logging_in': 'ログイン中...',
                 'login_successful': 'ログイン成功！',
                 'login_failed': 'ログイン失敗',
                 'please_enter_credentials': 'メールアドレスとパスワードを入力してください',
+                
+                # 2FA translations
+                'tfa_code': '2FAコード',
+                'tfa_help': '認証アプリの6桁のコードを入力してください',
+                'tfa_required': '二要素認証が必要です。6桁のコードを入力してください。',
+                'enter_tfa_code': '2FAコードを入力: ',
                 
                 # Main window
                 'user': 'ユーザー：',
@@ -676,11 +711,18 @@ class I18n:
                 'login_header': 'تسجيل دخول Rediacc CLI',
                 'email': 'البريد الإلكتروني:',
                 'password': 'كلمة المرور:',
+                'master_password': 'كلمة المرور الرئيسية:',
                 'login': 'تسجيل الدخول',
                 'logging_in': 'جار تسجيل الدخول...',
                 'login_successful': 'تم تسجيل الدخول بنجاح!',
                 'login_failed': 'فشل تسجيل الدخول',
                 'please_enter_credentials': 'الرجاء إدخال البريد الإلكتروني وكلمة المرور',
+                
+                # 2FA translations
+                'tfa_code': 'رمز 2FA',
+                'tfa_help': 'أدخل الرمز المكون من 6 أرقام من تطبيق المصادقة الخاص بك',
+                'tfa_required': 'مطلوب المصادقة الثنائية. يرجى إدخال الرمز المكون من 6 أرقام.',
+                'enter_tfa_code': 'أدخل رمز 2FA: ',
                 
                 # Main window
                 'user': 'المستخدم:',
@@ -800,11 +842,18 @@ class I18n:
                 'login_header': 'Вход в Rediacc CLI',
                 'email': 'Электронная почта:',
                 'password': 'Пароль:',
+                'master_password': 'Мастер-пароль:',
                 'login': 'Войти',
                 'logging_in': 'Вход...',
                 'login_successful': 'Вход выполнен успешно!',
                 'login_failed': 'Ошибка входа',
                 'please_enter_credentials': 'Пожалуйста, введите электронную почту и пароль',
+                
+                # 2FA translations
+                'tfa_code': 'Код 2FA',
+                'tfa_help': 'Введите 6-значный код из вашего приложения аутентификации',
+                'tfa_required': 'Требуется двухфакторная аутентификация. Пожалуйста, введите ваш 6-значный код.',
+                'enter_tfa_code': 'Введите код 2FA: ',
                 
                 # Main window
                 'user': 'Пользователь:',
@@ -924,11 +973,18 @@ class I18n:
                 'login_header': 'Rediacc CLI Giriş',
                 'email': 'E-posta:',
                 'password': 'Şifre:',
+                'master_password': 'Ana Şifre:',
                 'login': 'Giriş Yap',
                 'logging_in': 'Giriş yapılıyor...',
                 'login_successful': 'Giriş başarılı!',
                 'login_failed': 'Giriş başarısız',
                 'please_enter_credentials': 'Lütfen e-posta ve şifre girin',
+                
+                # 2FA translations
+                'tfa_code': '2FA Kodu',
+                'tfa_help': 'Kimlik doğrulama uygulamanızdaki 6 haneli kodu girin',
+                'tfa_required': 'İki faktörlü kimlik doğrulama gerekli. Lütfen 6 haneli kodunuzu girin.',
+                'enter_tfa_code': '2FA kodunu girin: ',
                 
                 # Main window
                 'user': 'Kullanıcı:',
@@ -1048,11 +1104,18 @@ class I18n:
                 'login_header': 'Rediacc CLI 登录',
                 'email': '电子邮箱：',
                 'password': '密码：',
+                'master_password': '主密码：',
                 'login': '登录',
                 'logging_in': '正在登录...',
                 'login_successful': '登录成功！',
                 'login_failed': '登录失败',
                 'please_enter_credentials': '请输入电子邮箱和密码',
+                
+                # 2FA translations
+                'tfa_code': '2FA验证码',
+                'tfa_help': '请输入您的身份验证器应用中的6位数字代码',
+                'tfa_required': '需要双因素身份验证。请输入您的6位数字代码。',
+                'enter_tfa_code': '输入2FA验证码: ',
                 
                 # Main window
                 'user': '用户：',

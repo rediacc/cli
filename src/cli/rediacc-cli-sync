@@ -125,11 +125,17 @@ def run_platform_command(cmd: List[str], **kwargs) -> subprocess.CompletedProces
     """Run a command with platform-specific handling"""
     if is_windows() and cmd[0] == 'rsync':
         # Replace rsync with the full path on Windows
-        rsync_path = get_rsync_command()
-        cmd[0] = rsync_path
+        try:
+            rsync_path = get_rsync_command()
+            cmd[0] = rsync_path
+            print(f"[DEBUG] Windows rsync path: {rsync_path}")
+            print(f"[DEBUG] Full command: {cmd}")
+        except RuntimeError as e:
+            print(f"[ERROR] {e}")
+            raise
         
-        # Run rsync through cmd.exe for better compatibility
-        cmd = ['cmd.exe', '/c'] + cmd
+        # On Windows, execute directly without cmd.exe for better compatibility
+        # The MSYS2 rsync executable should work directly
     
     return subprocess.run(cmd, **kwargs)
 

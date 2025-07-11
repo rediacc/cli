@@ -25,6 +25,9 @@ from subprocess_runner import SubprocessRunner
 # Import internationalization
 from i18n import i18n
 
+# Import terminal detector
+from terminal_detector import TerminalDetector
+
 
 
 class BaseWindow:
@@ -64,7 +67,7 @@ class LoginWindow(BaseWindow):
     def __init__(self, on_login_success: Callable):
         super().__init__(tk.Tk(), i18n.get('login_title'))
         self.on_login_success = on_login_success
-        self.center_window(400, 350)  # Increased height for language selector
+        self.center_window(450, 500)  # Increased size for 2FA field
         
         # Register for language changes
         i18n.register_observer(self.update_texts)
@@ -90,30 +93,47 @@ class LoginWindow(BaseWindow):
         self.lang_combo.pack(side='left')
         self.lang_combo.bind('<<ComboboxSelected>>', self.on_language_changed)
         
-        # Title
+        # Title with less padding to save space
         self.title_label = tk.Label(main_frame, text=i18n.get('login_header'),
                         font=('Arial', 16, 'bold'))
-        self.title_label.pack(pady=20)
+        self.title_label.pack(pady=15)
         
         # Email field
         self.email_label = tk.Label(main_frame, text=i18n.get('email'))
-        self.email_label.pack(anchor='w', pady=5)
+        self.email_label.pack(anchor='w', pady=(5, 0))
         self.email_entry = ttk.Entry(main_frame, width=40)
-        self.email_entry.pack(fill='x', pady=5)
+        self.email_entry.pack(fill='x', pady=(2, 8))
         
         # Password field
         self.password_label = tk.Label(main_frame, text=i18n.get('password'))
-        self.password_label.pack(anchor='w', pady=5)
+        self.password_label.pack(anchor='w', pady=(5, 0))
         self.password_entry = ttk.Entry(main_frame, width=40, show='*')
-        self.password_entry.pack(fill='x', pady=5)
+        self.password_entry.pack(fill='x', pady=(2, 8))
+        
+        # Master password field
+        self.master_password_label = tk.Label(main_frame, text=i18n.get('master_password'))
+        self.master_password_label.pack(anchor='w', pady=(5, 0))
+        self.master_password_entry = ttk.Entry(main_frame, width=40, show='*')
+        self.master_password_entry.pack(fill='x', pady=(2, 8))
+        
+        # 2FA code field (initially hidden)
+        self.tfa_frame = tk.Frame(main_frame)
+        self.tfa_label = tk.Label(self.tfa_frame, text=i18n.get('tfa_code'), font=('Arial', 10, 'bold'))
+        self.tfa_label.pack(anchor='w', pady=(5, 0))
+        self.tfa_entry = ttk.Entry(self.tfa_frame, width=40, font=('Arial', 11))
+        self.tfa_entry.pack(fill='x', pady=(2, 2))
+        self.tfa_help = tk.Label(self.tfa_frame, text=i18n.get('tfa_help'), 
+                                font=('Arial', 9), fg='gray')
+        self.tfa_help.pack(anchor='w', pady=(0, 8))
+        # Don't pack the frame initially - it will be shown when 2FA is required
         
         # Login button
         self.login_button = ttk.Button(main_frame, text=i18n.get('login'), command=self.login)
-        self.login_button.pack(pady=20)
+        self.login_button.pack(pady=15)
         
-        # Status label
-        self.status_label = tk.Label(main_frame, text="")
-        self.status_label.pack()
+        # Status label with wrapping
+        self.status_label = tk.Label(main_frame, text="", wraplength=400, justify='center')
+        self.status_label.pack(pady=(0, 10))
         
         # Bind Enter key to login
         self.root.bind('<Return>', lambda e: self.login())
@@ -125,6 +145,8 @@ class LoginWindow(BaseWindow):
         """Handle login"""
         email = self.email_entry.get().strip()
         password = self.password_entry.get()
+        master_password = self.master_password_entry.get()
+        tfa_code = self.tfa_entry.get().strip() if hasattr(self, 'tfa_entry') else ""
         
         if not email or not password:
             messagebox.showerror(i18n.get('error'), i18n.get('please_enter_credentials'))
@@ -134,22 +156,37 @@ class LoginWindow(BaseWindow):
         self.status_label.config(text=i18n.get('logging_in'))
         
         # Run login in thread
-        thread = threading.Thread(target=self._do_login, args=(email, password))
+        thread = threading.Thread(target=self._do_login, args=(email, password, master_password, tfa_code))
         thread.daemon = True
         thread.start()
     
-    def _do_login(self, email: str, password: str):
+    def _do_login(self, email: str, password: str, master_password: str, tfa_code: str = ""):
         """Perform login in background thread"""
         try:
             runner = SubprocessRunner()
-            result = runner.run_cli_command(['--output', 'json', 'login', '--email', email, '--password', password])
+            cmd = ['--output', 'json', 'login', '--email', email, '--password', password]
+            
+            # Only add master password if provided
+            if master_password.strip():
+                cmd.extend(['--master-password', master_password])
+                
+            # Add 2FA code if provided
+            if tfa_code:
+                cmd.extend(['--tfa-code', tfa_code])
+            
+            result = runner.run_cli_command(cmd)
             
             if result['success']:
                 # Login successful - token is already saved by CLI
                 self.root.after(0, self.login_success)
             else:
                 error = result.get('error', i18n.get('login_failed'))
-                self.root.after(0, lambda: self.login_error(error))
+                # Check if 2FA is required
+                if '2FA_REQUIRED' in error:
+                    # Show 2FA field and update status
+                    self.root.after(0, self.show_2fa_field)
+                else:
+                    self.root.after(0, lambda: self.login_error(error))
         except Exception as e:
             self.root.after(0, lambda: self.login_error(str(e)))
     
@@ -165,6 +202,25 @@ class LoginWindow(BaseWindow):
         """Handle login error"""
         self.login_button.config(state='normal')
         self.status_label.config(text=f"{i18n.get('error')}: {error}", fg='red')
+    
+    def show_2fa_field(self):
+        """Show 2FA field when required"""
+        # Show the 2FA frame before the login button
+        self.tfa_frame.pack(before=self.login_button, fill='x', pady=(5, 0))
+        
+        # Clear any previous 2FA code
+        self.tfa_entry.delete(0, tk.END)
+        
+        # Update status and re-enable login button
+        self.status_label.config(text=i18n.get('tfa_required'), 
+                                fg='#FF6B35', font=('Arial', 10))
+        self.login_button.config(state='normal')
+        
+        # Focus on 2FA field
+        self.tfa_entry.focus()
+        
+        # Update window size if needed to accommodate the new field
+        self.root.update_idletasks()  # Force layout update
     
     def on_language_changed(self, event):
         """Handle language selection change"""
@@ -182,7 +238,14 @@ class LoginWindow(BaseWindow):
         self.title_label.config(text=i18n.get('login_header'))
         self.email_label.config(text=i18n.get('email'))
         self.password_label.config(text=i18n.get('password'))
+        self.master_password_label.config(text=i18n.get('master_password'))
         self.login_button.config(text=i18n.get('login'))
+        
+        # Update 2FA fields if they exist
+        if hasattr(self, 'tfa_label'):
+            self.tfa_label.config(text=i18n.get('tfa_code'))
+        if hasattr(self, 'tfa_help'):
+            self.tfa_help.config(text=i18n.get('tfa_help'))
         
         # Update status label if it has login-related text
         current_text = self.status_label.cget('text')
@@ -201,6 +264,12 @@ class MainWindow(BaseWindow):
         
         # Initialize plugin tracking
         self.plugins_loaded_for = None
+        
+        # Initialize machine data storage
+        self.machines_data = {}
+        
+        # Initialize terminal detector
+        self.terminal_detector = TerminalDetector()
         
         # Register for language changes
         i18n.register_observer(self.update_all_texts)
@@ -298,6 +367,9 @@ class MainWindow(BaseWindow):
         self.repo_combo = ttk.Combobox(repo_frame, width=40, state='readonly')
         self.repo_combo.pack(side='left', padx=5, fill='x', expand=True)
         self.repo_combo.bind('<<ComboboxSelected>>', lambda e: self.on_repository_changed())
+        # Add a filter indicator label
+        self.repo_filter_label = tk.Label(repo_frame, text="", font=('Arial', 9), fg='gray')
+        self.repo_filter_label.pack(side='left', padx=5)
         
         # Create notebook for tabs
         self.notebook = ttk.Notebook(self.root)
@@ -644,13 +716,14 @@ class MainWindow(BaseWindow):
         """Handle repository selection change"""
         # Reset plugin tracking since selection changed
         self.plugins_loaded_for = None
-        # If on plugin tab, refresh immediately
-        if self.notebook.index(self.notebook.select()) == 0:
-            current_selection = (self.team_combo.get(), self.machine_combo.get(), self.repo_combo.get())
-            if all(current_selection):
-                self.refresh_plugins()
+        # Always refresh plugins when repository changes (not just when on plugin tab)
+        current_selection = (self.team_combo.get(), self.machine_combo.get(), self.repo_combo.get())
+        if all(current_selection):
+            self.refresh_plugins()
+            # Only refresh connections if on plugin tab to avoid unnecessary API calls
+            if self.notebook.index(self.notebook.select()) == 0:
                 self.refresh_connections()
-                self.plugins_loaded_for = current_selection
+            self.plugins_loaded_for = current_selection
     
     def on_plugin_selected(self, event):
         """Handle plugin selection from listbox"""
@@ -709,11 +782,15 @@ class MainWindow(BaseWindow):
         self.status_bar.config(text=i18n.get('loading_machines', team=team))
         self.root.update()
         
-        result = self.runner.run_cli_command(['--output', 'json', 'list', 'team-machines', team])
+        result = self.runner.run_cli_command(['--include-vault', '--output', 'json', 'list', 'team-machines', team])
         if result['success'] and result.get('data'):
+            # Store full machine data with vault content
+            self.machines_data = {m.get('machineName', ''): m for m in result['data'] if m.get('machineName')}
             machines = [self._get_name(m, 'machineName', 'name') for m in result['data']]
             self.update_machines(machines)
         else:
+            # Clear machine data on error
+            self.machines_data = {}
             error_msg = result.get('error', i18n.get('failed_to_load_machines'))
             if not self._handle_api_error(error_msg):
                 self.status_bar.config(text=f"{i18n.get('error')}: {error_msg}", fg='red')
@@ -724,20 +801,65 @@ class MainWindow(BaseWindow):
         if machines:
             self.machine_combo.set(machines[0])
             self.load_repositories()
+        else:
+            # Clear the combo box if no machines are available
+            self.machine_combo.set('')
+            # Also clear repositories since no machine is selected
+            self.update_repositories([])
         self.status_bar.config(text=i18n.get('ready'))
     
     def load_repositories(self):
-        """Load repositories for selected team"""
+        """Load repositories for selected team/machine"""
         team = self.team_combo.get()
+        machine = self.machine_combo.get()
         if not team:
             return
         
         self.status_bar.config(text=i18n.get('loading_repositories', team=team))
         self.root.update()
         
+        # Get all team repositories
         result = self.runner.run_cli_command(['--output', 'json', 'list', 'team-repositories', team])
         if result['success'] and result.get('data'):
-            repos = [self._get_name(r, 'repositoryName', 'name', 'repoName') for r in result['data']]
+            all_repos = result['data']
+            
+            # Try to filter by machine if we have vaultStatus data
+            if machine and machine in self.machines_data:
+                machine_data = self.machines_data[machine]
+                print(f"[GUI] Machine data keys for {machine}: {sorted(machine_data.keys())}")
+                print(f"[GUI] vaultStatus present: {'vaultStatus' in machine_data}")
+                if machine_data.get('vaultStatus'):
+                    try:
+                        # Parse the nested JSON structure
+                        vault_status = json.loads(machine_data['vaultStatus'])
+                        if vault_status.get('status') == 'completed' and vault_status.get('result'):
+                            result_data = json.loads(vault_status['result'])
+                            if result_data.get('repositories'):
+                                # Get repository GUIDs from vaultStatus
+                                machine_repo_guids = [repo.get('name', '') for repo in result_data['repositories']]
+                                
+                                # Filter repositories to only those on this machine
+                                filtered_repos = []
+                                for repo in all_repos:
+                                    if repo.get('repoGuid') in machine_repo_guids:
+                                        filtered_repos.append(repo)
+                                
+                                # Use filtered list
+                                repos = [self._get_name(r, 'repositoryName', 'name', 'repoName') for r in filtered_repos]
+                                self.update_repositories(repos)
+                                # Update status to show filtering is active
+                                self.repo_filter_label.config(text="(machine-specific)", fg='green')
+                                status_text = f"Showing {len(repos)} repositories for machine '{machine}'"
+                                self.status_bar.config(text=status_text, fg='green')
+                                self.root.after(3000, lambda: self.status_bar.config(text=i18n.get('ready'), fg='black'))
+                                return
+                    except (json.JSONDecodeError, KeyError, TypeError) as e:
+                        # If parsing fails, fall back to showing all repos
+                        print(f"[GUI] Failed to parse vaultStatus for machine {machine}: {e}")
+            
+            # Fall back to showing all team repositories
+            repos = [self._get_name(r, 'repositoryName', 'name', 'repoName') for r in all_repos]
+            self.repo_filter_label.config(text="(all team repos)", fg='#666666')
             self.update_repositories(repos)
         else:
             error_msg = result.get('error', i18n.get('failed_to_load_repositories'))
@@ -749,6 +871,15 @@ class MainWindow(BaseWindow):
         self.repo_combo['values'] = repos
         if repos:
             self.repo_combo.set(repos[0])
+            # Trigger repository change event to load plugins
+            self.on_repository_changed()
+        else:
+            # Clear the combo box if no repositories are available
+            self.repo_combo.set('')
+            # Clear the filter label when no repos
+            self.repo_filter_label.config(text="")
+            # Also trigger change event to clear plugins
+            self.on_repository_changed()
         self.status_bar.config(text=i18n.get('ready'))
     
     
@@ -791,14 +922,18 @@ class MainWindow(BaseWindow):
         self.terminal_output.config(state='disabled')  # Disable again
         self.status_bar.config(text=i18n.get('command_executed'))
     
+    
+
     def _launch_terminal(self, command: str, description: str):
         """Common method to launch terminal with given command"""
         # Build command with full path
         import os
-        cli_dir = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
-        rediacc_path = os.path.join(os.path.dirname(cli_dir), 'rediacc')
+        # __file__ is in src/modules/, so we need to go up two levels to get to cli/
+        # src/modules/rediacc_cli_gui.py -> src/ -> cli/
+        cli_dir = os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
         
-        # Build full command with absolute path
+        # Build the simple command for display
+        rediacc_path = os.path.join(cli_dir, 'rediacc')
         simple_cmd = f'{rediacc_path} {command}'
         
         # Show command in output area
@@ -810,103 +945,33 @@ class MainWindow(BaseWindow):
         self.terminal_output.insert(tk.END, f'cd {cli_dir} && {simple_cmd}\n\n')
         self.terminal_output.config(state='disabled')  # Disable again
         
-        # Try to launch terminal, but don't worry if it fails
-        try:
-            # Check if running in WSL
-            is_wsl = False
-            try:
-                with open('/proc/version', 'r') as f:
-                    is_wsl = 'microsoft' in f.read().lower()
-            except:
-                pass
-            
-            if sys.platform == 'darwin':  # macOS
-                cmd_str = f'cd {cli_dir} && {simple_cmd}'
-                subprocess.Popen(['open', '-a', 'Terminal', '--', 'bash', '-c', cmd_str])
-            elif is_wsl:
-                # For WSL, try to open in Windows Terminal
-                
-                # Try Windows Terminal first
+        # Use terminal detector to find best method
+        method = self.terminal_detector.detect()
+        
+        if method:
+            launch_func = self.terminal_detector.get_launch_function(method)
+            if launch_func:
                 try:
-                    # Build the command as a list to avoid shell escaping issues
-                    # We'll create a script that Windows Terminal can execute
-                    import tempfile
-                    
-                    # Create a temporary script file
-                    with tempfile.NamedTemporaryFile(mode='w', suffix='.sh', delete=False) as f:
-                        script_content = f'''#!/bin/bash
-cd {cli_dir}
-{simple_cmd}
-'''
-                        f.write(script_content)
-                        script_path = f.name
-                    
-                    # Make script executable
-                    os.chmod(script_path, 0o755)
-                    
-                    # Launch Windows Terminal with the script
-                    wt_cmd = f'wt.exe new-tab wsl.exe {script_path}'
-                    subprocess.Popen(['cmd.exe', '/c', wt_cmd], stderr=subprocess.DEVNULL, stdout=subprocess.DEVNULL)
+                    # Launch using detected method
+                    launch_func(cli_dir, command, description)
                     self.terminal_output.config(state='normal')
-                    self.terminal_output.insert(tk.END, f"\n{i18n.get('launched_wt')}\n")
+                    self.terminal_output.insert(tk.END, f"\n{i18n.get('launched_terminal')} ({method})\n")
                     self.terminal_output.config(state='disabled')
-                    
-                    # Clean up script after a delay
-                    def cleanup_script():
-                        import time
-                        time.sleep(2)
-                        try:
-                            os.unlink(script_path)
-                        except:
-                            pass
-                    
-                    cleanup_thread = threading.Thread(target=cleanup_script)
-                    cleanup_thread.daemon = True
-                    cleanup_thread.start()
-                except:
-                    # Try PowerShell as fallback
-                    try:
-                        ps_cmd = f'start wsl bash -c "cd {cli_dir} && {simple_cmd}; read -p \'Press Enter to close...\'"'
-                        subprocess.Popen(['powershell.exe', '-Command', ps_cmd], stderr=subprocess.DEVNULL, stdout=subprocess.DEVNULL)
-                        self.terminal_output.config(state='normal')
-                        self.terminal_output.insert(tk.END, f"\n{i18n.get('launched_wsl')}\n")
-                        self.terminal_output.config(state='disabled')
-                    except:
-                        # Last resort: use cmd.exe directly
-                        try:
-                            cmd_cmd = f'start cmd /c wsl bash -c "cd {cli_dir} && {simple_cmd}; read -p \'Press Enter to close...\'"'
-                            subprocess.Popen(['cmd.exe', '/c', cmd_cmd], stderr=subprocess.DEVNULL, stdout=subprocess.DEVNULL)
-                            self.terminal_output.config(state='normal')
-                            self.terminal_output.insert(tk.END, f"\n{i18n.get('launched_terminal')}\n")
-                            self.terminal_output.config(state='disabled')
-                        except:
-                            self.terminal_output.config(state='normal')
-                            self.terminal_output.insert(tk.END, f"\n{i18n.get('could_not_launch')}\n")
-                            self.terminal_output.config(state='disabled')
-            elif sys.platform.startswith('linux'):
-                # Regular Linux
-                cmd_str = f'cd {cli_dir} && {simple_cmd}; echo "Press Enter to close..."; read'
-                
-                terminals = [
-                    ['gnome-terminal', '--', 'bash', '-c', cmd_str],
-                    ['konsole', '-e', 'bash', '-c', cmd_str],
-                    ['xfce4-terminal', '-e', f'bash -c "{cmd_str}"'],
-                    ['mate-terminal', '-e', f'bash -c "{cmd_str}"'],
-                    ['terminator', '-e', f'bash -c "{cmd_str}"'],
-                ]
-                
-                for term_cmd in terminals:
-                    try:
-                        subprocess.Popen(term_cmd, stderr=subprocess.DEVNULL, stdout=subprocess.DEVNULL)
-                        self.terminal_output.config(state='normal')
-                        self.terminal_output.insert(tk.END, f"\n{i18n.get('launched_terminal')}\n")
-                        self.terminal_output.config(state='disabled')
-                        break
-                    except:
-                        continue
-        except Exception as e:
-            # If terminal launch fails, the command is already shown in the output area
-            pass
+                except Exception as e:
+                    print(f"[GUI] Failed to launch with {method}: {e}")
+                    self.terminal_output.config(state='normal')
+                    self.terminal_output.insert(tk.END, f"\n{i18n.get('could_not_launch')}\n")
+                    self.terminal_output.config(state='disabled')
+            else:
+                print(f"[GUI] No launch function for method: {method}")
+                self.terminal_output.config(state='normal')
+                self.terminal_output.insert(tk.END, f"\n{i18n.get('could_not_launch')}\n")
+                self.terminal_output.config(state='disabled')
+        else:
+            print("[GUI] No working terminal method detected")
+            self.terminal_output.config(state='normal')
+            self.terminal_output.insert(tk.END, f"\n{i18n.get('could_not_launch')} - No terminal method available\n")
+            self.terminal_output.config(state='disabled')
     
     def open_repo_terminal(self):
         """Open interactive repository terminal in new window"""
@@ -1017,22 +1082,41 @@ cd {cli_dir}
         
         def load():
             cmd = ['plugin', 'list', '--team', team, '--machine', machine, '--repo', repo]
+            print(f"[PLUGIN DEBUG] Executing: {' '.join(cmd)}")
+            
             result = self.runner.run_command(cmd)
+            print(f"[PLUGIN DEBUG] Command success: {result.get('success')}")
+            print(f"[PLUGIN DEBUG] Return code: {result.get('returncode')}")
+            print(f"[PLUGIN DEBUG] Error output: {result.get('error', 'None')}")
+            
             output = result.get('output', '')
+            print(f"[PLUGIN DEBUG] Output length: {len(output)}")
+            print(f"[PLUGIN DEBUG] Raw output:")
+            print(f"--- START OUTPUT ---")
+            print(output)
+            print(f"--- END OUTPUT ---")
             
             # Parse plugin names from output
             plugins = []
             in_plugins_section = False
+            line_num = 0
             for line in output.split('\n'):
+                line_num += 1
+                print(f"[PLUGIN DEBUG] Line {line_num}: '{line}'")
+                
                 if 'Available plugins:' in line:
+                    print(f"[PLUGIN DEBUG] Found plugins section at line {line_num}")
                     in_plugins_section = True
                 elif in_plugins_section and '•' in line:
                     # Extract plugin name from bullet point
                     plugin_name = line.split('•')[1].split('(')[0].strip()
+                    print(f"[PLUGIN DEBUG] Found plugin: '{plugin_name}' from line: '{line}'")
                     plugins.append(plugin_name)
                 elif 'Plugin container status:' in line:
+                    print(f"[PLUGIN DEBUG] Found container status section at line {line_num}, stopping")
                     break
             
+            print(f"[PLUGIN DEBUG] Final plugins list: {plugins}")
             self.root.after(0, lambda: self.update_plugin_list(plugins))
         
         thread = threading.Thread(target=load)
@@ -1041,15 +1125,25 @@ cd {cli_dir}
     
     def update_plugin_list(self, plugins: list):
         """Update plugin listbox and combo"""
+        print(f"[PLUGIN DEBUG] update_plugin_list called with {len(plugins)} plugins: {plugins}")
+        
         self.plugin_listbox.delete(0, tk.END)
         for plugin in plugins:
+            print(f"[PLUGIN DEBUG] Adding plugin to listbox: '{plugin}'")
             self.plugin_listbox.insert(tk.END, plugin)
         
         self.plugin_combo['values'] = plugins
         if plugins:
+            print(f"[PLUGIN DEBUG] Setting combo default to: '{plugins[0]}'")
             self.plugin_combo.set(plugins[0])
+        else:
+            print(f"[PLUGIN DEBUG] No plugins to set in combo")
+            # Clear the combo box if no plugins are available
+            self.plugin_combo.set('')
         
-        self.status_bar.config(text=i18n.get('found_plugins', count=len(plugins)))
+        status_msg = i18n.get('found_plugins', count=len(plugins))
+        print(f"[PLUGIN DEBUG] Setting status: '{status_msg}'")
+        self.status_bar.config(text=status_msg)
     
     def refresh_connections(self):
         """Refresh active plugin connections"""
@@ -1366,11 +1460,19 @@ cd {cli_dir}
 
 def launch_gui():
     """Launch the simplified GUI application"""
+    print("[GUI] Starting Rediacc CLI GUI...")
     import signal
     
-    # Load saved language preference
-    saved_language = i18n.load_language_preference()
-    i18n.set_language(saved_language)
+    try:
+        # Load saved language preference
+        print("[GUI] Loading language preferences...")
+        saved_language = i18n.load_language_preference()
+        i18n.set_language(saved_language)
+        print(f"[GUI] Language set to: {saved_language}")
+    except Exception as e:
+        print(f"[GUI] Error loading language preferences: {e}")
+        import traceback
+        traceback.print_exc()
     
     # Set up signal handler for graceful shutdown
     def signal_handler(sig, frame):
@@ -1392,38 +1494,72 @@ def launch_gui():
     
     # Check if already authenticated and token is valid
     token_valid = False
-    if TokenManager.is_authenticated():
+    print("[GUI] Checking authentication status...")
+    
+    try:
+        is_authenticated = TokenManager.is_authenticated()
+        print(f"[GUI] TokenManager.is_authenticated(): {is_authenticated}")
+    except Exception as e:
+        print(f"[GUI] Error checking authentication: {e}")
+        import traceback
+        traceback.print_exc()
+        is_authenticated = False
+    
+    if is_authenticated:
+        print("[GUI] Testing token validity with API call...")
         # Test if the token is still valid by making a simple API call
         try:
             runner = SubprocessRunner()
+            print("[GUI] Creating SubprocessRunner...")
             result = runner.run_cli_command(['--output', 'json', 'list', 'teams'])
+            print(f"[GUI] API call result: {result}")
             token_valid = result.get('success', False)
-        except:
+            if not token_valid:
+                print(f"[GUI] Token validation failed. Error: {result.get('error', 'Unknown error')}")
+        except Exception as e:
+            print(f"[GUI] Exception during token validation: {e}")
+            import traceback
+            traceback.print_exc()
             token_valid = False
         
         # If token is invalid, clear it
         if not token_valid:
-            TokenManager.clear_token()
+            print("[GUI] Clearing invalid token...")
+            try:
+                TokenManager.clear_token()
+            except Exception as e:
+                print(f"[GUI] Error clearing token: {e}")
+                import traceback
+                traceback.print_exc()
     
-    if token_valid:
-        # Token is valid, show main window
-        main_window = MainWindow()
-        main_window.root.mainloop()
-    else:
-        # Show login window
-        def on_login_success():
+    try:
+        if token_valid:
+            # Token is valid, show main window
+            print("[GUI] Token is valid, launching main window...")
             main_window = MainWindow()
             main_window.root.mainloop()
-        
-        login_window = LoginWindow(on_login_success)
-        # Make the main loop check for interrupts periodically
-        def check_interrupt():
-            try:
-                login_window.root.after(100, check_interrupt)
-            except:
-                pass
-        check_interrupt()
-        login_window.root.mainloop()
+        else:
+            # Show login window
+            print("[GUI] No valid token, showing login window...")
+            def on_login_success():
+                print("[GUI] Login successful, launching main window...")
+                main_window = MainWindow()
+                main_window.root.mainloop()
+            
+            login_window = LoginWindow(on_login_success)
+            # Make the main loop check for interrupts periodically
+            def check_interrupt():
+                try:
+                    login_window.root.after(100, check_interrupt)
+                except:
+                    pass
+            check_interrupt()
+            login_window.root.mainloop()
+    except Exception as e:
+        print(f"[GUI] Critical error in main execution: {e}")
+        import traceback
+        traceback.print_exc()
+        sys.exit(1)
 
 
 if __name__ == "__main__":

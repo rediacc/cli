@@ -263,6 +263,29 @@ make_executable() {
     done
 }
 
+# Install Python dependencies
+install_python_deps() {
+    print_header "Installing Python dependencies"
+    
+    if [ -f "requirements.txt" ]; then
+        print_info "Installing from requirements.txt..."
+        $PYTHON_CMD -m pip install --user -r requirements.txt
+        if [ $? -eq 0 ]; then
+            print_success "Python dependencies installed successfully"
+        else
+            print_warning "Some dependencies may have failed to install"
+        fi
+    else
+        print_info "Installing essential dependencies..."
+        $PYTHON_CMD -m pip install --user cryptography requests
+        if [ $? -eq 0 ]; then
+            print_success "Essential dependencies installed"
+        else
+            print_warning "Some dependencies may have failed to install"
+        fi
+    fi
+}
+
 # Test Python modules
 test_python_modules() {
     print_header "Testing Python modules"
@@ -271,8 +294,16 @@ test_python_modules() {
     if $PYTHON_CMD -c "import cryptography" 2>/dev/null; then
         print_success "cryptography module available (vault encryption supported)"
     else
-        print_warning "cryptography module not found (optional - needed for vault encryption)"
-        print_info "Install with: pip3 install cryptography"
+        print_warning "cryptography module not found (needed for vault encryption)"
+        return 1
+    fi
+    
+    # Test if requests module is available
+    if $PYTHON_CMD -c "import requests" 2>/dev/null; then
+        print_success "requests module available"
+    else
+        print_warning "requests module not found (needed for API calls)"
+        return 1
     fi
     
     # Test if our modules work
@@ -376,6 +407,10 @@ main() {
     
     # Make scripts executable
     make_executable
+    echo
+    
+    # Install Python dependencies
+    install_python_deps
     echo
     
     # Test Python modules

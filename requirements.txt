@@ -1,5 +1,6 @@
 # Python dependencies for Rediacc CLI
-# Add any additional dependencies here
+# These are automatically installed during setup
 
-# Core dependencies are installed in Dockerfile:
-# - cryptography (for vault encryption)
+# Core dependencies
+cryptography>=3.4.0
+requests>=2.25.0

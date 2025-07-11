@@ -16,7 +16,8 @@ from rediacc_cli_core import (
     colorize,
     validate_cli_tool,
     RepositoryConnection,
-    INTERIM_FOLDER_NAME
+    INTERIM_FOLDER_NAME,
+    get_ssh_key_from_vault
 )
 
 # Import token manager
@@ -30,7 +31,6 @@ def connect_to_machine(args):
     from rediacc_cli_core import (
         get_machine_info_with_team,
         get_machine_connection_info,
-        get_ssh_key_from_vault,
         setup_ssh_for_connection,
         cleanup_ssh_key
     )
@@ -49,9 +49,17 @@ def connect_to_machine(args):
         print(colorize(f"SSH private key not found in vault for team '{args.team}'", 'RED'))
         sys.exit(1)
     
-    # Set up SSH
+    # Set up SSH using SSH agent (no temporary files)
     host_entry = connection_info.get('host_entry') if not args.dev else None  # Ignore host entry in dev mode
-    ssh_opts, ssh_key_file, known_hosts_file = setup_ssh_for_connection(ssh_key, host_entry)
+    
+    try:
+        from rediacc_cli_core import setup_ssh_agent_connection, cleanup_ssh_agent
+        ssh_opts, agent_pid, known_hosts_file = setup_ssh_agent_connection(ssh_key, host_entry)
+        print(f"SSH agent set up with PID {agent_pid}")
+    except Exception as e:
+        print(colorize(f"SSH agent setup failed, falling back to temporary files: {e}", 'YELLOW'))
+        ssh_opts, ssh_key_file, known_hosts_file = setup_ssh_for_connection(ssh_key, host_entry)
+        agent_pid = None
     
     try:
         # Build SSH command
@@ -116,8 +124,11 @@ def connect_to_machine(args):
             print(colorize("\nDisconnected from machine.", 'GREEN'))
             
     finally:
-        # Clean up SSH key and known_hosts files
-        cleanup_ssh_key(ssh_key_file, known_hosts_file)
+        # Clean up SSH agent or SSH key files
+        if agent_pid:
+            cleanup_ssh_agent(agent_pid, known_hosts_file)
+        else:
+            cleanup_ssh_key(ssh_key_file, known_hosts_file)
 
 
 def connect_to_terminal(args):
@@ -136,7 +147,22 @@ def connect_to_terminal(args):
         original_host_entry = conn.connection_info.get('host_entry')
         conn.connection_info['host_entry'] = None
     
-    ssh_opts, ssh_key_file, known_hosts_file = conn.setup_ssh()
+    # Use SSH agent approach for repository connections too
+    ssh_key = get_ssh_key_from_vault(args.team)
+    if not ssh_key:
+        print(colorize(f"SSH private key not found in vault for team '{args.team}'", 'RED'))
+        sys.exit(1)
+    
+    host_entry = conn.connection_info.get('host_entry') if not args.dev else None
+    
+    try:
+        from rediacc_cli_core import setup_ssh_agent_connection, cleanup_ssh_agent
+        ssh_opts, agent_pid, known_hosts_file = setup_ssh_agent_connection(ssh_key, host_entry)
+        print(f"SSH agent set up with PID {agent_pid}")
+    except Exception as e:
+        print(colorize(f"SSH agent setup failed, falling back to temporary files: {e}", 'YELLOW'))
+        ssh_opts, ssh_key_file, known_hosts_file = conn.setup_ssh()
+        agent_pid = None
     
     # Restore original host entry
     if args.dev and 'original_host_entry' in locals():
@@ -159,7 +185,14 @@ export DOCKER_FOLDER='{docker_folder}'
 export DOCKER_SOCKET='{docker_socket}'
 export DOCKER_DATA='{conn.repo_paths['docker_data']}'
 export DOCKER_EXEC='{conn.repo_paths['docker_exec']}'
-cd "$REPO_PATH" 2>/dev/null
+# Try to cd to repo path, fallback to mounts directory if not mounted
+if [ -d "$REPO_PATH" ]; then
+    cd "$REPO_PATH"
+else
+    # Fallback to mounts directory (parent of REPO_PATH)
+    MOUNTS_DIR=$(dirname "$REPO_PATH")
+    [ -d "$MOUNTS_DIR" ] && cd "$MOUNTS_DIR"
+fi
 """
         else:
             # For interactive session, full setup with welcome message
@@ -171,7 +204,20 @@ export DOCKER_SOCKET='{docker_socket}'
 export DOCKER_DATA='{conn.repo_paths['docker_data']}'
 export DOCKER_EXEC='{conn.repo_paths['docker_exec']}'
 export PS1='\\[\\033[01;32m\\][\\u@{args.repo}\\[\\033[00m\\]:\\[\\033[01;34m\\]\\w\\[\\033[00m\\]]\\$ '
-cd "$REPO_PATH" 2>/dev/null || echo "Warning: Repository not mounted at $REPO_PATH"
+# Try to cd to repo path, fallback to mounts directory if not mounted
+if [ -d "$REPO_PATH" ]; then
+    cd "$REPO_PATH"
+else
+    # Fallback to mounts directory (parent of REPO_PATH)
+    MOUNTS_DIR=$(dirname "$REPO_PATH")
+    if [ -d "$MOUNTS_DIR" ]; then
+        cd "$MOUNTS_DIR"
+        echo "Note: Repository not mounted yet. You are in the mounts directory."
+        echo "Mount path will be: $REPO_PATH"
+    else
+        echo "Warning: Could not find repository or mounts directory"
+    fi
+fi
 
 # Define helper functions
 enter_container() {{
@@ -269,8 +315,11 @@ echo ""
             print(colorize("\nDisconnected from repository terminal.", 'GREEN'))
             
     finally:
-        # Clean up SSH key and known_hosts files
-        conn.cleanup_ssh(ssh_key_file, known_hosts_file)
+        # Clean up SSH agent or SSH key files
+        if 'agent_pid' in locals() and agent_pid:
+            cleanup_ssh_agent(agent_pid, known_hosts_file)
+        elif 'ssh_key_file' in locals():
+            conn.cleanup_ssh(ssh_key_file, known_hosts_file)
 
 def main():
     parser = argparse.ArgumentParser(

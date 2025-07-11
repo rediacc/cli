@@ -27,6 +27,25 @@ from config_loader import get, get_required, get_path
 # Configuration
 CLI_TOOL = os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))), 'cli', 'rediacc-cli')
 
+def get_cli_command() -> list:
+    """Get the CLI command list for cross-platform execution"""
+    if is_windows():
+        # On Windows, use Python to execute the script
+        python_cmd = 'python'
+        # Try to find the best Python command
+        for cmd in ['python3', 'python', 'py']:
+            try:
+                result = subprocess.run([cmd, '--version'], capture_output=True, text=True, timeout=5)
+                if result.returncode == 0 and 'Python 3' in result.stdout:
+                    python_cmd = cmd
+                    break
+            except:
+                continue
+        return [python_cmd, CLI_TOOL]
+    else:
+        # On Unix systems, execute directly
+        return [CLI_TOOL]
+
 # Platform utilities
 def is_windows() -> bool:
     """Check if running on Windows"""
@@ -168,7 +187,7 @@ def get_machine_info_with_team(team_name: str, machine_name: str) -> Dict[str, A
         sys.exit = no_exit
         
         try:
-            cmd = [CLI_TOOL, '--include-vault', '--output', 'json', 'inspect', 'machine', team_name, machine_name]
+            cmd = get_cli_command() + ['--include-vault', '--output', 'json', 'inspect', 'machine', team_name, machine_name]
             # Use quiet mode during retries to avoid confusing error messages
             inspect_output = run_command(cmd, quiet=(attempt > 0))
         finally:
@@ -241,7 +260,7 @@ def get_repository_info(team_name: str, repo_name: str) -> Dict[str, Any]:
         
         try:
             # Use quiet mode during retries to avoid confusing error messages
-            inspect_output = run_command([CLI_TOOL, '--include-vault', '--output', 'json', 'inspect', 'repository', team_name, repo_name], quiet=(attempt > 0))
+            inspect_output = run_command(get_cli_command() + ['--include-vault', '--output', 'json', 'inspect', 'repository', team_name, repo_name], quiet=(attempt > 0))
         finally:
             sys.exit = original_exit
         
@@ -321,7 +340,7 @@ def get_ssh_key_from_vault(team_name: Optional[str] = None) -> Optional[str]:
         
         try:
             # Use quiet mode during retries to avoid confusing error messages
-            teams_output = run_command([CLI_TOOL, '--include-vault', '--output', 'json', 'list', 'teams'], quiet=(attempt > 0))
+            teams_output = run_command(get_cli_command() + ['--include-vault', '--output', 'json', 'list', 'teams'], quiet=(attempt > 0))
         finally:
             sys.exit = original_exit
         
@@ -368,6 +387,72 @@ def get_ssh_key_from_vault(team_name: Optional[str] = None) -> Optional[str]:
     
     return None
 
+def setup_ssh_agent_connection(ssh_key: str, host_entry: str = None) -> Tuple[str, str, str]:
+    """Set up SSH agent for connection and return SSH command options, agent PID, and known_hosts file"""
+    import subprocess
+    import base64
+    
+    # Check if the SSH key is base64 encoded (no newlines, no BEGIN/END markers)
+    if not ssh_key.startswith('-----BEGIN') and '\n' not in ssh_key:
+        try:
+            # Decode base64 SSH key
+            decoded_key = base64.b64decode(ssh_key).decode('utf-8')
+            ssh_key = decoded_key
+        except Exception:
+            # If decoding fails, use as-is
+            pass
+    
+    # Ensure the SSH key ends with a newline (required by OpenSSH)
+    if not ssh_key.endswith('\n'):
+        ssh_key = ssh_key + '\n'
+    
+    # Start SSH agent
+    try:
+        agent_result = subprocess.run(['ssh-agent', '-s'], capture_output=True, text=True, timeout=10)
+        if agent_result.returncode != 0:
+            raise RuntimeError(f"Failed to start ssh-agent: {agent_result.stderr}")
+        
+        # Parse SSH agent output to get environment variables
+        agent_env = {}
+        for line in agent_result.stdout.strip().split('\n'):
+            if '=' in line and ';' in line:
+                var_assignment = line.split(';')[0]
+                if '=' in var_assignment:
+                    key, value = var_assignment.split('=', 1)
+                    agent_env[key] = value
+                    # Set in current environment
+                    os.environ[key] = value
+        
+        agent_pid = agent_env.get('SSH_AGENT_PID')
+        if not agent_pid:
+            raise RuntimeError("Could not get SSH agent PID")
+        
+        # Add SSH key to agent
+        ssh_add_result = subprocess.run(['ssh-add', '-'], 
+                                      input=ssh_key, text=True,
+                                      capture_output=True, timeout=10)
+        
+        if ssh_add_result.returncode != 0:
+            # Kill the agent if key addition failed
+            subprocess.run(['kill', agent_pid], capture_output=True)
+            raise RuntimeError(f"Failed to add SSH key to agent: {ssh_add_result.stderr}")
+        
+    except Exception as e:
+        raise RuntimeError(f"SSH agent setup failed: {e}")
+    
+    # Create temporary known_hosts file if host_entry is provided
+    known_hosts_file_path = None
+    if host_entry:
+        known_hosts_file_path = create_temp_file(suffix='_known_hosts', prefix='known_hosts_')
+        with open(known_hosts_file_path, 'w') as f:
+            f.write(host_entry + '\n')
+        ssh_opts = f"-o StrictHostKeyChecking=yes -o UserKnownHostsFile={known_hosts_file_path}"
+    else:
+        null_device = get_null_device()
+        ssh_opts = f"-o StrictHostKeyChecking=accept-new -o UserKnownHostsFile={null_device}"
+    
+    return ssh_opts, agent_pid, known_hosts_file_path
+
 def setup_ssh_for_connection(ssh_key: str, host_entry: str = None) -> Tuple[str, str, str]:
     """Set up SSH key for connection and return SSH command options, cleanup path, and known_hosts file"""
     # Check if the SSH key is base64 encoded (no newlines, no BEGIN/END markers)
@@ -404,6 +489,17 @@ def setup_ssh_for_connection(ssh_key: str, host_entry: str = None) -> Tuple[str,
         ssh_opts = f"-o StrictHostKeyChecking=accept-new -o UserKnownHostsFile={null_device} -i {ssh_key_file_path}"
     
     return ssh_opts, ssh_key_file_path, known_hosts_file_path
+
+def cleanup_ssh_agent(agent_pid: str, known_hosts_file: str = None):
+    """Clean up SSH agent and known_hosts files"""
+    import subprocess
+    if agent_pid:
+        try:
+            subprocess.run(['kill', agent_pid], capture_output=True, timeout=5)
+        except Exception:
+            pass  # Agent might already be dead
+    if known_hosts_file and os.path.exists(known_hosts_file):
+        os.unlink(known_hosts_file)
 
 def cleanup_ssh_key(ssh_key_file: str, known_hosts_file: str = None):
     """Clean up temporary SSH key and known_hosts files"""
@@ -492,7 +588,9 @@ def validate_cli_tool():
     if not os.path.exists(CLI_TOOL):
         print(colorize(f"Error: rediacc-cli not found at {CLI_TOOL}", 'RED'))
         sys.exit(1)
-    if not os.access(CLI_TOOL, os.X_OK):
+    
+    # On Windows, we don't need to check executable permissions since we use Python
+    if not is_windows() and not os.access(CLI_TOOL, os.X_OK):
         print(colorize(f"Error: rediacc-cli is not executable at {CLI_TOOL}", 'RED'))
         sys.exit(1)
 
