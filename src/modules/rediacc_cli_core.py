@@ -604,6 +604,10 @@ def validate_cli_tool():
         print(colorize(f"Error: rediacc-cli is not executable at {CLI_TOOL}", 'RED'))
         sys.exit(1)
 
+def wait_for_enter(message: str = "Press Enter to continue..."):
+    """Wait for user to press Enter key"""
+    input(colorize(f"\n{message}", 'YELLOW'))
+
 def test_ssh_connectivity(ip: str, port: int = 22, timeout: int = 5) -> Tuple[bool, str]:
     """Test if SSH port is accessible on the target machine
     
@@ -637,6 +641,56 @@ def test_ssh_connectivity(ip: str, port: int = 22, timeout: int = 5) -> Tuple[bo
         return False, f"Failed to resolve hostname: {ip}"
     except Exception as e:
         return False, f"Connection test failed: {str(e)}"
+
+def validate_machine_accessibility(machine_name: str, team_name: str, ip: str, repo_name: str = None):
+    """Validate machine is accessible and show appropriate error messages if not
+    
+    Args:
+        machine_name: Name of the machine
+        team_name: Name of the team
+        ip: IP address of the machine
+        repo_name: Optional repository name for context
+    """
+    print(f"Testing connectivity to {ip}...")
+    is_accessible, error_msg = test_ssh_connectivity(ip)
+    
+    if not is_accessible:
+        print(colorize(f"\n✗ Machine '{machine_name}' is not accessible", 'RED'))
+        print(colorize(f"  Error: {error_msg}", 'RED'))
+        print(colorize("\nPossible reasons:", 'YELLOW'))
+        print(colorize("  • The machine is offline or powered down", 'YELLOW'))
+        print(colorize("  • Network connectivity issues between client and machine", 'YELLOW'))
+        print(colorize("  • Firewall blocking SSH port (22)", 'YELLOW'))
+        print(colorize("  • Incorrect IP address in machine configuration", 'YELLOW'))
+        print(colorize(f"\nMachine IP: {ip}", 'BLUE'))
+        print(colorize(f"Team: {team_name}", 'BLUE'))
+        if repo_name:
+            print(colorize(f"Repository: {repo_name}", 'BLUE'))
+        print(colorize("\nPlease verify the machine is online and accessible from your network.", 'YELLOW'))
+        wait_for_enter("Press Enter to exit...")
+        sys.exit(1)
+    
+    print(colorize("✓ Machine is accessible", 'GREEN'))
+
+def handle_ssh_exit_code(returncode: int, connection_type: str = "machine"):
+    """Handle SSH command exit codes and display appropriate messages
+    
+    Args:
+        returncode: SSH command exit code
+        connection_type: Type of connection ("machine" or "repository terminal")
+    """
+    if returncode != 0:
+        if returncode == 255:
+            print(colorize(f"\n✗ SSH connection failed (exit code: {returncode})", 'RED'))
+            print(colorize("\nPossible reasons:", 'YELLOW'))
+            print(colorize("  • SSH authentication failed (check SSH key in team vault)", 'YELLOW'))
+            print(colorize("  • SSH host key verification failed", 'YELLOW'))
+            print(colorize("  • SSH service not running on the machine", 'YELLOW'))
+            print(colorize("  • Network connection interrupted", 'YELLOW'))
+        else:
+            print(colorize(f"\nDisconnected from {connection_type} (exit code: {returncode})", 'YELLOW'))
+    else:
+        print(colorize(f"\nDisconnected from {connection_type}.", 'GREEN'))
 
 class RepositoryConnection:
     """Helper class to manage repository connections"""
