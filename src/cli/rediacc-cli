@@ -312,16 +312,19 @@ ARG_DEFS = reconstruct_arg_defs()
 
 class APIClient:
     """Client for interacting with the Rediacc Middleware API"""
-    def __init__(self, config=None, config_manager=None):
-        self.config = config or {}
+    def __init__(self, config_manager):
+        """Initialize API client with required config_manager for proper token management"""
+        if not config_manager:
+            raise ValueError("config_manager is required for APIClient to ensure proper token management")
+        
         self.config_manager = config_manager
+        self.config = config_manager.config if hasattr(config_manager, 'config') else {}
         self.base_headers = {
             "Content-Type": "application/json",
             "User-Agent": "rediacc-cli/1.0"
         }
-        # Load vault info from config if available
-        if self.config_manager:
-            self.config_manager.load_vault_info_from_config()
+        # Load vault info from config
+        self.config_manager.load_vault_info_from_config()
     
     def request(self, endpoint, data=None, headers=None):
         """Make an API request to the middleware service"""
@@ -675,10 +678,12 @@ def format_dynamic_tables(response, output_format='text', skip_fields=None, incl
     
     # Fields to skip in output
     if skip_fields is None:
-        skip_fields = ['nextRequestCredential', 'vaultVersion', 'newUserHash']
-        # Only skip vaultContent if not explicitly including it
+        skip_fields = ['nextRequestCredential', 'newUserHash']
+        # Only skip vaultContent, vaultStatus and vaultVersion if not explicitly including it
         if not include_vault:
             skip_fields.append('vaultContent')
+            skip_fields.append('vaultStatus')
+            skip_fields.append('vaultVersion')
     
     if output_format == 'json':
         # For JSON output, convert all tables to lists of dictionaries
@@ -869,7 +874,7 @@ class CommandHandler:
     def __init__(self, config_manager, output_format='text', include_vault=False):
         self.config = config_manager.config
         self.config_manager = config_manager
-        self.client = APIClient(self.config, config_manager)
+        self.client = APIClient(config_manager)
         self.output_format = output_format
         self.include_vault = include_vault
     
