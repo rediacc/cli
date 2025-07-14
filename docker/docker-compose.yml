@@ -16,7 +16,7 @@ services:
       - SYSTEM_HTTP_PORT=${SYSTEM_HTTP_PORT}
       - REDIACC_API_URL=${REDIACC_API_URL}
     volumes:
-      - ~/.rediacc:/home/rediacc/.rediacc
+      - ../.config:/home/rediacc/.config
       - ~/.ssh:/home/rediacc/.ssh:ro
       - .:/workspace
     working_dir: /workspace
@@ -48,6 +48,7 @@ services:
     environment:
       - DISPLAY=${DISPLAY}
     volumes:
+      - ../.config:/home/rediacc/.config
       - /tmp/.X11-unix:/tmp/.X11-unix:rw
       - ~/.Xauthority:/home/rediacc/.Xauthority:ro
     devices:

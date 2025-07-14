@@ -26,9 +26,9 @@ RUN apk add --no-cache \
 RUN mkdir -p /tmp/.X11-unix && \
     chmod 1777 /tmp/.X11-unix
 
-# Create .rediacc directory for GUI config with proper permissions
-RUN mkdir -p /home/rediacc/.rediacc && \
-    chown -R rediacc:rediacc /home/rediacc/.rediacc
+# Create .config directory for GUI config with proper permissions
+RUN mkdir -p /home/rediacc/.config && \
+    chown -R rediacc:rediacc /home/rediacc/.config
 
 # Configure xterm to use available fonts
 RUN mkdir -p /etc/X11/app-defaults && \
@@ -42,6 +42,7 @@ USER rediacc
 
 # Set display environment variable
 ENV DISPLAY=:0
+ENV REDIACC_CONFIG_DIR=/home/rediacc/.config
 
 # Add a note about X11 requirements
 LABEL org.opencontainers.image.description="Rediacc CLI with GUI support (requires X11 forwarding)"
@@ -52,11 +53,11 @@ LABEL org.opencontainers.image.title="Rediacc CLI GUI"
 # docker run -it --rm \
 #   -e DISPLAY=$DISPLAY \
 #   -v /tmp/.X11-unix:/tmp/.X11-unix:rw \
-#   -v ~/.rediacc:/home/rediacc/.rediacc \
+#   -v ./cli/.config:/home/rediacc/.config \
 #   rediacc/cli-gui ./rediacc gui
 
 # To run Rediacc Desktop on Windows (with X server like VcXsrv):
 # docker run -it --rm \
 #   -e DISPLAY=host.docker.internal:0 \
-#   -v ~/.rediacc:/home/rediacc/.rediacc \
+#   -v ./cli/.config:/home/rediacc/.config \
 #   rediacc/cli-gui ./rediacc gui

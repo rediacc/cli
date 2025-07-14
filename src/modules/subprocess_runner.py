@@ -11,11 +11,15 @@ import shutil
 import platform
 from typing import Dict, List, Any, Optional
 
+# Import logging configuration
+from logging_config import get_logger
+
 
 class SubprocessRunner:
     """Runs CLI commands and captures output"""
     
     def __init__(self):
+        self.logger = get_logger(__name__)
         # Store original Windows paths
         self.cli_dir = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
         self.cli_path = os.path.join(self.cli_dir, 'cli', 'rediacc-cli')
@@ -80,43 +84,43 @@ class SubprocessRunner:
 
     def _find_python(self) -> str:
         """Find the correct Python command to use"""
-        print(f"[SUBPROCESS_RUNNER] Finding Python command...")
-        print(f"[SUBPROCESS_RUNNER] MSYS2 path: {self.msys2_path}")
+        self.logger.debug("Finding Python command...")
+        self.logger.debug(f"MSYS2 path: {self.msys2_path}")
         
         # On Windows with MSYS2, prefer MSYS2 python3
         if self.msys2_path:
             msys2_python = os.path.join(self.msys2_path, 'usr', 'bin', 'python3.exe')
-            print(f"[SUBPROCESS_RUNNER] Checking MSYS2 Python: {msys2_python}")
+            self.logger.debug(f"Checking MSYS2 Python: {msys2_python}")
             if os.path.exists(msys2_python):
-                print(f"[SUBPROCESS_RUNNER] Using MSYS2 Python: {msys2_python}")
+                self.logger.debug(f"Using MSYS2 Python: {msys2_python}")
                 self.use_msys2_python = True
                 return msys2_python
             else:
-                print(f"[SUBPROCESS_RUNNER] MSYS2 Python not found")
+                self.logger.debug("MSYS2 Python not found")
         
         # Try different Python commands in order of preference
         python_commands = ['python3', 'python', 'py']
-        print(f"[SUBPROCESS_RUNNER] Trying Python commands: {python_commands}")
+        self.logger.debug(f"Trying Python commands: {python_commands}")
         
         for cmd in python_commands:
-            print(f"[SUBPROCESS_RUNNER] Testing command: {cmd}")
+            self.logger.debug(f"Testing command: {cmd}")
             if shutil.which(cmd):
                 try:
                     # Test if it actually works and is Python 3+
                     result = subprocess.run([cmd, '--version'], 
                                           capture_output=True, text=True, timeout=5)
-                    print(f"[SUBPROCESS_RUNNER] {cmd} version check: returncode={result.returncode}, stdout='{result.stdout.strip()}'")
+                    self.logger.debug(f"{cmd} version check: returncode={result.returncode}, stdout='{result.stdout.strip()}'")
                     if result.returncode == 0 and 'Python 3' in result.stdout:
-                        print(f"[SUBPROCESS_RUNNER] Using Python command: {cmd}")
+                        self.logger.debug(f"Using Python command: {cmd}")
                         return cmd
                 except Exception as e:
-                    print(f"[SUBPROCESS_RUNNER] Error testing {cmd}: {e}")
+                    self.logger.debug(f"Error testing {cmd}: {e}")
                     continue
             else:
-                print(f"[SUBPROCESS_RUNNER] {cmd} not found in PATH")
+                self.logger.debug(f"{cmd} not found in PATH")
         
         # Fallback to python3 if nothing found (will fail gracefully)
-        print(f"[SUBPROCESS_RUNNER] No suitable Python found, falling back to 'python3'")
+        self.logger.debug("No suitable Python found, falling back to 'python3'")
         return 'python3'
     
     def run_command(self, args: List[str], timeout: Optional[int] = None) -> Dict[str, Any]:
@@ -137,32 +141,32 @@ class SubprocessRunner:
                 # Don't add token - let sync tool read from TokenManager
                 sync_args = args[1:]
                 cmd = [self.python_cmd, self.sync_path_msys2] + sync_args
-                print(f"[SUBPROCESS_RUNNER] Sync command: {cmd}")
+                self.logger.debug(f"Sync command: {cmd}")
             elif args[0] == 'term':
                 # Don't add token for term command - let it read from config
                 # to avoid token rotation issues between API calls
                 term_args = args[1:]
                 cmd = [self.python_cmd, self.term_path_msys2] + term_args
-                print(f"[SUBPROCESS_RUNNER] Term command: {cmd}")
+                self.logger.debug(f"Term command: {cmd}")
             elif args[0] == 'plugin':
                 # Don't add token - let plugin tool read from TokenManager
                 plugin_args = args[1:]
                 cmd = [self.python_cmd, self.plugin_path_msys2] + plugin_args
-                print(f"[SUBPROCESS_RUNNER] Plugin command: {cmd}")
+                self.logger.debug(f"Plugin command: {cmd}")
             else:
                 cmd = [self.wrapper_path] + args
-                print(f"[SUBPROCESS_RUNNER] Wrapper command: {cmd}")
+                self.logger.debug(f"Wrapper command: {cmd}")
             
-            print(f"[SUBPROCESS_RUNNER] Executing command in directory: {self.cli_dir}")
-            print(f"[SUBPROCESS_RUNNER] Environment PATH includes: {env.get('PATH', 'Not set')[:200]}...")
+            self.logger.debug(f"Executing command in directory: {self.cli_dir}")
+            self.logger.debug(f"Environment PATH includes: {env.get('PATH', 'Not set')[:200]}...")
             
             result = subprocess.run(cmd, capture_output=True, text=True, timeout=timeout, cwd=self.cli_dir, env=env)
             
-            print(f"[SUBPROCESS_RUNNER] Command completed with return code: {result.returncode}")
+            self.logger.debug(f"Command completed with return code: {result.returncode}")
             if result.stdout:
-                print(f"[SUBPROCESS_RUNNER] STDOUT: {result.stdout[:500]}...")
+                self.logger.debug(f"STDOUT: {result.stdout[:500]}...")
             if result.stderr:
-                print(f"[SUBPROCESS_RUNNER] STDERR: {result.stderr[:500]}...")
+                self.logger.debug(f"STDERR: {result.stderr[:500]}...")
             
             return {
                 'success': result.returncode == 0,
@@ -171,11 +175,11 @@ class SubprocessRunner:
                 'returncode': result.returncode
             }
         except subprocess.TimeoutExpired:
-            print(f"[SUBPROCESS_RUNNER] Command timed out: {cmd}")
+            self.logger.error(f"Command timed out: {cmd}")
             return {'success': False, 'output': '', 'error': 'Command timed out', 'returncode': -1}
         except Exception as e:
-            print(f"[SUBPROCESS_RUNNER] Error executing command: {cmd}")
-            print(f"[SUBPROCESS_RUNNER] Exception: {e}")
+            self.logger.error(f"Error executing command: {cmd}")
+            self.logger.error(f"Exception: {e}")
             import traceback
             traceback.print_exc()
             return {'success': False, 'output': '', 'error': str(e), 'returncode': -1}
@@ -187,16 +191,16 @@ class SubprocessRunner:
             # This avoids issues with token rotation and ensures fresh tokens are always used
             
             cli_cmd = [self.python_cmd, self.cli_path_msys2] + args
-            print(f"[CLI_RUNNER] Executing CLI command: {cli_cmd}")
-            print(f"[CLI_RUNNER] Working directory: {self.cli_dir}")
+            self.logger.debug(f"Executing CLI command: {cli_cmd}")
+            self.logger.debug(f"Working directory: {self.cli_dir}")
             
             result = subprocess.run(cli_cmd, capture_output=True, text=True, timeout=timeout, cwd=self.cli_dir)
             
-            print(f"[CLI_RUNNER] CLI command completed with return code: {result.returncode}")
+            self.logger.debug(f"CLI command completed with return code: {result.returncode}")
             if result.stdout:
-                print(f"[CLI_RUNNER] CLI STDOUT: {result.stdout[:500]}...")
+                self.logger.debug(f"CLI STDOUT: {result.stdout[:500]}...")
             if result.stderr:
-                print(f"[CLI_RUNNER] CLI STDERR: {result.stderr[:500]}...")
+                self.logger.debug(f"CLI STDERR: {result.stderr[:500]}...")
             output = result.stdout.strip()
             
             if '--output' in args and 'json' in args:
@@ -231,8 +235,8 @@ class SubprocessRunner:
                 'returncode': result.returncode
             }
         except Exception as e:
-            print(f"[CLI_RUNNER] Error executing CLI command: {[self.python_cmd, self.cli_path_msys2] + args}")
-            print(f"[CLI_RUNNER] Exception: {e}")
+            self.logger.error(f"Error executing CLI command: {[self.python_cmd, self.cli_path_msys2] + args}")
+            self.logger.error(f"Exception: {e}")
             import traceback
             traceback.print_exc()
             return {'success': False, 'output': '', 'error': str(e), 'returncode': -1}

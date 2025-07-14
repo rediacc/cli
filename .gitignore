@@ -81,3 +81,8 @@ temp/
 # Logs
 *.log
 logs/
+.config/api_call.lock
+.config/config.json
+.config/language_preference.json
+.config/terminal_detector_cache.json
+.config/plugin-connections.json

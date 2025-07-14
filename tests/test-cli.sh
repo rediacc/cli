@@ -83,17 +83,21 @@ create_test_vault_files
 TOKEN="${1:-$REDIACC_TOKEN}"
 
 # If no token, try to get from config file
-if [ -z "$TOKEN" ] && [ -f ~/.rediacc/config.json ]; then
+# Get CLI directory
+CLI_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/../" && pwd)"
+CONFIG_FILE="${CLI_DIR}/.config/config.json"
+
+if [ -z "$TOKEN" ] && [ -f "$CONFIG_FILE" ]; then
     TOKEN=$(python3 -c "
 import json
 try:
-    with open('$HOME/.rediacc/config.json', 'r') as f:
+    with open('$1', 'r') as f:
         config = json.load(f)
         if 'token' in config and config['token']:
             print(config['token'])
 except:
     pass
-" 2>/dev/null || echo "")
+" "$CONFIG_FILE" 2>/dev/null || echo "")
 fi
 
 if [ -z "$TOKEN" ]; then
@@ -110,13 +114,13 @@ if [ -z "$TOKEN" ]; then
         TOKEN=$(python3 -c "
 import json
 try:
-    with open('$HOME/.rediacc/config.json', 'r') as f:
+    with open('$1', 'r') as f:
         config = json.load(f)
         if 'token' in config and config['token']:
             print(config['token'])
 except:
     pass
-" 2>/dev/null || echo "")
+" "$CONFIG_FILE" 2>/dev/null || echo "")
         
         if [ -z "$TOKEN" ]; then
             print_error "Failed to retrieve token after login"

@@ -62,10 +62,10 @@ RUN mkdir -p /home/$REDIACC_LINUX_USER/.ssh && \
     chown -R $REDIACC_LINUX_USER:$REDIACC_LINUX_GROUP /home/$REDIACC_LINUX_USER/.ssh && \
     chmod 700 /home/$REDIACC_LINUX_USER/.ssh
 
-# Create .rediacc config directory
-RUN mkdir -p /home/$REDIACC_LINUX_USER/.rediacc && \
-    chown -R $REDIACC_LINUX_USER:$REDIACC_LINUX_GROUP /home/$REDIACC_LINUX_USER/.rediacc && \
-    chmod 700 /home/$REDIACC_LINUX_USER/.rediacc
+# Create .config directory
+RUN mkdir -p /home/$REDIACC_LINUX_USER/.config && \
+    chown -R $REDIACC_LINUX_USER:$REDIACC_LINUX_GROUP /home/$REDIACC_LINUX_USER/.config && \
+    chmod 700 /home/$REDIACC_LINUX_USER/.config
 
 # Configure git to handle mounted directories safely
 RUN git config --global --add safe.directory '*'
@@ -84,13 +84,14 @@ ENV PYTHONPATH="/app/src/modules:${PYTHONPATH}"
 ENV PYTHONUNBUFFERED=1
 ENV TMPDIR=/home/rediacc/tmp
 ENV TERM=xterm-256color
+ENV REDIACC_CONFIG_DIR=/home/rediacc/.config
 
 # Note: Environment variables should be provided at runtime via --env-file or -e flags
 # Example: docker run --env-file .env rediacc/cli:latest
 # See .env.example for required configuration
 
 # Declare volumes for persistent data
-VOLUME ["/home/rediacc/.rediacc", "/home/rediacc/.ssh"]
+VOLUME ["/home/rediacc/.config", "/home/rediacc/.ssh"]
 
 # Add metadata labels following OCI conventions
 LABEL org.opencontainers.image.title="Rediacc CLI"

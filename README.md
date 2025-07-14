@@ -58,20 +58,24 @@ See [docs/README.md](docs/README.md) for detailed installation instructions.
 
 ## Docker Support
 
-The CLI can also be run using Docker:
+The CLI can also be run using Docker.
+
+**Important**: Docker volumes now use a local config directory (`./cli/.config`) instead of the user's home directory (`~/.config`). This provides better isolation and portability for containerized environments.
+
+### Running with Docker
 
 ```bash
 # Build image
 docker build -f docker/Dockerfile -t rediacc/cli:latest .
 
 # Run CLI
-docker run --rm -v ~/.rediacc:/home/rediacc/.rediacc rediacc/cli:latest
+docker run --rm -v ./cli/.config:/home/rediacc/.config rediacc/cli:latest
 
 # Interactive shell
-docker run -it --rm -v ~/.rediacc:/home/rediacc/.rediacc rediacc/cli:latest /bin/bash
+docker run -it --rm -v ./cli/.config:/home/rediacc/.config rediacc/cli:latest /bin/bash
 ```
 
-See [docker/README.md](docker/README.md) for complete Docker documentation.
+See [docker/README.md](docker/README.md) for complete Docker documentation including details about the local config directory.
 
 ## License
 

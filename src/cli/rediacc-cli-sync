@@ -26,6 +26,9 @@ from rediacc_cli_core import (
 # Import token manager
 from token_manager import TokenManager
 
+# Import logging configuration
+from logging_config import setup_logging, get_logger
+
 import shutil
 import platform
 from typing import List, Tuple
@@ -123,15 +126,17 @@ def prepare_rsync_paths(source: str, dest: str) -> Tuple[str, str]:
 
 def run_platform_command(cmd: List[str], **kwargs) -> subprocess.CompletedProcess:
     """Run a command with platform-specific handling"""
+    logger = get_logger(__name__)
+    
     if is_windows() and cmd[0] == 'rsync':
         # Replace rsync with the full path on Windows
         try:
             rsync_path = get_rsync_command()
             cmd[0] = rsync_path
-            print(f"[DEBUG] Windows rsync path: {rsync_path}")
-            print(f"[DEBUG] Full command: {cmd}")
+            logger.debug(f"Windows rsync path: {rsync_path}")
+            logger.debug(f"Full command: {cmd}")
         except RuntimeError as e:
-            print(f"[ERROR] {e}")
+            logger.error(f"Failed to find rsync: {e}")
             raise
         
         # On Windows, execute directly without cmd.exe for better compatibility
@@ -509,6 +514,9 @@ Examples:
     # Add GUI option as top-level argument
     parser.add_argument('--gui', action='store_true',
                        help='Launch graphical user interface')
+    # Add verbose logging option
+    parser.add_argument('--verbose', '-v', action='store_true',
+                       help='Enable verbose logging output')
     
     subparsers = parser.add_subparsers(dest='command', help='Commands')
     
@@ -539,6 +547,16 @@ Examples:
     download_parser.set_defaults(func=download)
     
     args = parser.parse_args()
+    
+    # Setup logging based on verbose flag
+    setup_logging(verbose=args.verbose)
+    logger = get_logger(__name__)
+    
+    # Log startup information in verbose mode
+    if args.verbose:
+        logger.debug("Rediacc CLI Sync starting up")
+        logger.debug(f"Command: {args.command}")
+        logger.debug(f"Arguments: {vars(args)}")
     
     # Check if GUI mode is requested
     if args.gui:

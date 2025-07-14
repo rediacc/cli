@@ -77,8 +77,18 @@ get_python_command() {
 # Get Python command once at the start
 PYTHON_CMD=$(get_python_command)
 
-# Debug: Show which Python is being used (only if REDIACC_DEBUG is set)
-if [ -n "$REDIACC_DEBUG" ]; then
+# Check for --verbose flag in arguments
+VERBOSE_MODE=""
+for arg in "$@"; do
+    if [ "$arg" = "--verbose" ] || [ "$arg" = "-v" ]; then
+        VERBOSE_MODE="1"
+        export REDIACC_VERBOSE=1
+        break
+    fi
+done
+
+# Debug: Show which Python is being used (only if REDIACC_DEBUG or verbose mode is set)
+if [ -n "$REDIACC_DEBUG" ] || [ -n "$VERBOSE_MODE" ]; then
     echo -e "${CYAN}[DEBUG] Using Python: $PYTHON_CMD${NC}" >&2
 fi
 
@@ -276,7 +286,7 @@ docker_run() {
     docker run -it --rm \
         --name rediacc-cli-run-$$ \
         $env_file_arg \
-        -v "$HOME/.rediacc:/home/rediacc/.rediacc" \
+        -v "$CLI_ROOT/.config:/home/rediacc/.config" \
         -v "$HOME/.ssh:/home/rediacc/.ssh:ro" \
         -v "$PWD:/workspace" \
         -w /workspace \
@@ -303,7 +313,7 @@ docker_shell() {
     docker run -it --rm \
         --name rediacc-cli-shell-$$ \
         $env_file_arg \
-        -v "$HOME/.rediacc:/home/rediacc/.rediacc" \
+        -v "$CLI_ROOT/.config:/home/rediacc/.config" \
         -v "$HOME/.ssh:/home/rediacc/.ssh:ro" \
         -v "$PWD:/workspace" \
         -w /workspace \
@@ -444,16 +454,16 @@ desktop_docker() {
         echo -e "${YELLOW}Warning: Not running in interactive terminal${NC}"
     fi
     
-    # Ensure .rediacc directory exists
-    mkdir -p "$HOME/.rediacc"
+    # Ensure .config directory exists
+    mkdir -p "$CLI_ROOT/.config"
     
-    # Create a temporary directory for container's .rediacc if needed
-    REDIACC_VOLUME="$HOME/.rediacc-docker"
+    # Create a temporary directory for container's .config if needed
+    REDIACC_VOLUME="$HOME/.config-docker"
     mkdir -p "$REDIACC_VOLUME"
     
     # Copy existing config if it exists
-    if [ -f "$HOME/.rediacc/config.json" ]; then
-        cp "$HOME/.rediacc/config.json" "$REDIACC_VOLUME/" 2>/dev/null || true
+    if [ -f "$CLI_ROOT/.config/config.json" ]; then
+        cp "$CLI_ROOT/.config/config.json" "$REDIACC_VOLUME/" 2>/dev/null || true
     fi
     
     # Set permissions for container user (UID 111)
@@ -464,7 +474,7 @@ desktop_docker() {
         $DISPLAY_ENV \
         -v /tmp/.X11-unix:/tmp/.X11-unix:rw \
         -v "$HOME/.Xauthority:/home/rediacc/.Xauthority:ro" \
-        -v "$REDIACC_VOLUME:/home/rediacc/.rediacc:rw" \
+        -v "$REDIACC_VOLUME:/home/rediacc/.config:rw" \
         -v "$CLI_ROOT/.env:/app/.env:ro" \
         --network host \
         rediacc/cli-gui:latest \
@@ -472,7 +482,7 @@ desktop_docker() {
     
     # Copy config back if it was updated
     if [ -f "$REDIACC_VOLUME/config.json" ]; then
-        cp "$REDIACC_VOLUME/config.json" "$HOME/.rediacc/" 2>/dev/null || true
+        cp "$REDIACC_VOLUME/config.json" "$CLI_ROOT/.config/" 2>/dev/null || true
     fi
 }
 

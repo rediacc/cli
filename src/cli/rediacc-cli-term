@@ -23,6 +23,9 @@ from rediacc_cli_core import (
 # Import token manager
 from token_manager import TokenManager
 
+# Import logging configuration
+from logging_config import setup_logging, get_logger
+
 
 def connect_to_machine(args):
     """Connect to machine via SSH (without repository)"""
@@ -365,6 +368,9 @@ When connected to machine only:
     # Add GUI option
     parser.add_argument('--gui', action='store_true',
                        help='Launch graphical user interface')
+    # Add verbose logging option
+    parser.add_argument('--verbose', '-v', action='store_true',
+                       help='Enable verbose logging output')
     
     parser.add_argument('--token', required=False, help='Authentication token (GUID)')
     parser.add_argument('--team', required=False, help='Team name')
@@ -374,6 +380,15 @@ When connected to machine only:
     parser.add_argument('--dev', action='store_true', help='Development mode - relaxes SSH host key checking')
     
     args = parser.parse_args()
+    
+    # Setup logging based on verbose flag
+    setup_logging(verbose=args.verbose)
+    logger = get_logger(__name__)
+    
+    # Log startup information in verbose mode
+    if args.verbose:
+        logger.debug("Rediacc CLI Term starting up")
+        logger.debug(f"Arguments: {vars(args)}")
     
     # Check if GUI mode is requested
     if args.gui:

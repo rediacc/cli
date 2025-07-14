@@ -133,17 +133,21 @@ get_token() {
     # Priority: parameter > env var > config file
     local token="${1:-$REDIACC_TOKEN}"
     
-    if [ -z "$token" ] && [ -f ~/.rediacc/config.json ]; then
+    # Get CLI directory relative to test directory
+    local cli_dir="$(cd "$(dirname "${BASH_SOURCE[0]}")/../" && pwd)"
+    local config_file="${cli_dir}/.config/config.json"
+    
+    if [ -z "$token" ] && [ -f "$config_file" ]; then
         token=$(python3 -c "
 import json
 try:
-    with open('$HOME/.rediacc/config.json', 'r') as f:
+    with open('$config_file', 'r') as f:
         config = json.load(f)
         if 'token' in config and config['token']:
             print(config['token'])
 except:
     pass
-" 2>/dev/null || echo "")
+" config_file="$config_file" 2>/dev/null || echo "")
     fi
     
     echo "$token"

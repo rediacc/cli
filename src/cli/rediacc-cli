@@ -26,6 +26,12 @@ from config_loader import load_config, get_required, get, get_path, ConfigError
 # Import token manager
 from token_manager import TokenManager
 
+# Import API mutex for concurrent access safety
+from api_mutex import api_mutex
+
+# Import logging configuration
+from logging_config import setup_logging, get_logger
+
 # Try to import cryptography library
 try:
     from cryptography.hazmat.primitives import hashes
@@ -47,19 +53,12 @@ except ConfigError as e:
 HTTP_PORT = get_required('SYSTEM_HTTP_PORT')
 BASE_URL = get_required('REDIACC_API_URL')
 API_PREFIX = '/StoredProcedure'
-# Use same local directory logic as TokenManager
-def _get_config_dir():
-    explicit_config_dir = get_path('REDIACC_CONFIG_DIR')
-    if explicit_config_dir:
-        return str(explicit_config_dir)
-    else:
-        # Use local config directory in CLI folder (same as TokenManager)
-        current_file = Path(__file__).resolve()
-        cli_root = current_file.parent.parent.parent  # cli/rediacc-cli -> cli/src -> cli
-        return str(cli_root / '.rediacc')
+# Use centralized config path
+sys.path.insert(0, os.path.join(os.path.dirname(os.path.abspath(__file__)), '..', 'modules'))
+from config_path import get_config_dir, get_main_config_file
 
-CONFIG_DIR = _get_config_dir()
-CONFIG_FILE = os.path.join(CONFIG_DIR, 'config.json')
+CONFIG_DIR = str(get_config_dir())
+CONFIG_FILE = str(get_main_config_file())
 REQUEST_TIMEOUT = 30
 TEST_ACTIVATION_CODE = get('REDIACC_TEST_ACTIVATION_CODE') or '111111'
 
@@ -395,8 +394,20 @@ class APIClient:
             "Rediacc-UserHash": pwd_hash
         })
     
-    def token_request(self, endpoint, data=None):
+    def token_request(self, endpoint, data=None, retry_count=0):
         """Make a request authenticated with a token"""
+        # Use mutex to ensure only one API call at a time
+        # This prevents token rotation race conditions
+        try:
+            with api_mutex.acquire(timeout=30.0):
+                return self._token_request_impl(endpoint, data, retry_count)
+        except TimeoutError as e:
+            return {"error": f"API call timeout: {str(e)}", "status_code": 408}
+        except Exception as e:
+            return {"error": f"API call error: {str(e)}", "status_code": 500}
+    
+    def _token_request_impl(self, endpoint, data=None, retry_count=0):
+        """Implementation of token request (called within mutex)"""
         # Use TokenManager to get token (it handles env vars and file reading)
         token = TokenManager.get_token()
         if not token:
@@ -417,20 +428,36 @@ class APIClient:
             "Rediacc-RequestToken": token
         })
         
+        # Handle token race condition - retry if we get 401 and token has changed
+        if response and response.get('status_code') == 401 and retry_count < 2:
+            # Brief delay to let other process complete token rotation
+            import time
+            time.sleep(0.1 * (retry_count + 1))
+            
+            # Check if token changed (indicating another process rotated it)
+            new_current_token = TokenManager.get_token()
+            if new_current_token != token:
+                # Token changed, retry with new token
+                return self._token_request_impl(endpoint, data, retry_count + 1)
+        
         # Update token if a new one is provided (token chain mechanism)
         if response and not response.get('error'):
             tables = response.get('tables', [])
             if tables and tables[0].get('data'):
                 new_token = tables[0]['data'][0].get('nextRequestCredential')
-                if new_token and self.config_manager:
+                if new_token and new_token != token and self.config_manager:
                     # Don't update if using environment variable or command line override
                     if not os.environ.get('REDIACC_TOKEN') and not self.config_manager.is_token_overridden():
-                        # Use TokenManager to update token to ensure consistency
-                        TokenManager.set_token(new_token, 
-                                             email=self.config_manager.config.get('email'),
-                                             company=self.config_manager.config.get('company'),
-                                             vault_company=self.config_manager.config.get('vault_company'))
-                        # No need to update local references - always read from TokenManager
+                        # Check if the token we used is still current before updating
+                        # This prevents overwriting a token that was already rotated by another process
+                        current_token_before_update = TokenManager.get_token()
+                        if current_token_before_update == token:
+                            # Our token is still current, safe to update
+                            TokenManager.set_token(new_token, 
+                                                 email=self.config_manager.config.get('email'),
+                                                 company=self.config_manager.config.get('company'),
+                                                 vault_company=self.config_manager.config.get('vault_company'))
+                        # else: Another process already rotated the token, skip our update
         
         return response
     
@@ -667,7 +694,7 @@ def table_to_dict(headers, rows):
         result.append(item)
     return result
 
-def format_dynamic_tables(response, output_format='text', skip_fields=None, include_vault=False):
+def format_dynamic_tables(response, output_format='text', skip_fields=None):
     """Format all tables from response dynamically, skipping table index 0"""
     if not response or 'tables' not in response:
         return format_output("No data available", output_format)
@@ -679,11 +706,7 @@ def format_dynamic_tables(response, output_format='text', skip_fields=None, incl
     # Fields to skip in output
     if skip_fields is None:
         skip_fields = ['nextRequestCredential', 'newUserHash']
-        # Only skip vaultContent, vaultStatus and vaultVersion if not explicitly including it
-        if not include_vault:
-            skip_fields.append('vaultContent')
-            skip_fields.append('vaultStatus')
-            skip_fields.append('vaultVersion')
+    
     
     if output_format == 'json':
         # For JSON output, convert all tables to lists of dictionaries
@@ -871,12 +894,11 @@ def install_license_file(license_file, target_path=None):
 
 class CommandHandler:
     """Unified command handler"""
-    def __init__(self, config_manager, output_format='text', include_vault=False):
+    def __init__(self, config_manager, output_format='text'):
         self.config = config_manager.config
         self.config_manager = config_manager
         self.client = APIClient(config_manager)
         self.output_format = output_format
-        self.include_vault = include_vault
     
     def handle_response(self, response, success_message=None, format_args=None):
         """Handle API response and print appropriate message"""
@@ -1431,11 +1453,11 @@ class CommandHandler:
                             {'data': filtered_data}  # Replace data with filtered results
                         ]
                     }
-                    result = format_dynamic_tables(filtered_response, self.output_format, include_vault=self.include_vault)
+                    result = format_dynamic_tables(filtered_response, self.output_format)
                 else:
-                    result = format_dynamic_tables(response, self.output_format, include_vault=self.include_vault)
+                    result = format_dynamic_tables(response, self.output_format)
             else:
-                result = format_dynamic_tables(response, self.output_format, include_vault=self.include_vault)
+                result = format_dynamic_tables(response, self.output_format)
             print(result)
             return 0
         
@@ -2061,11 +2083,11 @@ def setup_parser():
     # Add global output format option
     parser.add_argument('--output', '-o', choices=['text', 'json'], default='text',
                        help='Output format (text or json)')
-    # Add global include-vault option for security
-    parser.add_argument('--include-vault', action='store_true',
-                       help='Include vault content in output (normally hidden for security)')
     # Add global token option to override config
     parser.add_argument('--token', '-t', help='Authentication token (overrides saved token)')
+    # Add verbose logging option
+    parser.add_argument('--verbose', '-v', action='store_true',
+                       help='Enable verbose logging output')
     # Add GUI option
     parser.add_argument('--gui', nargs='?', const='native', choices=['native', 'docker', 'docker-build'],
                        help='Launch graphical user interface (native/docker/docker-build)')
@@ -2151,6 +2173,16 @@ def main():
     parser = setup_parser()
     args = parser.parse_args()
     
+    # Setup logging based on verbose flag
+    setup_logging(verbose=args.verbose)
+    logger = get_logger(__name__)
+    
+    # Log startup information in verbose mode
+    if args.verbose:
+        logger.debug("Rediacc CLI starting up")
+        logger.debug(f"Command: {args.command}")
+        logger.debug(f"Arguments: {vars(args)}")
+    
     # Check if GUI mode is requested
     if args.gui:
         gui_mode = args.gui  # Will be 'native', 'docker', or 'docker-build'
@@ -2159,7 +2191,6 @@ def main():
             # Build Docker image for GUI
             try:
                 import subprocess
-                import os
                 cli_root = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
                 cmd = [os.path.join(cli_root, '..', 'rediacc'), 'desktop-docker-build']
                 result = subprocess.run(cmd, cwd=cli_root)
@@ -2172,7 +2203,6 @@ def main():
             # Run GUI in Docker
             try:
                 import subprocess
-                import os
                 cli_root = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
                 cmd = [os.path.join(cli_root, '..', 'rediacc'), 'desktop-docker']
                 result = subprocess.run(cmd, cwd=cli_root)
@@ -2219,7 +2249,7 @@ def main():
         os.environ['REDIACC_TOKEN'] = args.token
         config_manager.set_token_overridden(True)
     
-    handler = CommandHandler(config_manager, output_format, include_vault=args.include_vault)
+    handler = CommandHandler(config_manager, output_format)
     
     # Handle authentication commands directly
     if args.command == 'login':
