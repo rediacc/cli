@@ -33,7 +33,10 @@ ADMIN_EMAIL="${SYSTEM_ADMIN_EMAIL:-admin@rediacc.io}"
 ADMIN_PASSWORD="${SYSTEM_ADMIN_PASSWORD:-admin}"
 
 echo "Logging in as: $ADMIN_EMAIL"
-rm -f ~/.rediacc/config.json
+# Get CLI directory
+CLI_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/../" && pwd)"
+CONFIG_FILE="${CLI_DIR}/.config/config.json"
+rm -f "$CONFIG_FILE"
 LOGIN_OUTPUT=$(${CLI} login --email "$ADMIN_EMAIL" --password "$ADMIN_PASSWORD" 2>&1)
 if echo "$LOGIN_OUTPUT" | grep -qi "successfully logged in"; then
     echo -e "${GREEN}✓${NC} Login successful"

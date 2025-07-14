@@ -33,10 +33,15 @@ from rediacc_cli_core import (
 # Import token manager
 from token_manager import TokenManager
 
+# Import centralized config path
+from config_path import get_config_dir, get_plugin_connections_file, get_ssh_control_dir
+
 # Configuration
-CONNECTIONS_FILE = os.path.expanduser('~/.rediacc/plugin-connections.json')
+# Use centralized config directory
+LOCAL_CONFIG_DIR = get_config_dir()
+CONNECTIONS_FILE = str(get_plugin_connections_file())
 DEFAULT_PORT_RANGE = (7111, 9111)
-SSH_CONTROL_DIR = os.path.expanduser('~/.rediacc/ssh-control')
+SSH_CONTROL_DIR = str(get_ssh_control_dir())
 
 def ensure_directories():
     """Ensure necessary directories exist"""
@@ -126,6 +131,7 @@ def list_plugins(args):
     try:
         # List socket files in the repository
         universal_user = conn.connection_info.get('universal_user', 'rediacc')
+        
         ssh_cmd = [
             'ssh',
         ] + ssh_opts.split() + [

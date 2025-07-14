@@ -265,7 +265,7 @@ function Load-EnvFile {
         ".\.env",
         "$PSScriptRoot\.env",
         "$PSScriptRoot\..\.env",
-        "$env:USERPROFILE\.rediacc\.env"
+        "$env:USERPROFILE\.config\.env"
     )
     
     $envFileFound = $false
@@ -993,7 +993,7 @@ function Setup-Environment {
 }
 
 function Get-SavedToken {
-    $configPath = Join-Path $env:USERPROFILE ".rediacc\config.json"
+    $configPath = Join-Path $env:USERPROFILE ".config\config.json"
     if (Test-Path $configPath) {
         try {
             $config = Get-Content $configPath | ConvertFrom-Json

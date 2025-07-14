@@ -28,6 +28,9 @@ from i18n import i18n
 # Import terminal detector
 from terminal_detector import TerminalDetector
 
+# Import logging configuration
+from logging_config import get_logger
+
 
 
 class BaseWindow:
@@ -259,6 +262,7 @@ class MainWindow(BaseWindow):
     """Main window with Terminal and File Sync tools"""
     def __init__(self):
         super().__init__(tk.Tk(), i18n.get('app_title'))
+        self.logger = get_logger(__name__)
         self.runner = SubprocessRunner()
         self.center_window(1024, 768)
         
@@ -782,7 +786,7 @@ class MainWindow(BaseWindow):
         self.status_bar.config(text=i18n.get('loading_machines', team=team))
         self.root.update()
         
-        result = self.runner.run_cli_command(['--include-vault', '--output', 'json', 'list', 'team-machines', team])
+        result = self.runner.run_cli_command(['--output', 'json', 'list', 'team-machines', team])
         if result['success'] and result.get('data'):
             # Store full machine data with vault content
             self.machines_data = {m.get('machineName', ''): m for m in result['data'] if m.get('machineName')}
@@ -826,8 +830,8 @@ class MainWindow(BaseWindow):
             # Try to filter by machine if we have vaultStatus data
             if machine and machine in self.machines_data:
                 machine_data = self.machines_data[machine]
-                print(f"[GUI] Machine data keys for {machine}: {sorted(machine_data.keys())}")
-                print(f"[GUI] vaultStatus present: {'vaultStatus' in machine_data}")
+                self.logger.debug(f"Machine data keys for {machine}: {sorted(machine_data.keys())}")
+                self.logger.debug(f"vaultStatus present: {'vaultStatus' in machine_data}")
                 if machine_data.get('vaultStatus'):
                     try:
                         # Parse the nested JSON structure
@@ -855,7 +859,7 @@ class MainWindow(BaseWindow):
                                 return
                     except (json.JSONDecodeError, KeyError, TypeError) as e:
                         # If parsing fails, fall back to showing all repos
-                        print(f"[GUI] Failed to parse vaultStatus for machine {machine}: {e}")
+                        self.logger.error(f"Failed to parse vaultStatus for machine {machine}: {e}")
             
             # Fall back to showing all team repositories
             repos = [self._get_name(r, 'repositoryName', 'name', 'repoName') for r in all_repos]
@@ -958,17 +962,17 @@ class MainWindow(BaseWindow):
                     self.terminal_output.insert(tk.END, f"\n{i18n.get('launched_terminal')} ({method})\n")
                     self.terminal_output.config(state='disabled')
                 except Exception as e:
-                    print(f"[GUI] Failed to launch with {method}: {e}")
+                    self.logger.error(f"Failed to launch with {method}: {e}")
                     self.terminal_output.config(state='normal')
                     self.terminal_output.insert(tk.END, f"\n{i18n.get('could_not_launch')}\n")
                     self.terminal_output.config(state='disabled')
             else:
-                print(f"[GUI] No launch function for method: {method}")
+                self.logger.warning(f"No launch function for method: {method}")
                 self.terminal_output.config(state='normal')
                 self.terminal_output.insert(tk.END, f"\n{i18n.get('could_not_launch')}\n")
                 self.terminal_output.config(state='disabled')
         else:
-            print("[GUI] No working terminal method detected")
+            self.logger.error("No working terminal method detected")
             self.terminal_output.config(state='normal')
             self.terminal_output.insert(tk.END, f"\n{i18n.get('could_not_launch')} - No terminal method available\n")
             self.terminal_output.config(state='disabled')
@@ -1082,19 +1086,16 @@ class MainWindow(BaseWindow):
         
         def load():
             cmd = ['plugin', 'list', '--team', team, '--machine', machine, '--repo', repo]
-            print(f"[PLUGIN DEBUG] Executing: {' '.join(cmd)}")
+            self.logger.debug(f"Executing plugin list command: {' '.join(cmd)}")
             
             result = self.runner.run_command(cmd)
-            print(f"[PLUGIN DEBUG] Command success: {result.get('success')}")
-            print(f"[PLUGIN DEBUG] Return code: {result.get('returncode')}")
-            print(f"[PLUGIN DEBUG] Error output: {result.get('error', 'None')}")
+            self.logger.debug(f"Command success: {result.get('success')}")
+            self.logger.debug(f"Return code: {result.get('returncode')}")
+            self.logger.debug(f"Error output: {result.get('error', 'None')}")
             
             output = result.get('output', '')
-            print(f"[PLUGIN DEBUG] Output length: {len(output)}")
-            print(f"[PLUGIN DEBUG] Raw output:")
-            print(f"--- START OUTPUT ---")
-            print(output)
-            print(f"--- END OUTPUT ---")
+            self.logger.debug(f"Output length: {len(output)}")
+            self.logger.debug(f"Raw output:\n{output}")
             
             # Parse plugin names from output
             plugins = []
@@ -1102,21 +1103,21 @@ class MainWindow(BaseWindow):
             line_num = 0
             for line in output.split('\n'):
                 line_num += 1
-                print(f"[PLUGIN DEBUG] Line {line_num}: '{line}'")
+                self.logger.debug(f"Parsing line {line_num}: '{line}'")
                 
                 if 'Available plugins:' in line:
-                    print(f"[PLUGIN DEBUG] Found plugins section at line {line_num}")
+                    self.logger.debug(f"Found plugins section at line {line_num}")
                     in_plugins_section = True
                 elif in_plugins_section and '•' in line:
                     # Extract plugin name from bullet point
                     plugin_name = line.split('•')[1].split('(')[0].strip()
-                    print(f"[PLUGIN DEBUG] Found plugin: '{plugin_name}' from line: '{line}'")
+                    self.logger.debug(f"Found plugin: '{plugin_name}' from line: '{line}'")
                     plugins.append(plugin_name)
                 elif 'Plugin container status:' in line:
-                    print(f"[PLUGIN DEBUG] Found container status section at line {line_num}, stopping")
+                    self.logger.debug(f"Found container status section at line {line_num}, stopping")
                     break
             
-            print(f"[PLUGIN DEBUG] Final plugins list: {plugins}")
+            self.logger.debug(f"Final plugins list: {plugins}")
             self.root.after(0, lambda: self.update_plugin_list(plugins))
         
         thread = threading.Thread(target=load)
@@ -1125,24 +1126,24 @@ class MainWindow(BaseWindow):
     
     def update_plugin_list(self, plugins: list):
         """Update plugin listbox and combo"""
-        print(f"[PLUGIN DEBUG] update_plugin_list called with {len(plugins)} plugins: {plugins}")
+        self.logger.debug(f"update_plugin_list called with {len(plugins)} plugins: {plugins}")
         
         self.plugin_listbox.delete(0, tk.END)
         for plugin in plugins:
-            print(f"[PLUGIN DEBUG] Adding plugin to listbox: '{plugin}'")
+            self.logger.debug(f"Adding plugin to listbox: '{plugin}'")
             self.plugin_listbox.insert(tk.END, plugin)
         
         self.plugin_combo['values'] = plugins
         if plugins:
-            print(f"[PLUGIN DEBUG] Setting combo default to: '{plugins[0]}'")
+            self.logger.debug(f"Setting combo default to: '{plugins[0]}'")
             self.plugin_combo.set(plugins[0])
         else:
-            print(f"[PLUGIN DEBUG] No plugins to set in combo")
+            self.logger.debug(f"No plugins to set in combo")
             # Clear the combo box if no plugins are available
             self.plugin_combo.set('')
         
         status_msg = i18n.get('found_plugins', count=len(plugins))
-        print(f"[PLUGIN DEBUG] Setting status: '{status_msg}'")
+        self.logger.debug(f"Setting status: '{status_msg}'")
         self.status_bar.config(text=status_msg)
     
     def refresh_connections(self):
@@ -1460,17 +1461,18 @@ class MainWindow(BaseWindow):
 
 def launch_gui():
     """Launch the simplified GUI application"""
-    print("[GUI] Starting Rediacc CLI GUI...")
+    logger = get_logger(__name__)
+    logger.info("Starting Rediacc CLI GUI...")
     import signal
     
     try:
         # Load saved language preference
-        print("[GUI] Loading language preferences...")
+        logger.debug("Loading language preferences...")
         saved_language = i18n.load_language_preference()
         i18n.set_language(saved_language)
-        print(f"[GUI] Language set to: {saved_language}")
+        logger.debug(f"Language set to: {saved_language}")
     except Exception as e:
-        print(f"[GUI] Error loading language preferences: {e}")
+        logger.debug(f"Error loading language preferences: {e}")
         import traceback
         traceback.print_exc()
     
@@ -1494,55 +1496,55 @@ def launch_gui():
     
     # Check if already authenticated and token is valid
     token_valid = False
-    print("[GUI] Checking authentication status...")
+    logger.debug("Checking authentication status...")
     
     try:
         is_authenticated = TokenManager.is_authenticated()
-        print(f"[GUI] TokenManager.is_authenticated(): {is_authenticated}")
+        logger.debug(f"TokenManager.is_authenticated(): {is_authenticated}")
     except Exception as e:
-        print(f"[GUI] Error checking authentication: {e}")
+        logger.error(f"Error checking authentication: {e}")
         import traceback
         traceback.print_exc()
         is_authenticated = False
     
     if is_authenticated:
-        print("[GUI] Testing token validity with API call...")
+        logger.debug("Testing token validity with API call...")
         # Test if the token is still valid by making a simple API call
         try:
             runner = SubprocessRunner()
-            print("[GUI] Creating SubprocessRunner...")
+            logger.debug("Creating SubprocessRunner...")
             result = runner.run_cli_command(['--output', 'json', 'list', 'teams'])
-            print(f"[GUI] API call result: {result}")
+            logger.debug(f"API call result: {result}")
             token_valid = result.get('success', False)
             if not token_valid:
-                print(f"[GUI] Token validation failed. Error: {result.get('error', 'Unknown error')}")
+                logger.debug(f"Token validation failed. Error: {result.get('error', 'Unknown error')}")
         except Exception as e:
-            print(f"[GUI] Exception during token validation: {e}")
+            logger.debug(f"Exception during token validation: {e}")
             import traceback
             traceback.print_exc()
             token_valid = False
         
         # If token is invalid, clear it
         if not token_valid:
-            print("[GUI] Clearing invalid token...")
+            logger.debug("Clearing invalid token...")
             try:
                 TokenManager.clear_token()
             except Exception as e:
-                print(f"[GUI] Error clearing token: {e}")
+                logger.error(f"Error clearing token: {e}")
                 import traceback
                 traceback.print_exc()
     
     try:
         if token_valid:
             # Token is valid, show main window
-            print("[GUI] Token is valid, launching main window...")
+            logger.debug("Token is valid, launching main window...")
             main_window = MainWindow()
             main_window.root.mainloop()
         else:
             # Show login window
-            print("[GUI] No valid token, showing login window...")
+            logger.debug("No valid token, showing login window...")
             def on_login_success():
-                print("[GUI] Login successful, launching main window...")
+                logger.debug("Login successful, launching main window...")
                 main_window = MainWindow()
                 main_window.root.mainloop()
             
@@ -1556,7 +1558,7 @@ def launch_gui():
             check_interrupt()
             login_window.root.mainloop()
     except Exception as e:
-        print(f"[GUI] Critical error in main execution: {e}")
+        logger.error(f"Critical error in main execution: {e}")
         import traceback
         traceback.print_exc()
         sys.exit(1)

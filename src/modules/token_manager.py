@@ -18,6 +18,7 @@ import logging
 
 # Import configuration loader
 from config_loader import get_path
+from config_path import get_config_dir, get_main_config_file, get_token_lock_file
 
 # Try to import cryptography library for vault operations
 try:
@@ -30,7 +31,9 @@ try:
 except ImportError:
     CRYPTO_AVAILABLE = False
 
-logger = logging.getLogger(__name__)
+# Get logger from logging configuration
+from logging_config import get_logger
+logger = get_logger(__name__)
 
 
 def is_encrypted(value: str) -> bool:
@@ -121,58 +124,46 @@ class TokenManager:
     @classmethod
     def _initialize(cls):
         """Initialize static configuration"""
-        # First check if REDIACC_CONFIG_DIR is explicitly set
-        explicit_config_dir = get_path('REDIACC_CONFIG_DIR')
+        # Get config directory from centralized function
+        # This already checks REDIACC_CONFIG_DIR environment variable
+        config_dir = get_config_dir()
         
-        if explicit_config_dir:
-            # Use explicitly configured directory
-            config_dir = str(explicit_config_dir)
-        else:
-            # Use local config directory in CLI folder
-            # Find the CLI root directory (parent of src/modules)
-            current_file = Path(__file__).resolve()
-            cli_root = current_file.parent.parent.parent  # src/modules -> src -> cli
-            config_dir = cli_root / '.rediacc'
+        # Handle MSYS2 path resolution - try both Windows and MSYS2 formats
+        if 'MSYSTEM' in os.environ:
+            config_dir_str = str(config_dir)
             
-            # Handle MSYS2 path resolution - try both Windows and MSYS2 formats
-            if 'MSYSTEM' in os.environ:
-                config_dir_str = str(config_dir)
-                
-                # First try the Windows path as-is (might work in some MSYS2 setups)
-                if config_dir.exists():
-                    logger.debug(f"MSYS2: Using Windows path: {config_dir}")
-                else:
-                    # Try MSYS2 format conversion
-                    if config_dir_str.startswith('C:') or config_dir_str.startswith('c:'):
-                        drive = config_dir_str[0].lower()
-                        rest = config_dir_str[2:].replace('\\', '/')
-                        msys2_path = f'/{drive}{rest}'
-                        msys2_config_dir = Path(msys2_path)
-                        
-                        if msys2_config_dir.exists():
-                            config_dir = msys2_config_dir
-                            logger.debug(f"MSYS2: Using converted path: {msys2_path}")
-                        else:
-                            # Try WSL format as fallback
-                            wsl_path = f'/mnt/{drive}{rest}'
-                            wsl_config_dir = Path(wsl_path)
-                            if wsl_config_dir.exists():
-                                config_dir = wsl_config_dir
-                                logger.debug(f"MSYS2: Using WSL fallback path: {wsl_path}")
-                            else:
-                                logger.debug(f"MSYS2: No valid path found, using original: {config_dir}")
+            # First try the Windows path as-is (might work in some MSYS2 setups)
+            if config_dir.exists():
+                logger.debug(f"MSYS2: Using Windows path: {config_dir}")
+            else:
+                # Try MSYS2 format conversion
+                if config_dir_str.startswith('C:') or config_dir_str.startswith('c:'):
+                    drive = config_dir_str[0].lower()
+                    rest = config_dir_str[2:].replace('\\', '/')
+                    msys2_path = f'/{drive}{rest}'
+                    msys2_config_dir = Path(msys2_path)
+                    
+                    if msys2_config_dir.exists():
+                        config_dir = msys2_config_dir
+                        logger.debug(f"MSYS2: Using converted path: {msys2_path}")
                     else:
-                        logger.debug(f"MSYS2: Using original path: {config_dir}")
+                        # Try WSL format as fallback
+                        wsl_path = f'/mnt/{drive}{rest}'
+                        wsl_config_dir = Path(wsl_path)
+                        if wsl_config_dir.exists():
+                            config_dir = wsl_config_dir
+                            logger.debug(f"MSYS2: Using WSL fallback path: {wsl_path}")
+                        else:
+                            logger.debug(f"MSYS2: No valid path found, using original: {config_dir}")
+                else:
+                    logger.debug(f"MSYS2: Using original path: {config_dir}")
             
-            # Debug: ensure we found the right path
-            logger.debug(f"TokenManager using local config: {config_dir}")
-            logger.debug(f"CLI root detected as: {cli_root}")
-            logger.debug(f"Current file: {current_file}")
-            logger.debug(f"MSYSTEM env: {os.environ.get('MSYSTEM', 'Not set')}")
+        # Debug: ensure we found the right path
+        logger.debug(f"TokenManager using local config: {config_dir}")
         
         cls._config_dir = Path(config_dir)
-        cls._config_file = cls._config_dir / "config.json"
-        cls._lock_file = cls._config_dir / ".config.lock"
+        cls._config_file = get_main_config_file()
+        cls._lock_file = get_token_lock_file()
         cls._ensure_secure_config()
     
     @classmethod

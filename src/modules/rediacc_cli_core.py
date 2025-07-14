@@ -4,10 +4,9 @@ Rediacc CLI Core - Common functionality for Rediacc CLI tools
 Provides shared functions for authentication, API communication, and SSH operations
 
 RESOLVED LIMITATIONS:
-1. Use --include-vault flag with rediacc-cli to get vaultContent from list teams
-2. Added inspect command for machines and repositories to get detailed vault data
-3. SSH keys are retrieved from team vault (SSH_PRIVATE_KEY field)
-4. Machine connection details (ip, user, datastore) come from machine vault
+1. Added inspect command for machines and repositories to get detailed vault data
+2. SSH keys are retrieved from team vault (SSH_PRIVATE_KEY field)
+3. Machine connection details (ip, user, datastore) come from machine vault
 """
 import json
 import os
@@ -17,6 +16,7 @@ import tempfile
 import platform
 from pathlib import Path
 from typing import Dict, Any, Optional, Tuple
+from config_path import get_config_dir, get_main_config_file
 
 # Import token manager
 from token_manager import TokenManager
@@ -187,7 +187,7 @@ def get_machine_info_with_team(team_name: str, machine_name: str) -> Dict[str, A
         sys.exit = no_exit
         
         try:
-            cmd = get_cli_command() + ['--include-vault', '--output', 'json', 'inspect', 'machine', team_name, machine_name]
+            cmd = get_cli_command() + ['--output', 'json', 'inspect', 'machine', team_name, machine_name]
             # Use quiet mode during retries to avoid confusing error messages
             inspect_output = run_command(cmd, quiet=(attempt > 0))
         finally:
@@ -260,7 +260,7 @@ def get_repository_info(team_name: str, repo_name: str) -> Dict[str, Any]:
         
         try:
             # Use quiet mode during retries to avoid confusing error messages
-            inspect_output = run_command(get_cli_command() + ['--include-vault', '--output', 'json', 'inspect', 'repository', team_name, repo_name], quiet=(attempt > 0))
+            inspect_output = run_command(get_cli_command() + ['--output', 'json', 'inspect', 'repository', team_name, repo_name], quiet=(attempt > 0))
         finally:
             sys.exit = original_exit
         
@@ -325,7 +325,7 @@ def get_ssh_key_from_vault(team_name: Optional[str] = None) -> Optional[str]:
         print(colorize("No authentication token available", 'RED'))
         return None
     
-    # Use the CLI with --include-vault flag to get team vault content
+    # Use the CLI to get team vault content
     # Don't pass token explicitly - let CLI read from config to avoid rotation issues
     for attempt in range(max_retries):
         # Temporarily suppress run_command from exiting on error
@@ -340,7 +340,7 @@ def get_ssh_key_from_vault(team_name: Optional[str] = None) -> Optional[str]:
         
         try:
             # Use quiet mode during retries to avoid confusing error messages
-            teams_output = run_command(get_cli_command() + ['--include-vault', '--output', 'json', 'list', 'teams'], quiet=(attempt > 0))
+            teams_output = run_command(get_cli_command() + ['--output', 'json', 'list', 'teams'], quiet=(attempt > 0))
         finally:
             sys.exit = original_exit
         
@@ -532,7 +532,8 @@ def get_machine_connection_info(machine_info: Dict[str, Any]) -> Dict[str, Any]:
     # Get universal user and ID from company vault (this is the user we sudo to)
     universal_user = None
     universal_user_id = None
-    config_path = Path.home() / '.rediacc' / 'config.json'
+    # Use centralized config path
+    config_path = get_main_config_file()
     if config_path.exists():
         try:
             with open(config_path, 'r') as f:
@@ -542,8 +543,10 @@ def get_machine_connection_info(machine_info: Dict[str, Any]) -> Dict[str, Any]:
                     vault_data = json.loads(vault_company)
                     universal_user = vault_data.get('UNIVERSAL_USER_NAME')
                     universal_user_id = vault_data.get('UNIVERSAL_USER_ID')
-        except (json.JSONDecodeError, IOError):
-            pass
+        except (json.JSONDecodeError, IOError) as e:
+            print(colorize(f"Warning: Failed to read universal user from config: {e}", 'YELLOW'))
+    else:
+        print(colorize(f"Warning: Config file not found at {config_path}", 'YELLOW'))
     
     if not ssh_user:
         print(colorize(f"ERROR: SSH user not found in machine vault. Vault contents: {vault}", 'RED'))
@@ -635,7 +638,8 @@ class RepositoryConnection:
         
         # Get universal user ID from company vault
         universal_user_id = None
-        config_path = Path.home() / '.rediacc' / 'config.json'
+        # Use centralized config path
+        config_path = get_main_config_file()
         if config_path.exists():
             try:
                 with open(config_path, 'r') as f:

@@ -8,6 +8,7 @@ from typing import Dict, Optional
 import json
 import os
 from pathlib import Path
+from config_path import get_config_dir
 
 
 class I18n:
@@ -1219,8 +1220,8 @@ class I18n:
     
     def get_language_config_path(self) -> Path:
         """Get the path to the language configuration file"""
-        config_dir = Path.home() / '.rediacc'
-        config_dir.mkdir(exist_ok=True)
+        # Use centralized config directory
+        config_dir = get_config_dir()
         return config_dir / 'language_preference.json'
     
     def load_language_preference(self) -> str:

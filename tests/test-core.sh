@@ -33,15 +33,19 @@ OUTPUT=$(${CLI} --output json --token "$TOKEN" list teams 2>&1)
 check_success "$OUTPUT" "CLI works with --token parameter"
 
 # Test environment variable (temporarily move config)
-if [ -f ~/.rediacc/config.json ]; then
-    mv ~/.rediacc/config.json ~/.rediacc/config.json.bak
+# Get CLI directory
+CLI_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/../" && pwd)"
+CONFIG_FILE="${CLI_DIR}/.config/config.json"
+
+if [ -f "$CONFIG_FILE" ]; then
+    mv "$CONFIG_FILE" "${CONFIG_FILE}.bak"
 fi
 export REDIACC_TOKEN="$TOKEN"
 OUTPUT=$(${CLI} --output json list teams 2>&1)
 check_success "$OUTPUT" "CLI works with REDIACC_TOKEN env var"
 unset REDIACC_TOKEN
-if [ -f ~/.rediacc/config.json.bak ]; then
-    mv ~/.rediacc/config.json.bak ~/.rediacc/config.json
+if [ -f "${CONFIG_FILE}.bak" ]; then
+    mv "${CONFIG_FILE}.bak" "$CONFIG_FILE"
 fi
 
 # Test invalid token format

@@ -23,7 +23,7 @@ docker images | grep rediacc/cli
 echo ""
 echo "Usage examples:"
 echo "  # Run CLI in Docker:"
-echo "  docker run -it --rm -v ~/.rediacc:/home/rediacc/.rediacc rediacc/cli:latest ./rediacc help"
+echo "  docker run -it --rm -v ./cli/.config:/home/rediacc/.config rediacc/cli:latest ./rediacc help"
 echo ""
 echo "  # Run with docker-compose:"
 echo "  docker-compose run --rm cli"

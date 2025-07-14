@@ -9,6 +9,12 @@ import json
 from pathlib import Path
 from typing import Dict, Optional
 
+# Import centralized config path functions
+from config_path import get_cli_root, get_config_dir
+
+# Import logging configuration
+from logging_config import get_logger
+
 class ConfigError(Exception):
     """Raised when required configuration is missing"""
     pass
@@ -43,6 +49,7 @@ class Config:
     def __init__(self):
         self._config = {}
         self._loaded = False
+        self.logger = get_logger(__name__)
     
     def load(self, env_file: Optional[str] = None):
         """Load configuration from environment and .env files"""
@@ -76,10 +83,11 @@ class Config:
             if (parent / 'cli').is_dir() and (parent / 'middleware').is_dir():
                 break
         
-        # Check home directory
-        home_env = Path.home() / '.rediacc' / '.env'
-        if home_env.exists():
-            return home_env
+        # Check local CLI directory
+        config_dir = get_config_dir()
+        local_env = config_dir / '.env'
+        if local_env.exists():
+            return local_env
         
         return None
     
@@ -104,7 +112,7 @@ class Config:
                             value = value.strip().strip('"\'')
                             self._config[key] = value
         except Exception as e:
-            print(f"Warning: Failed to load .env file: {e}", file=sys.stderr)
+            self.logger.warning(f"Failed to load .env file: {e}")
     
     def _load_from_environment(self):
         """Load configuration from environment variables"""
@@ -122,7 +130,9 @@ class Config:
     def _load_api_url_from_shared_config(self) -> Optional[str]:
         """Load API URL from shared config file (same as desktop app)"""
         try:
-            config_path = Path.home() / '.rediacc' / 'config.json'
+            # Use config directory
+            config_dir = get_config_dir()
+            config_path = config_dir / 'config.json'
             if config_path.exists():
                 with open(config_path, 'r') as f:
                     config = json.load(f)
@@ -192,27 +202,27 @@ class Config:
         if not self._loaded:
             self.load()
         
-        print("Current configuration:")
-        print("-" * 40)
+        self.logger.debug("Current configuration:")
+        self.logger.debug("-" * 40)
         
         # Print required configs
-        print("Required:")
+        self.logger.debug("Required:")
         for key in self.REQUIRED_KEYS:
             value = self._config.get(key, '<NOT SET>')
-            print(f"  {key}={value}")
+            self.logger.debug(f"  {key}={value}")
         
         # Print optional configs that are set
-        print("\nOptional (set):")
+        self.logger.debug("\nOptional (set):")
         for key in self.OPTIONAL_KEYS:
             if key in self._config:
-                print(f"  {key}={self._config[key]}")
+                self.logger.debug(f"  {key}={self._config[key]}")
         
         # Print optional configs that are not set
         unset = [k for k in self.OPTIONAL_KEYS if k not in self._config]
         if unset:
-            print("\nOptional (not set):")
+            self.logger.debug("\nOptional (not set):")
             for key in unset:
-                print(f"  {key}")
+                self.logger.debug(f"  {key}")
 
 # Global config instance
 _config = Config()

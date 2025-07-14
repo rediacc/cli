@@ -12,15 +12,21 @@ import tempfile
 from pathlib import Path
 from typing import Dict, Optional, List, Tuple
 from datetime import datetime, timedelta
+from config_path import get_config_dir, get_config_file
+
+# Import logging configuration
+from logging_config import get_logger
 
 
 class TerminalDetector:
     """Detects and caches working terminal launch methods for the current system"""
     
-    CACHE_FILE = os.path.expanduser("~/.rediacc/terminal_detector_cache.json")
+    # Use centralized config directory
+    CACHE_FILE = str(get_config_file("terminal_detector_cache.json"))
     CACHE_DURATION = timedelta(days=7)  # Re-test methods after a week
     
     def __init__(self):
+        self.logger = get_logger(__name__)
         self.cache_dir = os.path.dirname(self.CACHE_FILE)
         if not os.path.exists(self.cache_dir):
             os.makedirs(self.cache_dir, exist_ok=True)
@@ -73,7 +79,7 @@ class TerminalDetector:
                 with open(self.CACHE_FILE, 'r') as f:
                     return json.load(f)
         except Exception as e:
-            print(f"[TerminalDetector] Failed to load cache: {e}")
+            self.logger.debug(f"Failed to load cache: {e}")
         return {}
     
     def _save_cache(self):
@@ -82,7 +88,7 @@ class TerminalDetector:
             with open(self.CACHE_FILE, 'w') as f:
                 json.dump(self.cache, f, indent=2)
         except Exception as e:
-            print(f"[TerminalDetector] Failed to save cache: {e}")
+            self.logger.error(f"Failed to save cache: {e}")
     
     def _is_cache_valid(self, platform: str) -> bool:
         """Check if cached results are still valid"""
@@ -169,7 +175,7 @@ class TerminalDetector:
                 else:
                     test_cmd.append(arg)
             
-            print(f"[TerminalDetector] Testing command: {' '.join(test_cmd[:3])}...")
+            self.logger.debug(f"Testing command: {' '.join(test_cmd[:3])}...")
             
             process = subprocess.Popen(
                 test_cmd,
@@ -428,26 +434,26 @@ class TerminalDetector:
         if not force_refresh and self._is_cache_valid(platform):
             cached_method = self.cache[platform].get('method')
             if cached_method:
-                print(f"[TerminalDetector] Using cached method: {cached_method}")
+                self.logger.debug(f"Using cached method: {cached_method}")
                 return cached_method
         
         # Get methods for this platform
         platform_methods = self.methods.get(platform, [])
         if not platform_methods:
-            print(f"[TerminalDetector] No methods defined for platform: {platform}")
+            self.logger.warning(f"No methods defined for platform: {platform}")
             return None
         
-        print(f"[TerminalDetector] Testing {len(platform_methods)} methods for {platform}...")
+        self.logger.debug(f"Testing {len(platform_methods)} methods for {platform}...")
         
         # Test each method
         working_methods = []
         for method_name, test_func in platform_methods:
             success, description = test_func()
             if success:
-                print(f"[TerminalDetector] [OK] {method_name}: {description}")
+                self.logger.debug(f"[OK] {method_name}: {description}")
                 working_methods.append(method_name)
             else:
-                print(f"[TerminalDetector] [FAIL] {method_name}: {description}")
+                self.logger.debug(f"[FAIL] {method_name}: {description}")
         
         # Select the best method (first working one)
         best_method = working_methods[0] if working_methods else None
@@ -462,9 +468,9 @@ class TerminalDetector:
         self._save_cache()
         
         if best_method:
-            print(f"[TerminalDetector] Selected method: {best_method}")
+            self.logger.info(f"Selected terminal method: {best_method}")
         else:
-            print(f"[TerminalDetector] No working methods found!")
+            self.logger.warning("No working terminal methods found!")
         
         return best_method
     
