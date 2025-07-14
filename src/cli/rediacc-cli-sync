@@ -160,9 +160,11 @@ def get_rsync_changes(source: str, dest: str, ssh_cmd: str, options: Dict[str, A
     if universal_user and ('@' in source or '@' in dest):
         rsync_cmd.extend(['--rsync-path', f'sudo -u {universal_user} rsync'])
     
-    # Add mirror option (--delete)
+    # Add mirror option (--delete) with socket exclusion
     if options.get('mirror'):
         rsync_cmd.append('--delete')
+        # Exclude socket files to prevent deletion of plugin sockets
+        rsync_cmd.extend(['--exclude', '*.sock'])
     
     # Add verify mode options
     if options.get('verify'):
@@ -334,9 +336,11 @@ def perform_rsync(source: str, dest: str, ssh_cmd: str, options: Dict[str, Any],
     if universal_user and ('@' in source or '@' in dest):
         rsync_cmd.extend(['--rsync-path', f'sudo -u {universal_user} rsync'])
     
-    # Add mirror option (--delete)
+    # Add mirror option (--delete) with socket exclusion
     if options.get('mirror'):
         rsync_cmd.append('--delete')
+        # Exclude socket files to prevent deletion of plugin sockets
+        rsync_cmd.extend(['--exclude', '*.sock'])
     
     # Add verify mode options (checksum verification)
     if options.get('verify'):

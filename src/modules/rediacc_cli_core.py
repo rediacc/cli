@@ -556,6 +556,13 @@ def get_machine_connection_info(machine_info: Dict[str, Any]) -> Dict[str, Any]:
     datastore = vault.get('datastore') or vault.get('DATASTORE', DATASTORE_PATH)
     
     if not ip:
+        print(colorize(f"\n✗ Machine configuration error", 'RED'))
+        print(colorize(f"  Machine '{machine_name}' does not have an IP address configured", 'RED'))
+        print(colorize("\nThe machine vault must contain:", 'YELLOW'))
+        print(colorize("  • 'ip' or 'IP': The machine's IP address", 'YELLOW'))
+        print(colorize("  • 'user' or 'USER': SSH username", 'YELLOW'))
+        print(colorize("  • 'datastore' or 'DATASTORE': Datastore path (optional)", 'YELLOW'))
+        print(colorize("\nPlease update the machine configuration in the Rediacc console.", 'YELLOW'))
         raise ValueError(f"Machine IP not found in vault for {machine_name}")
     
     # Get host entry for SSH verification
@@ -596,6 +603,40 @@ def validate_cli_tool():
     if not is_windows() and not os.access(CLI_TOOL, os.X_OK):
         print(colorize(f"Error: rediacc-cli is not executable at {CLI_TOOL}", 'RED'))
         sys.exit(1)
+
+def test_ssh_connectivity(ip: str, port: int = 22, timeout: int = 5) -> Tuple[bool, str]:
+    """Test if SSH port is accessible on the target machine
+    
+    Args:
+        ip: Target IP address
+        port: SSH port (default: 22)
+        timeout: Connection timeout in seconds
+        
+    Returns:
+        Tuple of (success, error_message)
+    """
+    import socket
+    
+    try:
+        # Create a TCP socket
+        sock = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
+        sock.settimeout(timeout)
+        
+        # Try to connect to the SSH port
+        result = sock.connect_ex((ip, port))
+        sock.close()
+        
+        if result == 0:
+            return True, ""
+        else:
+            return False, f"Cannot connect to {ip}:{port} - port appears to be closed or filtered"
+            
+    except socket.timeout:
+        return False, f"Connection to {ip}:{port} timed out after {timeout} seconds"
+    except socket.gaierror:
+        return False, f"Failed to resolve hostname: {ip}"
+    except Exception as e:
+        return False, f"Connection test failed: {str(e)}"
 
 class RepositoryConnection:
     """Helper class to manage repository connections"""
