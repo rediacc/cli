@@ -35,7 +35,8 @@ def connect_to_machine(args):
         get_machine_info_with_team,
         get_machine_connection_info,
         setup_ssh_for_connection,
-        cleanup_ssh_key
+        cleanup_ssh_key,
+        test_ssh_connectivity
     )
     
     # Token is already managed by TokenManager, no need to set it again
@@ -44,6 +45,25 @@ def connect_to_machine(args):
     print("Fetching machine information...")
     machine_info = get_machine_info_with_team(args.team, args.machine)
     connection_info = get_machine_connection_info(machine_info)
+    
+    # Test SSH connectivity before proceeding
+    print(f"Testing connectivity to {connection_info['ip']}...")
+    is_accessible, error_msg = test_ssh_connectivity(connection_info['ip'])
+    
+    if not is_accessible:
+        print(colorize(f"\n✗ Machine '{args.machine}' is not accessible", 'RED'))
+        print(colorize(f"  Error: {error_msg}", 'RED'))
+        print(colorize("\nPossible reasons:", 'YELLOW'))
+        print(colorize("  • The machine is offline or powered down", 'YELLOW'))
+        print(colorize("  • Network connectivity issues between client and machine", 'YELLOW'))
+        print(colorize("  • Firewall blocking SSH port (22)", 'YELLOW'))
+        print(colorize("  • Incorrect IP address in machine configuration", 'YELLOW'))
+        print(colorize(f"\nMachine IP: {connection_info['ip']}", 'BLUE'))
+        print(colorize(f"Team: {args.team}", 'BLUE'))
+        print(colorize("\nPlease verify the machine is online and accessible from your network.", 'YELLOW'))
+        sys.exit(1)
+    
+    print(colorize("✓ Machine is accessible", 'GREEN'))
     
     # Get SSH key
     print("Retrieving SSH key...")
@@ -122,7 +142,15 @@ def connect_to_machine(args):
         result = subprocess.run(ssh_cmd)
         
         if result.returncode != 0:
-            print(colorize(f"\nDisconnected from machine (exit code: {result.returncode})", 'YELLOW'))
+            if result.returncode == 255:
+                print(colorize(f"\n✗ SSH connection failed (exit code: {result.returncode})", 'RED'))
+                print(colorize("\nPossible reasons:", 'YELLOW'))
+                print(colorize("  • SSH authentication failed (check SSH key in team vault)", 'YELLOW'))
+                print(colorize("  • SSH host key verification failed", 'YELLOW'))
+                print(colorize("  • SSH service not running on the machine", 'YELLOW'))
+                print(colorize("  • Network connection interrupted", 'YELLOW'))
+            else:
+                print(colorize(f"\nDisconnected from machine (exit code: {result.returncode})", 'YELLOW'))
         else:
             print(colorize("\nDisconnected from machine.", 'GREEN'))
             
@@ -143,6 +171,27 @@ def connect_to_terminal(args):
     # Create repository connection
     conn = RepositoryConnection(args.team, args.machine, args.repo)
     conn.connect()
+    
+    # Test SSH connectivity before proceeding
+    from rediacc_cli_core import test_ssh_connectivity
+    print(f"Testing connectivity to {conn.connection_info['ip']}...")
+    is_accessible, error_msg = test_ssh_connectivity(conn.connection_info['ip'])
+    
+    if not is_accessible:
+        print(colorize(f"\n✗ Machine '{args.machine}' is not accessible", 'RED'))
+        print(colorize(f"  Error: {error_msg}", 'RED'))
+        print(colorize("\nPossible reasons:", 'YELLOW'))
+        print(colorize("  • The machine is offline or powered down", 'YELLOW'))
+        print(colorize("  • Network connectivity issues between client and machine", 'YELLOW'))
+        print(colorize("  • Firewall blocking SSH port (22)", 'YELLOW'))
+        print(colorize("  • Incorrect IP address in machine configuration", 'YELLOW'))
+        print(colorize(f"\nMachine IP: {conn.connection_info['ip']}", 'BLUE'))
+        print(colorize(f"Team: {args.team}", 'BLUE'))
+        print(colorize(f"Repository: {args.repo}", 'BLUE'))
+        print(colorize("\nPlease verify the machine is online and accessible from your network.", 'YELLOW'))
+        sys.exit(1)
+    
+    print(colorize("✓ Machine is accessible", 'GREEN'))
     
     # Set up SSH
     # In dev mode, temporarily disable host key checking
@@ -313,7 +362,15 @@ echo ""
         result = subprocess.run(ssh_cmd)
         
         if result.returncode != 0:
-            print(colorize(f"\nDisconnected from repository terminal (exit code: {result.returncode})", 'YELLOW'))
+            if result.returncode == 255:
+                print(colorize(f"\n✗ SSH connection failed (exit code: {result.returncode})", 'RED'))
+                print(colorize("\nPossible reasons:", 'YELLOW'))
+                print(colorize("  • SSH authentication failed (check SSH key in team vault)", 'YELLOW'))
+                print(colorize("  • SSH host key verification failed", 'YELLOW'))
+                print(colorize("  • SSH service not running on the machine", 'YELLOW'))
+                print(colorize("  • Network connection interrupted", 'YELLOW'))
+            else:
+                print(colorize(f"\nDisconnected from repository terminal (exit code: {result.returncode})", 'YELLOW'))
         else:
             print(colorize("\nDisconnected from repository terminal.", 'GREEN'))
             
