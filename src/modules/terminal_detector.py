@@ -533,7 +533,8 @@ class TerminalDetector:
         escaped_args = ' '.join(shlex.quote(arg) for arg in args)
         bash_cmd = f'cd "{msys2_cli_dir}" && python3 {cli_script} {escaped_args}'
         
-        subprocess.Popen([mintty_exe, '-e', bash_exe, '-l', '-c', bash_cmd])
+        # Launch maximized with -w max option
+        subprocess.Popen([mintty_exe, '-w', 'max', '-e', bash_exe, '-l', '-c', bash_cmd])
     
     def _launch_wsl_windows_terminal(self, cli_dir: str, command: str, description: str):
         """Launch using WSL with Windows Terminal"""
@@ -559,15 +560,15 @@ class TerminalDetector:
         # Build the WSL command
         wsl_command = f'cd {cli_dir} && {cli_script} {args}'
         
-        # Launch Windows Terminal with WSL command
-        wt_cmd = ['wt.exe', 'new-tab', 'wsl.exe', '-e', 'bash', '-c', wsl_command]
+        # Launch Windows Terminal maximized with WSL command
+        wt_cmd = ['wt.exe', '--maximized', 'new-tab', 'wsl.exe', '-e', 'bash', '-c', wsl_command]
         
         try:
             # Launch directly without cmd.exe to avoid UNC path warning
             subprocess.Popen(wt_cmd)
         except Exception as e:
             # Fallback to cmd.exe method if direct launch fails
-            cmd_str = f'wt.exe new-tab wsl.exe -e bash -c "{wsl_command}"'
+            cmd_str = f'wt.exe --maximized new-tab wsl.exe -e bash -c "{wsl_command}"'
             subprocess.Popen(['cmd.exe', '/c', cmd_str], cwd=os.environ.get('WINDIR', 'C:\\Windows'))
     
     def _launch_wsl_powershell(self, cli_dir: str, command: str, description: str):
@@ -590,8 +591,8 @@ class TerminalDetector:
             cli_script = './rediacc'
             args = command
         
-        # Use PowerShell's Start-Process to avoid UNC path issues
-        ps_cmd = f'Start-Process wsl -ArgumentList "-e", "bash", "-c", "cd {cli_dir} && {cli_script} {args}"'
+        # Use PowerShell's Start-Process to avoid UNC path issues, launch maximized
+        ps_cmd = f'Start-Process wsl -WindowStyle Maximized -ArgumentList "-e", "bash", "-c", "cd {cli_dir} && {cli_script} {args}"'
         # Set working directory to Windows directory to avoid UNC warning
         subprocess.Popen(['powershell.exe', '-Command', ps_cmd], 
                         cwd=os.environ.get('WINDIR', 'C:\\Windows'))
@@ -616,8 +617,8 @@ class TerminalDetector:
             cli_script = './rediacc'
             args = command
         
-        # Use start with /D to set working directory
-        cmd_cmd = f'start "WSL Terminal" /D "%WINDIR%" wsl bash -c "cd {cli_dir} && {cli_script} {args}"'
+        # Use start with /D to set working directory and /max to maximize
+        cmd_cmd = f'start /max "WSL Terminal" /D "%WINDIR%" wsl bash -c "cd {cli_dir} && {cli_script} {args}"'
         subprocess.Popen(['cmd.exe', '/c', cmd_cmd])
     
     def _launch_msys2_windows_terminal(self, cli_dir: str, command: str, description: str):
@@ -640,7 +641,7 @@ class TerminalDetector:
         
         escaped_args = ' '.join(shlex.quote(arg) for arg in args)
         bash_cmd = f'cd "{msys2_cli_dir}" && python3 {cli_script} {escaped_args}'
-        wt_cmd = f'wt.exe new-tab "{bash_exe}" -l -c "{bash_cmd}"'
+        wt_cmd = f'wt.exe --maximized new-tab "{bash_exe}" -l -c "{bash_cmd}"'
         
         subprocess.Popen(['cmd.exe', '/c', wt_cmd])
     
@@ -682,7 +683,7 @@ class TerminalDetector:
             args = cmd_parts
         
         escaped_args = ' '.join(f'"{arg}"' if ' ' in arg else arg for arg in args)
-        ps_cmd = f'Start-Process powershell -ArgumentList "-Command", "cd \\"{cli_dir}\\"; python3 {cli_script} {escaped_args}"'
+        ps_cmd = f'Start-Process powershell -WindowStyle Maximized -ArgumentList "-Command", "cd \\"{cli_dir}\\"; python3 {cli_script} {escaped_args}"'
         
         subprocess.Popen(['powershell.exe', '-Command', ps_cmd])
     
@@ -703,42 +704,51 @@ class TerminalDetector:
         escaped_args = ' '.join(f'"{arg}"' if ' ' in arg else arg for arg in args)
         cmd_str = f'cd /d "{cli_dir}" && python {cli_script} {escaped_args}'
         
-        subprocess.Popen(['cmd.exe', '/c', f'start cmd /c {cmd_str}'])
+        # Launch maximized
+        subprocess.Popen(['cmd.exe', '/c', f'start /max cmd /c {cmd_str}'])
     
     def _launch_macos_terminal(self, cli_dir: str, command: str, description: str):
         """Launch using macOS Terminal.app"""
         cmd_str = f'cd {cli_dir} && ./rediacc {command}'
+        # Launch Terminal.app (maximizing is handled by macOS Window Manager)
+        # Note: Terminal.app doesn't have a direct maximize flag
         subprocess.Popen(['open', '-a', 'Terminal', '--', 'bash', '-c', cmd_str])
     
     def _launch_gnome_terminal(self, cli_dir: str, command: str, description: str):
         """Launch using GNOME Terminal"""
         cmd_str = f'cd {cli_dir} && ./rediacc {command}'
-        subprocess.Popen(['gnome-terminal', '--', 'bash', '-c', cmd_str])
+        # Launch maximized
+        subprocess.Popen(['gnome-terminal', '--maximize', '--', 'bash', '-c', cmd_str])
     
     def _launch_konsole(self, cli_dir: str, command: str, description: str):
         """Launch using KDE Konsole"""
         cmd_str = f'cd {cli_dir} && ./rediacc {command}'
-        subprocess.Popen(['konsole', '-e', 'bash', '-c', cmd_str])
+        # Launch maximized
+        subprocess.Popen(['konsole', '--fullscreen', '-e', 'bash', '-c', cmd_str])
     
     def _launch_xfce4_terminal(self, cli_dir: str, command: str, description: str):
         """Launch using XFCE4 Terminal"""
         cmd_str = f'cd {cli_dir} && ./rediacc {command}'
-        subprocess.Popen(['xfce4-terminal', '-e', f'bash -c "{cmd_str}"'])
+        # Launch maximized
+        subprocess.Popen(['xfce4-terminal', '--maximize', '-e', f'bash -c "{cmd_str}"'])
     
     def _launch_mate_terminal(self, cli_dir: str, command: str, description: str):
         """Launch using MATE Terminal"""
         cmd_str = f'cd {cli_dir} && ./rediacc {command}'
-        subprocess.Popen(['mate-terminal', '-e', f'bash -c "{cmd_str}"'])
+        # Launch maximized
+        subprocess.Popen(['mate-terminal', '--maximize', '-e', f'bash -c "{cmd_str}"'])
     
     def _launch_terminator(self, cli_dir: str, command: str, description: str):
         """Launch using Terminator"""
         cmd_str = f'cd {cli_dir} && ./rediacc {command}'
-        subprocess.Popen(['terminator', '-e', f'bash -c "{cmd_str}"'])
+        # Launch maximized
+        subprocess.Popen(['terminator', '--maximise', '-e', f'bash -c "{cmd_str}"'])
     
     def _launch_xterm(self, cli_dir: str, command: str, description: str):
         """Launch using XTerm"""
         cmd_str = f'cd {cli_dir} && ./rediacc {command}'
-        subprocess.Popen(['xterm', '-e', 'bash', '-c', cmd_str])
+        # Launch maximized with geometry
+        subprocess.Popen(['xterm', '-maximized', '-e', 'bash', '-c', cmd_str])
 
 
 if __name__ == "__main__":

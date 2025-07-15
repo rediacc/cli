@@ -240,3 +240,67 @@ class SubprocessRunner:
             import traceback
             traceback.print_exc()
             return {'success': False, 'output': '', 'error': str(e), 'returncode': -1}
+    
+    def run_command_streaming(self, args: List[str], output_callback=None) -> Dict[str, Any]:
+        """Run a command and stream output line by line"""
+        # Choose the appropriate CLI script based on command
+        if args[0] == 'sync':
+            cli_script = self.sync_path_msys2
+            args = args[1:]  # Remove 'sync' from args
+        elif args[0] == 'term':
+            cli_script = self.term_path_msys2
+            args = args[1:]  # Remove 'term' from args
+        elif args[0] == 'plugin':
+            cli_script = self.plugin_path_msys2
+            args = args[1:]  # Remove 'plugin' from args
+        else:
+            cli_script = self.cli_path_msys2
+        
+        cmd = [self.python_cmd, cli_script] + args
+        self.logger.debug(f"Streaming command: {cmd}")
+        
+        try:
+            # Start process with pipes
+            process = subprocess.Popen(
+                cmd,
+                stdout=subprocess.PIPE,
+                stderr=subprocess.STDOUT,  # Merge stderr into stdout
+                text=True,
+                bufsize=1,  # Line buffered
+                universal_newlines=True,
+                env=os.environ.copy()
+            )
+            
+            output_lines = []
+            
+            # Read output line by line
+            for line in iter(process.stdout.readline, ''):
+                if line:
+                    output_lines.append(line)
+                    if output_callback:
+                        output_callback(line)
+            
+            # Wait for process to complete
+            process.wait()
+            
+            # Get the return code
+            returncode = process.returncode
+            
+            # Join all output
+            full_output = ''.join(output_lines)
+            
+            return {
+                'success': returncode == 0,
+                'output': full_output,
+                'error': '' if returncode == 0 else full_output,
+                'returncode': returncode
+            }
+            
+        except Exception as e:
+            self.logger.error(f"Error in streaming command: {e}")
+            return {
+                'success': False,
+                'output': '',
+                'error': str(e),
+                'returncode': -1
+            }
