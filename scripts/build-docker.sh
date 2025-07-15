@@ -5,14 +5,37 @@ set -e
 
 echo "Building Rediacc CLI Docker images..."
 
+# Default to no-cache
+no_cache="--no-cache"
+with_gui=false
+
+# Parse arguments
+for arg in "$@"; do
+    case $arg in
+        --cache)
+            no_cache=""
+            echo "Building with Docker cache enabled"
+            ;;
+        --with-gui)
+            with_gui=true
+            ;;
+    esac
+done
+
+if [ -z "$no_cache" ]; then
+    :
+else
+    echo "Building without cache (default behavior)"
+fi
+
 # Build base CLI image
 echo "Building base CLI image..."
-docker build -t rediacc/cli:latest .
+docker build $no_cache -t rediacc/cli:latest .
 
 # Build GUI image (optional)
-if [ "$1" = "--with-gui" ]; then
+if [ "$with_gui" = true ]; then
     echo "Building GUI-enabled image..."
-    docker build -f Dockerfile.gui -t rediacc/cli-gui:latest .
+    docker build $no_cache -f Dockerfile.gui -t rediacc/cli-gui:latest .
 fi
 
 echo "Build complete!"
@@ -31,7 +54,7 @@ echo ""
 echo "  # Interactive shell:"
 echo "  docker-compose run --rm cli-shell"
 
-if [ "$1" = "--with-gui" ]; then
+if [ "$with_gui" = true ]; then
     echo ""
     echo "  # Run GUI (requires X11):"
     echo "  xhost +local:docker"
