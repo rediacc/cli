@@ -292,7 +292,7 @@ docker_run() {
         -w /workspace \
         --network host \
         rediacc-cli:latest \
-        python3 /app/src/cli/rediacc-cli "$@"
+        python3 /app/src/cli/rediacc-cli.py "$@"
 }
 
 docker_shell() {
@@ -353,7 +353,7 @@ desktop() {
     fi
     
     # Run Desktop GUI
-    "$PYTHON_CMD" "$CLI_ROOT/src/cli/rediacc-cli" --gui "$@"
+    "$PYTHON_CMD" "$CLI_ROOT/src/cli/rediacc-cli.py" --gui "$@"
 }
 
 desktop_docker_build() {
@@ -478,7 +478,7 @@ desktop_docker() {
         -v "$CLI_ROOT/.env:/app/.env:ro" \
         --network host \
         rediacc/cli-gui:latest \
-        python3 /app/src/cli/rediacc-cli --gui
+        python3 /app/src/cli/rediacc-cli.py --gui
     
     # Copy config back if it was updated
     if [ -f "$REDIACC_VOLUME/config.json" ]; then
@@ -505,24 +505,24 @@ case "$1" in
         
     login)
         shift
-        "$PYTHON_CMD" "$CLI_ROOT/src/cli/rediacc-cli" login "$@"
+        "$PYTHON_CMD" "$CLI_ROOT/src/cli/rediacc-cli.py" login "$@"
         ;;
         
     sync)
         shift
-        "$PYTHON_CMD" "$CLI_ROOT/src/cli/rediacc-cli-sync" "$@"
+        "$PYTHON_CMD" "$CLI_ROOT/src/cli/rediacc-cli-sync.py" "$@"
         ;;
         
     term|terminal)
         shift
         # Don't inject token - let the term command manage its own token from config
-        "$PYTHON_CMD" "$CLI_ROOT/src/cli/rediacc-cli-term" "$@"
+        "$PYTHON_CMD" "$CLI_ROOT/src/cli/rediacc-cli-term.py" "$@"
         ;;
         
     plugin)
         shift
         # Don't inject token - let the plugin command manage its own token from config
-        "$PYTHON_CMD" "$CLI_ROOT/src/cli/rediacc-cli-plugin" "$@"
+        "$PYTHON_CMD" "$CLI_ROOT/src/cli/rediacc-cli-plugin.py" "$@"
         ;;
         
     gui|desktop|--gui)
@@ -540,7 +540,7 @@ case "$1" in
                 desktop
             else
                 # Pass through to Python CLI which handles --gui modes
-                "$PYTHON_CMD" "$CLI_ROOT/src/cli/rediacc-cli" --gui "$@"
+                "$PYTHON_CMD" "$CLI_ROOT/src/cli/rediacc-cli.py" --gui "$@"
             fi
         fi
         ;;
@@ -597,6 +597,6 @@ case "$1" in
                 token_arg="--token $token"
             fi
         fi
-        "$PYTHON_CMD" "$CLI_ROOT/src/cli/rediacc-cli" $token_arg "$@"
+        "$PYTHON_CMD" "$CLI_ROOT/src/cli/rediacc-cli.py" $token_arg "$@"
         ;;
 esac

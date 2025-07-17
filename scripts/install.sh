@@ -249,9 +249,6 @@ make_executable() {
     
     SCRIPTS=(
         "rediacc"
-        "rediacc-cli"
-        "rediacc-cli-sync"
-        "rediacc-cli-term"
         "install.sh"
     )
     
@@ -450,9 +447,6 @@ main() {
                 
                 # Create symlinks
                 ln -sf "$PWD/rediacc" "$BIN_DIR/rediacc"
-                ln -sf "$PWD/rediacc-cli" "$BIN_DIR/rediacc-cli"
-                ln -sf "$PWD/rediacc-cli-sync" "$BIN_DIR/rediacc-cli-sync"
-                ln -sf "$PWD/rediacc-cli-term" "$BIN_DIR/rediacc-cli-term"
                 
                 print_success "Created symlinks in $BIN_DIR"
                 print_info "You can now run commands from anywhere:"

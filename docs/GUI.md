@@ -42,8 +42,8 @@ The Rediacc CLI GUI provides a simple graphical interface for the most commonly 
 .\rediacc.ps1 --gui
 
 # Direct Python
-python3 src/cli/rediacc-cli --gui
-python3 src/cli/rediacc-cli --gui native
+python3 src/cli/rediacc-cli.py --gui
+python3 src/cli/rediacc-cli.py --gui native
 ```
 
 ### Docker Launch (with X11 support)

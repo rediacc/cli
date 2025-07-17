@@ -36,7 +36,7 @@ docker build -f docker/Dockerfile.gui -t rediacc/cli-gui:latest .
 docker run --rm rediacc/cli:latest
 
 # Run specific command
-docker run --rm -v ./cli/.rediacc:/home/rediacc/.rediacc rediacc/cli:latest ./rediacc-cli list teams
+docker run --rm -v ./cli/.rediacc:/home/rediacc/.rediacc rediacc/cli:latest ./rediacc list teams
 
 # Interactive shell
 docker run -it --rm -v ./cli/.rediacc:/home/rediacc/.rediacc rediacc/cli:latest /bin/bash
@@ -45,10 +45,10 @@ docker run -it --rm -v ./cli/.rediacc:/home/rediacc/.rediacc rediacc/cli:latest 
 ### With Environment Variables
 ```bash
 # Using .env file
-docker run --rm --env-file .env rediacc/cli:latest ./rediacc-cli list teams
+docker run --rm --env-file .env rediacc/cli:latest ./rediacc list teams
 
 # Using individual variables
-docker run --rm -e REDIACC_TOKEN=your-token rediacc/cli:latest ./rediacc-cli list teams
+docker run --rm -e REDIACC_TOKEN=your-token rediacc/cli:latest ./rediacc list teams
 ```
 
 ### GUI Support (X11 Forwarding)
@@ -150,7 +150,7 @@ docker run -it --rm \
 ### Debugging
 ```bash
 # Run with verbose output
-docker run --rm -e REDIACC_VERBOSE=1 rediacc/cli:latest ./rediacc-cli list teams
+docker run --rm -e REDIACC_VERBOSE=1 rediacc/cli:latest ./rediacc list teams
 
 # Check image contents
 docker run --rm rediacc/cli:latest ls -la /app

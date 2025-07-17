@@ -1047,7 +1047,7 @@ function Invoke-RediaccCLI {
     }
     
     # Build script path
-    $scriptPath = Join-Path (Join-Path $PSScriptRoot "src\cli") $Tool
+    $scriptPath = Join-Path (Join-Path $PSScriptRoot "src\cli") "$Tool.py"
     
     # Execute
     & $python.Command $scriptPath $Arguments

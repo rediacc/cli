@@ -45,7 +45,7 @@ if [ -z "$TOKEN" ]; then
     # Try to login
     print_info "Logging in with email: $ADMIN_EMAIL"
     # Set correct CLI path
-    CLI="${CLI:-../src/cli/rediacc-cli}"
+    CLI="${CLI:-../src/cli/rediacc-cli.py}"
     LOGIN_OUTPUT=$($CLI login --email "$ADMIN_EMAIL" --password "$ADMIN_PASSWORD" 2>&1)
     
     if echo "$LOGIN_OUTPUT" | grep -qi "successfully logged in\|authentication successful\|logged in as"; then
