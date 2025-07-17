@@ -17,7 +17,7 @@ from typing import Dict, Any, Optional, List, Tuple
 from datetime import datetime
 
 # Add parent directory to path for module imports
-sys.path.insert(0, os.path.join(os.path.dirname(os.path.abspath(__file__)), '..', 'modules'))
+sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 
 # Import common functionality from core module
 from rediacc_cli_core import (

@@ -18,7 +18,7 @@ from typing import Dict, Any, Optional, List, Union
 from pathlib import Path
 
 # Add parent directory to path for module imports
-sys.path.insert(0, os.path.join(os.path.dirname(os.path.abspath(__file__)), '..', 'modules'))
+sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 
 # Import configuration loader
 from config_loader import load_config, get_required, get, get_path, ConfigError
@@ -54,7 +54,7 @@ HTTP_PORT = get_required('SYSTEM_HTTP_PORT')
 BASE_URL = get_required('REDIACC_API_URL')
 API_PREFIX = '/StoredProcedure'
 # Use centralized config path
-sys.path.insert(0, os.path.join(os.path.dirname(os.path.abspath(__file__)), '..', 'modules'))
+sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 from config_path import get_config_dir, get_main_config_file
 
 CONFIG_DIR = str(get_config_dir())
@@ -306,7 +306,7 @@ CMD_CONFIG = reconstruct_cmd_config()
 ARG_DEFS = reconstruct_arg_defs()
 
 # NOTE: ConfigManager class was removed and consolidated into TokenManager
-# All configuration management is now handled by TokenManager in src/modules/token_manager.py
+# All configuration management is now handled by TokenManager in token_manager.py
 # This eliminates code duplication and provides better thread safety and token management
 
 class APIClient:
@@ -995,7 +995,7 @@ class CommandHandler:
                 # No TFA code provided, prompt for it
                 if self.output_format != 'json':
                     # Import i18n module for translation
-                    from modules.i18n import I18n
+                    from i18n import I18n
                     i18n = I18n()
                     tfa_code = input(i18n.get('enter_tfa_code'))
                 else:
@@ -2214,7 +2214,7 @@ def main():
         else:  # native mode (default)
             # Import and launch GUI natively
             try:
-                # Import from modules directory (already in sys.path)
+                # Import from current directory (already in sys.path)
                 import rediacc_cli_gui
                 rediacc_cli_gui.launch_gui()
                 return 0
@@ -2224,7 +2224,7 @@ def main():
                 # Additional help for module import errors
                 if "No module named 'modules'" in str(e):
                     print(colorize("The modules directory was not found. Check your installation.", 'YELLOW'))
-                    modules_path = os.path.join(os.path.dirname(os.path.abspath(__file__)), '..', 'modules')
+                    modules_path = os.path.dirname(os.path.abspath(__file__))
                     print(colorize(f"Expected modules path: {modules_path}", 'YELLOW'))
                     print(colorize(f"Path exists: {os.path.exists(modules_path)}", 'YELLOW'))
                 return 1
