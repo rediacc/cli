@@ -20,11 +20,11 @@ from rediacc_cli_core import (
     get_ssh_key_from_vault
 )
 
-# Import token manager
-from token_manager import TokenManager
-
-# Import logging configuration
-from logging_config import setup_logging, get_logger
+# Import from consolidated core module
+from core import (
+    TokenManager,
+    setup_logging, get_logger
+)
 
 
 def connect_to_machine(args):

@@ -23,11 +23,11 @@ from rediacc_cli_core import (
     is_windows
 )
 
-# Import token manager
-from token_manager import TokenManager
-
-# Import logging configuration
-from logging_config import setup_logging, get_logger
+# Import from consolidated core module
+from core import (
+    TokenManager,
+    setup_logging, get_logger
+)
 
 import shutil
 import platform

@@ -52,20 +52,14 @@ class ToolTip:
 def create_tooltip(widget, text):
     return ToolTip(widget, text)
 
-# Import TokenManager for authentication
-from token_manager import TokenManager
-
-# Import subprocess runner for CLI commands
-from subprocess_runner import SubprocessRunner
-
-# Import internationalization
-from i18n import i18n
-
-# Import terminal detector
-from terminal_detector import TerminalDetector
-
-# Import logging configuration
-from logging_config import get_logger
+# Import from consolidated core module
+from core import (
+    TokenManager,
+    SubprocessRunner,
+    i18n,
+    TerminalDetector,
+    get_logger
+)
 
 # Import core functionality for SSH operations
 from rediacc_cli_core import (
