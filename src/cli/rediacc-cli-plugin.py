@@ -76,10 +76,7 @@ def is_port_available(port: int) -> bool:
 
 def find_available_port(start: int = DEFAULT_PORT_RANGE[0], end: int = DEFAULT_PORT_RANGE[1]) -> Optional[int]:
     """Find an available port in the given range"""
-    for port in range(start, end + 1):
-        if is_port_available(port):
-            return port
-    return None
+    return next((port for port in range(start, end + 1) if is_port_available(port)), None)
 
 def is_process_running(pid: int) -> bool:
     """Check if a process is running"""
@@ -92,14 +89,15 @@ def is_process_running(pid: int) -> bool:
 def clean_stale_connections():
     """Remove connections with dead SSH processes"""
     connections = load_connections()
-    active_connections = {}
+    active_connections = {
+        conn_id: conn_info
+        for conn_id, conn_info in connections.items()
+        if (pid := conn_info.get('ssh_pid')) and is_process_running(pid)
+    }
     
-    for conn_id, conn_info in connections.items():
-        pid = conn_info.get('ssh_pid')
-        if pid and is_process_running(pid):
-            active_connections[conn_id] = conn_info
-        else:
-            print(colorize(f"Cleaning up stale connection: {conn_id}", 'YELLOW'))
+    # Print cleanup messages for stale connections
+    for conn_id in set(connections) - set(active_connections):
+        print(colorize(f"Cleaning up stale connection: {conn_id}", 'YELLOW'))
     
     if len(active_connections) != len(connections):
         save_connections(active_connections)
@@ -148,13 +146,11 @@ def list_plugins(args):
             # Parse socket files
             plugins = []
             for line in result.stdout.strip().split('\n'):
-                if '.sock' in line:
-                    parts = line.split()
-                    if len(parts) >= 9:
-                        socket_file = parts[-1]
-                        plugin_name = socket_file.replace('.sock', '')
-                        plugins.append(plugin_name)
-                        print(f"  • {colorize(plugin_name, 'GREEN')} ({socket_file})")
+                if '.sock' in line and len(parts := line.split()) >= 9:
+                    socket_file = parts[-1]
+                    plugin_name = socket_file.replace('.sock', '')
+                    plugins.append(plugin_name)
+                    print(f"  • {colorize(plugin_name, 'GREEN')} ({socket_file})")
             
             if not plugins:
                 print(colorize("  No plugin sockets found", 'YELLOW'))
@@ -178,12 +174,13 @@ def list_plugins(args):
                 
                 # Show existing connections
                 connections = load_connections()
-                active_for_repo = []
-                for conn_id, conn_info in connections.items():
+                active_for_repo = [
+                    conn_info
+                    for conn_info in connections.values()
                     if (conn_info.get('team') == args.team and 
                         conn_info.get('machine') == args.machine and 
-                        conn_info.get('repo') == args.repo):
-                        active_for_repo.append(conn_info)
+                        conn_info.get('repo') == args.repo)
+                ]
                 
                 if active_for_repo:
                     print(colorize("\nActive local connections:", 'BLUE'))
@@ -207,14 +204,21 @@ def connect_plugin(args):
     
     # Check if already connected
     connections = load_connections()
-    for conn_id, conn_info in connections.items():
+    existing_conn = next(
+        ((conn_id, conn_info)
+        for conn_id, conn_info in connections.items()
         if (conn_info.get('team') == args.team and 
             conn_info.get('machine') == args.machine and 
             conn_info.get('repo') == args.repo and 
-            conn_info.get('plugin') == args.plugin):
-            print(colorize(f"Plugin already connected on port {conn_info['local_port']}", 'YELLOW'))
-            print(f"Connection ID: {conn_id}")
-            return
+            conn_info.get('plugin') == args.plugin)),
+        None
+    )
+    
+    if existing_conn:
+        conn_id, conn_info = existing_conn
+        print(colorize(f"Plugin already connected on port {conn_info['local_port']}", 'YELLOW'))
+        print(f"Connection ID: {conn_id}")
+        return
     
     # Find available port
     if args.port:
@@ -223,8 +227,7 @@ def connect_plugin(args):
             sys.exit(1)
         local_port = args.port
     else:
-        local_port = find_available_port()
-        if not local_port:
+        if not (local_port := find_available_port()):
             print(colorize("No available ports in range 7111-9111", 'RED'))
             sys.exit(1)
     
@@ -265,23 +268,24 @@ def connect_plugin(args):
         control_path = os.path.join(SSH_CONTROL_DIR, f"plugin-{conn_id}")
         
         # Check OpenSSH version to see if we can use Unix socket forwarding
-        ssh_version_cmd = ['ssh', '-V']
-        version_result = subprocess.run(ssh_version_cmd, capture_output=True, text=True)
-        ssh_version_output = (version_result.stdout + version_result.stderr).lower()
-        
-        # OpenSSH 6.7+ supports Unix socket forwarding
-        supports_unix_forwarding = False
-        if 'openssh' in ssh_version_output:
+        def check_ssh_unix_support() -> bool:
+            """Check if SSH supports Unix socket forwarding (OpenSSH 6.7+)"""
+            result = subprocess.run(['ssh', '-V'], capture_output=True, text=True)
+            ssh_version_output = (result.stdout + result.stderr).lower()
+            
+            if 'openssh' not in ssh_version_output:
+                return False
+            
             try:
-                # Extract version number
                 import re
-                version_match = re.search(r'openssh[_\s]+(\d+)\.(\d+)', ssh_version_output)
-                if version_match:
-                    major, minor = int(version_match.group(1)), int(version_match.group(2))
-                    if major > 6 or (major == 6 and minor >= 7):
-                        supports_unix_forwarding = True
+                if match := re.search(r'openssh[_\s]+(\d+)\.(\d+)', ssh_version_output):
+                    major, minor = int(match.group(1)), int(match.group(2))
+                    return major > 6 or (major == 6 and minor >= 7)
             except:
                 pass
+            return False
+        
+        supports_unix_forwarding = check_ssh_unix_support()
         
         if supports_unix_forwarding:
             # Use native Unix socket forwarding
@@ -309,16 +313,20 @@ def connect_plugin(args):
                 sys.exit(1)
             
             # Since we used -f, we need to find the SSH process PID
-            ssh_pid = None
-            # Try to get from control socket
-            try:
-                check_master = subprocess.run(['ssh', '-O', 'check', '-o', f'ControlPath={control_path}', 'dummy'], 
-                                            capture_output=True, text=True)
-                if 'pid=' in check_master.stderr:
-                    ssh_pid = int(check_master.stderr.split('pid=')[1].split()[0].rstrip(')'))
-            except:
-                pass
+            def get_ssh_pid(control_path: str) -> Optional[int]:
+                """Get SSH process PID from control socket"""
+                try:
+                    result = subprocess.run(
+                        ['ssh', '-O', 'check', '-o', f'ControlPath={control_path}', 'dummy'], 
+                        capture_output=True, text=True
+                    )
+                    if 'pid=' in result.stderr:
+                        return int(result.stderr.split('pid=')[1].split()[0].rstrip(')'))
+                except:
+                    pass
+                return None
             
+            ssh_pid = get_ssh_pid(control_path)
             process = type('Process', (), {'pid': ssh_pid})()
         else:
             # Fallback: Use socat if available
@@ -404,22 +412,21 @@ def disconnect_plugin(args):
     connections = load_connections()
     
     # Find connection(s) to disconnect
-    to_disconnect = []
-    
     if args.connection_id:
-        if args.connection_id in connections:
-            to_disconnect.append(args.connection_id)
-        else:
+        if args.connection_id not in connections:
             print(colorize(f"Connection ID '{args.connection_id}' not found", 'RED'))
             sys.exit(1)
+        to_disconnect = [args.connection_id]
     else:
         # Find by team/machine/repo/plugin
-        for conn_id, conn_info in connections.items():
+        to_disconnect = [
+            conn_id
+            for conn_id, conn_info in connections.items()
             if (conn_info.get('team') == args.team and 
                 conn_info.get('machine') == args.machine and 
                 conn_info.get('repo') == args.repo and 
-                (not args.plugin or conn_info.get('plugin') == args.plugin)):
-                to_disconnect.append(conn_id)
+                (not args.plugin or conn_info.get('plugin') == args.plugin))
+        ]
     
     if not to_disconnect:
         print(colorize("No matching connections found", 'YELLOW'))
@@ -431,41 +438,37 @@ def disconnect_plugin(args):
         print(colorize(f"Disconnecting {conn_info['plugin']} (port {conn_info['local_port']})...", 'BLUE'))
         
         # Stop SSH tunnel using control socket
-        control_path = conn_info.get('control_path')
-        if control_path:
-            try:
-                # Try to stop via control socket
-                subprocess.run(['ssh', '-O', 'stop', '-o', f'ControlPath={control_path}', 'dummy'], 
-                             capture_output=True, stderr=subprocess.DEVNULL)
-            except:
-                pass
+        def stop_ssh_connection(conn_info: Dict[str, Any]):
+            """Stop SSH connection gracefully"""
+            # Try control socket first
+            if control_path := conn_info.get('control_path'):
+                try:
+                    subprocess.run(
+                        ['ssh', '-O', 'stop', '-o', f'ControlPath={control_path}', 'dummy'], 
+                        capture_output=True, stderr=subprocess.DEVNULL
+                    )
+                except:
+                    pass
+            
+            # Kill SSH process as fallback
+            if pid := conn_info.get('ssh_pid'):
+                try:
+                    os.kill(pid, signal.SIGTERM)
+                    time.sleep(0.5)
+                    if is_process_running(pid):
+                        os.kill(pid, signal.SIGKILL)
+                except (ProcessLookupError, OSError):
+                    pass
         
-        # Kill SSH process as fallback
-        if conn_info.get('ssh_pid'):
-            try:
-                os.kill(conn_info['ssh_pid'], signal.SIGTERM)
-                # Give it a moment to clean up
-                time.sleep(0.5)
-                # Force kill if still running
-                if is_process_running(conn_info['ssh_pid']):
-                    os.kill(conn_info['ssh_pid'], signal.SIGKILL)
-            except ProcessLookupError:
-                pass  # Process already dead
-            except:
-                pass
+        stop_ssh_connection(conn_info)
         
         # Clean up SSH key files
-        if conn_info.get('ssh_key_file') and os.path.exists(conn_info['ssh_key_file']):
-            try:
-                os.remove(conn_info['ssh_key_file'])
-            except:
-                pass
-        
-        if conn_info.get('known_hosts_file') and os.path.exists(conn_info['known_hosts_file']):
-            try:
-                os.remove(conn_info['known_hosts_file'])
-            except:
-                pass
+        for file_key in ['ssh_key_file', 'known_hosts_file']:
+            if (file_path := conn_info.get(file_key)) and os.path.exists(file_path):
+                try:
+                    os.remove(file_path)
+                except:
+                    pass
         
         # Remove from connections
         del connections[conn_id]
@@ -573,13 +576,9 @@ Plugin Access:
     # Handle token authentication for commands that need it
     if hasattr(args, 'token') and args.command in ['list', 'connect']:
         if args.token:
-            # If token provided via command line, set it as environment variable
             os.environ['REDIACC_TOKEN'] = args.token
-        else:
-            # Verify token exists in TokenManager
-            token = TokenManager.get_token()
-            if not token:
-                parser.error("No authentication token available. Please login first.")
+        elif not TokenManager.get_token():
+            parser.error("No authentication token available. Please login first.")
     
     # Validate CLI tool exists for commands that need it
     if args.command in ['list', 'connect']:

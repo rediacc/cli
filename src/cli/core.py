@@ -16,6 +16,7 @@ import platform
 import base64
 import re
 import logging
+import contextlib
 from pathlib import Path
 from typing import Dict, Optional, Any, List, Tuple
 from datetime import datetime, timedelta, timezone
@@ -33,9 +34,7 @@ def get_cli_root() -> Path:
         Path: The absolute path to the CLI root directory
     """
     # This module is in cli/src/cli, so go up 2 levels
-    current_file = Path(__file__).resolve()
-    cli_root = current_file.parent.parent.parent  # cli -> src -> cli
-    return cli_root
+    return Path(__file__).resolve().parent.parent.parent  # cli -> src -> cli
 
 
 def get_config_dir() -> Path:
@@ -51,20 +50,12 @@ def get_config_dir() -> Path:
     Returns:
         Path: The absolute path to the configuration directory
     """
-    # First check if REDIACC_CONFIG_DIR is explicitly set
-    config_dir_env = os.environ.get('REDIACC_CONFIG_DIR')
-    
-    if config_dir_env:
-        # Use explicitly configured directory (e.g., in Docker)
-        config_dir = Path(config_dir_env).resolve()
-    else:
-        # Use local config directory in CLI folder
-        cli_root = get_cli_root()
-        config_dir = cli_root / '.config'
-    
-    # Create directory if it doesn't exist
+    config_dir = (
+        Path(os.environ['REDIACC_CONFIG_DIR']).resolve()
+        if 'REDIACC_CONFIG_DIR' in os.environ
+        else get_cli_root() / '.config'
+    )
     config_dir.mkdir(exist_ok=True)
-    
     return config_dir
 
 
@@ -78,8 +69,7 @@ def get_config_file(filename: str) -> Path:
     Returns:
         Path: The absolute path to the configuration file
     """
-    config_dir = get_config_dir()
-    return config_dir / filename
+    return get_config_dir() / filename
 
 
 # Convenience functions for common config files
@@ -138,20 +128,17 @@ def setup_logging(verbose: bool = False, log_file: Optional[str] = None) -> None
         log_file: Optional file path to write logs to
     """
     log_level = logging.DEBUG if verbose else logging.INFO
-    
-    # Define log format
-    if verbose:
-        log_format = '%(asctime)s - %(name)s - %(levelname)s - %(funcName)s:%(lineno)d - %(message)s'
-    else:
-        log_format = '%(levelname)s: %(message)s'
+    log_format = (
+        '%(asctime)s - %(name)s - %(levelname)s - %(funcName)s:%(lineno)d - %(message)s'
+        if verbose else
+        '%(levelname)s: %(message)s'
+    )
     
     # Configure handlers
-    handlers = []
-    
-    # Console handler (stderr to avoid contaminating stdout)
-    console_handler = logging.StreamHandler(sys.stderr)
-    console_handler.setFormatter(logging.Formatter(log_format))
-    handlers.append(console_handler)
+    handlers = [
+        logging.StreamHandler(sys.stderr)
+    ]
+    handlers[0].setFormatter(logging.Formatter(log_format))
     
     # File handler if specified
     if log_file:
@@ -171,8 +158,8 @@ def setup_logging(verbose: bool = False, log_file: Optional[str] = None) -> None
     # Set specific loggers that might be too verbose
     if not verbose:
         # Suppress verbose output from third-party libraries
-        logging.getLogger('urllib3').setLevel(logging.WARNING)
-        logging.getLogger('requests').setLevel(logging.WARNING)
+        for logger_name in ('urllib3', 'requests'):
+            logging.getLogger(logger_name).setLevel(logging.WARNING)
 
 
 def get_logger(name: str) -> logging.Logger:
@@ -256,10 +243,12 @@ class Config:
     
     def _find_env_file(self) -> Optional[Path]:
         """Find .env file in current, parent directories, or home"""
-        # Check current directory
         current = Path.cwd()
-        if (current / '.env').exists():
-            return current / '.env'
+        
+        # Check current directory
+        env_path = current / '.env'
+        if env_path.exists():
+            return env_path
         
         # Check parent directories up to the monorepo root
         for parent in current.parents:
@@ -271,19 +260,12 @@ class Config:
                 break
         
         # Check local CLI directory
-        config_dir = get_config_dir()
-        local_env = config_dir / '.env'
-        if local_env.exists():
-            return local_env
-        
-        return None
+        local_env = get_config_dir() / '.env'
+        return local_env if local_env.exists() else None
     
     def _load_env_file(self, env_file: Optional[str] = None):
         """Load configuration from .env file"""
-        if env_file:
-            env_path = Path(env_file)
-        else:
-            env_path = self._find_env_file()
+        env_path = Path(env_file) if env_file else self._find_env_file()
         
         if not env_path or not env_path.exists():
             return
@@ -292,56 +274,53 @@ class Config:
             with open(env_path, 'r') as f:
                 for line in f:
                     line = line.strip()
-                    if line and not line.startswith('#'):
-                        if '=' in line:
-                            key, value = line.split('=', 1)
-                            key = key.strip()
-                            value = value.strip().strip('"\'')
-                            self._config[key] = value
+                    if line and not line.startswith('#') and '=' in line:
+                        key, value = line.split('=', 1)
+                        self._config[key.strip()] = value.strip().strip('"\'')
         except Exception as e:
             self.logger.warning(f"Failed to load .env file: {e}")
     
     def _load_from_environment(self):
         """Load configuration from environment variables"""
-        all_keys = list(self.REQUIRED_KEYS.keys()) + list(self.OPTIONAL_KEYS.keys())
-        for key in all_keys:
-            if key in os.environ:
-                self._config[key] = os.environ[key]
+        all_keys = [*self.REQUIRED_KEYS.keys(), *self.OPTIONAL_KEYS.keys()]
+        self._config.update(
+            (key, os.environ[key])
+            for key in all_keys
+            if key in os.environ
+        )
         
         # Try to load API URL from shared config file if not set
         if 'REDIACC_API_URL' not in self._config:
-            api_url = self._load_api_url_from_shared_config()
-            if api_url:
+            if api_url := self._load_api_url_from_shared_config():
                 self._config['REDIACC_API_URL'] = api_url
     
     def _load_api_url_from_shared_config(self) -> Optional[str]:
         """Load API URL from shared config file (same as desktop app)"""
         try:
-            # Use config directory
-            config_dir = get_config_dir()
-            config_path = config_dir / 'config.json'
+            config_path = get_config_dir() / 'config.json'
             if config_path.exists():
                 with open(config_path, 'r') as f:
                     config = json.load(f)
                     # Support both snake_case and camelCase
                     return config.get('api_url') or config.get('apiUrl')
         except Exception:
-            # Silently ignore errors
             pass
         return None
     
     def _validate(self):
         """Validate that all required configuration is present"""
-        missing = []
-        for key, description in self.REQUIRED_KEYS.items():
-            if key not in self._config:
-                missing.append(f"  {key}: {description}")
+        missing = [
+            f"  {key}: {description}"
+            for key, description in self.REQUIRED_KEYS.items()
+            if key not in self._config
+        ]
         
         if missing:
-            msg = "Missing required configuration:\n" + "\n".join(missing)
-            msg += "\n\nPlease set these environment variables or create a .env file."
-            msg += "\nSee .env.example for a template."
-            raise ConfigError(msg)
+            raise ConfigError(
+                "Missing required configuration:\n" + "\n".join(missing) +
+                "\n\nPlease set these environment variables or create a .env file." +
+                "\nSee .env.example for a template."
+            )
     
     def get(self, key: str, default: Optional[str] = None) -> Optional[str]:
         """Get a configuration value"""
@@ -351,15 +330,13 @@ class Config:
     
     def get_required(self, key: str) -> str:
         """Get a required configuration value"""
-        value = self.get(key)
-        if value is None:
+        if (value := self.get(key)) is None:
             raise ConfigError(f"Required configuration '{key}' is not set")
         return value
     
     def get_int(self, key: str, default: Optional[int] = None) -> Optional[int]:
         """Get a configuration value as integer"""
-        value = self.get(key)
-        if value is None:
+        if (value := self.get(key)) is None:
             return default
         try:
             return int(value)
@@ -368,21 +345,17 @@ class Config:
     
     def get_bool(self, key: str, default: bool = False) -> bool:
         """Get a configuration value as boolean"""
-        value = self.get(key)
-        if value is None:
-            return default
-        return value.lower() in ('true', '1', 'yes', 'on')
+        return (
+            self.get(key, '').lower() in ('true', '1', 'yes', 'on')
+            if self.get(key) is not None
+            else default
+        )
     
     def get_path(self, key: str, default: Optional[str] = None) -> Optional[Path]:
         """Get a configuration value as Path, expanding ~ and variables"""
-        value = self.get(key, default)
-        if value is None:
+        if (value := self.get(key, default)) is None:
             return None
-        # Expand user home directory
-        value = os.path.expanduser(value)
-        # Expand environment variables
-        value = os.path.expandvars(value)
-        return Path(value)
+        return Path(os.path.expandvars(os.path.expanduser(value)))
     
     def print_config(self):
         """Print current configuration (for debugging)"""
@@ -395,8 +368,7 @@ class Config:
         # Print required configs
         self.logger.debug("Required:")
         for key in self.REQUIRED_KEYS:
-            value = self._config.get(key, '<NOT SET>')
-            self.logger.debug(f"  {key}={value}")
+            self.logger.debug(f"  {key}={self._config.get(key, '<NOT SET>')}")
         
         # Print optional configs that are set
         self.logger.debug("\nOptional (set):")
@@ -405,8 +377,7 @@ class Config:
                 self.logger.debug(f"  {key}={self._config[key]}")
         
         # Print optional configs that are not set
-        unset = [k for k in self.OPTIONAL_KEYS if k not in self._config]
-        if unset:
+        if unset := [k for k in self.OPTIONAL_KEYS if k not in self._config]:
             self.logger.debug("\nOptional (not set):")
             for key in unset:
                 self.logger.debug(f"  {key}")
@@ -504,14 +475,10 @@ class APIMutex:
         finally:
             # Release lock and close file
             if lock_fd is not None:
-                try:
+                with contextlib.suppress(Exception):
                     fcntl.flock(lock_fd, fcntl.LOCK_UN)
-                except:
-                    pass
-                try:
+                with contextlib.suppress(Exception):
                     os.close(lock_fd)
-                except:
-                    pass
 
 # For Windows compatibility when fcntl is not available
 if not HAS_FCNTL and HAS_MSVCRT:
@@ -563,15 +530,11 @@ if not HAS_FCNTL and HAS_MSVCRT:
             finally:
                 # Release lock and close file
                 if file_handle:
-                    try:
+                    with contextlib.suppress(Exception):
                         # Unlock the file
                         msvcrt.locking(file_handle.fileno(), msvcrt.LK_UNLCK, 1)
-                    except:
-                        pass
-                    try:
+                    with contextlib.suppress(Exception):
                         file_handle.close()
-                    except:
-                        pass
 
 # Create the appropriate mutex instance based on platform capabilities
 if HAS_FCNTL:
@@ -626,7 +589,7 @@ def is_encrypted(value: str) -> bool:
         decoded = base64.b64decode(value)
         # Encrypted values should be at least 32 bytes (salt + iv + minimal ciphertext)
         return len(decoded) >= 32
-    except:
+    except Exception:
         return False
 
 
@@ -702,8 +665,6 @@ class TokenManager:
     @classmethod
     def _initialize(cls):
         """Initialize static configuration"""
-        # Get config directory from centralized function
-        # This already checks REDIACC_CONFIG_DIR environment variable
         config_dir = get_config_dir()
         
         # Handle MSYS2 path resolution - try both Windows and MSYS2 formats
@@ -711,32 +672,24 @@ class TokenManager:
             config_dir_str = str(config_dir)
             
             # First try the Windows path as-is (might work in some MSYS2 setups)
-            if config_dir.exists():
-                logger.debug(f"MSYS2: Using Windows path: {config_dir}")
-            else:
+            if not config_dir.exists():
                 # Try MSYS2 format conversion
-                if config_dir_str.startswith('C:') or config_dir_str.startswith('c:'):
+                if config_dir_str.startswith(('C:', 'c:')):
                     drive = config_dir_str[0].lower()
                     rest = config_dir_str[2:].replace('\\', '/')
-                    msys2_path = f'/{drive}{rest}'
-                    msys2_config_dir = Path(msys2_path)
                     
-                    if msys2_config_dir.exists():
-                        config_dir = msys2_config_dir
+                    # Try MSYS2 path format
+                    msys2_path = f'/{drive}{rest}'
+                    if Path(msys2_path).exists():
+                        config_dir = Path(msys2_path)
                         logger.debug(f"MSYS2: Using converted path: {msys2_path}")
                     else:
                         # Try WSL format as fallback
                         wsl_path = f'/mnt/{drive}{rest}'
-                        wsl_config_dir = Path(wsl_path)
-                        if wsl_config_dir.exists():
-                            config_dir = wsl_config_dir
+                        if Path(wsl_path).exists():
+                            config_dir = Path(wsl_path)
                             logger.debug(f"MSYS2: Using WSL fallback path: {wsl_path}")
-                        else:
-                            logger.debug(f"MSYS2: No valid path found, using original: {config_dir}")
-                else:
-                    logger.debug(f"MSYS2: Using original path: {config_dir}")
             
-        # Debug: ensure we found the right path
         logger.debug(f"TokenManager using local config: {config_dir}")
         
         cls._config_dir = Path(config_dir)
@@ -756,11 +709,8 @@ class TokenManager:
         
         # Set secure permissions on existing config file (Unix systems only)
         if cls._config_file.exists():
-            try:
+            with contextlib.suppress(OSError, NotImplementedError):
                 cls._config_file.chmod(0o600)
-            except (OSError, NotImplementedError) as e:
-                # Windows or other systems may not support chmod
-                logger.debug(f"Could not set secure permissions on config file: {e}")
     
     @classmethod
     def _load_from_config(cls) -> Dict[str, Any]:
@@ -779,8 +729,8 @@ class TokenManager:
     @classmethod
     def _save_config(cls, config: Dict[str, Any]):
         """Save configuration to file with secure permissions and thread safety"""
-        import time
         import platform
+        import shutil
         
         with cls._lock:
             cls._config_dir.mkdir(mode=0o700, exist_ok=True)
@@ -802,16 +752,11 @@ class TokenManager:
                     
                     # Try to replace the config file
                     if is_windows and cls._config_file.exists():
-                        # On Windows, remove target first if it exists
-                        try:
+                        with contextlib.suppress(OSError):
                             cls._config_file.unlink()
-                        except OSError:
-                            pass  # File might not exist or be locked
                     
                     # Move temp file to final location
                     if is_windows:
-                        # Use shutil.move for better Windows compatibility
-                        import shutil
                         shutil.move(str(temp_file), str(cls._config_file))
                     else:
                         temp_file.replace(cls._config_file)
@@ -826,10 +771,8 @@ class TokenManager:
                     logger.warning(f"Config save attempt {attempt + 1} failed: {e}")
                     # Clean up temp file
                     if temp_file.exists():
-                        try:
+                        with contextlib.suppress(OSError):
                             temp_file.unlink()
-                        except OSError:
-                            pass
                     
                     if attempt < max_retries - 1:
                         # Wait before retry
@@ -840,10 +783,8 @@ class TokenManager:
                 except Exception as e:
                     logger.error(f"Failed to save config: {e}")
                     if temp_file.exists():
-                        try:
+                        with contextlib.suppress(OSError):
                             temp_file.unlink()
-                        except OSError:
-                            pass
                     raise
     
     @classmethod
@@ -963,9 +904,7 @@ class TokenManager:
     @staticmethod
     def mask_token(token: Optional[str]) -> Optional[str]:
         """Mask token for display (show only first 8 chars)"""
-        if not token or len(token) < 12:
-            return None
-        return f"{token[:8]}..."
+        return f"{token[:8]}..." if token and len(token) >= 12 else None
     
     @classmethod
     def is_authenticated(cls) -> bool:
@@ -979,8 +918,7 @@ class TokenManager:
         if not cls._initialized:
             TokenManager()
             
-        config = cls._load_from_config()
-        return config.get(key)
+        return cls._load_from_config().get(key)
     
     @classmethod
     def set_config_value(cls, key: str, value: Any):
@@ -1034,7 +972,7 @@ class TokenManager:
         """Check if company has vault encryption enabled"""
         # Try to get vault company from memory first, then config
         vault_company = self._vault_company or self.get_config_value('vault_company')
-        return vault_company and is_encrypted(vault_company)
+        return bool(vault_company and is_encrypted(vault_company))
     
     def get_vault_company(self) -> Optional[str]:
         """Get vault company value"""
@@ -1057,7 +995,7 @@ class TokenManager:
             # The decrypted content should be valid JSON (even if it's just {})
             json.loads(decrypted)
             return True
-        except:
+        except Exception:
             # Decryption failed or result is not valid JSON - wrong password
             return False
     
@@ -1074,10 +1012,8 @@ class TokenManager:
     def load_vault_info_from_config(self):
         """Load vault info from saved config"""
         config = self._load_from_config()
-        if 'vault_company' in config:
-            self._vault_company = config['vault_company']
-        if 'company' in config:
-            self._company_name = config['company']
+        self._vault_company = config.get('vault_company')
+        self._company_name = config.get('company')
     
     def set_token_overridden(self, overridden: bool = True):
         """Mark that token was overridden via command line"""
@@ -1163,8 +1099,7 @@ class I18n:
     def get_language_config_path(self) -> Path:
         """Get the path to the language configuration file"""
         # Use centralized config directory
-        config_dir = get_config_dir()
-        return config_dir / 'language_preference.json'
+        return get_config_dir() / 'language_preference.json'
     
     def load_language_preference(self) -> str:
         """Load the saved language preference"""
@@ -1173,10 +1108,9 @@ class I18n:
             try:
                 with open(config_path, 'r', encoding='utf-8') as f:
                     data = json.load(f)
-                    lang = data.get('language', self.DEFAULT_LANGUAGE)
-                    if lang in self.LANGUAGES:
+                    if (lang := data.get('language', self.DEFAULT_LANGUAGE)) in self.LANGUAGES:
                         return lang
-            except:
+            except Exception:
                 pass
         return self.DEFAULT_LANGUAGE
     
@@ -1186,11 +1120,9 @@ class I18n:
             return
         
         config_path = self.get_language_config_path()
-        try:
+        with contextlib.suppress(Exception):
             with open(config_path, 'w', encoding='utf-8') as f:
                 json.dump({'language': language}, f, ensure_ascii=False, indent=2)
-        except:
-            pass
     
     def set_language(self, language: str):
         """Set the current language"""
@@ -1207,20 +1139,16 @@ class I18n:
             fallback: Optional fallback value if key not found
             **kwargs: Format arguments for the translation string
         """
-        translation = self.translations.get(self.current_language, {}).get(key)
-        if not translation:
-            # Fallback to English
-            translation = self.translations.get('en', {}).get(key)
-            if not translation:
-                # Use provided fallback or key as last resort
-                translation = fallback if fallback is not None else key
+        translation = (
+            self.translations.get(self.current_language, {}).get(key) or
+            self.translations.get('en', {}).get(key) or
+            fallback if fallback is not None else key
+        )
         
         # Format with provided arguments
         if kwargs:
-            try:
+            with contextlib.suppress(Exception):
                 translation = translation.format(**kwargs)
-            except:
-                pass
         
         return translation
     
@@ -1236,10 +1164,8 @@ class I18n:
     def _notify_observers(self):
         """Notify all observers of language change"""
         for callback in self._observers:
-            try:
+            with contextlib.suppress(Exception):
                 callback()
-            except:
-                pass
     
     def get_language_name(self, code: str) -> str:
         """Get the display name for a language code"""
@@ -1268,12 +1194,13 @@ class SubprocessRunner:
     def __init__(self):
         self.logger = get_logger(__name__)
         # Store original Windows paths
-        self.cli_dir = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
-        self.cli_path = os.path.join(self.cli_dir, 'cli', 'rediacc-cli.py')
-        self.sync_path = os.path.join(self.cli_dir, 'cli', 'rediacc-cli-sync.py')
-        self.term_path = os.path.join(self.cli_dir, 'cli', 'rediacc-cli-term.py')
-        self.plugin_path = os.path.join(self.cli_dir, 'cli', 'rediacc-cli-plugin.py')
-        self.wrapper_path = os.path.join(os.path.dirname(self.cli_dir), 'rediacc')
+        base_dir = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+        self.cli_dir = base_dir
+        self.cli_path = os.path.join(base_dir, 'cli', 'rediacc-cli.py')
+        self.sync_path = os.path.join(base_dir, 'cli', 'rediacc-cli-sync.py')
+        self.term_path = os.path.join(base_dir, 'cli', 'rediacc-cli-term.py')
+        self.plugin_path = os.path.join(base_dir, 'cli', 'rediacc-cli-plugin.py')
+        self.wrapper_path = os.path.join(os.path.dirname(base_dir), 'rediacc')
         
         # Check for MSYS2 on Windows for better compatibility
         self.msys2_path = None
@@ -1285,11 +1212,12 @@ class SubprocessRunner:
         
         # If using MSYS2 Python, convert paths to MSYS2 format
         if self.use_msys2_python:
-            self.cli_dir_msys2 = self._windows_to_msys2_path(self.cli_dir)
-            self.cli_path_msys2 = self._windows_to_msys2_path(self.cli_path)
-            self.sync_path_msys2 = self._windows_to_msys2_path(self.sync_path)
-            self.term_path_msys2 = self._windows_to_msys2_path(self.term_path)
-            self.plugin_path_msys2 = self._windows_to_msys2_path(self.plugin_path)
+            convert = self._windows_to_msys2_path
+            self.cli_dir_msys2 = convert(self.cli_dir)
+            self.cli_path_msys2 = convert(self.cli_path)
+            self.sync_path_msys2 = convert(self.sync_path)
+            self.term_path_msys2 = convert(self.term_path)
+            self.plugin_path_msys2 = convert(self.plugin_path)
         else:
             # Use original paths
             self.cli_dir_msys2 = self.cli_dir
@@ -1308,14 +1236,10 @@ class SubprocessRunner:
         ]
         
         # Check MSYS2_ROOT environment variable
-        msys2_root = os.environ.get('MSYS2_ROOT')
-        if msys2_root:
+        if msys2_root := os.environ.get('MSYS2_ROOT'):
             msys2_paths.insert(0, msys2_root)
         
-        for path in msys2_paths:
-            if os.path.exists(path):
-                return path
-        return None
+        return next((path for path in msys2_paths if os.path.exists(path)), None)
 
     def _windows_to_msys2_path(self, windows_path):
         """Convert Windows path to MSYS2 format"""
@@ -1331,6 +1255,8 @@ class SubprocessRunner:
 
     def _find_python(self) -> str:
         """Find the correct Python command to use"""
+        import shutil
+        
         self.logger.debug("Finding Python command...")
         self.logger.debug(f"MSYS2 path: {self.msys2_path}")
         
@@ -1342,30 +1268,28 @@ class SubprocessRunner:
                 self.logger.debug(f"Using MSYS2 Python: {msys2_python}")
                 self.use_msys2_python = True
                 return msys2_python
-            else:
-                self.logger.debug("MSYS2 Python not found")
+            self.logger.debug("MSYS2 Python not found")
         
         # Try different Python commands in order of preference
         python_commands = ['python3', 'python', 'py']
         self.logger.debug(f"Trying Python commands: {python_commands}")
         
         for cmd in python_commands:
-            import shutil
             self.logger.debug(f"Testing command: {cmd}")
-            if shutil.which(cmd):
-                try:
-                    # Test if it actually works and is Python 3+
-                    result = subprocess.run([cmd, '--version'], 
-                                          capture_output=True, text=True, timeout=5)
-                    self.logger.debug(f"{cmd} version check: returncode={result.returncode}, stdout='{result.stdout.strip()}'")
-                    if result.returncode == 0 and 'Python 3' in result.stdout:
-                        self.logger.debug(f"Using Python command: {cmd}")
-                        return cmd
-                except Exception as e:
-                    self.logger.debug(f"Error testing {cmd}: {e}")
-                    continue
-            else:
+            if not shutil.which(cmd):
                 self.logger.debug(f"{cmd} not found in PATH")
+                continue
+                
+            try:
+                # Test if it actually works and is Python 3+
+                result = subprocess.run([cmd, '--version'], 
+                                      capture_output=True, text=True, timeout=5)
+                self.logger.debug(f"{cmd} version check: returncode={result.returncode}, stdout='{result.stdout.strip()}'")
+                if result.returncode == 0 and 'Python 3' in result.stdout:
+                    self.logger.debug(f"Using Python command: {cmd}")
+                    return cmd
+            except Exception as e:
+                self.logger.debug(f"Error testing {cmd}: {e}")
         
         # Fallback to python3 if nothing found (will fail gracefully)
         self.logger.debug("No suitable Python found, falling back to 'python3'")
@@ -1380,27 +1304,19 @@ class SubprocessRunner:
                 # Add MSYS2 paths to environment
                 msys2_bin = os.path.join(self.msys2_path, 'usr', 'bin')
                 mingw64_bin = os.path.join(self.msys2_path, 'mingw64', 'bin')
-                if 'PATH' in env:
-                    env['PATH'] = f"{msys2_bin};{mingw64_bin};{env['PATH']}"
-                else:
-                    env['PATH'] = f"{msys2_bin};{mingw64_bin}"
+                env['PATH'] = f"{msys2_bin};{mingw64_bin};{env.get('PATH', '')}"
             
-            if args[0] == 'sync':
-                # Don't add token - let sync tool read from TokenManager
-                sync_args = args[1:]
-                cmd = [self.python_cmd, self.sync_path_msys2] + sync_args
-                self.logger.debug(f"Sync command: {cmd}")
-            elif args[0] == 'term':
-                # Don't add token for term command - let it read from config
-                # to avoid token rotation issues between API calls
-                term_args = args[1:]
-                cmd = [self.python_cmd, self.term_path_msys2] + term_args
-                self.logger.debug(f"Term command: {cmd}")
-            elif args[0] == 'plugin':
-                # Don't add token - let plugin tool read from TokenManager
-                plugin_args = args[1:]
-                cmd = [self.python_cmd, self.plugin_path_msys2] + plugin_args
-                self.logger.debug(f"Plugin command: {cmd}")
+            # Build command based on first argument
+            cmd_map = {
+                'sync': (self.sync_path_msys2, 'Sync command'),
+                'term': (self.term_path_msys2, 'Term command'),
+                'plugin': (self.plugin_path_msys2, 'Plugin command')
+            }
+            
+            if args[0] in cmd_map:
+                script_path, log_msg = cmd_map[args[0]]
+                cmd = [self.python_cmd, script_path] + args[1:]
+                self.logger.debug(f"{log_msg}: {cmd}")
             else:
                 cmd = [self.wrapper_path] + args
                 self.logger.debug(f"Wrapper command: {cmd}")
@@ -1455,17 +1371,14 @@ class SubprocessRunner:
                 try:
                     data = json.loads(output) if output else {}
                     
-                    # Token rotation is already handled by rediacc-cli itself
-                    # No need to handle it here as it would cause duplicate saves
-                    
                     # Extract data from tables format
                     response_data = data.get('data')
                     if not response_data and data.get('tables'):
-                        for table in data.get('tables', []):
-                            table_data = table.get('data', [])
-                            if table_data and not any('nextRequestCredential' in row for row in table_data):
-                                response_data = table_data
-                                break
+                        response_data = next(
+                            (table['data'] for table in data['tables']
+                             if table.get('data') and not any('nextRequestCredential' in row for row in table['data'])),
+                            None
+                        )
                     
                     return {
                         'success': result.returncode == 0 and data.get('success', False),
@@ -1492,15 +1405,15 @@ class SubprocessRunner:
     def run_command_streaming(self, args: List[str], output_callback=None) -> Dict[str, Any]:
         """Run a command and stream output line by line"""
         # Choose the appropriate CLI script based on command
-        if args[0] == 'sync':
-            cli_script = self.sync_path_msys2
-            args = args[1:]  # Remove 'sync' from args
-        elif args[0] == 'term':
-            cli_script = self.term_path_msys2
-            args = args[1:]  # Remove 'term' from args
-        elif args[0] == 'plugin':
-            cli_script = self.plugin_path_msys2
-            args = args[1:]  # Remove 'plugin' from args
+        script_map = {
+            'sync': self.sync_path_msys2,
+            'term': self.term_path_msys2,
+            'plugin': self.plugin_path_msys2
+        }
+        
+        if args[0] in script_map:
+            cli_script = script_map[args[0]]
+            args = args[1:]  # Remove command from args
         else:
             cli_script = self.cli_path_msys2
         
@@ -1531,17 +1444,14 @@ class SubprocessRunner:
             # Wait for process to complete
             process.wait()
             
-            # Get the return code
-            returncode = process.returncode
-            
             # Join all output
             full_output = ''.join(output_lines)
             
             return {
-                'success': returncode == 0,
+                'success': process.returncode == 0,
                 'output': full_output,
-                'error': '' if returncode == 0 else full_output,
-                'returncode': returncode
+                'error': '' if process.returncode == 0 else full_output,
+                'returncode': process.returncode
             }
             
         except Exception as e:
@@ -1635,14 +1545,13 @@ class TerminalDetector:
         if platform not in self.cache:
             return False
         
-        cached_time = self.cache[platform].get('timestamp')
-        if not cached_time:
+        if not (cached_time := self.cache[platform].get('timestamp')):
             return False
         
         try:
             cached_datetime = datetime.fromisoformat(cached_time)
             return datetime.now() - cached_datetime < self.CACHE_DURATION
-        except:
+        except Exception:
             return False
     
     def _find_msys2_installation(self) -> Optional[str]:
@@ -1669,7 +1578,7 @@ class TerminalDetector:
         try:
             with open('/proc/version', 'r') as f:
                 return 'microsoft' in f.read().lower()
-        except:
+        except Exception:
             return False
     
     def _test_command(self, cmd: List[str], timeout: float = 3.0, 
@@ -1701,19 +1610,17 @@ class TerminalDetector:
             os.chmod(test_script, 0o755)
             
             # Replace placeholder in command with actual test script
-            test_cmd = []
-            for arg in cmd:
-                if 'TEST_SCRIPT' in arg:
-                    # Check if this is for MSYS2 and needs path conversion
-                    if ('msys' in cmd[0].lower() or 
-                        (len(cmd) > 2 and 'bash' in cmd[0] and '/msys' in cmd[0])):
-                        # Convert to MSYS2 path format
-                        msys2_path = self._windows_to_msys2_path(test_script)
-                        test_cmd.append(arg.replace('TEST_SCRIPT', msys2_path))
-                    else:
-                        test_cmd.append(arg.replace('TEST_SCRIPT', test_script))
-                else:
-                    test_cmd.append(arg)
+            def replace_test_script(arg):
+                if 'TEST_SCRIPT' not in arg:
+                    return arg
+                # Check if this is for MSYS2 and needs path conversion
+                if ('msys' in cmd[0].lower() or 
+                    (len(cmd) > 2 and 'bash' in cmd[0] and '/msys' in cmd[0])):
+                    # Convert to MSYS2 path format
+                    return arg.replace('TEST_SCRIPT', self._windows_to_msys2_path(test_script))
+                return arg.replace('TEST_SCRIPT', test_script)
+            
+            test_cmd = [replace_test_script(arg) for arg in cmd]
             
             self.logger.debug(f"Testing command: {' '.join(test_cmd[:3])}...")
             
@@ -1728,10 +1635,8 @@ class TerminalDetector:
                 stdout, stderr = process.communicate(timeout=timeout)
                 
                 # Clean up test script
-                try:
+                with contextlib.suppress(Exception):
                     os.unlink(test_script)
-                except:
-                    pass
                 
                 if expect_running:
                     # Process should have timed out (still running)
@@ -1770,13 +1675,10 @@ class TerminalDetector:
         """Schedule file cleanup after a delay"""
         def cleanup():
             time.sleep(5)
-            try:
+            with contextlib.suppress(Exception):
                 if os.path.exists(filepath):
                     os.unlink(filepath)
-            except:
-                pass
         
-        import threading
         cleanup_thread = threading.Thread(target=cleanup)
         cleanup_thread.daemon = True
         cleanup_thread.start()
@@ -1784,8 +1686,7 @@ class TerminalDetector:
     # Windows terminal tests
     def _test_msys2_mintty(self) -> Tuple[bool, str]:
         """Test MSYS2 mintty terminal"""
-        msys2_path = self._find_msys2_installation()
-        if not msys2_path:
+        if not (msys2_path := self._find_msys2_installation()):
             return (False, "MSYS2 not found")
         
         mintty_exe = os.path.join(msys2_path, 'usr', 'bin', 'mintty.exe')
@@ -1793,10 +1694,7 @@ class TerminalDetector:
             return (False, "mintty.exe not found")
         
         # Simple test: just check if mintty can be launched
-        # We can't reliably test if it stays open, so just verify it starts
         try:
-            # Test with a simple echo command
-            bash_exe = os.path.join(msys2_path, 'usr', 'bin', 'bash.exe')
             test_cmd = [mintty_exe, '--version']
             process = subprocess.Popen(
                 test_cmd,
@@ -1805,10 +1703,10 @@ class TerminalDetector:
                 creationflags=subprocess.CREATE_NO_WINDOW if sys.platform == 'win32' else 0
             )
             stdout, stderr = process.communicate(timeout=2)
-            if process.returncode == 0:
-                return (True, "mintty is available")
-            else:
-                return (False, f"mintty test failed with code {process.returncode}")
+            return (
+                (True, "mintty is available") if process.returncode == 0
+                else (False, f"mintty test failed with code {process.returncode}")
+            )
         except Exception as e:
             return (False, f"Failed to test mintty: {str(e)}")
     
@@ -1823,10 +1721,10 @@ class TerminalDetector:
                 stderr=subprocess.PIPE
             )
             stdout, stderr = process.communicate(timeout=2)
-            if process.returncode == 0:
-                return (True, "Windows Terminal is available in WSL")
-            else:
-                return (False, "Windows Terminal not found in WSL")
+            return (
+                (True, "Windows Terminal is available in WSL") if process.returncode == 0
+                else (False, "Windows Terminal not found in WSL")
+            )
         except Exception as e:
             return (False, f"Failed to test Windows Terminal: {str(e)}")
     
@@ -1841,10 +1739,10 @@ class TerminalDetector:
                 stderr=subprocess.PIPE
             )
             stdout, stderr = process.communicate(timeout=2)
-            if process.returncode == 0:
-                return (True, "PowerShell is available in WSL")
-            else:
-                return (False, "PowerShell not accessible from WSL")
+            return (
+                (True, "PowerShell is available in WSL") if process.returncode == 0
+                else (False, "PowerShell not accessible from WSL")
+            )
         except Exception as e:
             return (False, f"Failed to test PowerShell: {str(e)}")
     
@@ -1859,17 +1757,16 @@ class TerminalDetector:
                 stderr=subprocess.PIPE
             )
             stdout, stderr = process.communicate(timeout=2)
-            if process.returncode == 0:
-                return (True, "cmd.exe is available in WSL")
-            else:
-                return (False, "cmd.exe not accessible from WSL")
+            return (
+                (True, "cmd.exe is available in WSL") if process.returncode == 0
+                else (False, "cmd.exe not accessible from WSL")
+            )
         except Exception as e:
             return (False, f"Failed to test cmd.exe: {str(e)}")
     
     def _test_msys2_windows_terminal(self) -> Tuple[bool, str]:
         """Test MSYS2 with Windows Terminal"""
-        msys2_path = self._find_msys2_installation()
-        if not msys2_path:
+        if not (msys2_path := self._find_msys2_installation()):
             return (False, "MSYS2 not found")
         
         bash_exe = os.path.join(msys2_path, 'usr', 'bin', 'bash.exe')
@@ -1887,17 +1784,16 @@ class TerminalDetector:
                 creationflags=subprocess.CREATE_NO_WINDOW if sys.platform == 'win32' else 0
             )
             stdout, stderr = process.communicate(timeout=2)
-            if process.returncode == 0:
-                return (True, "Windows Terminal is available")
-            else:
-                return (False, "Windows Terminal (wt.exe) not found in PATH")
+            return (
+                (True, "Windows Terminal is available") if process.returncode == 0
+                else (False, "Windows Terminal (wt.exe) not found in PATH")
+            )
         except Exception as e:
             return (False, f"Failed to test Windows Terminal: {str(e)}")
     
     def _test_msys2_bash_direct(self) -> Tuple[bool, str]:
         """Test MSYS2 bash directly"""
-        msys2_path = self._find_msys2_installation()
-        if not msys2_path:
+        if not (msys2_path := self._find_msys2_installation()):
             return (False, "MSYS2 not found")
         
         bash_exe = os.path.join(msys2_path, 'usr', 'bin', 'bash.exe')
@@ -1964,22 +1860,16 @@ class TerminalDetector:
         Returns:
             The name of the best working method, or None if none work
         """
-        platform = sys.platform
-        
-        # Normalize platform
-        if platform.startswith('linux'):
-            platform = 'linux'
+        platform = 'linux' if sys.platform.startswith('linux') else sys.platform
         
         # Check cache
         if not force_refresh and self._is_cache_valid(platform):
-            cached_method = self.cache[platform].get('method')
-            if cached_method:
+            if cached_method := self.cache[platform].get('method'):
                 self.logger.debug(f"Using cached method: {cached_method}")
                 return cached_method
         
         # Get methods for this platform
-        platform_methods = self.methods.get(platform, [])
-        if not platform_methods:
+        if not (platform_methods := self.methods.get(platform, [])):
             self.logger.warning(f"No methods defined for platform: {platform}")
             return None
         
@@ -1989,11 +1879,9 @@ class TerminalDetector:
         working_methods = []
         for method_name, test_func in platform_methods:
             success, description = test_func()
+            self.logger.debug(f"[{'OK' if success else 'FAIL'}] {method_name}: {description}")
             if success:
-                self.logger.debug(f"[OK] {method_name}: {description}")
                 working_methods.append(method_name)
-            else:
-                self.logger.debug(f"[FAIL] {method_name}: {description}")
         
         # Select the best method (first working one)
         best_method = working_methods[0] if working_methods else None
@@ -2053,18 +1941,21 @@ class TerminalDetector:
     # Launch functions for each method
     def _launch_msys2_mintty(self, cli_dir: str, command: str, description: str):
         """Launch using MSYS2 mintty"""
+        import shlex
+        
         msys2_path = self._find_msys2_installation()
         mintty_exe = os.path.join(msys2_path, 'usr', 'bin', 'mintty.exe')
         bash_exe = os.path.join(msys2_path, 'usr', 'bin', 'bash.exe')
         msys2_cli_dir = self._windows_to_msys2_path(cli_dir)
         
-        import shlex
         cmd_parts = shlex.split(command)
-        if cmd_parts[0] == 'term':
-            cli_script = f'{msys2_cli_dir}/src/cli/rediacc-cli-term.py'
-            args = cmd_parts[1:]
-        elif cmd_parts[0] == 'sync':
-            cli_script = f'{msys2_cli_dir}/src/cli/rediacc-cli-sync.py'
+        script_map = {
+            'term': f'{msys2_cli_dir}/src/cli/rediacc-cli-term.py',
+            'sync': f'{msys2_cli_dir}/src/cli/rediacc-cli-sync.py'
+        }
+        
+        if cmd_parts[0] in script_map:
+            cli_script = script_map[cmd_parts[0]]
             args = cmd_parts[1:]
         else:
             cli_script = f'{msys2_cli_dir}/src/cli/rediacc-cli.py'
@@ -2078,20 +1969,23 @@ class TerminalDetector:
     
     def _launch_wsl_windows_terminal(self, cli_dir: str, command: str, description: str):
         """Launch using WSL with Windows Terminal"""
-        # Parse command to determine which CLI script to use
         import shlex
+        
+        # Parse command to determine which CLI script to use
         try:
             cmd_parts = shlex.split(command)
-        except:
+        except Exception:
             # If shlex fails, do simple split
             cmd_parts = command.split()
         
+        script_map = {
+            'term': './src/cli/rediacc-cli-term.py',
+            'sync': './src/cli/rediacc-cli-sync.py'
+        }
+        
         # Determine the correct CLI script based on command
-        if cmd_parts and cmd_parts[0] == 'term':
-            cli_script = './src/cli/rediacc-cli-term.py'
-            args = ' '.join(shlex.quote(arg) for arg in cmd_parts[1:])
-        elif cmd_parts and cmd_parts[0] == 'sync':
-            cli_script = './src/cli/rediacc-cli-sync.py'
+        if cmd_parts and cmd_parts[0] in script_map:
+            cli_script = script_map[cmd_parts[0]]
             args = ' '.join(shlex.quote(arg) for arg in cmd_parts[1:])
         else:
             cli_script = './rediacc'
@@ -2106,26 +2000,29 @@ class TerminalDetector:
         try:
             # Launch directly without cmd.exe to avoid UNC path warning
             subprocess.Popen(wt_cmd)
-        except Exception as e:
+        except Exception:
             # Fallback to cmd.exe method if direct launch fails
             cmd_str = f'wt.exe --maximized new-tab wsl.exe -e bash -c "{wsl_command}"'
             subprocess.Popen(['cmd.exe', '/c', cmd_str], cwd=os.environ.get('WINDIR', 'C:\\Windows'))
     
     def _launch_wsl_powershell(self, cli_dir: str, command: str, description: str):
         """Launch using WSL with PowerShell"""
-        # Parse command to determine which CLI script to use
         import shlex
+        
+        # Parse command to determine which CLI script to use
         try:
             cmd_parts = shlex.split(command)
-        except:
+        except Exception:
             cmd_parts = command.split()
         
+        script_map = {
+            'term': './src/cli/rediacc-cli-term.py',
+            'sync': './src/cli/rediacc-cli-sync.py'
+        }
+        
         # Determine the correct CLI script
-        if cmd_parts and cmd_parts[0] == 'term':
-            cli_script = './src/cli/rediacc-cli-term.py'
-            args = ' '.join(shlex.quote(arg) for arg in cmd_parts[1:])
-        elif cmd_parts and cmd_parts[0] == 'sync':
-            cli_script = './src/cli/rediacc-cli-sync.py'
+        if cmd_parts and cmd_parts[0] in script_map:
+            cli_script = script_map[cmd_parts[0]]
             args = ' '.join(shlex.quote(arg) for arg in cmd_parts[1:])
         else:
             cli_script = './rediacc'
@@ -2139,19 +2036,22 @@ class TerminalDetector:
     
     def _launch_wsl_cmd(self, cli_dir: str, command: str, description: str):
         """Launch using WSL with cmd.exe"""
-        # Parse command to determine which CLI script to use
         import shlex
+        
+        # Parse command to determine which CLI script to use
         try:
             cmd_parts = shlex.split(command)
-        except:
+        except Exception:
             cmd_parts = command.split()
         
+        script_map = {
+            'term': './src/cli/rediacc-cli-term.py',
+            'sync': './src/cli/rediacc-cli-sync.py'
+        }
+        
         # Determine the correct CLI script
-        if cmd_parts and cmd_parts[0] == 'term':
-            cli_script = './src/cli/rediacc-cli-term.py'
-            args = ' '.join(f'"{arg}"' if ' ' in arg else arg for arg in cmd_parts[1:])
-        elif cmd_parts and cmd_parts[0] == 'sync':
-            cli_script = './src/cli/rediacc-cli-sync.py'
+        if cmd_parts and cmd_parts[0] in script_map:
+            cli_script = script_map[cmd_parts[0]]
             args = ' '.join(f'"{arg}"' if ' ' in arg else arg for arg in cmd_parts[1:])
         else:
             cli_script = './rediacc'
@@ -2163,17 +2063,20 @@ class TerminalDetector:
     
     def _launch_msys2_windows_terminal(self, cli_dir: str, command: str, description: str):
         """Launch using MSYS2 with Windows Terminal"""
+        import shlex
+        
         msys2_path = self._find_msys2_installation()
         bash_exe = os.path.join(msys2_path, 'usr', 'bin', 'bash.exe')
         msys2_cli_dir = self._windows_to_msys2_path(cli_dir)
         
-        import shlex
         cmd_parts = shlex.split(command)
-        if cmd_parts[0] == 'term':
-            cli_script = f'{msys2_cli_dir}/src/cli/rediacc-cli-term.py'
-            args = cmd_parts[1:]
-        elif cmd_parts[0] == 'sync':
-            cli_script = f'{msys2_cli_dir}/src/cli/rediacc-cli-sync.py'
+        script_map = {
+            'term': f'{msys2_cli_dir}/src/cli/rediacc-cli-term.py',
+            'sync': f'{msys2_cli_dir}/src/cli/rediacc-cli-sync.py'
+        }
+        
+        if cmd_parts[0] in script_map:
+            cli_script = script_map[cmd_parts[0]]
             args = cmd_parts[1:]
         else:
             cli_script = f'{msys2_cli_dir}/src/cli/rediacc-cli.py'
@@ -2187,17 +2090,20 @@ class TerminalDetector:
     
     def _launch_msys2_bash_direct(self, cli_dir: str, command: str, description: str):
         """Launch using MSYS2 bash directly (no new window)"""
+        import shlex
+        
         msys2_path = self._find_msys2_installation()
         bash_exe = os.path.join(msys2_path, 'usr', 'bin', 'bash.exe')
         msys2_cli_dir = self._windows_to_msys2_path(cli_dir)
         
-        import shlex
         cmd_parts = shlex.split(command)
-        if cmd_parts[0] == 'term':
-            cli_script = f'{msys2_cli_dir}/src/cli/rediacc-cli-term.py'
-            args = cmd_parts[1:]
-        elif cmd_parts[0] == 'sync':
-            cli_script = f'{msys2_cli_dir}/src/cli/rediacc-cli-sync.py'
+        script_map = {
+            'term': f'{msys2_cli_dir}/src/cli/rediacc-cli-term.py',
+            'sync': f'{msys2_cli_dir}/src/cli/rediacc-cli-sync.py'
+        }
+        
+        if cmd_parts[0] in script_map:
+            cli_script = script_map[cmd_parts[0]]
             args = cmd_parts[1:]
         else:
             cli_script = f'{msys2_cli_dir}/src/cli/rediacc-cli.py'
@@ -2211,12 +2117,15 @@ class TerminalDetector:
     def _launch_powershell_direct(self, cli_dir: str, command: str, description: str):
         """Launch using PowerShell directly"""
         import shlex
+        
         cmd_parts = shlex.split(command)
-        if cmd_parts[0] == 'term':
-            cli_script = f'{cli_dir}\\src\\cli\\rediacc-cli-term.py'
-            args = cmd_parts[1:]
-        elif cmd_parts[0] == 'sync':
-            cli_script = f'{cli_dir}\\src\\cli\\rediacc-cli-sync.py'
+        script_map = {
+            'term': f'{cli_dir}\\src\\cli\\rediacc-cli-term.py',
+            'sync': f'{cli_dir}\\src\\cli\\rediacc-cli-sync.py'
+        }
+        
+        if cmd_parts[0] in script_map:
+            cli_script = script_map[cmd_parts[0]]
             args = cmd_parts[1:]
         else:
             cli_script = f'{cli_dir}\\src\\cli\\rediacc-cli.py'
@@ -2230,12 +2139,15 @@ class TerminalDetector:
     def _launch_cmd_direct(self, cli_dir: str, command: str, description: str):
         """Launch using cmd.exe directly"""
         import shlex
+        
         cmd_parts = shlex.split(command)
-        if cmd_parts[0] == 'term':
-            cli_script = f'{cli_dir}\\src\\cli\\rediacc-cli-term.py'
-            args = cmd_parts[1:]
-        elif cmd_parts[0] == 'sync':
-            cli_script = f'{cli_dir}\\src\\cli\\rediacc-cli-sync.py'
+        script_map = {
+            'term': f'{cli_dir}\\src\\cli\\rediacc-cli-term.py',
+            'sync': f'{cli_dir}\\src\\cli\\rediacc-cli-sync.py'
+        }
+        
+        if cmd_parts[0] in script_map:
+            cli_script = script_map[cmd_parts[0]]
             args = cmd_parts[1:]
         else:
             cli_script = f'{cli_dir}\\src\\cli\\rediacc-cli.py'
