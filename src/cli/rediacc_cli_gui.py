@@ -1006,7 +1006,7 @@ class MainWindow(BaseWindow):
         # Build command with full path
         import os
         # __file__ is in src/cli/, so we need to go up two levels to get to cli/
-        # src/cli/rediacc_cli_gui.py -> src/ -> cli/
+        # src/cli/rediacc-cli-gui.py -> src/ -> cli/
         cli_dir = os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
         
         # Build the simple command for display

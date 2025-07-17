@@ -514,10 +514,6 @@ Examples:
     %(prog)s download --token=<GUID> --machine=server1 --repo=data --local=/backup --mirror --verify --confirm
 """
     )
-    
-    # Add GUI option as top-level argument
-    parser.add_argument('--gui', action='store_true',
-                       help='Launch graphical user interface')
     # Add verbose logging option
     parser.add_argument('--verbose', '-v', action='store_true',
                        help='Enable verbose logging output')
@@ -562,19 +558,6 @@ Examples:
         logger.debug(f"Command: {args.command}")
         logger.debug(f"Arguments: {vars(args)}")
     
-    # Check if GUI mode is requested
-    if args.gui:
-        try:
-            from rediacc_cli_gui import launch_gui
-            launch_gui()
-            sys.exit(0)
-        except ImportError as e:
-            print(colorize("Error: Failed to launch GUI. Make sure tkinter is installed.", 'RED'))
-            print(colorize(f"Details: {str(e)}", 'RED'))
-            sys.exit(1)
-        except Exception as e:
-            print(colorize(f"Error launching GUI: {str(e)}", 'RED'))
-            sys.exit(1)
     
     if not args.command:
         parser.print_help()
