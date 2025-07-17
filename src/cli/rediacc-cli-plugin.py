@@ -30,11 +30,11 @@ from rediacc_cli_core import (
     safe_error_message
 )
 
-# Import token manager
-from token_manager import TokenManager
-
-# Import centralized config path
-from config_path import get_config_dir, get_plugin_connections_file, get_ssh_control_dir
+# Import from consolidated core module
+from core import (
+    TokenManager,
+    get_config_dir, get_plugin_connections_file, get_ssh_control_dir
+)
 
 # Configuration
 # Use centralized config directory

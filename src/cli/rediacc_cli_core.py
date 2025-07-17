@@ -16,13 +16,12 @@ import tempfile
 import platform
 from pathlib import Path
 from typing import Dict, Any, Optional, Tuple
-from config_path import get_config_dir, get_main_config_file
-
-# Import token manager
-from token_manager import TokenManager
-
-# Import configuration loader
-from config_loader import get, get_required, get_path
+# Import from consolidated core module
+from core import (
+    get_config_dir, get_main_config_file,
+    TokenManager,
+    get, get_required, get_path
+)
 
 # Configuration
 CLI_TOOL = os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))), 'cli', 'rediacc-cli.py')

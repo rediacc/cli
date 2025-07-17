@@ -20,17 +20,17 @@ from pathlib import Path
 # Add parent directory to path for module imports
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 
-# Import configuration loader
-from config_loader import load_config, get_required, get, get_path, ConfigError
-
-# Import token manager
-from token_manager import TokenManager
-
-# Import API mutex for concurrent access safety
-from api_mutex import api_mutex
-
-# Import logging configuration
-from logging_config import setup_logging, get_logger
+# Import all core modules from consolidated core module
+from core import (
+    # Config loader
+    load_config, get_required, get, get_path, ConfigError,
+    # Token manager
+    TokenManager,
+    # API mutex
+    api_mutex,
+    # Logging
+    setup_logging, get_logger
+)
 
 # Try to import cryptography library
 try:
@@ -53,9 +53,8 @@ except ConfigError as e:
 HTTP_PORT = get_required('SYSTEM_HTTP_PORT')
 BASE_URL = get_required('REDIACC_API_URL')
 API_PREFIX = '/StoredProcedure'
-# Use centralized config path
-sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
-from config_path import get_config_dir, get_main_config_file
+# Import config path functions from core module
+from core import get_config_dir, get_main_config_file
 
 CONFIG_DIR = str(get_config_dir())
 CONFIG_FILE = str(get_main_config_file())
@@ -995,7 +994,7 @@ class CommandHandler:
                 # No TFA code provided, prompt for it
                 if self.output_format != 'json':
                     # Import i18n module for translation
-                    from i18n import I18n
+                    from core import I18n
                     i18n = I18n()
                     tfa_code = input(i18n.get('enter_tfa_code'))
                 else:
