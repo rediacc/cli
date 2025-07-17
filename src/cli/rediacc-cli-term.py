@@ -37,17 +37,15 @@ def connect_to_machine(args):
         setup_ssh_for_connection,
         cleanup_ssh_key,
         validate_machine_accessibility,
-        handle_ssh_exit_code
+        handle_ssh_exit_code,
+        setup_ssh_agent_connection,
+        cleanup_ssh_agent
     )
     
-    # Token is already managed by TokenManager, no need to set it again
-    
-    # Get machine info
+    # Get machine info and validate
     print("Fetching machine information...")
     machine_info = get_machine_info_with_team(args.team, args.machine)
     connection_info = get_machine_connection_info(machine_info)
-    
-    # Validate machine accessibility
     validate_machine_accessibility(args.machine, args.team, connection_info['ip'])
     
     # Get SSH key
@@ -58,12 +56,12 @@ def connect_to_machine(args):
         sys.exit(1)
     
     # Set up SSH using SSH agent (no temporary files)
-    host_entry = connection_info.get('host_entry') if not args.dev else None  # Ignore host entry in dev mode
+    host_entry = None if args.dev else connection_info.get('host_entry')
     
     try:
-        from rediacc_cli_core import setup_ssh_agent_connection, cleanup_ssh_agent
         ssh_opts, agent_pid, known_hosts_file = setup_ssh_agent_connection(ssh_key, host_entry)
         print(f"SSH agent set up with PID {agent_pid}")
+        ssh_key_file = None
     except Exception as e:
         print(colorize(f"SSH agent setup failed, falling back to temporary files: {e}", 'YELLOW'))
         ssh_opts, ssh_key_file, known_hosts_file = setup_ssh_for_connection(ssh_key, host_entry)
@@ -71,21 +69,14 @@ def connect_to_machine(args):
     
     try:
         # Build SSH command
-        ssh_cmd = [
-            'ssh',
-            '-tt',  # Force pseudo-terminal allocation
-        ] + ssh_opts.split() + [
+        ssh_cmd = ['ssh', '-tt'] + ssh_opts.split() + [
             f"{connection_info['user']}@{connection_info['ip']}"
         ]
         
         # Get universal user info
         universal_user = connection_info.get('universal_user', 'rediacc')
         universal_user_id = connection_info.get('universal_user_id')
-        
-        # Build the datastore path
-        datastore_path = connection_info['datastore']
-        if universal_user_id:
-            datastore_path = f"{datastore_path}/{universal_user_id}"
+        datastore_path = f"{connection_info['datastore']}/{universal_user_id}" if universal_user_id else connection_info['datastore']
         
         if args.command:
             # Execute command directly as universal user
@@ -95,45 +86,45 @@ def connect_to_machine(args):
             print(colorize(f"Working directory: {datastore_path}", 'BLUE'))
         else:
             # Interactive session with automatic switch to universal user
-            # Create a single command that displays the welcome message and starts bash
-            welcome_cmd = (
-                f"sudo -u {universal_user} bash -c '"
-                f"clear && "
-                f"echo -e \"\\033[1;36m━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━\\033[0m\" && "
-                f"echo -e \"\\033[1;32mConnected to Rediacc Machine:\\033[0m \\033[1;33m{args.machine}\\033[0m\" && "
-                f"echo -e \"\\033[1;36m━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━\\033[0m\" && "
-                f"echo && "
-                f"echo -e \"\\033[1;34mMachine Info:\\033[0m\" && "
-                f"echo \"  • IP: {connection_info['ip']}\" && "
-                f"echo \"  • Connected as: {connection_info['user']}\" && "
-                f"echo \"  • Switched to: {universal_user}\" && "
-                f"echo \"  • Datastore: {datastore_path}\" && "
-                f"echo && "
-                f"echo -e \"\\033[1;33mUseful Commands:\\033[0m\" && "
-                f"echo \"  • ls -la                               - List current directory\" && "
-                f"echo \"  • ls -la mounts/                       - List repository mounts\" && "
-                f"echo \"  • docker ps -a                         - List all containers\" && "
-                f"echo && "
-                f"echo -e \"\\033[1;36m━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━\\033[0m\" && "
-                f"echo && "
-                f"cd {datastore_path} 2>/dev/null || echo \"Warning: Could not change to datastore directory\" && "
-                f"exec bash -l'"
-            )
+            def build_welcome_message():
+                lines = [
+                    "clear",
+                    r'echo -e "\033[1;36m━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━\033[0m"',
+                    rf'echo -e "\033[1;32mConnected to Rediacc Machine:\033[0m \033[1;33m{args.machine}\033[0m"',
+                    r'echo -e "\033[1;36m━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━\033[0m"',
+                    "echo",
+                    r'echo -e "\033[1;34mMachine Info:\033[0m"',
+                    f'echo "  • IP: {connection_info["ip"]}"',
+                    f'echo "  • Connected as: {connection_info["user"]}"',
+                    f'echo "  • Switched to: {universal_user}"',
+                    f'echo "  • Datastore: {datastore_path}"',
+                    "echo",
+                    r'echo -e "\033[1;33mUseful Commands:\033[0m"',
+                    'echo "  • ls -la                               - List current directory"',
+                    'echo "  • ls -la mounts/                       - List repository mounts"',
+                    'echo "  • docker ps -a                         - List all containers"',
+                    "echo",
+                    r'echo -e "\033[1;36m━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━\033[0m"',
+                    "echo",
+                    f'cd {datastore_path} 2>/dev/null || echo "Warning: Could not change to datastore directory"',
+                    "exec bash -l"
+                ]
+                return " && ".join(lines)
+            
+            welcome_cmd = f"sudo -u {universal_user} bash -c '{build_welcome_message()}'"
             ssh_cmd.append(welcome_cmd)
             print(colorize("Opening interactive terminal...", 'BLUE'))
             print(colorize("Type 'exit' to disconnect.", 'YELLOW'))
         
         # Execute SSH connection
         result = subprocess.run(ssh_cmd)
-        
-        # Handle SSH exit code
         handle_ssh_exit_code(result.returncode, "machine")
             
     finally:
         # Clean up SSH agent or SSH key files
         if agent_pid:
             cleanup_ssh_agent(agent_pid, known_hosts_file)
-        else:
+        elif ssh_key_file:
             cleanup_ssh_key(ssh_key_file, known_hosts_file)
 
 
@@ -141,14 +132,18 @@ def connect_to_terminal(args):
     """Connect to repository terminal via SSH"""
     print(colorize(f"Connecting to repository '{args.repo}' on machine '{args.machine}'...", 'HEADER'))
     
-    # Token is already managed by TokenManager, no need to set it again
+    from rediacc_cli_core import (
+        validate_machine_accessibility, 
+        handle_ssh_exit_code,
+        setup_ssh_agent_connection, 
+        cleanup_ssh_agent
+    )
     
     # Create repository connection
     conn = RepositoryConnection(args.team, args.machine, args.repo)
     conn.connect()
     
     # Validate machine accessibility
-    from rediacc_cli_core import validate_machine_accessibility, handle_ssh_exit_code
     validate_machine_accessibility(args.machine, args.team, conn.connection_info['ip'], args.repo)
     
     # Set up SSH
@@ -163,12 +158,12 @@ def connect_to_terminal(args):
         print(colorize(f"SSH private key not found in vault for team '{args.team}'", 'RED'))
         sys.exit(1)
     
-    host_entry = conn.connection_info.get('host_entry') if not args.dev else None
+    host_entry = None if args.dev else conn.connection_info.get('host_entry')
     
     try:
-        from rediacc_cli_core import setup_ssh_agent_connection, cleanup_ssh_agent
         ssh_opts, agent_pid, known_hosts_file = setup_ssh_agent_connection(ssh_key, host_entry)
         print(f"SSH agent set up with PID {agent_pid}")
+        ssh_key_file = None
     except Exception as e:
         print(colorize(f"SSH agent setup failed, falling back to temporary files: {e}", 'YELLOW'))
         ssh_opts, ssh_key_file, known_hosts_file = conn.setup_ssh()
@@ -393,27 +388,20 @@ When connected to machine only:
     
     
     # Check required arguments for CLI mode
-    if not args.team or not args.machine:
+    if not all([args.team, args.machine]):
         parser.error("--team and --machine are required in CLI mode")
     
     # Handle token authentication
     if args.token:
-        # If token provided via command line, set it as environment variable
         os.environ['REDIACC_TOKEN'] = args.token
-    else:
-        # Verify token exists in TokenManager
-        token = TokenManager.get_token()
-        if not token:
-            parser.error("No authentication token available. Please login first.")
+    elif not TokenManager.get_token():
+        parser.error("No authentication token available. Please login first.")
     
     # Validate CLI tool exists
     validate_cli_tool()
     
     # Connect to terminal or machine
-    if args.repo:
-        connect_to_terminal(args)
-    else:
-        connect_to_machine(args)
+    (connect_to_terminal if args.repo else connect_to_machine)(args)
 
 if __name__ == '__main__':
     main()

@@ -31,7 +31,7 @@ class ToolTip:
         widget.bind("<Leave>", self.on_leave)
     
     def on_enter(self, event=None):
-        x, y, _, _ = self.widget.bbox("insert")
+        x, y, *_ = self.widget.bbox("insert")
         x += self.widget.winfo_rootx() + 25
         y += self.widget.winfo_rooty() + 25
         
@@ -99,8 +99,7 @@ class BaseWindow:
             self.root.destroy()
         except:
             pass
-        finally:
-            sys.exit(0)
+        sys.exit(0)
 
 
 class LoginWindow(BaseWindow):
@@ -189,16 +188,14 @@ class LoginWindow(BaseWindow):
         master_password = self.master_password_entry.get()
         tfa_code = self.tfa_entry.get().strip() if hasattr(self, 'tfa_entry') else ""
         
-        if not email or not password:
+        if not (email and password):
             messagebox.showerror(i18n.get('error'), i18n.get('please_enter_credentials'))
             return
         
         self.login_button.config(state='disabled')
         self.status_label.config(text=i18n.get('logging_in'))
         
-        # Run login in thread
-        thread = threading.Thread(target=self._do_login, args=(email, password, master_password, tfa_code))
-        thread.daemon = True
+        thread = threading.Thread(target=self._do_login, args=(email, password, master_password, tfa_code), daemon=True)
         thread.start()
     
     def _do_login(self, email: str, password: str, master_password: str, tfa_code: str = ""):
@@ -207,24 +204,18 @@ class LoginWindow(BaseWindow):
             runner = SubprocessRunner()
             cmd = ['--output', 'json', 'login', '--email', email, '--password', password]
             
-            # Only add master password if provided
             if master_password.strip():
                 cmd.extend(['--master-password', master_password])
-                
-            # Add 2FA code if provided
             if tfa_code:
                 cmd.extend(['--tfa-code', tfa_code])
             
             result = runner.run_cli_command(cmd)
             
             if result['success']:
-                # Login successful - token is already saved by CLI
                 self.root.after(0, self.login_success)
             else:
                 error = result.get('error', i18n.get('login_failed'))
-                # Check if 2FA is required
                 if '2FA_REQUIRED' in error:
-                    # Show 2FA field and update status
                     self.root.after(0, self.show_2fa_field)
                 else:
                     self.root.after(0, lambda: self.login_error(error))
@@ -266,11 +257,10 @@ class LoginWindow(BaseWindow):
     def on_language_changed(self, event):
         """Handle language selection change"""
         selected_name = self.lang_combo.get()
-        # Find the language code for the selected name
-        for code in i18n.get_language_codes():
-            if i18n.get_language_name(code) == selected_name:
-                i18n.set_language(code)
-                break
+        code = next((code for code in i18n.get_language_codes() 
+                    if i18n.get_language_name(code) == selected_name), None)
+        if code:
+            i18n.set_language(code)
     
     def update_texts(self):
         """Update all texts when language changes"""
@@ -303,23 +293,7 @@ class MainWindow(BaseWindow):
         self.logger = get_logger(__name__)
         self.runner = SubprocessRunner()
         # Start maximized
-        self.root.update_idletasks()
-        try:
-            if is_windows():
-                self.root.state('zoomed')
-            else:
-                # For Linux/Mac, try different methods
-                try:
-                    self.root.attributes('-zoomed', True)
-                except tk.TclError:
-                    # Fallback: maximize using screen dimensions
-                    width = self.root.winfo_screenwidth()
-                    height = self.root.winfo_screenheight()
-                    self.root.geometry(f'{width}x{height}+0+0')
-        except Exception as e:
-            # If maximizing fails, use default size
-            self.logger.warning(f"Could not maximize window: {e}")
-            self.center_window(1024, 768)
+        self._maximize_window()
         
         # Initialize plugin tracking
         self.plugins_loaded_for = None
@@ -349,21 +323,35 @@ class MainWindow(BaseWindow):
                 self.refresh_connections()
                 self.plugins_loaded_for = current_selection
     
+    def _maximize_window(self):
+        """Maximize window using platform-specific methods"""
+        self.root.update_idletasks()
+        try:
+            if is_windows():
+                self.root.state('zoomed')
+            else:
+                # For Linux/Mac, try different methods
+                try:
+                    self.root.attributes('-zoomed', True)
+                except tk.TclError:
+                    # Fallback: maximize using screen dimensions
+                    width = self.root.winfo_screenwidth()
+                    height = self.root.winfo_screenheight()
+                    self.root.geometry(f'{width}x{height}+0+0')
+        except Exception as e:
+            self.logger.warning(f"Could not maximize window: {e}")
+            self.center_window(1024, 768)
+    
     def _get_name(self, item, *fields):
         """Get name from item trying multiple field names"""
-        for field in fields:
-            if field in item:
-                return item[field]
-        return ''
+        return next((item[field] for field in fields if field in item), '')
     
     def _handle_api_error(self, error_msg):
         """Handle API errors, especially authentication errors"""
-        # Check if it's an authentication error
-        if '401' in str(error_msg) or 'Not authenticated' in error_msg or 'Invalid request credential' in error_msg:
+        auth_errors = ['401', 'Not authenticated', 'Invalid request credential']
+        if any(error in str(error_msg) for error in auth_errors):
             self.status_bar.config(text=i18n.get('authentication_expired'), fg='red')
-            messagebox.showerror(i18n.get('error'), 
-                               i18n.get('session_expired'))
-            # Clear token and restart GUI
+            messagebox.showerror(i18n.get('error'), i18n.get('session_expired'))
             TokenManager.clear_token()
             self.root.destroy()
             launch_gui()
@@ -805,36 +793,27 @@ class MainWindow(BaseWindow):
     
     def on_port_mode_changed(self):
         """Handle port mode radio button change"""
-        if self.port_mode.get() == 'auto':
-            self.port_entry.config(state='disabled')
-        else:
-            self.port_entry.config(state='normal')
+        is_auto = self.port_mode.get() == 'auto'
+        self.port_entry.config(state='disabled' if is_auto else 'normal')
+        if not is_auto:
             self.port_entry.focus()
     
     def validate_port(self, value):
         """Validate port number input"""
-        if value == "":
+        if not value:
             return True
         try:
-            port = int(value)
-            # Valid port range is 1-65535
-            return 1 <= port <= 65535
+            return 1 <= int(value) <= 65535
         except ValueError:
             return False
     
     def on_connection_selected(self, event):
         """Handle connection selection in treeview"""
-        selection = self.connections_tree.selection()
-        if selection:
-            # Enable buttons when something is selected
-            self.open_browser_button.config(state='normal')
-            self.copy_url_button.config(state='normal')
-            self.disconnect_button.config(state='normal')
-        else:
-            # Disable buttons when nothing is selected
-            self.open_browser_button.config(state='disabled')
-            self.copy_url_button.config(state='disabled')
-            self.disconnect_button.config(state='disabled')
+        has_selection = bool(self.connections_tree.selection())
+        state = 'normal' if has_selection else 'disabled'
+        
+        for button in [self.open_browser_button, self.copy_url_button, self.disconnect_button]:
+            button.config(state=state)
     
     def update_teams(self, teams: list):
         """Update team dropdowns"""
@@ -956,101 +935,92 @@ class MainWindow(BaseWindow):
     
     def execute_terminal_command(self):
         """Execute a terminal command"""
-        team = self.team_combo.get()
-        machine = self.machine_combo.get()
-        repo = self.repo_combo.get()
+        team, machine, repo = self.team_combo.get(), self.machine_combo.get(), self.repo_combo.get()
         command = self.command_entry.get().strip()
         
-        if not team or not machine or not repo or not command:
+        if not all([team, machine, repo, command]):
             messagebox.showerror(i18n.get('error'), i18n.get('select_all_fields'))
             return
         
-        self.terminal_output.config(state='normal')  # Enable for clearing
+        self.terminal_output.config(state='normal')
         self.terminal_output.delete(1.0, tk.END)
-        self.terminal_output.config(state='disabled')  # Disable again
+        self.terminal_output.config(state='disabled')
         self.status_bar.config(text=i18n.get('executing_command'))
         
         def execute():
             cmd = ['term', '--team', team, '--machine', machine, '--repo', repo, '--command', command]
-            
             result = self.runner.run_command(cmd)
             output = result.get('output', '') + result.get('error', '')
-            # Check for authentication errors in output
-            if '401' in output or 'Not authenticated' in output or 'Invalid request credential' in output:
+            
+            auth_errors = ['401', 'Not authenticated', 'Invalid request credential']
+            if any(error in output for error in auth_errors):
                 self.root.after(0, lambda: self._handle_api_error(output))
             else:
                 self.root.after(0, lambda: self.show_terminal_output(output))
         
-        thread = threading.Thread(target=execute)
-        thread.daemon = True
+        thread = threading.Thread(target=execute, daemon=True)
         thread.start()
     
     def show_terminal_output(self, output: str):
         """Display terminal output"""
-        self.terminal_output.config(state='normal')  # Enable for writing
+        self.terminal_output.config(state='normal')
         self.terminal_output.insert(tk.END, output)
         self.terminal_output.see(tk.END)
-        self.terminal_output.config(state='disabled')  # Disable again
+        self.terminal_output.config(state='disabled')
         self.status_bar.config(text=i18n.get('command_executed'))
     
     
 
     def _launch_terminal(self, command: str, description: str):
         """Common method to launch terminal with given command"""
-        # Build command with full path
         import os
-        # __file__ is in src/cli/, so we need to go up two levels to get to cli/
-        # src/cli/rediacc-cli-gui.py -> src/ -> cli/
         cli_dir = os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
-        
-        # Build the simple command for display
         rediacc_path = os.path.join(cli_dir, 'rediacc')
         simple_cmd = f'{rediacc_path} {command}'
         
         # Show command in output area
-        self.terminal_output.config(state='normal')  # Enable for writing
+        self.terminal_output.config(state='normal')
         self.terminal_output.delete(1.0, tk.END)
-        self.terminal_output.insert(tk.END, i18n.get('terminal_instructions', description=description) + "\n\n")
-        self.terminal_output.insert(tk.END, simple_cmd + "\n\n")
-        self.terminal_output.insert(tk.END, i18n.get('or_from_any_directory') + "\n\n")
-        self.terminal_output.insert(tk.END, f'cd {cli_dir} && {simple_cmd}\n\n')
-        self.terminal_output.config(state='disabled')  # Disable again
+        lines = [
+            i18n.get('terminal_instructions', description=description) + "\n\n",
+            simple_cmd + "\n\n",
+            i18n.get('or_from_any_directory') + "\n\n",
+            f'cd {cli_dir} && {simple_cmd}\n\n'
+        ]
+        self.terminal_output.insert(tk.END, ''.join(lines))
+        self.terminal_output.config(state='disabled')
         
         # Use terminal detector to find best method
         method = self.terminal_detector.detect()
         
-        if method:
-            launch_func = self.terminal_detector.get_launch_function(method)
-            if launch_func:
-                try:
-                    # Launch using detected method
-                    launch_func(cli_dir, command, description)
-                    self.terminal_output.config(state='normal')
-                    self.terminal_output.insert(tk.END, f"\n{i18n.get('launched_terminal')} ({method})\n")
-                    self.terminal_output.config(state='disabled')
-                except Exception as e:
-                    self.logger.error(f"Failed to launch with {method}: {e}")
-                    self.terminal_output.config(state='normal')
-                    self.terminal_output.insert(tk.END, f"\n{i18n.get('could_not_launch')}\n")
-                    self.terminal_output.config(state='disabled')
-            else:
-                self.logger.warning(f"No launch function for method: {method}")
-                self.terminal_output.config(state='normal')
-                self.terminal_output.insert(tk.END, f"\n{i18n.get('could_not_launch')}\n")
-                self.terminal_output.config(state='disabled')
-        else:
-            self.logger.error("No working terminal method detected")
+        def update_output(text):
             self.terminal_output.config(state='normal')
-            self.terminal_output.insert(tk.END, f"\n{i18n.get('could_not_launch')} - No terminal method available\n")
+            self.terminal_output.insert(tk.END, text)
             self.terminal_output.config(state='disabled')
+        
+        if not method:
+            self.logger.error("No working terminal method detected")
+            update_output(f"\n{i18n.get('could_not_launch')} - No terminal method available\n")
+            return
+        
+        launch_func = self.terminal_detector.get_launch_function(method)
+        if not launch_func:
+            self.logger.warning(f"No launch function for method: {method}")
+            update_output(f"\n{i18n.get('could_not_launch')}\n")
+            return
+        
+        try:
+            launch_func(cli_dir, command, description)
+            update_output(f"\n{i18n.get('launched_terminal')} ({method})\n")
+        except Exception as e:
+            self.logger.error(f"Failed to launch with {method}: {e}")
+            update_output(f"\n{i18n.get('could_not_launch')}\n")
     
     def open_repo_terminal(self):
         """Open interactive repository terminal in new window"""
-        team = self.team_combo.get()
-        machine = self.machine_combo.get()
-        repo = self.repo_combo.get()
+        team, machine, repo = self.team_combo.get(), self.machine_combo.get(), self.repo_combo.get()
         
-        if not team or not machine or not repo:
+        if not all([team, machine, repo]):
             messagebox.showerror(i18n.get('error'), i18n.get('select_team_machine_repo'))
             return
         
@@ -1059,10 +1029,9 @@ class MainWindow(BaseWindow):
     
     def open_machine_terminal(self):
         """Open interactive machine terminal in new window (without repository)"""
-        team = self.team_combo.get()
-        machine = self.machine_combo.get()
+        team, machine = self.team_combo.get(), self.machine_combo.get()
         
-        if not team or not machine:
+        if not (team and machine):
             messagebox.showerror(i18n.get('error'), i18n.get('select_team_machine'))
             return
         
@@ -1081,11 +1050,7 @@ class MainWindow(BaseWindow):
     
     def browse_local_path(self):
         """Browse for local directory"""
-        if self.sync_direction.get() == 'upload':
-            path = filedialog.askdirectory()
-        else:
-            path = filedialog.askdirectory()
-        
+        path = filedialog.askdirectory()
         if path:
             self.local_path_entry.delete(0, tk.END)
             self.local_path_entry.insert(0, path)
@@ -1093,16 +1058,13 @@ class MainWindow(BaseWindow):
     def start_sync(self):
         """Start file synchronization"""
         direction = self.sync_direction.get()
-        team = self.team_combo.get()
-        machine = self.machine_combo.get()
-        repo = self.repo_combo.get()
+        team, machine, repo = self.team_combo.get(), self.machine_combo.get(), self.repo_combo.get()
         local_path = self.local_path_entry.get().strip()
         
         if not all([team, machine, repo, local_path]):
             messagebox.showerror(i18n.get('error'), i18n.get('fill_all_fields'))
             return
         
-        # Show sync progress dialog
         self.show_sync_progress(direction, team, machine, repo, local_path)
     
     def show_sync_progress(self, direction: str, team: str, machine: str, repo: str, local_path: str):
@@ -1252,8 +1214,7 @@ class MainWindow(BaseWindow):
                 self.root.after(0, lambda: self.sync_button.config(state='normal'))
                 self.root.after(0, lambda: self.status_bar.config(text=i18n.get('ready')))
         
-        thread = threading.Thread(target=do_sync)
-        thread.daemon = True
+        thread = threading.Thread(target=do_sync, daemon=True)
         thread.start()
     
     # Plugin management methods
@@ -1307,8 +1268,7 @@ class MainWindow(BaseWindow):
             self.logger.debug(f"Final plugins list: {plugins}")
             self.root.after(0, lambda: self.update_plugin_list(plugins))
         
-        thread = threading.Thread(target=load)
-        thread.daemon = True
+        thread = threading.Thread(target=load, daemon=True)
         thread.start()
     
     def update_plugin_list(self, plugins: list):
@@ -1360,8 +1320,7 @@ class MainWindow(BaseWindow):
             
             self.root.after(0, lambda: self.update_connections_tree(connections))
         
-        thread = threading.Thread(target=load)
-        thread.daemon = True
+        thread = threading.Thread(target=load, daemon=True)
         thread.start()
     
     def update_connections_tree(self, connections: list):
@@ -1455,11 +1414,9 @@ class MainWindow(BaseWindow):
             
             if result['success']:
                 # Extract URL from output
-                url = None
-                for line in output.split('\n'):
-                    if 'Local URL:' in line:
-                        url = line.split('Local URL:')[1].strip()
-                        break
+                url = next((line.split('Local URL:')[1].strip() 
+                           for line in output.split('\n') 
+                           if 'Local URL:' in line), None)
                 
                 msg = i18n.get('successfully_connected', plugin=plugin)
                 if url:
@@ -1474,8 +1431,7 @@ class MainWindow(BaseWindow):
             self.root.after(0, lambda: self.connect_button.config(state='normal'))
             self.root.after(0, lambda: self.status_bar.config(text="Ready"))
         
-        thread = threading.Thread(target=connect)
-        thread.daemon = True
+        thread = threading.Thread(target=connect, daemon=True)
         thread.start()
     
     def disconnect_plugin(self):
@@ -1505,8 +1461,7 @@ class MainWindow(BaseWindow):
                 self.root.after(0, self.refresh_connections)
                 self.root.after(0, lambda: self.status_bar.config(text="Ready"))
             
-            thread = threading.Thread(target=disconnect)
-            thread.daemon = True
+            thread = threading.Thread(target=disconnect, daemon=True)
             thread.start()
     
     def open_plugin_url(self):
@@ -1516,13 +1471,10 @@ class MainWindow(BaseWindow):
             messagebox.showerror(i18n.get('error'), i18n.get('select_connection', action=i18n.get('open_in_browser').lower()))
             return
         
-        item = self.connections_tree.item(selection[0])
-        url = item['values'][1]  # URL is second column
+        url = self.connections_tree.item(selection[0])['values'][1]  # URL is second column
         
-        # Open URL in default browser
         import webbrowser
         webbrowser.open(url)
-        
         self.status_bar.config(text=i18n.get('opened_in_browser', url=url))
     
     def copy_plugin_url(self):
@@ -1532,18 +1484,13 @@ class MainWindow(BaseWindow):
             messagebox.showerror(i18n.get('error'), i18n.get('select_connection', action=i18n.get('copy_url').lower()))
             return
         
-        item = self.connections_tree.item(selection[0])
-        url = item['values'][1]  # URL is second column
+        url = self.connections_tree.item(selection[0])['values'][1]  # URL is second column
         
-        # Copy to clipboard
         self.root.clipboard_clear()
         self.root.clipboard_append(url)
         self.root.update()  # Required on Windows
         
-        # Show confirmation in status bar
         self.status_bar.config(text=i18n.get('copied_to_clipboard', url=url), fg='green')
-        
-        # Reset status bar color after 2 seconds
         self.root.after(2000, lambda: self.status_bar.config(fg='black'))
     
     def auto_refresh_connections(self):
@@ -1598,7 +1545,7 @@ class MainWindow(BaseWindow):
         
         # Update status bar
         current_text = self.status_bar.cget('text')
-        if current_text == 'Ready' or current_text == 'جاهز' or current_text == 'Bereit':
+        if current_text in ['Ready', 'جاهز', 'Bereit']:
             self.status_bar.config(text=i18n.get('ready'))
         
         # Update each tab's contents
@@ -1609,43 +1556,55 @@ class MainWindow(BaseWindow):
     
     def update_plugin_tab_texts(self):
         """Update all texts in plugin tab"""
-        self.plugin_management_frame.config(text=i18n.get('plugin_management'))
-        self.available_plugins_label.config(text=i18n.get('available_plugins'))
-        self.refresh_plugins_button.config(text=i18n.get('refresh_plugins'))
-        self.connect_plugin_label.config(text=i18n.get('connect_to_plugin'))
-        self.plugin_select_label.config(text=i18n.get('plugin'))
-        self.port_frame.config(text=i18n.get('local_port'))
-        self.auto_port_radio.config(text=i18n.get('auto_port'))
-        self.manual_port_radio.config(text=i18n.get('manual_port'))
-        self.connect_button.config(text=i18n.get('connect'))
-        self.connections_frame.config(text=i18n.get('active_connections'))
-        self.open_browser_button.config(text=i18n.get('open_in_browser'))
-        self.copy_url_button.config(text=i18n.get('copy_url'))
-        self.disconnect_button.config(text=i18n.get('disconnect'))
-        self.refresh_status_button.config(text=i18n.get('refresh_status'))
-        self.plugin_info_label.config(text=i18n.get('plugin_tip'))
+        updates = [
+            (self.plugin_management_frame, 'plugin_management'),
+            (self.available_plugins_label, 'available_plugins'),
+            (self.refresh_plugins_button, 'refresh_plugins'),
+            (self.connect_plugin_label, 'connect_to_plugin'),
+            (self.plugin_select_label, 'plugin'),
+            (self.port_frame, 'local_port'),
+            (self.auto_port_radio, 'auto_port'),
+            (self.manual_port_radio, 'manual_port'),
+            (self.connect_button, 'connect'),
+            (self.connections_frame, 'active_connections'),
+            (self.open_browser_button, 'open_in_browser'),
+            (self.copy_url_button, 'copy_url'),
+            (self.disconnect_button, 'disconnect'),
+            (self.refresh_status_button, 'refresh_status'),
+            (self.plugin_info_label, 'plugin_tip')
+        ]
+        for widget, key in updates:
+            widget.config(text=i18n.get(key))
     
     def update_terminal_tab_texts(self):
         """Update all texts in terminal tab"""
-        self.terminal_command_label.config(text=i18n.get('command'))
-        self.execute_cmd_button.config(text=i18n.get('execute_command'))
-        self.open_repo_term_button.config(text=i18n.get('open_repo_terminal'))
-        self.open_machine_term_button.config(text=i18n.get('open_machine_terminal'))
-        self.terminal_output_label.config(text=i18n.get('output'))
+        updates = [
+            (self.terminal_command_label, 'command'),
+            (self.execute_cmd_button, 'execute_command'),
+            (self.open_repo_term_button, 'open_repo_terminal'),
+            (self.open_machine_term_button, 'open_machine_terminal'),
+            (self.terminal_output_label, 'output')
+        ]
+        for widget, key in updates:
+            widget.config(text=i18n.get(key))
     
     def update_sync_tab_texts(self):
         """Update all texts in sync tab"""
-        self.sync_direction_label.config(text=i18n.get('direction'))
-        self.upload_radio.config(text=i18n.get('upload'))
-        self.download_radio.config(text=i18n.get('download'))
-        self.local_path_label.config(text=i18n.get('local_path'))
-        self.browse_button.config(text=i18n.get('browse'))
-        self.options_frame.config(text=i18n.get('options'))
-        self.mirror_check.config(text=i18n.get('mirror_delete'))
-        self.verify_check.config(text=i18n.get('verify_transfer'))
-        self.confirm_check.config(text=i18n.get('preview_changes'))
-        self.sync_button.config(text=i18n.get('start_sync'))
-        self.sync_output_label.config(text=i18n.get('output'))
+        updates = [
+            (self.sync_direction_label, 'direction'),
+            (self.upload_radio, 'upload'),
+            (self.download_radio, 'download'),
+            (self.local_path_label, 'local_path'),
+            (self.browse_button, 'browse'),
+            (self.options_frame, 'options'),
+            (self.mirror_check, 'mirror_delete'),
+            (self.verify_check, 'verify_transfer'),
+            (self.confirm_check, 'preview_changes'),
+            (self.sync_button, 'start_sync'),
+            (self.sync_output_label, 'output')
+        ]
+        for widget, key in updates:
+            widget.config(text=i18n.get(key))
     
     def update_file_browser_tab_texts(self):
         """Update all texts in file browser tab"""
@@ -2251,8 +2210,7 @@ class DualPaneFileBrowser:
                 self.logger.error(f"Failed to connect: {e}")
                 self.parent.after(0, lambda: self.on_remote_connect_failed(str(e)))
         
-        thread = threading.Thread(target=do_connect)
-        thread.daemon = True
+        thread = threading.Thread(target=do_connect, daemon=True)
         thread.start()
     
     def on_remote_connected(self):
@@ -2282,7 +2240,6 @@ class DualPaneFileBrowser:
     def disconnect_remote(self):
         """Disconnect from remote repository"""
         if self.ssh_connection:
-            # Clean up SSH connection
             if hasattr(self.ssh_connection, 'cleanup_ssh'):
                 self.ssh_connection.cleanup_ssh(getattr(self.ssh_connection, 'ssh_key_file', None),
                                                getattr(self.ssh_connection, 'known_hosts_file', None))
@@ -2297,18 +2254,17 @@ class DualPaneFileBrowser:
         self.connect_button.config(text=i18n.get('connect', 'Connect'), command=self.connect_remote)
         
         # Disable remote controls
-        self.remote_up_button.config(state='disabled')
-        self.remote_home_button.config(state='disabled')
-        self.remote_refresh_button.config(state='disabled')
+        remote_controls = [
+            self.remote_up_button, self.remote_home_button, self.remote_refresh_button,
+            self.remote_search_entry, self.remote_clear_button
+        ]
+        for control in remote_controls:
+            control.config(state='disabled')
         self.remote_path_entry.config(state='readonly')
-        self.remote_search_entry.config(state='disabled')
-        self.remote_clear_button.config(state='disabled')
         
-        # Clear search
+        # Clear state
         self.remote_search_var.set('')
         self.remote_filter = ''
-        
-        # Clear selection and disable transfer buttons
         self.remote_selected = []
         self.update_transfer_buttons()
     
@@ -2318,7 +2274,6 @@ class DualPaneFileBrowser:
             return False, "Not connected"
         
         try:
-            # Set up SSH if needed
             ssh_opts, ssh_key_file, known_hosts_file = self.ssh_connection.setup_ssh()
             
             # Build SSH command
@@ -2329,10 +2284,8 @@ class DualPaneFileBrowser:
             if universal_user:
                 ssh_cmd.extend(['sudo', '-u', universal_user])
             
-            # Add the actual command
             ssh_cmd.append(command)
             
-            # Execute
             result = subprocess.run(ssh_cmd, capture_output=True, text=True, timeout=30)
             
             # Store SSH files for cleanup
@@ -2378,7 +2331,7 @@ class DualPaneFileBrowser:
                 continue
             
             # Determine if directory or link to directory
-            is_dir = perms.startswith('d') or perms.startswith('l')
+            is_dir = perms[0] in 'dl'
             
             # Parse modification time
             try:
@@ -2428,15 +2381,12 @@ class DualPaneFileBrowser:
                 self.parent.after(0, lambda: messagebox.showerror(i18n.get('error', 'Error'), 
                                                                  i18n.get('failed_refresh_remote', f'Failed to refresh remote: {str(e)}')))
         
-        thread = threading.Thread(target=do_refresh)
-        thread.daemon = True
+        thread = threading.Thread(target=do_refresh, daemon=True)
         thread.start()
     
     def update_remote_tree(self, files: List[Dict[str, Any]]):
         """Update remote tree with file list"""
-        # Store files for sorting
         self.remote_files = files
-        # Display sorted files
         self.display_remote_files()
     
     def on_remote_search_changed(self):
@@ -2447,8 +2397,7 @@ class DualPaneFileBrowser:
     def clear_remote_search(self):
         """Clear remote search filter"""
         self.remote_search_var.set('')
-        self.remote_filter = ''
-        self.display_remote_files()
+        self.on_remote_search_changed()
     
     def display_remote_files(self):
         """Display remote files with current sorting and filtering"""
@@ -2554,52 +2503,30 @@ class DualPaneFileBrowser:
             self.remote_sort_reverse = False
         
         # Update column headers to show sort indicator
+        indicator = ' ▼' if self.remote_sort_reverse else ' ▲'
         for col in ['name', 'size', 'modified', 'type']:
-            if col == 'name':
-                header = i18n.get('name', 'Name')
-            else:
-                header = i18n.get(col, col.capitalize())
-            
+            header = i18n.get(col, col.capitalize()) if col != 'name' else i18n.get('name', 'Name')
             if col == column:
-                # Add sort indicator
-                indicator = ' ▼' if self.remote_sort_reverse else ' ▲'
                 header += indicator
             
-            if col == 'name':
-                self.remote_tree.heading('#0', text=header)
-            else:
-                self.remote_tree.heading(col, text=header)
+            target = '#0' if col == 'name' else col
+            self.remote_tree.heading(target, text=header)
         
         # Re-sort and display files
         self.display_remote_files()
     
     def update_transfer_buttons(self):
         """Update transfer button states based on selections"""
-        # Enable upload if local items selected and connected
-        can_upload = bool(self.local_selected and self.ssh_connection)
-        self.upload_button.config(state='normal' if can_upload else 'disabled')
-        
-        # Enable download if remote items selected and connected
-        can_download = bool(self.remote_selected and self.ssh_connection)
-        self.download_button.config(state='normal' if can_download else 'disabled')
+        self.upload_button.config(state='normal' if self.local_selected and self.ssh_connection else 'disabled')
+        self.download_button.config(state='normal' if self.remote_selected and self.ssh_connection else 'disabled')
     
     def get_selected_paths(self, tree: ttk.Treeview, base_path) -> List[Tuple[str, bool]]:
         """Get selected file paths from tree"""
-        paths = []
-        for item_id in tree.selection():
-            item = tree.item(item_id)
-            name = item['text'][2:]  # Remove icon
-            is_dir = 'dir' in item['tags']
-            
-            if isinstance(base_path, Path):
-                full_path = base_path / name
-            else:
-                # Remote path
-                full_path = base_path.rstrip('/') + '/' + name
-            
-            paths.append((str(full_path), is_dir))
-        
-        return paths
+        return [(str(base_path / item['text'][2:] if isinstance(base_path, Path) 
+                    else f"{base_path.rstrip('/')}/{item['text'][2:]}"),
+                'dir' in item['tags'])
+                for item_id in tree.selection()
+                for item in [tree.item(item_id)]]
     
     def perform_selective_rsync(self, local_paths: List[Tuple[str, bool]], remote_base: str, 
                                 direction: str = 'upload', progress_callback=None) -> Tuple[bool, str]:
@@ -2949,8 +2876,7 @@ class DualPaneFileBrowser:
                 progress_dialog.after(0, lambda: progress_dialog.protocol('WM_DELETE_WINDOW', progress_dialog.destroy))
                 self.parent.after(0, lambda: self.on_transfer_complete(str(e), False))
         
-        thread = threading.Thread(target=do_transfer)
-        thread.daemon = True
+        thread = threading.Thread(target=do_transfer, daemon=True)
         thread.start()
     
     def download_selected(self):
@@ -3178,19 +3104,13 @@ class DualPaneFileBrowser:
     def on_drag_enter(self, event, pane):
         """Handle drag enter for drop feedback"""
         if self.dragging and self.drag_source and self.drag_source != pane:
-            # Highlight drop target
-            if pane == 'local':
-                self.local_frame.config(relief='solid', borderwidth=2)
-            else:
-                self.remote_frame.config(relief='solid', borderwidth=2)
+            frame = self.local_frame if pane == 'local' else self.remote_frame
+            frame.config(relief='solid', borderwidth=2)
     
     def on_drag_leave(self, event, pane):
         """Handle drag leave to remove feedback"""
-        # Remove highlight
-        if pane == 'local':
-            self.local_frame.config(relief='groove', borderwidth=2)
-        else:
-            self.remote_frame.config(relief='groove', borderwidth=2)
+        frame = self.local_frame if pane == 'local' else self.remote_frame
+        frame.config(relief='groove', borderwidth=2)
     
     def handle_drop(self, source: str, target: str):
         """Handle file drop between panes"""
@@ -3199,55 +3119,46 @@ class DualPaneFileBrowser:
                                  i18n.get('connect_first', 'Please connect to remote first'))
             return
         
-        # Get selected files from source
-        if source == 'local' and target == 'remote':
-            # Upload operation
-            paths = self.get_selected_paths(self.local_tree, self.local_current_path)
-            if paths:
-                # Confirm operation
-                file_list = '\n'.join([f"{'[DIR] ' if is_dir else ''}{Path(p).name}" for p, is_dir in paths])
-                if messagebox.askyesno(i18n.get('confirm_upload', 'Confirm Upload'),
-                                     i18n.get('drag_upload_confirm', f'Upload these files to {self.remote_current_path}?\n\n{file_list}')):
-                    self.show_transfer_progress('upload', paths)
+        # Map source/target to operation and trees
+        operations = {
+            ('local', 'remote'): ('upload', self.local_tree, self.local_current_path),
+            ('remote', 'local'): ('download', self.remote_tree, self.remote_current_path)
+        }
         
-        elif source == 'remote' and target == 'local':
-            # Download operation
-            paths = self.get_selected_paths(self.remote_tree, self.remote_current_path)
-            if paths:
-                # Confirm operation
-                file_list = '\n'.join([f"{'[DIR] ' if is_dir else ''}{Path(p).name}" for p, is_dir in paths])
-                if messagebox.askyesno(i18n.get('confirm_download', 'Confirm Download'),
-                                     i18n.get('drag_download_confirm', f'Download these files to {self.local_current_path}?\n\n{file_list}')):
-                    self.show_transfer_progress('download', paths)
+        operation_info = operations.get((source, target))
+        if not operation_info:
+            return
+        
+        operation, tree, base_path = operation_info
+        paths = self.get_selected_paths(tree, base_path)
+        
+        if paths:
+            file_list = '\n'.join([f"{'[DIR] ' if is_dir else ''}{Path(p).name}" for p, is_dir in paths])
+            dest_path = self.remote_current_path if operation == 'upload' else self.local_current_path
+            
+            confirm_key = f'confirm_{operation}'
+            message_key = f'drag_{operation}_confirm'
+            
+            if messagebox.askyesno(i18n.get(confirm_key, f'Confirm {operation.title()}'),
+                                 i18n.get(message_key, f'{operation.title()} these files to {dest_path}?\n\n{file_list}')):
+                self.show_transfer_progress(operation, paths)
     
     def setup_keyboard_shortcuts(self):
         """Set up keyboard shortcuts"""
-        # F5 - Refresh
-        self.parent.bind_all('<F5>', lambda e: self.refresh_all())
+        shortcuts = [
+            ('<F5>', self.refresh_all),
+            ('<Control-a>', self.select_all),
+            ('<Delete>', self.delete_selected),
+            ('<Control-x>', self.cut_selected),
+            ('<Control-c>', self.copy_selected),
+            ('<Control-v>', self.paste_files),
+            ('<F2>', self.rename_selected),
+            ('<Control-f>', self.focus_search),
+            ('<Escape>', self.clear_search)
+        ]
         
-        # Ctrl+A - Select all in focused pane
-        self.parent.bind_all('<Control-a>', lambda e: self.select_all())
-        
-        # Delete - Delete selected files (with confirmation)
-        self.parent.bind_all('<Delete>', lambda e: self.delete_selected())
-        
-        # Ctrl+X - Cut (prepare for move)
-        self.parent.bind_all('<Control-x>', lambda e: self.cut_selected())
-        
-        # Ctrl+C - Copy (prepare for copy)
-        self.parent.bind_all('<Control-c>', lambda e: self.copy_selected())
-        
-        # Ctrl+V - Paste (execute move/copy)
-        self.parent.bind_all('<Control-v>', lambda e: self.paste_files())
-        
-        # F2 - Rename
-        self.parent.bind_all('<F2>', lambda e: self.rename_selected())
-        
-        # Ctrl+F - Focus search
-        self.parent.bind_all('<Control-f>', lambda e: self.focus_search())
-        
-        # Escape - Clear search
-        self.parent.bind_all('<Escape>', lambda e: self.clear_search())
+        for key, func in shortcuts:
+            self.parent.bind_all(key, lambda e, f=func: f())
     
     def refresh_all(self):
         """Refresh both panes"""
@@ -3257,14 +3168,14 @@ class DualPaneFileBrowser:
     
     def select_all(self):
         """Select all items in focused pane"""
-        # Determine which tree has focus
         focused = self.parent.focus_get()
         
-        if focused == self.local_tree or focused in [self.local_search_entry, self.local_path_entry]:
-            # Select all in local tree
+        local_widgets = [self.local_tree, self.local_search_entry, self.local_path_entry]
+        remote_widgets = [self.remote_tree, self.remote_search_entry, self.remote_path_entry]
+        
+        if focused in local_widgets:
             self.local_tree.selection_set(self.local_tree.get_children())
-        elif focused == self.remote_tree or focused in [self.remote_search_entry, self.remote_path_entry]:
-            # Select all in remote tree
+        elif focused in remote_widgets:
             self.remote_tree.selection_set(self.remote_tree.get_children())
     
     def delete_selected(self):
@@ -3483,8 +3394,7 @@ class DualPaneFileBrowser:
                 self.parent.after(0, lambda: self.update_preview_content(
                     i18n.get('preview_error', f'Error: {str(e)}')))
         
-        thread = threading.Thread(target=load_remote)
-        thread.daemon = True
+        thread = threading.Thread(target=load_remote, daemon=True)
         thread.start()
     
     def update_preview_content(self, content: str):
@@ -3498,16 +3408,14 @@ class DualPaneFileBrowser:
         """Show transfer options dialog"""
         dialog = tk.Toplevel(self.parent)
         dialog.title(i18n.get('transfer_options', 'Transfer Options'))
-        dialog.geometry('700x700')
         dialog.transient(self.parent)
         
-        # Center the dialog
+        # Center and make modal
         dialog.update_idletasks()
-        x = (dialog.winfo_screenwidth() - 700) // 2
-        y = (dialog.winfo_screenheight() - 700) // 2
-        dialog.geometry(f'700x700+{x}+{y}')
-        
-        # Make it modal
+        width, height = 700, 700
+        x = (dialog.winfo_screenwidth() - width) // 2
+        y = (dialog.winfo_screenheight() - height) // 2
+        dialog.geometry(f'{width}x{height}+{x}+{y}')
         dialog.grab_set()
         
         # Main container with scrollbar
@@ -3803,53 +3711,37 @@ def launch_gui():
     signal.signal(signal.SIGINT, signal_handler)
     
     # Check if already authenticated and token is valid
-    token_valid = False
-    logger.debug("Checking authentication status...")
-    
-    try:
-        is_authenticated = TokenManager.is_authenticated()
-        logger.debug(f"TokenManager.is_authenticated(): {is_authenticated}")
-    except Exception as e:
-        logger.error(f"Error checking authentication: {e}")
-        import traceback
-        traceback.print_exc()
-        is_authenticated = False
-    
-    if is_authenticated:
-        logger.debug("Testing token validity with API call...")
-        # Test if the token is still valid by making a simple API call
+    def check_token_validity():
+        """Check if authentication token is valid"""
         try:
+            if not TokenManager.is_authenticated():
+                logger.debug("Not authenticated")
+                return False
+            
+            logger.debug("Testing token validity with API call...")
             runner = SubprocessRunner()
-            logger.debug("Creating SubprocessRunner...")
             result = runner.run_cli_command(['--output', 'json', 'list', 'teams'])
-            logger.debug(f"API call result: {result}")
             token_valid = result.get('success', False)
+            
             if not token_valid:
-                logger.debug(f"Token validation failed. Error: {result.get('error', 'Unknown error')}")
+                logger.debug(f"Token validation failed: {result.get('error', 'Unknown error')}")
+                TokenManager.clear_token()
+            
+            return token_valid
         except Exception as e:
-            logger.debug(f"Exception during token validation: {e}")
+            logger.error(f"Error checking authentication: {e}")
             import traceback
             traceback.print_exc()
-            token_valid = False
-        
-        # If token is invalid, clear it
-        if not token_valid:
-            logger.debug("Clearing invalid token...")
-            try:
-                TokenManager.clear_token()
-            except Exception as e:
-                logger.error(f"Error clearing token: {e}")
-                import traceback
-                traceback.print_exc()
+            return False
+    
+    token_valid = check_token_validity()
     
     try:
         if token_valid:
-            # Token is valid, show main window
             logger.debug("Token is valid, launching main window...")
             main_window = MainWindow()
             main_window.root.mainloop()
         else:
-            # Show login window
             logger.debug("No valid token, showing login window...")
             def on_login_success():
                 logger.debug("Login successful, launching main window...")
