@@ -353,7 +353,7 @@ desktop() {
     fi
     
     # Run Desktop GUI directly
-    "$PYTHON_CMD" "$CLI_ROOT/src/cli/rediacc_cli_gui.py" "$@"
+    "$PYTHON_CMD" "$CLI_ROOT/src/cli/rediacc-gui.py" "$@"
 }
 
 desktop_docker_build() {
@@ -478,7 +478,7 @@ desktop_docker() {
         -v "$CLI_ROOT/.env:/app/.env:ro" \
         --network host \
         rediacc/cli-gui:latest \
-        python3 /app/src/cli/rediacc_cli_gui.py
+        python3 /app/src/cli/rediacc-gui.py
     
     # Copy config back if it was updated
     if [ -f "$REDIACC_VOLUME/config.json" ]; then
