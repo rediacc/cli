@@ -2088,9 +2088,6 @@ def setup_parser():
     # Add verbose logging option
     parser.add_argument('--verbose', '-v', action='store_true',
                        help='Enable verbose logging output')
-    # Add GUI option
-    parser.add_argument('--gui', nargs='?', const='native', choices=['native', 'docker', 'docker-build'],
-                       help='Launch graphical user interface (native/docker/docker-build)')
     
     subparsers = parser.add_subparsers(dest='command', help='Command')
     
@@ -2184,53 +2181,6 @@ def main():
         logger.debug(f"Arguments: {vars(args)}")
     
     # Check if GUI mode is requested
-    if args.gui:
-        gui_mode = args.gui  # Will be 'native', 'docker', or 'docker-build'
-        
-        if gui_mode == 'docker-build':
-            # Build Docker image for GUI
-            try:
-                import subprocess
-                cli_root = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
-                cmd = [os.path.join(cli_root, '..', 'rediacc'), 'desktop-docker-build']
-                result = subprocess.run(cmd, cwd=cli_root)
-                return result.returncode
-            except Exception as e:
-                print(colorize(f"Error building Docker GUI image: {str(e)}", 'RED'))
-                return 1
-                
-        elif gui_mode == 'docker':
-            # Run GUI in Docker
-            try:
-                import subprocess
-                cli_root = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
-                cmd = [os.path.join(cli_root, '..', 'rediacc'), 'desktop-docker']
-                result = subprocess.run(cmd, cwd=cli_root)
-                return result.returncode
-            except Exception as e:
-                print(colorize(f"Error running GUI in Docker: {str(e)}", 'RED'))
-                return 1
-                
-        else:  # native mode (default)
-            # Import and launch GUI natively
-            try:
-                # Import from current directory (already in sys.path)
-                import rediacc_cli_gui
-                rediacc_cli_gui.launch_gui()
-                return 0
-            except ImportError as e:
-                print(colorize("Error: Failed to launch GUI. Make sure tkinter is installed.", 'RED'))
-                print(colorize(f"Details: {str(e)}", 'RED'))
-                # Additional help for module import errors
-                if "No module named 'modules'" in str(e):
-                    print(colorize("The modules directory was not found. Check your installation.", 'YELLOW'))
-                    modules_path = os.path.dirname(os.path.abspath(__file__))
-                    print(colorize(f"Expected modules path: {modules_path}", 'YELLOW'))
-                    print(colorize(f"Path exists: {os.path.exists(modules_path)}", 'YELLOW'))
-                return 1
-            except Exception as e:
-                print(colorize(f"Error launching GUI: {str(e)}", 'RED'))
-                return 1
     
     if not args.command:
         parser.print_help()

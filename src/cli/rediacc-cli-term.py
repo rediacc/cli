@@ -369,10 +369,6 @@ When connected to machine only:
   - Useful for managing repositories and datastore
 """
     )
-    
-    # Add GUI option
-    parser.add_argument('--gui', action='store_true',
-                       help='Launch graphical user interface')
     # Add verbose logging option
     parser.add_argument('--verbose', '-v', action='store_true',
                        help='Enable verbose logging output')
@@ -395,19 +391,6 @@ When connected to machine only:
         logger.debug("Rediacc CLI Term starting up")
         logger.debug(f"Arguments: {vars(args)}")
     
-    # Check if GUI mode is requested
-    if args.gui:
-        try:
-            from rediacc_cli_gui import launch_gui
-            launch_gui()
-            sys.exit(0)
-        except ImportError as e:
-            print(colorize("Error: Failed to launch GUI. Make sure tkinter is installed.", 'RED'))
-            print(colorize(f"Details: {str(e)}", 'RED'))
-            sys.exit(1)
-        except Exception as e:
-            print(colorize(f"Error launching GUI: {str(e)}", 'RED'))
-            sys.exit(1)
     
     # Check required arguments for CLI mode
     if not args.team or not args.machine:

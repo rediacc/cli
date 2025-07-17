@@ -352,8 +352,8 @@ desktop() {
         return 1
     fi
     
-    # Run Desktop GUI
-    "$PYTHON_CMD" "$CLI_ROOT/src/cli/rediacc-cli.py" --gui "$@"
+    # Run Desktop GUI directly
+    "$PYTHON_CMD" "$CLI_ROOT/src/cli/rediacc_cli_gui.py" "$@"
 }
 
 desktop_docker_build() {
@@ -478,7 +478,7 @@ desktop_docker() {
         -v "$CLI_ROOT/.env:/app/.env:ro" \
         --network host \
         rediacc/cli-gui:latest \
-        python3 /app/src/cli/rediacc-cli.py --gui
+        python3 /app/src/cli/rediacc_cli_gui.py
     
     # Copy config back if it was updated
     if [ -f "$REDIACC_VOLUME/config.json" ]; then
@@ -535,13 +535,8 @@ case "$1" in
             shift
             desktop_docker_build "$@"
         else
-            # Default to native or pass through --gui with mode
-            if [ "$#" -eq 0 ]; then
-                desktop
-            else
-                # Pass through to Python CLI which handles --gui modes
-                "$PYTHON_CMD" "$CLI_ROOT/src/cli/rediacc-cli.py" --gui "$@"
-            fi
+            # Default to native mode
+            desktop "$@"
         fi
         ;;
         
