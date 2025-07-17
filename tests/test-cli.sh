@@ -1,7 +1,7 @@
 #!/bin/bash
 
 # Configuration
-CLI="../src/cli/rediacc-cli"
+CLI="../src/cli/rediacc-cli.py"
 TIMESTAMP=$(date +%Y%m%d_%H%M%S)
 RANDOM_SUFFIX=$(openssl rand -hex 2)
 

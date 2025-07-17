@@ -22,10 +22,10 @@ class SubprocessRunner:
         self.logger = get_logger(__name__)
         # Store original Windows paths
         self.cli_dir = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
-        self.cli_path = os.path.join(self.cli_dir, 'cli', 'rediacc-cli')
-        self.sync_path = os.path.join(self.cli_dir, 'cli', 'rediacc-cli-sync')
-        self.term_path = os.path.join(self.cli_dir, 'cli', 'rediacc-cli-term')
-        self.plugin_path = os.path.join(self.cli_dir, 'cli', 'rediacc-cli-plugin')
+        self.cli_path = os.path.join(self.cli_dir, 'cli', 'rediacc-cli.py')
+        self.sync_path = os.path.join(self.cli_dir, 'cli', 'rediacc-cli-sync.py')
+        self.term_path = os.path.join(self.cli_dir, 'cli', 'rediacc-cli-term.py')
+        self.plugin_path = os.path.join(self.cli_dir, 'cli', 'rediacc-cli-plugin.py')
         self.wrapper_path = os.path.join(os.path.dirname(self.cli_dir), 'rediacc')
         
         # Check for MSYS2 on Windows for better compatibility

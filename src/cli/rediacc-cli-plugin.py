@@ -391,7 +391,7 @@ def connect_plugin(args):
         print(f"Connection ID: {colorize(conn_id, 'YELLOW')}")
         print(f"Local URL: {colorize(f'http://localhost:{local_port}', 'GREEN')}")
         print(colorize("=" * 60, 'BLUE'))
-        print(f"\nTo disconnect, run: {colorize(f'rediacc-cli-plugin disconnect --connection-id {conn_id}', 'YELLOW')}")
+        print(f"\nTo disconnect, run: {colorize(f'rediacc plugin disconnect --connection-id {conn_id}', 'YELLOW')}")
         
     except Exception as e:
         print(colorize(f"Error: {str(e)}", 'RED'))

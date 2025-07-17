@@ -17,9 +17,9 @@ export TEST_REPO="${TEST_REPO:-test-repo}"
 export TEST_TIMEOUT="${TEST_TIMEOUT:-30}"
 
 # Tool paths
-export CLI="${CLI:-../src/cli/rediacc-cli}"
-export SYNC="${SYNC:-../src/cli/rediacc-cli-sync}"
-export TERM_CLI="${TERM_CLI:-../src/cli/rediacc-cli-term}"
+export CLI="${CLI:-../src/cli/rediacc-cli.py}"
+export SYNC="${SYNC:-../src/cli/rediacc-cli-sync.py}"
+export TERM_CLI="${TERM_CLI:-../src/cli/rediacc-cli-term.py}"
 
 # Test counters
 export TESTS_RUN=0

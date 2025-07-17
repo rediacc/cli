@@ -25,7 +25,7 @@ from token_manager import TokenManager
 from config_loader import get, get_required, get_path
 
 # Configuration
-CLI_TOOL = os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))), 'cli', 'rediacc-cli')
+CLI_TOOL = os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))), 'cli', 'rediacc-cli.py')
 
 def get_cli_command() -> list:
     """Get the CLI command list for cross-platform execution"""

@@ -3,7 +3,7 @@
 # Simple test for test-cli.sh functionality
 
 # Configuration
-CLI="../src/cli/rediacc-cli"
+CLI="../src/cli/rediacc-cli.py"
 TIMESTAMP=$(date +%Y%m%d_%H%M%S)
 
 # Colors
