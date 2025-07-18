@@ -10,14 +10,14 @@ sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 
 from rediacc_cli_core import (
     colorize,
-    validate_cli_tool,
+    add_common_arguments,
+    error_exit,
+    initialize_cli_command,
     RepositoryConnection,
-    setup_ssh_for_connection,
     is_windows
 )
 
 from core import (
-    TokenManager,
     setup_logging, get_logger
 )
 
@@ -154,17 +154,18 @@ def perform_rsync(source: str, dest: str, ssh_cmd: str, options: Dict[str, Any],
 
 def upload(args):
     print(colorize(f"Uploading from {args.local} to {args.machine}:{args.repo}", 'HEADER'))
-    if not (source_path := Path(args.local)).exists(): print(colorize(f"Local path '{args.local}' does not exist", 'RED')); sys.exit(1)
+    if not (source_path := Path(args.local)).exists(): 
+        error_exit(f"Local path '{args.local}' does not exist")
     
     conn = RepositoryConnection(args.team, args.machine, args.repo); conn.connect()
     original_host_entry = conn.connection_info.get('host_entry') if args.dev else None
     if args.dev: conn.connection_info['host_entry'] = None
     
-    ssh_opts, ssh_key_file, known_hosts_file = conn.setup_ssh()
-    ssh_cmd = get_rsync_ssh_command(ssh_opts)
-    if args.dev and original_host_entry is not None: conn.connection_info['host_entry'] = original_host_entry
-    
-    try:
+    with conn.ssh_context() as ssh_conn:
+        ssh_cmd = get_rsync_ssh_command(ssh_conn.ssh_opts)
+        if args.dev and original_host_entry is not None: 
+            conn.connection_info['host_entry'] = original_host_entry
+        
         dest_path = f"{conn.ssh_destination}:{conn.repo_paths['mount_path']}/"
         source = str(source_path) + ('/' if source_path.is_dir() and not str(source_path).endswith('/') else '')
         
@@ -172,10 +173,8 @@ def upload(args):
         options = {'mirror': args.mirror, 'verify': args.verify, 'confirm': args.confirm}
         success = perform_rsync(source, dest_path, ssh_cmd, options, conn.connection_info.get('universal_user'))
         print(colorize("Upload completed successfully!" if success else "Upload failed!", 'GREEN' if success else 'RED'))
-        if not success: sys.exit(1)
-            
-    finally:
-        conn.cleanup_ssh(ssh_key_file, known_hosts_file)
+        if not success: 
+            sys.exit(1)
 
 def download(args):
     print(colorize(f"Downloading from {args.machine}:{args.repo} to {args.local}", 'HEADER'))
@@ -185,11 +184,11 @@ def download(args):
     original_host_entry = conn.connection_info.get('host_entry') if args.dev else None
     if args.dev: conn.connection_info['host_entry'] = None
     
-    ssh_opts, ssh_key_file, known_hosts_file = conn.setup_ssh()
-    ssh_cmd = get_rsync_ssh_command(ssh_opts)
-    if args.dev and original_host_entry is not None: conn.connection_info['host_entry'] = original_host_entry
-    
-    try:
+    with conn.ssh_context() as ssh_conn:
+        ssh_cmd = get_rsync_ssh_command(ssh_conn.ssh_opts)
+        if args.dev and original_host_entry is not None: 
+            conn.connection_info['host_entry'] = original_host_entry
+        
         source_path = f"{conn.ssh_destination}:{conn.repo_paths['mount_path']}/"
         dest = str(dest_path) + ('/' if not str(dest_path).endswith('/') else '')
         
@@ -197,10 +196,8 @@ def download(args):
         options = {'mirror': args.mirror, 'verify': args.verify, 'confirm': args.confirm}
         success = perform_rsync(source_path, dest, ssh_cmd, options, conn.connection_info.get('universal_user'))
         print(colorize("Download completed successfully!" if success else "Download failed!", 'GREEN' if success else 'RED'))
-        if not success: sys.exit(1)
-            
-    finally:
-        conn.cleanup_ssh(ssh_key_file, known_hosts_file)
+        if not success: 
+            sys.exit(1)
 
 def main():
     parser = argparse.ArgumentParser(
@@ -227,21 +224,10 @@ Examples:
     %(prog)s download --token=<GUID> --machine=server1 --repo=data --local=/backup --mirror --verify --confirm
 """
     )
-    parser.add_argument('--verbose', '-v', action='store_true',
-                       help='Enable verbose logging output')
+    # Add verbose to main parser
+    add_common_arguments(parser, include_args=['verbose'])
     
     subparsers = parser.add_subparsers(dest='command', help='Commands')
-    
-    common_args = [
-        ('--token', {'required': False, 'help': 'Authentication token (GUID) - uses saved token if not specified'}),
-        ('--team', {'required': True, 'help': 'Team name'}),
-        ('--machine', {'required': True, 'help': 'Machine name'}),
-        ('--repo', {'required': True, 'help': 'Repository name'}),
-        ('--mirror', {'action': 'store_true', 'help': 'Delete files not present in source'}),
-        ('--verify', {'action': 'store_true', 'help': 'Verify all transfers with checksums'}),
-        ('--confirm', {'action': 'store_true', 'help': 'Preview changes and ask for confirmation'}),
-        ('--dev', {'action': 'store_true', 'help': 'Development mode - relaxes SSH host key checking'})
-    ]
     
     for cmd_name, cmd_func, cmd_help in [
         ('upload', upload, 'Upload files to repository'),
@@ -250,8 +236,16 @@ Examples:
         parser_cmd = subparsers.add_parser(cmd_name, help=cmd_help)
         parser_cmd.add_argument('--local', required=True, 
                                help=f'Local path to {cmd_name} {"from" if cmd_name == "upload" else "to"}')
-        for arg, kwargs in common_args:
-            parser_cmd.add_argument(arg, **kwargs)
+        
+        # Add common arguments
+        add_common_arguments(parser_cmd, include_args=['token', 'team', 'machine', 'repo'])
+        
+        # Add sync-specific arguments
+        parser_cmd.add_argument('--mirror', action='store_true', help='Delete files not present in source')
+        parser_cmd.add_argument('--verify', action='store_true', help='Verify all transfers with checksums')
+        parser_cmd.add_argument('--confirm', action='store_true', help='Preview changes and ask for confirmation')
+        parser_cmd.add_argument('--dev', action='store_true', help='Development mode - relaxes SSH host key checking')
+        
         parser_cmd.set_defaults(func=cmd_func)
     
     args = parser.parse_args()
@@ -263,10 +257,8 @@ Examples:
     
     if not args.command: parser.print_help(); sys.exit(1)
     
-    if hasattr(args, 'token') and args.token: os.environ['REDIACC_TOKEN'] = args.token
-    elif not TokenManager.get_token(): parser.error("No authentication token available. Please login first.")
-    
-    validate_cli_tool(); args.func(args)
+    initialize_cli_command(args, parser)
+    args.func(args)
 
 if __name__ == '__main__':
     main()

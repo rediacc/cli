@@ -24,6 +24,8 @@ from core import (
     TokenManager, api_mutex, setup_logging, get_logger
 )
 
+from rediacc_cli_core import colorize, COLORS
+
 try:
     from cryptography.hazmat.primitives import hashes
     from cryptography.hazmat.primitives.kdf.pbkdf2 import PBKDF2HMAC
@@ -47,14 +49,6 @@ CONFIG_DIR = str(get_config_dir())
 CONFIG_FILE = str(get_main_config_file())
 REQUEST_TIMEOUT = 30
 TEST_ACTIVATION_CODE = get('REDIACC_TEST_ACTIVATION_CODE') or '111111'
-
-COLORS = {
-    'HEADER': '\033[95m', 'BLUE': '\033[94m', 'GREEN': '\033[92m',
-    'YELLOW': '\033[93m', 'RED': '\033[91m', 'ENDC': '\033[0m', 'BOLD': '\033[1m',
-}
-
-def colorize(text, color):
-    return f"{COLORS.get(color, '')}{text}{COLORS['ENDC']}" if sys.stdout.isatty() else text
 
 if not CRYPTO_AVAILABLE:
     print(colorize("Warning: cryptography library not installed. Vault encryption will not be available.", 'YELLOW'), file=sys.stderr)
