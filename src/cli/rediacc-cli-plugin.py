@@ -45,18 +45,15 @@ SSH_CONTROL_DIR = str(get_ssh_control_dir())
 
 def ensure_directories():
     """Ensure necessary directories exist"""
-    os.makedirs(os.path.dirname(CONNECTIONS_FILE), exist_ok=True)
-    os.makedirs(SSH_CONTROL_DIR, exist_ok=True)
+    for directory in [os.path.dirname(CONNECTIONS_FILE), SSH_CONTROL_DIR]:
+        os.makedirs(directory, exist_ok=True)
 
 def load_connections() -> Dict[str, Any]:
     """Load active connections from state file"""
-    if not os.path.exists(CONNECTIONS_FILE):
-        return {}
-    
     try:
         with open(CONNECTIONS_FILE, 'r') as f:
             return json.load(f)
-    except (json.JSONDecodeError, IOError):
+    except (json.JSONDecodeError, IOError, FileNotFoundError):
         return {}
 
 def save_connections(connections: Dict[str, Any]):
@@ -82,9 +79,9 @@ def is_process_running(pid: int) -> bool:
     """Check if a process is running"""
     try:
         os.kill(pid, 0)
-        return True
     except OSError:
         return False
+    return True
 
 def clean_stale_connections():
     """Remove connections with dead SSH processes"""
@@ -95,18 +92,18 @@ def clean_stale_connections():
         if (pid := conn_info.get('ssh_pid')) and is_process_running(pid)
     }
     
-    # Print cleanup messages for stale connections
-    for conn_id in set(connections) - set(active_connections):
+    stale_connections = set(connections) - set(active_connections)
+    for conn_id in stale_connections:
         print(colorize(f"Cleaning up stale connection: {conn_id}", 'YELLOW'))
     
-    if len(active_connections) != len(connections):
+    if stale_connections:
         save_connections(active_connections)
 
 def generate_connection_id(team: str, machine: str, repo: str, plugin: str) -> str:
     """Generate a unique connection ID"""
-    import hashlib
+    from hashlib import md5
     data = f"{team}:{machine}:{repo}:{plugin}:{time.time()}"
-    return hashlib.md5(data.encode()).hexdigest()[:8]
+    return md5(data.encode()).hexdigest()[:8]
 
 def list_plugins(args):
     """List available plugins in a repository"""
@@ -117,25 +114,22 @@ def list_plugins(args):
     conn.connect()
     
     # Set up SSH
+    original_host_entry = None
     if args.dev:
         original_host_entry = conn.connection_info.get('host_entry')
         conn.connection_info['host_entry'] = None
     
     ssh_opts, ssh_key_file, known_hosts_file = conn.setup_ssh()
     
-    if args.dev and 'original_host_entry' in locals():
+    if args.dev and original_host_entry is not None:
         conn.connection_info['host_entry'] = original_host_entry
     
     try:
         # List socket files in the repository
         universal_user = conn.connection_info.get('universal_user', 'rediacc')
         
-        ssh_cmd = [
-            'ssh',
-        ] + ssh_opts.split() + [
-            conn.ssh_destination,
-            f"sudo -u {universal_user} bash -c 'cd {conn.repo_paths['mount_path']} && ls -la *.sock 2>/dev/null || true'"
-        ]
+        ssh_cmd = ['ssh', *ssh_opts.split(), conn.ssh_destination,
+                   f"sudo -u {universal_user} bash -c 'cd {conn.repo_paths['mount_path']} && ls -la *.sock 2>/dev/null || true'"]
         
         result = subprocess.run(ssh_cmd, capture_output=True, text=True)
         
@@ -146,7 +140,7 @@ def list_plugins(args):
             # Parse socket files
             plugins = []
             for line in result.stdout.strip().split('\n'):
-                if '.sock' in line and len(parts := line.split()) >= 9:
+                if '.sock' in line and (parts := line.split()) and len(parts) >= 9:
                     socket_file = parts[-1]
                     plugin_name = socket_file.replace('.sock', '')
                     plugins.append(plugin_name)
@@ -159,12 +153,7 @@ def list_plugins(args):
                 print(colorize("\nPlugin container status:", 'BLUE'))
                 docker_cmd = f"sudo -u {universal_user} bash -c 'export DOCKER_HOST=\"{conn.repo_paths['docker_socket']}\" && docker ps --format \"table {{{{.Names}}}}\\t{{{{.Image}}}}\\t{{{{.Status}}}}\" | grep plugin || true'"
                 
-                ssh_cmd = [
-                    'ssh',
-                ] + ssh_opts.split() + [
-                    conn.ssh_destination,
-                    docker_cmd
-                ]
+                ssh_cmd = ['ssh', *ssh_opts.split(), conn.ssh_destination, docker_cmd]
                 
                 docker_result = subprocess.run(ssh_cmd, capture_output=True, text=True)
                 if docker_result.returncode == 0 and docker_result.stdout.strip():
@@ -175,11 +164,12 @@ def list_plugins(args):
                 # Show existing connections
                 connections = load_connections()
                 active_for_repo = [
-                    conn_info
-                    for conn_info in connections.values()
-                    if (conn_info.get('team') == args.team and 
-                        conn_info.get('machine') == args.machine and 
-                        conn_info.get('repo') == args.repo)
+                    conn_info for conn_info in connections.values()
+                    if all([
+                        conn_info.get('team') == args.team,
+                        conn_info.get('machine') == args.machine,
+                        conn_info.get('repo') == args.repo
+                    ])
                 ]
                 
                 if active_for_repo:
@@ -205,12 +195,13 @@ def connect_plugin(args):
     # Check if already connected
     connections = load_connections()
     existing_conn = next(
-        ((conn_id, conn_info)
-        for conn_id, conn_info in connections.items()
-        if (conn_info.get('team') == args.team and 
-            conn_info.get('machine') == args.machine and 
-            conn_info.get('repo') == args.repo and 
-            conn_info.get('plugin') == args.plugin)),
+        ((conn_id, conn_info) for conn_id, conn_info in connections.items()
+         if all([
+             conn_info.get('team') == args.team,
+             conn_info.get('machine') == args.machine,
+             conn_info.get('repo') == args.repo,
+             conn_info.get('plugin') == args.plugin
+         ])),
         None
     )
     
@@ -226,23 +217,23 @@ def connect_plugin(args):
             print(colorize(f"Port {args.port} is not available", 'RED'))
             sys.exit(1)
         local_port = args.port
-    else:
-        if not (local_port := find_available_port()):
-            print(colorize("No available ports in range 7111-9111", 'RED'))
-            sys.exit(1)
+    elif not (local_port := find_available_port()):
+        print(colorize("No available ports in range 7111-9111", 'RED'))
+        sys.exit(1)
     
     # Create repository connection
     conn = RepositoryConnection(args.team, args.machine, args.repo)
     conn.connect()
     
     # Set up SSH
+    original_host_entry = None
     if args.dev:
         original_host_entry = conn.connection_info.get('host_entry')
         conn.connection_info['host_entry'] = None
     
     ssh_opts, ssh_key_file, known_hosts_file = conn.setup_ssh()
     
-    if args.dev and 'original_host_entry' in locals():
+    if args.dev and original_host_entry is not None:
         conn.connection_info['host_entry'] = original_host_entry
     
     try:
@@ -250,12 +241,8 @@ def connect_plugin(args):
         universal_user = conn.connection_info.get('universal_user', 'rediacc')
         socket_path = f"{conn.repo_paths['mount_path']}/{args.plugin}.sock"
         
-        check_cmd = [
-            'ssh',
-        ] + ssh_opts.split() + [
-            conn.ssh_destination,
-            f"sudo -u {universal_user} test -S {socket_path} && echo 'exists' || echo 'not found'"
-        ]
+        check_cmd = ['ssh', *ssh_opts.split(), conn.ssh_destination,
+                     f"sudo -u {universal_user} test -S {socket_path} && echo 'exists' || echo 'not found'"]
         
         result = subprocess.run(check_cmd, capture_output=True, text=True)
         if result.returncode != 0 or 'not found' in result.stdout:
@@ -279,10 +266,10 @@ def connect_plugin(args):
             try:
                 import re
                 if match := re.search(r'openssh[_\s]+(\d+)\.(\d+)', ssh_version_output):
-                    major, minor = int(match.group(1)), int(match.group(2))
+                    major, minor = map(int, match.groups())
                     return major > 6 or (major == 6 and minor >= 7)
             except:
-                pass
+                return False
             return False
         
         supports_unix_forwarding = check_ssh_unix_support()
@@ -290,15 +277,13 @@ def connect_plugin(args):
         if supports_unix_forwarding:
             # Use native Unix socket forwarding
             ssh_tunnel_cmd = [
-                'ssh',
-                '-N',  # No command execution
-                '-f',  # Background
+                'ssh', '-N', '-f',
                 '-o', 'ControlMaster=auto',
                 '-o', f'ControlPath={control_path}',
                 '-o', 'ControlPersist=10m',
                 '-o', 'ExitOnForwardFailure=yes',
                 '-L', f'localhost:{local_port}:{socket_path}',
-            ] + ssh_opts.split() + [
+                *ssh_opts.split(),
                 conn.ssh_destination,
             ]
             
@@ -323,7 +308,7 @@ def connect_plugin(args):
                     if 'pid=' in result.stderr:
                         return int(result.stderr.split('pid=')[1].split()[0].rstrip(')'))
                 except:
-                    pass
+                    return None
                 return None
             
             ssh_pid = get_ssh_pid(control_path)
@@ -331,12 +316,8 @@ def connect_plugin(args):
         else:
             # Fallback: Use socat if available
             # First, check if socat is available on remote
-            check_socat_cmd = [
-                'ssh',
-            ] + ssh_opts.split() + [
-                conn.ssh_destination,
-                "which socat >/dev/null 2>&1 && echo 'available' || echo 'missing'"
-            ]
+            check_socat_cmd = ['ssh', *ssh_opts.split(), conn.ssh_destination,
+                              "which socat >/dev/null 2>&1 && echo 'available' || echo 'missing'"]
             
             socat_check = subprocess.run(check_socat_cmd, capture_output=True, text=True)
             if 'missing' in socat_check.stdout:
@@ -347,13 +328,12 @@ def connect_plugin(args):
             
             # Build SSH command with remote socat forwarding
             ssh_tunnel_cmd = [
-                'ssh',
-                '-N',  # No command execution
+                'ssh', '-N',
                 '-L', f'{local_port}:localhost:{local_port}',
                 '-o', 'ControlMaster=auto',
                 '-o', f'ControlPath={control_path}',
                 '-o', 'ControlPersist=10m',
-            ] + ssh_opts.split() + [
+                *ssh_opts.split(),
                 conn.ssh_destination,
                 f"sudo -u {universal_user} socat TCP-LISTEN:{local_port},bind=localhost,reuseaddr,fork UNIX-CONNECT:{socket_path}"
             ]
@@ -402,8 +382,7 @@ def connect_plugin(args):
         print(f"\nTo disconnect, run: {colorize(f'rediacc plugin disconnect --connection-id {conn_id}', 'YELLOW')}")
         
     except Exception as e:
-        print(colorize(f"Error: {str(e)}", 'RED'))
-        # Clean up on error
+        print(colorize(f"Error: {e}", 'RED'))
         cleanup_ssh_key(ssh_key_file, known_hosts_file)
         sys.exit(1)
 
@@ -420,12 +399,13 @@ def disconnect_plugin(args):
     else:
         # Find by team/machine/repo/plugin
         to_disconnect = [
-            conn_id
-            for conn_id, conn_info in connections.items()
-            if (conn_info.get('team') == args.team and 
-                conn_info.get('machine') == args.machine and 
-                conn_info.get('repo') == args.repo and 
-                (not args.plugin or conn_info.get('plugin') == args.plugin))
+            conn_id for conn_id, conn_info in connections.items()
+            if all([
+                conn_info.get('team') == args.team,
+                conn_info.get('machine') == args.machine,
+                conn_info.get('repo') == args.repo,
+                not args.plugin or conn_info.get('plugin') == args.plugin
+            ])
         ]
     
     if not to_disconnect:
@@ -451,24 +431,27 @@ def disconnect_plugin(args):
                     pass
             
             # Kill SSH process as fallback
-            if pid := conn_info.get('ssh_pid'):
-                try:
-                    os.kill(pid, signal.SIGTERM)
-                    time.sleep(0.5)
-                    if is_process_running(pid):
-                        os.kill(pid, signal.SIGKILL)
-                except (ProcessLookupError, OSError):
-                    pass
+            if not (pid := conn_info.get('ssh_pid')):
+                return
+                
+            try:
+                os.kill(pid, signal.SIGTERM)
+                time.sleep(0.5)
+                if is_process_running(pid):
+                    os.kill(pid, signal.SIGKILL)
+            except (ProcessLookupError, OSError):
+                pass
         
         stop_ssh_connection(conn_info)
         
         # Clean up SSH key files
         for file_key in ['ssh_key_file', 'known_hosts_file']:
-            if (file_path := conn_info.get(file_key)) and os.path.exists(file_path):
-                try:
-                    os.remove(file_path)
-                except:
-                    pass
+            if not (file_path := conn_info.get(file_key)):
+                continue
+            try:
+                os.remove(file_path)
+            except (FileNotFoundError, OSError):
+                pass
         
         # Remove from connections
         del connections[conn_id]
@@ -480,9 +463,8 @@ def disconnect_plugin(args):
 def show_status(args):
     """Show status of all plugin connections"""
     clean_stale_connections()
-    connections = load_connections()
     
-    if not connections:
+    if not (connections := load_connections()):
         print(colorize("No active plugin connections", 'YELLOW'))
         return
     
@@ -583,7 +565,6 @@ Plugin Access:
     # Validate CLI tool exists for commands that need it
     if args.command in ['list', 'connect']:
         validate_cli_tool()
-    
     
     # Execute the command
     args.func(args)

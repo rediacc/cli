@@ -39,17 +39,15 @@ def find_msys2_executable(exe_name: str) -> Optional[str]:
     if not is_windows():
         return None
     
-    # Build paths list with MSYS2_ROOT first if available
-    msys2_paths = [
+    msys2_paths = filter(None, [
         os.environ.get('MSYS2_ROOT'),
         'C:\\msys64',
         'C:\\msys2',
         os.path.expanduser('~\\msys64'),
         os.path.expanduser('~\\msys2'),
-    ]
+    ])
     
-    # Search for the executable
-    for msys2_path in filter(None, msys2_paths):
+    for msys2_path in msys2_paths:
         if not os.path.exists(msys2_path):
             continue
         
@@ -63,24 +61,20 @@ def find_msys2_executable(exe_name: str) -> Optional[str]:
 def get_rsync_command() -> str:
     """Get the rsync command for the current platform"""
     if is_windows():
-        msys2_rsync = find_msys2_executable('rsync')
-        if not msys2_rsync:
-            raise RuntimeError("rsync not found. Please install MSYS2 with rsync package.")
-        return msys2_rsync
+        if msys2_rsync := find_msys2_executable('rsync'):
+            return msys2_rsync
+        raise RuntimeError("rsync not found. Please install MSYS2 with rsync package.")
     
-    if not shutil.which('rsync'):
-        raise RuntimeError("rsync not found. Please install rsync.")
-    return 'rsync'
+    if shutil.which('rsync'):
+        return 'rsync'
+    raise RuntimeError("rsync not found. Please install rsync.")
 
 def get_rsync_ssh_command(ssh_opts: str) -> str:
     """Get the SSH command string for rsync -e option"""
     if not is_windows():
         return f'ssh {ssh_opts}'
     
-    # For Windows, we need to properly escape the SSH command for rsync
-    msys2_ssh = find_msys2_executable('ssh')
-    if msys2_ssh:
-        # Use forward slashes for MSYS2
+    if msys2_ssh := find_msys2_executable('ssh'):
         return f'{msys2_ssh.replace("\\", "/")} {ssh_opts}'
     
     if shutil.which('ssh'):
@@ -93,27 +87,21 @@ def prepare_rsync_paths(source: str, dest: str) -> Tuple[str, str]:
     if not is_windows():
         return source, dest
     
-    # Convert local Windows paths to MSYS2/Cygwin format for rsync
     def convert_local_path(path: str) -> str:
-        # If it's a remote path (contains :), leave it as is
         if '@' in path and ':' in path.split('@')[1]:
             return path
         
-        # Convert Windows path to MSYS2 format
         path_obj = Path(path)
         if not path_obj.is_absolute():
-            # Relative paths just need backslash conversion
             return path.replace('\\', '/')
         
-        # Convert C:\path\to\file to /c/path/to/file
         drive = path_obj.drive[0].lower()
         rest = str(path_obj).replace(path_obj.drive + '\\', '').replace('\\', '/')
         return f'/{drive}/{rest}'
     
-    # Convert paths if they're local
     return (
-        convert_local_path(source) if '@' not in source else source,
-        convert_local_path(dest) if '@' not in dest else dest
+        source if '@' in source else convert_local_path(source),
+        dest if '@' in dest else convert_local_path(dest)
     )
 
 def run_platform_command(cmd: List[str], **kwargs) -> subprocess.CompletedProcess:
@@ -136,18 +124,14 @@ def get_rsync_changes(source: str, dest: str, ssh_cmd: str, options: Dict[str, A
     """Get list of changes that rsync would make using --dry-run"""
     source, dest = prepare_rsync_paths(source, dest)
     
-    # Build rsync command
     rsync_cmd = [get_rsync_command(), '-av', '--dry-run', '--itemize-changes', '-e', ssh_cmd]
     
-    # Add sudo for remote access if needed
     if universal_user and ('@' in source or '@' in dest):
         rsync_cmd.extend(['--rsync-path', f'sudo -u {universal_user} rsync'])
     
-    # Add mirror option with socket exclusion
     if options.get('mirror'):
         rsync_cmd.extend(['--delete', '--exclude', '*.sock'])
     
-    # Add verify or normal mode options
     rsync_cmd.extend(
         ['--checksum', '--ignore-times'] if options.get('verify')
         else ['--partial', '--append-verify']
@@ -173,32 +157,26 @@ def parse_rsync_changes(dry_run_output: str) -> Dict[str, list]:
         'other': []
     }
     
-    # Skip uninteresting lines
     skip_prefixes = ('sending ', 'receiving ', 'sent ', 'total size')
     
     for line in dry_run_output.strip().split('\n'):
         if not line or any(line.startswith(prefix) for prefix in skip_prefixes):
             continue
         
-        # Handle deletion lines
         if line.startswith('deleting '):
             changes['deleted_files'].append(line[9:].strip())
             continue
         
-        # Parse itemize-changes format: YXcstpoguax path/to/file
         if len(line) > 11 and line[11] == ' ':
             flags, filename = line[:11], line[12:].strip()
             
-            # Categorize based on flags
             if '*deleting' in line:
                 changes['deleted_files'].append(filename)
-            elif flags[0] == 'c' and flags[1] == 'd':
+            elif flags[:2] == 'cd':
                 changes['new_dirs'].append(filename)
             elif flags[0] in '><' and flags[1] == 'f':
-                if flags[2] == '+':
-                    changes['new_files'].append(filename)
-                else:
-                    changes['modified_files'].append(filename)
+                category = 'new_files' if flags[2] == '+' else 'modified_files'
+                changes[category].append(filename)
             else:
                 changes['other'].append(line)
         else:
@@ -218,13 +196,12 @@ def display_changes_and_confirm(changes: Dict[str, list], operation: str) -> boo
         ]
         
         for key, desc, color, prefix, suffix in categories:
-            items = changes[key]
-            if not items:
+            if not (items := changes[key]):
                 continue
             
             print(colorize(f"\n{desc} ({len(items)}):", color))
             
-            display_items = items if limit is None else items[:limit]
+            display_items = items[:limit] if limit else items
             for item in display_items:
                 print(f"  {prefix} {item}{suffix}")
             
@@ -234,7 +211,6 @@ def display_changes_and_confirm(changes: Dict[str, list], operation: str) -> boo
     print(colorize(f"\n{operation} Preview:", 'HEADER'))
     print(colorize("=" * 60, 'BLUE'))
     
-    # Show summary with limits
     show_changes_summary(limit=10)
     
     total_changes = sum(len(changes[k]) for k in ['new_files', 'modified_files', 'deleted_files', 'new_dirs'])
@@ -246,13 +222,12 @@ def display_changes_and_confirm(changes: Dict[str, list], operation: str) -> boo
         print(colorize("\nNo changes needed - everything is in sync!", 'GREEN'))
         return False
     
-    # Ask for confirmation
     while True:
         response = input(colorize("\nProceed with these changes? [y/N/d(etails)]: ", 'BOLD')).lower().strip()
         
         if response == 'd':
             print(colorize("\nDetailed change list:", 'HEADER'))
-            show_changes_summary()  # Show all without limit
+            show_changes_summary()
         elif response == 'y':
             return True
         elif response in ('n', ''):
@@ -263,12 +238,9 @@ def perform_rsync(source: str, dest: str, ssh_cmd: str, options: Dict[str, Any],
     """Perform rsync operation with given options"""
     source, dest = prepare_rsync_paths(source, dest)
     
-    # Handle confirmation mode
     if options.get('confirm'):
         print(colorize("Analyzing changes...", 'BLUE'))
-        dry_run_output = get_rsync_changes(source, dest, ssh_cmd, options, universal_user)
-        
-        if not dry_run_output:
+        if not (dry_run_output := get_rsync_changes(source, dest, ssh_cmd, options, universal_user)):
             print(colorize("Failed to analyze changes", 'RED'))
             return False
         
@@ -278,21 +250,17 @@ def perform_rsync(source: str, dest: str, ssh_cmd: str, options: Dict[str, Any],
         if not display_changes_and_confirm(changes, operation):
             return False
     
-    # Build rsync command
     rsync_cmd = [
         get_rsync_command(), '-av', '--verbose', '--inplace', '--no-whole-file',
         '-e', ssh_cmd, '--progress'
     ]
     
-    # Add sudo for remote access if needed
     if universal_user and ('@' in source or '@' in dest):
         rsync_cmd.extend(['--rsync-path', f'sudo -u {universal_user} rsync'])
     
-    # Add mirror option with socket exclusion
     if options.get('mirror'):
         rsync_cmd.extend(['--delete', '--exclude', '*.sock'])
     
-    # Add verify or normal mode options
     rsync_cmd.extend(
         ['--checksum', '--ignore-times'] if options.get('verify')
         else ['--partial', '--append-verify']
@@ -304,15 +272,12 @@ def perform_rsync(source: str, dest: str, ssh_cmd: str, options: Dict[str, Any],
     
     result = run_platform_command(rsync_cmd, capture_output=True, text=True)
     
-    # Handle return codes
     if result.returncode == 0:
         return True
     
-    if result.returncode == 23:
-        # Code 23: some files/attrs were not transferred (usually permission issues)
-        if any(x in result.stderr for x in ["lost+found", "Permission denied"]):
-            print(colorize("Warning: Some files could not be accessed (usually system files like lost+found)", 'YELLOW'))
-            return True
+    if result.returncode == 23 and any(x in result.stderr for x in ["lost+found", "Permission denied"]):
+        print(colorize("Warning: Some files could not be accessed (usually system files like lost+found)", 'YELLOW'))
+        return True
     
     if result.stderr:
         print(colorize(f"Error: {result.stderr}", 'RED'))
@@ -322,43 +287,35 @@ def upload(args):
     """Handle upload command"""
     print(colorize(f"Uploading from {args.local} to {args.machine}:{args.repo}", 'HEADER'))
     
-    # Validate source
     source_path = Path(args.local)
     if not source_path.exists():
         print(colorize(f"Local path '{args.local}' does not exist", 'RED'))
         sys.exit(1)
     
-    # Create repository connection
     conn = RepositoryConnection(args.team, args.machine, args.repo)
     conn.connect()
     
-    # Set up SSH with dev mode handling
-    original_host_entry = None
+    original_host_entry = conn.connection_info.get('host_entry') if args.dev else None
     if args.dev:
-        original_host_entry = conn.connection_info.get('host_entry')
         conn.connection_info['host_entry'] = None
     
     ssh_opts, ssh_key_file, known_hosts_file = conn.setup_ssh()
     ssh_cmd = get_rsync_ssh_command(ssh_opts)
     
-    # Restore original host entry
     if args.dev and original_host_entry is not None:
         conn.connection_info['host_entry'] = original_host_entry
     
     try:
-        # Build paths
         dest_path = f"{conn.ssh_destination}:{conn.repo_paths['mount_path']}/"
         source = str(source_path) + ('/' if source_path.is_dir() and not str(source_path).endswith('/') else '')
         
-        # Perform rsync
         print("Starting rsync transfer...")
         options = {
             'mirror': args.mirror,
             'verify': args.verify,
             'confirm': args.confirm
         }
-        universal_user = conn.connection_info.get('universal_user')
-        success = perform_rsync(source, dest_path, ssh_cmd, options, universal_user)
+        success = perform_rsync(source, dest_path, ssh_cmd, options, conn.connection_info.get('universal_user'))
         
         print(colorize("Upload completed successfully!" if success else "Upload failed!", 
                       'GREEN' if success else 'RED'))
@@ -372,41 +329,33 @@ def download(args):
     """Handle download command"""
     print(colorize(f"Downloading from {args.machine}:{args.repo} to {args.local}", 'HEADER'))
     
-    # Create destination if it doesn't exist
     dest_path = Path(args.local)
     dest_path.mkdir(parents=True, exist_ok=True)
     
-    # Create repository connection
     conn = RepositoryConnection(args.team, args.machine, args.repo)
     conn.connect()
     
-    # Set up SSH with dev mode handling
-    original_host_entry = None
+    original_host_entry = conn.connection_info.get('host_entry') if args.dev else None
     if args.dev:
-        original_host_entry = conn.connection_info.get('host_entry')
         conn.connection_info['host_entry'] = None
     
     ssh_opts, ssh_key_file, known_hosts_file = conn.setup_ssh()
     ssh_cmd = get_rsync_ssh_command(ssh_opts)
     
-    # Restore original host entry
     if args.dev and original_host_entry is not None:
         conn.connection_info['host_entry'] = original_host_entry
     
     try:
-        # Build paths
         source_path = f"{conn.ssh_destination}:{conn.repo_paths['mount_path']}/"
         dest = str(dest_path) + ('/' if not str(dest_path).endswith('/') else '')
         
-        # Perform rsync
         print("Starting rsync transfer...")
         options = {
             'mirror': args.mirror,
             'verify': args.verify,
             'confirm': args.confirm
         }
-        universal_user = conn.connection_info.get('universal_user')
-        success = perform_rsync(source_path, dest, ssh_cmd, options, universal_user)
+        success = perform_rsync(source_path, dest, ssh_cmd, options, conn.connection_info.get('universal_user'))
         
         print(colorize("Download completed successfully!" if success else "Download failed!", 
                       'GREEN' if success else 'RED'))
@@ -446,7 +395,6 @@ Examples:
     
     subparsers = parser.add_subparsers(dest='command', help='Commands')
     
-    # Common arguments for both upload and download
     common_args = [
         ('--token', {'required': False, 'help': 'Authentication token (GUID) - uses saved token if not specified'}),
         ('--team', {'required': True, 'help': 'Team name'}),
@@ -458,23 +406,19 @@ Examples:
         ('--dev', {'action': 'store_true', 'help': 'Development mode - relaxes SSH host key checking'})
     ]
     
-    # Upload command
-    upload_parser = subparsers.add_parser('upload', help='Upload files to repository')
-    upload_parser.add_argument('--local', required=True, help='Local path to upload from')
-    for arg, kwargs in common_args:
-        upload_parser.add_argument(arg, **kwargs)
-    upload_parser.set_defaults(func=upload)
-    
-    # Download command
-    download_parser = subparsers.add_parser('download', help='Download files from repository')
-    download_parser.add_argument('--local', required=True, help='Local path to download to')
-    for arg, kwargs in common_args:
-        download_parser.add_argument(arg, **kwargs)
-    download_parser.set_defaults(func=download)
+    for cmd_name, cmd_func, cmd_help in [
+        ('upload', upload, 'Upload files to repository'),
+        ('download', download, 'Download files from repository')
+    ]:
+        parser_cmd = subparsers.add_parser(cmd_name, help=cmd_help)
+        parser_cmd.add_argument('--local', required=True, 
+                               help=f'Local path to {cmd_name} {"from" if cmd_name == "upload" else "to"}')
+        for arg, kwargs in common_args:
+            parser_cmd.add_argument(arg, **kwargs)
+        parser_cmd.set_defaults(func=cmd_func)
     
     args = parser.parse_args()
     
-    # Setup logging
     setup_logging(verbose=args.verbose)
     logger = get_logger(__name__)
     
@@ -487,16 +431,12 @@ Examples:
         parser.print_help()
         sys.exit(1)
     
-    # Handle token authentication
     if hasattr(args, 'token') and args.token:
         os.environ['REDIACC_TOKEN'] = args.token
     elif not TokenManager.get_token():
         parser.error("No authentication token available. Please login first.")
     
-    # Validate CLI tool exists
     validate_cli_tool()
-    
-    # Execute the command
     args.func(args)
 
 if __name__ == '__main__':
