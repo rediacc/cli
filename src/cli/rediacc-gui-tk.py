@@ -217,7 +217,7 @@ class GUIConfig:
 config = GUIConfig()
 
 # Create convenience accessors for backwards compatibility
-LOGIN_WINDOW_SIZE = tuple(config.get('window_dimensions', 'login_window', default=[450, 500]))
+LOGIN_WINDOW_SIZE = tuple(config.get('window_dimensions', 'login_window', default=[480, 520]))
 MAIN_WINDOW_DEFAULT_SIZE = tuple(config.get('window_dimensions', 'main_window_default', default=[1024, 768]))
 PROGRESS_DIALOG_SIZE = tuple(config.get('window_dimensions', 'progress_dialog', default=[700, 600]))
 PROGRESS_DIALOG_SIZE_SMALL = tuple(config.get('window_dimensions', 'progress_dialog_small', default=[600, 500]))
@@ -234,10 +234,10 @@ COMBO_WIDTH_SMALL = config.get('widget_dimensions', 'combo_width', 'small', defa
 COMBO_WIDTH_MEDIUM = config.get('widget_dimensions', 'combo_width', 'medium', default=20)
 COMBO_WIDTH_LARGE = config.get('widget_dimensions', 'combo_width', 'large', default=40)
 ENTRY_WIDTH_SMALL = config.get('widget_dimensions', 'entry_width', 'small', default=10)
-ENTRY_WIDTH_DEFAULT = config.get('widget_dimensions', 'entry_width', 'default', default=40)
+ENTRY_WIDTH_DEFAULT = config.get('widget_dimensions', 'entry_width', 'default', default=50)
 BUTTON_WIDTH_TINY = config.get('widget_dimensions', 'button_width', 'tiny', default=3)
-BUTTON_WIDTH_SMALL = config.get('widget_dimensions', 'button_width', 'small', default=12)
-BUTTON_WIDTH_MEDIUM = config.get('widget_dimensions', 'button_width', 'medium', default=15)
+BUTTON_WIDTH_SMALL = config.get('widget_dimensions', 'button_width', 'small', default=15)
+BUTTON_WIDTH_MEDIUM = config.get('widget_dimensions', 'button_width', 'medium', default=20)
 LABEL_WIDTH_DEFAULT = config.get('widget_dimensions', 'label_width', 'default', default=12)
 TEXT_HEIGHT_SMALL = config.get('widget_dimensions', 'text_height', 'small', default=6)
 TEXT_HEIGHT_MEDIUM = config.get('widget_dimensions', 'text_height', 'medium', default=8)
@@ -267,9 +267,9 @@ TRANSFER_FRAME_WIDTH = config.get('layout_constraints', 'transfer_frame_width', 
 TRANSFER_FRAME_WIDTH_MAX = config.get('layout_constraints', 'transfer_frame_width', 'max', default=180)
 
 # Padding values
-PADDING_TINY = config.get('padding', 'tiny', default=5)
-PADDING_SMALL = config.get('padding', 'small', default=10)
-PADDING_MEDIUM = config.get('padding', 'medium', default=15)
+PADDING_TINY = config.get('padding', 'tiny', default=8)
+PADDING_SMALL = config.get('padding', 'small', default=12)
+PADDING_MEDIUM = config.get('padding', 'medium', default=20)
 PADDING_LARGE = config.get('padding', 'large', default=20)
 
 # Border widths
@@ -411,9 +411,14 @@ class LoginWindow(BaseWindow):
         main_frame = tk.Frame(self.root)
         main_frame.pack(expand=True, fill='both', padx=20, pady=20)
         
-        # Language selector at top
+        # Configure grid columns
+        main_frame.columnconfigure(0, minsize=100)  # Label column
+        main_frame.columnconfigure(1, weight=1)     # Entry column
+        main_frame.columnconfigure(2, weight=0)     # Language selector column
+        
+        # Row 0: Language selector (right-aligned, columnspan=3)
         lang_frame = tk.Frame(main_frame)
-        lang_frame.pack(fill='x', pady=(0, 10))
+        lang_frame.grid(row=0, column=0, columnspan=3, sticky='e', pady=(0, 10))
         
         self.lang_label = tk.Label(lang_frame, text=i18n.get('language') + ':')
         self.lang_label.pack(side='left', padx=5)
@@ -424,47 +429,50 @@ class LoginWindow(BaseWindow):
         self.lang_combo.pack(side='left')
         self.lang_combo.bind('<<ComboboxSelected>>', self.on_language_changed)
         
-        # Title with less padding to save space
+        # Row 1: Title (centered, columnspan=3)
         self.title_label = tk.Label(main_frame, text=i18n.get('login_header'),
                         font=('Arial', 16, 'bold'))
-        self.title_label.pack(pady=15)
+        self.title_label.grid(row=1, column=0, columnspan=3, pady=15)
         
-        # Email field
+        # Row 2: Email field
         self.email_label = tk.Label(main_frame, text=i18n.get('email'))
-        self.email_label.pack(anchor='w', pady=(5, 0))
+        self.email_label.grid(row=2, column=0, sticky='e', padx=(40, 20), pady=(5, 0))
         self.email_entry = ttk.Entry(main_frame, width=ENTRY_WIDTH_DEFAULT)
-        self.email_entry.pack(fill='x', pady=(2, 8))
+        self.email_entry.grid(row=2, column=1, sticky='ew', padx=(0, 40), pady=(5, 8))
         
-        # Password field
+        # Row 3: Password field
         self.password_label = tk.Label(main_frame, text=i18n.get('password'))
-        self.password_label.pack(anchor='w', pady=(5, 0))
+        self.password_label.grid(row=3, column=0, sticky='e', padx=(40, 20), pady=(5, 0))
         self.password_entry = ttk.Entry(main_frame, width=ENTRY_WIDTH_DEFAULT, show='*')
-        self.password_entry.pack(fill='x', pady=(2, 8))
+        self.password_entry.grid(row=3, column=1, sticky='ew', padx=(0, 40), pady=(5, 8))
         
-        # Master password field
+        # Row 4: Master password field
         self.master_password_label = tk.Label(main_frame, text=i18n.get('master_password'))
-        self.master_password_label.pack(anchor='w', pady=(5, 0))
+        self.master_password_label.grid(row=4, column=0, sticky='e', padx=(40, 20), pady=(5, 0))
         self.master_password_entry = ttk.Entry(main_frame, width=ENTRY_WIDTH_DEFAULT, show='*')
-        self.master_password_entry.pack(fill='x', pady=(2, 8))
+        self.master_password_entry.grid(row=4, column=1, sticky='ew', padx=(0, 40), pady=(5, 8))
         
-        # 2FA code field (initially hidden)
+        # Row 5: 2FA code field (pre-allocated but initially hidden)
         self.tfa_frame = tk.Frame(main_frame)
         self.tfa_label = tk.Label(self.tfa_frame, text=i18n.get('tfa_code'), font=('Arial', 10, 'bold'))
-        self.tfa_label.pack(anchor='w', pady=(5, 0))
+        self.tfa_label.grid(row=0, column=0, sticky='e', padx=(0, 20), pady=(5, 0))
         self.tfa_entry = ttk.Entry(self.tfa_frame, width=ENTRY_WIDTH_DEFAULT, font=('Arial', 11))
-        self.tfa_entry.pack(fill='x', pady=(2, 2))
+        self.tfa_entry.grid(row=0, column=1, sticky='ew', pady=(5, 2))
         self.tfa_help = tk.Label(self.tfa_frame, text=i18n.get('tfa_help'), 
                                 font=('Arial', 9), fg='gray')
-        self.tfa_help.pack(anchor='w', pady=(0, 8))
-        # Don't pack the frame initially - it will be shown when 2FA is required
+        self.tfa_help.grid(row=1, column=1, sticky='w', pady=(0, 8))
+        # Configure tfa_frame columns
+        self.tfa_frame.columnconfigure(0, minsize=100)
+        self.tfa_frame.columnconfigure(1, weight=1)
+        # Don't grid the frame initially - it will be shown when 2FA is required
         
-        # Login button
+        # Row 6: Login button
         self.login_button = ttk.Button(main_frame, text=i18n.get('login'), command=self.login)
-        self.login_button.pack(pady=15)
+        self.login_button.grid(row=6, column=1, sticky='ew', pady=15)
         
-        # Status label with wrapping
+        # Row 7: Status label with wrapping
         self.status_label = tk.Label(main_frame, text="", wraplength=400, justify='center')
-        self.status_label.pack(pady=(0, 10))
+        self.status_label.grid(row=7, column=0, columnspan=3, pady=(0, 10))
         
         # Bind Enter key to login
         self.root.bind('<Return>', lambda e: self.login())
@@ -528,8 +536,8 @@ class LoginWindow(BaseWindow):
     
     def show_2fa_field(self):
         """Show 2FA field when required"""
-        # Show the 2FA frame before the login button
-        self.tfa_frame.pack(before=self.login_button, fill='x', pady=(5, 0))
+        # Grid the 2FA frame in row 5
+        self.tfa_frame.grid(row=5, column=0, columnspan=2, sticky='ew', padx=(40, 40), pady=(5, 0))
         
         # Clear any previous 2FA code
         self.tfa_entry.delete(0, tk.END)
@@ -679,35 +687,34 @@ class MainWindow(BaseWindow):
         self.common_frame = tk.LabelFrame(self.root, text=i18n.get('resource_selection'))
         self.common_frame.pack(fill='x', padx=10, pady=5)
         
+        # Configure grid columns for common_frame
+        self.common_frame.grid_columnconfigure(0, minsize=120)  # Label column with minimum width
+        self.common_frame.grid_columnconfigure(1, weight=1)     # Combobox column expands
+        self.common_frame.grid_columnconfigure(2, minsize=100)  # Filter indicator column
+        
         # Team selection
-        team_frame = tk.Frame(self.common_frame)
-        team_frame.pack(fill='x', padx=10, pady=5)
-        self.team_label = tk.Label(team_frame, text=i18n.get('team'), width=12, anchor='w')
-        self.team_label.pack(side='left', padx=5)
-        self.team_combo = ttk.Combobox(team_frame, width=ENTRY_WIDTH_DEFAULT, state='readonly')
-        self.team_combo.pack(side='left', padx=5, fill='x', expand=True)
+        self.team_label = tk.Label(self.common_frame, text=i18n.get('team'), anchor='e')
+        self.team_label.grid(row=0, column=0, sticky='e', padx=(20, 10), pady=(8, 8))
+        self.team_combo = ttk.Combobox(self.common_frame, state='readonly')
+        self.team_combo.grid(row=0, column=1, sticky='ew', padx=(0, 10), pady=(8, 8))
         self.team_combo.bind('<<ComboboxSelected>>', lambda e: self.on_team_changed())
         
         # Machine selection
-        machine_frame = tk.Frame(self.common_frame)
-        machine_frame.pack(fill='x', padx=10, pady=5)
-        self.machine_label = tk.Label(machine_frame, text=i18n.get('machine'), width=12, anchor='w')
-        self.machine_label.pack(side='left', padx=5)
-        self.machine_combo = ttk.Combobox(machine_frame, width=ENTRY_WIDTH_DEFAULT, state='readonly')
-        self.machine_combo.pack(side='left', padx=5, fill='x', expand=True)
+        self.machine_label = tk.Label(self.common_frame, text=i18n.get('machine'), anchor='e')
+        self.machine_label.grid(row=1, column=0, sticky='e', padx=(20, 10), pady=(8, 8))
+        self.machine_combo = ttk.Combobox(self.common_frame, state='readonly')
+        self.machine_combo.grid(row=1, column=1, sticky='ew', padx=(0, 10), pady=(8, 8))
         self.machine_combo.bind('<<ComboboxSelected>>', lambda e: self.on_machine_changed())
         
         # Repository selection
-        repo_frame = tk.Frame(self.common_frame)
-        repo_frame.pack(fill='x', padx=10, pady=5)
-        self.repo_label = tk.Label(repo_frame, text=i18n.get('repository'), width=12, anchor='w')
-        self.repo_label.pack(side='left', padx=5)
-        self.repo_combo = ttk.Combobox(repo_frame, width=ENTRY_WIDTH_DEFAULT, state='readonly')
-        self.repo_combo.pack(side='left', padx=5, fill='x', expand=True)
+        self.repo_label = tk.Label(self.common_frame, text=i18n.get('repository'), anchor='e')
+        self.repo_label.grid(row=2, column=0, sticky='e', padx=(20, 10), pady=(8, 8))
+        self.repo_combo = ttk.Combobox(self.common_frame, state='readonly')
+        self.repo_combo.grid(row=2, column=1, sticky='ew', padx=(0, 10), pady=(8, 8))
         self.repo_combo.bind('<<ComboboxSelected>>', lambda e: self.on_repository_changed())
         # Add a filter indicator label
-        self.repo_filter_label = tk.Label(repo_frame, text="", font=('Arial', 9), fg='gray')
-        self.repo_filter_label.pack(side='left', padx=5)
+        self.repo_filter_label = tk.Label(self.common_frame, text="", font=('Arial', 9), fg='gray')
+        self.repo_filter_label.grid(row=2, column=2, sticky='w', padx=(0, 10), pady=(8, 8))
         
         # Create notebook for tabs
         self.notebook = ttk.Notebook(self.root)
@@ -736,10 +743,12 @@ class MainWindow(BaseWindow):
         self.notebook.add(self.browser_frame, text=i18n.get('file_browser', 'File Browser'))
         self.create_file_browser_tab()
         
-        # Status bar
-        self.status_bar = tk.Label(self.root, text=i18n.get('ready'),
-                                 anchor='w', padx=10)
-        self.status_bar.pack(side='bottom', fill='x')
+        # Status bar with frame wrapper
+        status_frame = tk.Frame(self.root, relief='sunken', bd=1)
+        status_frame.pack(side='bottom', fill='x')
+        self.status_bar = tk.Label(status_frame, text=i18n.get('ready'),
+                                 bd=0, anchor='w')
+        self.status_bar.pack(side='left', fill='x', expand=True, padx=(10,5), pady=(2,2))
     
     def create_terminal_tab(self):
         """Create terminal access interface"""
@@ -747,38 +756,48 @@ class MainWindow(BaseWindow):
         control_frame = tk.Frame(self.terminal_frame)
         control_frame.pack(fill='x', padx=10, pady=10)
         
-        # Command input
+        # Command input - using grid layout
         command_frame = tk.Frame(control_frame)
         command_frame.pack(fill='x', pady=5)
-        self.terminal_command_label = tk.Label(command_frame, text=i18n.get('command'), width=12, anchor='w')
-        self.terminal_command_label.pack(side='left', padx=5)
-        self.command_entry = ttk.Entry(command_frame)
-        self.command_entry.pack(side='left', padx=5, fill='x', expand=True)
+        command_frame.grid_columnconfigure(0, minsize=100)
+        command_frame.grid_columnconfigure(1, weight=1)
         
-        # Buttons
+        self.terminal_command_label = tk.Label(command_frame, text=i18n.get('command'), anchor='e')
+        self.terminal_command_label.grid(row=0, column=0, sticky='e', padx=(0, 5))
+        self.command_entry = ttk.Entry(command_frame)
+        self.command_entry.grid(row=0, column=1, sticky='ew', padx=(0, 5))
+        
+        # Buttons with separator
         button_frame = tk.Frame(control_frame)
         button_frame.pack(pady=10)
         
+        # Execute button
         self.execute_cmd_button = ttk.Button(button_frame, text=i18n.get('execute_command'),
                   command=self.execute_terminal_command)
-        self.execute_cmd_button.pack(side='left', padx=5)
+        self.execute_cmd_button.pack(side='left', padx=(0, 15))
+        
+        # Separator
+        separator = tk.Frame(button_frame, bg='#cccccc', width=2)
+        separator.pack(side='left', fill='y', padx=(0, 15))
+        
+        # Terminal buttons
         self.open_repo_term_button = ttk.Button(button_frame, text=i18n.get('open_repo_terminal'),
                   command=self.open_repo_terminal)
-        self.open_repo_term_button.pack(side='left', padx=5)
+        self.open_repo_term_button.pack(side='left', padx=(0, 15))
         self.open_machine_term_button = ttk.Button(button_frame, text=i18n.get('open_machine_terminal'),
                   command=self.open_machine_terminal)
-        self.open_machine_term_button.pack(side='left', padx=5)
+        self.open_machine_term_button.pack(side='left')
         
         # Output area
         output_frame = tk.Frame(self.terminal_frame)
-        output_frame.pack(fill='both', expand=True, padx=10, pady=10)
+        output_frame.pack(fill='both', expand=True)
         
         self.terminal_output_label = tk.Label(output_frame, text=i18n.get('output'))
         self.terminal_output_label.pack(anchor='w')
         
         self.terminal_output = scrolledtext.ScrolledText(output_frame, height=15,
-                                                       font=('Consolas', 10))
-        self.terminal_output.pack(fill='both', expand=True, pady=5)
+                                                       font=('Consolas', 10), wrap='none')
+        self.terminal_output.pack(fill='both', expand=True)
         self.terminal_output.config(state='disabled')  # Make it read-only
     
     def create_sync_tab(self):
@@ -795,10 +814,10 @@ class MainWindow(BaseWindow):
         self.sync_direction = tk.StringVar(value='upload')
         self.upload_radio = ttk.Radiobutton(direction_frame, text=i18n.get('upload'), variable=self.sync_direction,
                        value='upload')
-        self.upload_radio.pack(side='left', padx=5)
+        self.upload_radio.pack(side='left', padx=(0, 30))
         self.download_radio = ttk.Radiobutton(direction_frame, text=i18n.get('download'), variable=self.sync_direction,
                        value='download')
-        self.download_radio.pack(side='left', padx=5)
+        self.download_radio.pack(side='left', padx=(0, 30))
         
         # Local path
         path_frame = tk.Frame(control_frame)
@@ -815,40 +834,46 @@ class MainWindow(BaseWindow):
         self.options_frame = tk.LabelFrame(control_frame, text=i18n.get('options'))
         self.options_frame.pack(fill='x', pady=10)
         
-        option_container = tk.Frame(self.options_frame)
-        option_container.pack(pady=5)
+        # Sync options sub-frame
+        sync_options_frame = tk.LabelFrame(self.options_frame, text="Sync Options")
+        sync_options_frame.pack(fill='x', padx=10, pady=5)
         
+        # Use grid for sync options
         self.mirror_var = tk.BooleanVar()
-        self.mirror_check = tk.Checkbutton(option_container, text=i18n.get('mirror_delete'),
+        self.mirror_check = tk.Checkbutton(sync_options_frame, text=i18n.get('mirror_delete'),
                       variable=self.mirror_var,
                       command=self.on_mirror_changed)
-        self.mirror_check.pack(side='left', padx=10)
+        self.mirror_check.grid(row=0, column=0, padx=(20, 40), pady=5, sticky='w')
         
         self.verify_var = tk.BooleanVar()
-        self.verify_check = tk.Checkbutton(option_container, text=i18n.get('verify_transfer'),
+        self.verify_check = tk.Checkbutton(sync_options_frame, text=i18n.get('verify_transfer'),
                       variable=self.verify_var)
-        self.verify_check.pack(side='left', padx=10)
+        self.verify_check.grid(row=0, column=1, padx=(20, 40), pady=5, sticky='w')
+        
+        # Safety options sub-frame
+        safety_options_frame = tk.LabelFrame(self.options_frame, text="Safety Options")
+        safety_options_frame.pack(fill='x', padx=10, pady=5)
         
         self.confirm_var = tk.BooleanVar()
-        self.confirm_check = tk.Checkbutton(option_container, text=i18n.get('preview_changes'),
+        self.confirm_check = tk.Checkbutton(safety_options_frame, text=i18n.get('preview_changes'),
                       variable=self.confirm_var)
-        self.confirm_check.pack(side='left', padx=10)
+        self.confirm_check.grid(row=0, column=0, padx=(20, 40), pady=5, sticky='w')
         
         # Sync button
         self.sync_button = ttk.Button(control_frame, text=i18n.get('start_sync'),
-                                    command=self.start_sync)
-        self.sync_button.pack(pady=10)
+                                    command=self.start_sync, width=25)
+        self.sync_button.pack(pady=(20, 10))
         
         # Output area
         output_frame = tk.Frame(self.sync_frame)
-        output_frame.pack(fill='both', expand=True, padx=10, pady=10)
+        output_frame.pack(fill='both', expand=True)
         
         self.sync_output_label = tk.Label(output_frame, text=i18n.get('output'))
         self.sync_output_label.pack(anchor='w')
         
         self.sync_output = scrolledtext.ScrolledText(output_frame, height=15,
-                                                    font=('Consolas', 10))
-        self.sync_output.pack(fill='both', expand=True, pady=5)
+                                                    font=('Consolas', 10), wrap='none')
+        self.sync_output.pack(fill='both', expand=True)
         self.sync_output.config(state='disabled')  # Make it read-only
     
     def create_plugin_tab(self):
@@ -861,27 +886,43 @@ class MainWindow(BaseWindow):
         self.plugin_management_frame = tk.LabelFrame(self.plugin_frame, text=i18n.get('plugin_management'))
         paned.add(self.plugin_management_frame, minsize=300)
         
-        # Create two columns inside the plugin management frame
+        # Create two columns inside the plugin management frame using grid
         columns_frame = tk.Frame(self.plugin_management_frame)
-        columns_frame.pack(fill='both', expand=True, padx=10, pady=10)
+        columns_frame.grid(row=0, column=0, sticky='nsew', padx=10, pady=10)
+        
+        # Configure the plugin management frame to expand the columns frame
+        self.plugin_management_frame.grid_rowconfigure(0, weight=1)
+        self.plugin_management_frame.grid_columnconfigure(0, weight=1)
+        
+        # Configure columns frame weights: 0.45, 0.1, 0.45
+        columns_frame.grid_columnconfigure(0, weight=45)  # Left column
+        columns_frame.grid_columnconfigure(1, weight=10)  # Spacer
+        columns_frame.grid_columnconfigure(2, weight=45)  # Right column
+        columns_frame.grid_rowconfigure(0, weight=1)
         
         # Left column - Available plugins
         left_column = tk.Frame(columns_frame)
-        left_column.pack(side='left', fill='both', expand=True, padx=(0, 10))
+        left_column.grid(row=0, column=0, sticky='nsew')
+        
+        # Configure left column to expand
+        left_column.grid_rowconfigure(1, weight=1)
+        left_column.grid_columnconfigure(0, weight=1)
         
         # Available plugins label
         self.available_plugins_label = tk.Label(left_column, text=i18n.get('available_plugins'), font=('Arial', 10, 'bold'))
-        self.available_plugins_label.pack(anchor='w', pady=(0, 5))
+        self.available_plugins_label.grid(row=0, column=0, sticky='w', pady=(0, 5))
         
         # Available plugins listbox with scrollbar
         list_frame = tk.Frame(left_column)
-        list_frame.pack(fill='both', expand=True)
+        list_frame.grid(row=1, column=0, sticky='nsew')
+        list_frame.grid_rowconfigure(0, weight=1)
+        list_frame.grid_columnconfigure(0, weight=1)
         
         scrollbar = tk.Scrollbar(list_frame)
-        scrollbar.pack(side='right', fill='y')
+        scrollbar.grid(row=0, column=1, sticky='ns')
         
-        self.plugin_listbox = tk.Listbox(list_frame, yscrollcommand=scrollbar.set, height=8)
-        self.plugin_listbox.pack(side='left', fill='both', expand=True)
+        self.plugin_listbox = tk.Listbox(list_frame, yscrollcommand=scrollbar.set)
+        self.plugin_listbox.grid(row=0, column=0, sticky='nsew')
         scrollbar.config(command=self.plugin_listbox.yview)
         
         # Bind selection event to update combo box
@@ -890,60 +931,68 @@ class MainWindow(BaseWindow):
         # Refresh button
         self.refresh_plugins_button = ttk.Button(left_column, text=i18n.get('refresh_plugins'),
                   command=self.refresh_plugins)
-        self.refresh_plugins_button.pack(pady=(10, 0))
+        self.refresh_plugins_button.grid(row=2, column=0, pady=(10, 0))
+        
+        # Spacer column
+        spacer = tk.Frame(columns_frame, width=20)
+        spacer.grid(row=0, column=1, sticky='ns')
         
         # Right column - Connect to plugin
         right_column = tk.Frame(columns_frame)
-        right_column.pack(side='right', fill='both', expand=True, padx=(10, 0))
+        right_column.grid(row=0, column=2, sticky='nsew')
+        
+        # Configure right column
+        right_column.grid_columnconfigure(0, weight=1)
         
         # Connect to plugin label
         self.connect_plugin_label = tk.Label(right_column, text=i18n.get('connect_to_plugin'), font=('Arial', 10, 'bold'))
-        self.connect_plugin_label.pack(anchor='w', pady=(0, 5))
+        self.connect_plugin_label.grid(row=0, column=0, sticky='w', pady=(0, 5))
         
         # Plugin selection
         plugin_select_frame = tk.Frame(right_column)
-        plugin_select_frame.pack(fill='x', pady=(10, 5))
+        plugin_select_frame.grid(row=1, column=0, sticky='ew', pady=(10, 5))
+        plugin_select_frame.grid_columnconfigure(1, weight=1)
         
         self.plugin_select_label = tk.Label(plugin_select_frame, text=i18n.get('plugin'), width=12, anchor='w')
-        self.plugin_select_label.pack(side='left')
+        self.plugin_select_label.grid(row=0, column=0, sticky='w')
         self.plugin_combo = ttk.Combobox(plugin_select_frame, width=COMBO_WIDTH_MEDIUM, state='readonly')
-        self.plugin_combo.pack(side='left', fill='x', expand=True)
+        self.plugin_combo.grid(row=0, column=1, sticky='ew', padx=(5, 0))
         
         # Port selection frame
         self.port_frame = tk.LabelFrame(right_column, text=i18n.get('local_port'))
-        self.port_frame.pack(fill='x', pady=5)
+        self.port_frame.grid(row=2, column=0, sticky='ew', pady=5)
+        
+        # Configure port frame interior grid
+        self.port_frame.grid_columnconfigure(0, weight=1)
+        self.port_frame.grid_columnconfigure(1, weight=1)
         
         # Port mode variable
         self.port_mode = tk.StringVar(value='auto')
         
-        # Auto port radio button
-        auto_frame = tk.Frame(self.port_frame)
-        auto_frame.pack(fill='x', padx=10, pady=5)
-        self.auto_port_radio = ttk.Radiobutton(auto_frame, text=i18n.get('auto_port'), 
+        # Auto port radio button (spans both columns)
+        self.auto_port_radio = ttk.Radiobutton(self.port_frame, text=i18n.get('auto_port'), 
                        variable=self.port_mode, value='auto',
                        command=self.on_port_mode_changed)
-        self.auto_port_radio.pack(side='left')
+        self.auto_port_radio.grid(row=0, column=0, columnspan=2, sticky='w', padx=10, pady=(5, 0))
         
-        # Manual port radio button and entry
-        manual_frame = tk.Frame(self.port_frame)
-        manual_frame.pack(fill='x', padx=10, pady=5)
-        self.manual_port_radio = ttk.Radiobutton(manual_frame, text=i18n.get('manual_port'), 
+        # Manual port radio button
+        self.manual_port_radio = ttk.Radiobutton(self.port_frame, text=i18n.get('manual_port'), 
                        variable=self.port_mode, value='manual',
                        command=self.on_port_mode_changed)
-        self.manual_port_radio.pack(side='left')
+        self.manual_port_radio.grid(row=1, column=0, sticky='w', padx=10, pady=(0, 5))
         
         # Port entry with validation
         vcmd = (self.root.register(self.validate_port), '%P')
-        self.port_entry = ttk.Entry(manual_frame, width=10, 
+        self.port_entry = ttk.Entry(self.port_frame, width=10, 
                                    validate='key', validatecommand=vcmd)
-        self.port_entry.pack(side='left', padx=5)
+        self.port_entry.grid(row=1, column=1, sticky='w', padx=(5, 10), pady=(0, 5))
         self.port_entry.insert(0, "7111")
         self.port_entry.config(state='disabled')  # Initially disabled
         
         # Connect button
         self.connect_button = ttk.Button(right_column, text=i18n.get('connect'),
-                                       command=self.connect_plugin)
-        self.connect_button.pack(pady=(10, 10))
+                                       command=self.connect_plugin, width=20)
+        self.connect_button.grid(row=3, column=0, pady=(20, 10))
         
         # Middle section - Active connections
         self.connections_frame = tk.LabelFrame(self.plugin_frame, text=i18n.get('active_connections'))
@@ -955,7 +1004,15 @@ class MainWindow(BaseWindow):
         
         # Create treeview with columns
         columns = ('Plugin', 'URL', 'Status')
+        # Style for treeview
+        style = ttk.Style()
+        style.configure('Treeview', padding=(2,2,2,2))
+        
         self.connections_tree = ttk.Treeview(tree_frame, columns=columns, show='tree headings', height=6)
+        
+        # Configure alternating row colors
+        self.connections_tree.tag_configure('odd', background='#f5f5f5')
+        self.connections_tree.tag_configure('even', background='white')
         
         # Define column headings
         self.connections_tree.heading('#0', text='ID')
@@ -1363,14 +1420,19 @@ class MainWindow(BaseWindow):
         # Create progress dialog
         progress_dialog = tk.Toplevel(self.root)
         progress_dialog.title(i18n.get('sync_progress', 'Sync Progress'))
-        progress_dialog.geometry(f'{PROGRESS_DIALOG_SIZE[0]}x{PROGRESS_DIALOG_SIZE[1]}')
+        # Use 0.4 * screen dimensions for progress dialog
+        screen_width = self.root.winfo_screenwidth()
+        screen_height = self.root.winfo_screenheight()
+        dialog_width = int(screen_width * 0.4)
+        dialog_height = int(screen_height * 0.4)
+        
         progress_dialog.transient(self.root)
         
         # Center the dialog
         progress_dialog.update_idletasks()
-        x = (progress_dialog.winfo_screenwidth() - 700) // 2
-        y = (progress_dialog.winfo_screenheight() - 600) // 2
-        progress_dialog.geometry(f'700x600+{x}+{y}')
+        x = (screen_width - dialog_width) // 2
+        y = (screen_height - dialog_height) // 2
+        progress_dialog.geometry(f'{dialog_width}x{dialog_height}+{x}+{y}')
         
         # Set minimum size
         progress_dialog.minsize(500, 400)
@@ -1431,9 +1493,9 @@ class MainWindow(BaseWindow):
         output_frame.pack(fill='both', expand=True)
         
         # Create scrolled text for output
-        output_text = scrolledtext.ScrolledText(output_frame, wrap='word', 
+        output_text = scrolledtext.ScrolledText(output_frame, wrap='none', 
                                                font=('Consolas', 9))
-        output_text.pack(fill='both', expand=True, padx=5, pady=5)
+        output_text.pack(fill='both', expand=True)
         
         # Buttons
         button_frame = tk.Frame(main_container)
@@ -1628,7 +1690,8 @@ class MainWindow(BaseWindow):
         # Track new items for re-selection
         new_items = {}
         
-        # Add new items
+        # Add new items with alternating row colors
+        row_index = 0
         for conn in connections:
             # Filter by current selection if applicable
             team = self.team_combo.get()
@@ -1641,17 +1704,26 @@ class MainWindow(BaseWindow):
             if repo and conn['repo'] != repo:
                 continue
             
-            status_color = 'green' if conn['status'] == 'Active' else 'red'
+            # Determine tags based on status and row index
+            status = 'green' if conn['status'] == 'Active' else 'red'
+            row_type = 'even' if row_index % 2 == 0 else 'odd'
+            tags = (f"{status}_{row_type}",)
+            
             url = f"http://localhost:{conn['port']}"
             item = self.connections_tree.insert('', 'end', 
                                               text=conn['id'],
                                               values=(conn['plugin'], url, conn['status']),
-                                              tags=(status_color,))
+                                              tags=tags)
             new_items[conn['id']] = item
+            row_index += 1
         
         # Configure tag colors
         self.connections_tree.tag_configure('green', foreground='green')
         self.connections_tree.tag_configure('red', foreground='red')
+        self.connections_tree.tag_configure('green_odd', foreground='green', background='#f5f5f5')
+        self.connections_tree.tag_configure('red_odd', foreground='red', background='#f5f5f5')
+        self.connections_tree.tag_configure('green_even', foreground='green', background='white')
+        self.connections_tree.tag_configure('red_even', foreground='red', background='white')
         
         # Re-select previously selected items if they still exist
         for conn_id in selected_ids:
@@ -1985,6 +2057,23 @@ class DualPaneFileBrowser:
         # Create remote pane
         self.create_remote_pane()
         
+        # Set initial pane ratios to 45%/10%/45%
+        def set_initial_pane_ratios():
+            try:
+                self.paned_window.update_idletasks()
+                total_width = self.paned_window.winfo_width()
+                if total_width > 1:
+                    # Calculate positions for 45%/10%/45% split
+                    left_width = int(total_width * 0.45)
+                    center_width = 160  # Fixed width for transfer pane
+                    self.paned_window.sash_place(0, left_width, 0)
+                    self.paned_window.sash_place(1, left_width + center_width, 0)
+            except:
+                pass
+        
+        # Schedule initial ratio setup
+        self.paned_window.after(100, set_initial_pane_ratios)
+        
         # After all panes are added, configure transfer pane width limiting
         def limit_transfer_pane_width(event=None):
             try:
@@ -1995,9 +2084,9 @@ class DualPaneFileBrowser:
                 # Calculate transfer pane width
                 transfer_width = sash_1 - sash_0
                 
-                # Limit maximum width to 180 pixels
-                max_width = 180
-                if transfer_width > max_width:
+                # Limit to exactly 160 pixels
+                max_width = 160
+                if transfer_width != max_width:
                     # Adjust sash position to limit width
                     center = (sash_0 + sash_1) // 2
                     self.paned_window.sash_place(0, center - max_width // 2, 0)
@@ -2013,24 +2102,29 @@ class DualPaneFileBrowser:
         self.preview_container = tk.Frame(self.vertical_paned)
         self.preview_visible = False
         
-        # Preview pane
+        # Preview pane with improved padding
         self.preview_frame = tk.LabelFrame(self.preview_container, text=i18n.get('file_preview', 'File Preview'))
-        self.preview_frame.pack(fill='both', expand=True, padx=5, pady=5)
+        self.preview_frame.pack(fill='both', expand=True, padx=10, pady=5)
         
-        # Preview controls
+        # Preview controls with grid layout
         preview_controls = tk.Frame(self.preview_frame)
-        preview_controls.pack(fill='x', padx=5, pady=5)
+        preview_controls.grid(row=0, column=0, sticky='ew', padx=5, pady=5)
+        self.preview_frame.grid_columnconfigure(0, weight=1)
+        self.preview_frame.grid_rowconfigure(1, weight=1)
+        
+        # Configure preview controls grid
+        preview_controls.grid_columnconfigure(0, weight=1)
         
         self.preview_filename_label = tk.Label(preview_controls, text='', font=('Arial', 10, 'bold'))
-        self.preview_filename_label.pack(side='left', padx=5)
+        self.preview_filename_label.grid(row=0, column=0, sticky='w', padx=5)
         
         self.preview_close_button = ttk.Button(preview_controls, text='×', width=3,
                                              command=self.hide_preview)
-        self.preview_close_button.pack(side='right')
+        self.preview_close_button.grid(row=0, column=1, sticky='e')
         
         # Preview content
         preview_scroll_frame = tk.Frame(self.preview_frame)
-        preview_scroll_frame.pack(fill='both', expand=True, padx=5, pady=(0, 5))
+        preview_scroll_frame.grid(row=1, column=0, sticky='nsew', padx=5, pady=(0, 5))
         
         self.preview_text = scrolledtext.ScrolledText(preview_scroll_frame, height=10, 
                                                      font=('Consolas', 9), wrap='none')
@@ -2043,12 +2137,16 @@ class DualPaneFileBrowser:
         preview_hsb.pack(fill='x')
         self.preview_text.config(xscrollcommand=preview_hsb.set)
         
-        # Status bar (at the very bottom)
-        self.status_frame = tk.Frame(main_frame)
-        self.status_frame.pack(fill='x', side='bottom', pady=(5, 0))
+        # Status bar with frame wrapper
+        status_bar_frame = tk.Frame(main_frame, relief='sunken', bd=1)
+        status_bar_frame.pack(fill='x', side='bottom', pady=(5, 0))
         
-        self.status_label = tk.Label(self.status_frame, text=i18n.get('ready', 'Ready'), anchor='w')
-        self.status_label.pack(side='left', fill='x', expand=True)
+        self.status_frame = tk.Frame(status_bar_frame)
+        self.status_frame.pack(fill='both', expand=True)
+        
+        self.status_label = tk.Label(self.status_frame, text=i18n.get('ready', 'Ready'), 
+                                   bd=0, anchor='w')
+        self.status_label.pack(side='left', fill='x', expand=True, padx=(10,5), pady=(2,2))
         
         # Preview toggle button in status bar
         self.preview_toggle_button = ttk.Button(self.status_frame, 
@@ -2062,55 +2160,71 @@ class DualPaneFileBrowser:
         self.local_frame = tk.LabelFrame(self.paned_window, text=i18n.get('local_files', 'Local Files'))
         self.paned_window.add(self.local_frame, minsize=400)
         
-        # Path navigation frame
+        # Navigation frame using grid
         nav_frame = tk.Frame(self.local_frame)
-        nav_frame.pack(fill='x', padx=5, pady=5)
+        nav_frame.grid(row=0, column=0, sticky='ew', padx=5, pady=5)
+        self.local_frame.grid_columnconfigure(0, weight=1)
         
-        # Navigation buttons with tooltips
-        self.local_up_button = ttk.Button(nav_frame, text='↑', width=3,
+        # Configure nav_frame columns
+        nav_frame.grid_columnconfigure(3, weight=1)  # Path entry column expands
+        
+        # Navigation buttons with consistent width and spacing
+        self.local_up_button = ttk.Button(nav_frame, text='↑', width=4,
                                          command=self.navigate_local_up)
-        self.local_up_button.pack(side='left', padx=2)
+        self.local_up_button.grid(row=0, column=0, padx=(0, 5))
         create_tooltip(self.local_up_button, i18n.get('navigate_up_tooltip', 'Navigate to parent folder'))
         
-        self.local_home_button = ttk.Button(nav_frame, text='🏠', width=3,
+        self.local_home_button = ttk.Button(nav_frame, text='🏠', width=4,
                                            command=self.navigate_local_home)
-        self.local_home_button.pack(side='left', padx=2)
+        self.local_home_button.grid(row=0, column=1, padx=(0, 5))
         create_tooltip(self.local_home_button, i18n.get('navigate_home_tooltip', 'Go to home directory'))
         
-        self.local_refresh_button = ttk.Button(nav_frame, text='↻', width=3,
+        self.local_refresh_button = ttk.Button(nav_frame, text='↻', width=4,
                                               command=self.refresh_local)
-        self.local_refresh_button.pack(side='left', padx=2)
+        self.local_refresh_button.grid(row=0, column=2, padx=(0, 5))
         create_tooltip(self.local_refresh_button, i18n.get('refresh_tooltip', 'Refresh file list'))
         
         # Path entry
         self.local_path_var = tk.StringVar(value=str(self.local_current_path))
         self.local_path_entry = ttk.Entry(nav_frame, textvariable=self.local_path_var, state='readonly')
-        self.local_path_entry.pack(side='left', fill='x', expand=True, padx=5)
+        self.local_path_entry.grid(row=0, column=3, sticky='ew', padx=5)
         
-        # Search frame
+        # Search frame using grid
         search_frame = tk.Frame(self.local_frame)
-        search_frame.pack(fill='x', padx=5, pady=(5, 0))
+        search_frame.grid(row=1, column=0, sticky='ew', padx=5, pady=(0, 5))
+        search_frame.grid_columnconfigure(1, weight=1)  # Search entry column expands
         
         self.local_search_label = tk.Label(search_frame, text=i18n.get('search', 'Search:'))
-        self.local_search_label.pack(side='left', padx=5)
+        self.local_search_label.grid(row=0, column=0, padx=5)
         
         self.local_search_var = tk.StringVar()
         self.local_search_entry = ttk.Entry(search_frame, textvariable=self.local_search_var)
-        self.local_search_entry.pack(side='left', fill='x', expand=True, padx=5)
+        self.local_search_entry.grid(row=0, column=1, sticky='ew', padx=5)
         # Use trace to update on every keystroke
         self.local_search_var.trace('w', lambda *args: self.on_local_search_changed())
         
         self.local_clear_button = ttk.Button(search_frame, text=i18n.get('clear', 'Clear'), 
                                            command=self.clear_local_search)
-        self.local_clear_button.pack(side='left', padx=5)
+        self.local_clear_button.grid(row=0, column=2, padx=5)
         
-        # File list with scrollbar
+        # File list with scrollbar (no extra padding)
         list_frame = tk.Frame(self.local_frame)
-        list_frame.pack(fill='both', expand=True, padx=5, pady=(0, 5))
+        list_frame.grid(row=2, column=0, sticky='nsew', padx=5, pady=(0, 5))
+        self.local_frame.grid_rowconfigure(2, weight=1)
         
         # Create Treeview
         columns = ('size', 'modified', 'type')
+        # Style for treeview if not already set
+        if not hasattr(self.main_window, '_treeview_style_set'):
+            style = ttk.Style()
+            style.configure('Treeview', padding=(2,2,2,2))
+            self.main_window._treeview_style_set = True
+        
         self.local_tree = ttk.Treeview(list_frame, columns=columns, show='tree headings')
+        
+        # Configure alternating row colors
+        self.local_tree.tag_configure('odd', background='#f5f5f5')
+        self.local_tree.tag_configure('even', background='white')
         
         # Define columns
         self.local_tree.heading('#0', text='Name', command=lambda: self.sort_local('name'))
@@ -2129,10 +2243,10 @@ class DualPaneFileBrowser:
         hsb = ttk.Scrollbar(list_frame, orient='horizontal', command=self.local_tree.xview)
         self.local_tree.configure(yscrollcommand=vsb.set, xscrollcommand=hsb.set)
         
-        # Grid layout
-        self.local_tree.grid(row=0, column=0, sticky='nsew')
-        vsb.grid(row=0, column=1, sticky='ns')
-        hsb.grid(row=1, column=0, sticky='ew')
+        # Grid layout with no padding
+        self.local_tree.grid(row=0, column=0, sticky='nsew', padx=0, pady=0)
+        vsb.grid(row=0, column=1, sticky='ns', padx=0, pady=0)
+        hsb.grid(row=1, column=0, sticky='ew', padx=0, pady=0)
         
         list_frame.grid_rowconfigure(0, weight=1)
         list_frame.grid_columnconfigure(0, weight=1)
@@ -2148,39 +2262,43 @@ class DualPaneFileBrowser:
     
     def create_transfer_buttons_pane(self):
         """Create the middle pane with transfer buttons"""
-        # Container frame for buttons
+        # Container frame for buttons with exact width
         self.transfer_frame = tk.Frame(self.paned_window, bg='#f0f0f0')
-        # Add with constraints - minsize prevents it from being too small
-        self.paned_window.add(self.transfer_frame, minsize=120, width=140)
+        # Add with constraints - set exact width of 160
+        self.paned_window.add(self.transfer_frame, minsize=160, width=160)
         
         # Add title
         title_label = tk.Label(self.transfer_frame, text=i18n.get('transfer_actions', 'Transfer Actions'),
                               font=('Arial', 10, 'bold'), bg='#f0f0f0')
         title_label.pack(pady=(10, 5))
         
-        # Center buttons vertically
+        # Button container with proper spacing
         button_container = tk.Frame(self.transfer_frame, bg='#f0f0f0')
-        button_container.place(relx=0.5, rely=0.5, anchor='center')
+        button_container.pack(expand=True)
         
         # Upload button
         self.upload_button = ttk.Button(button_container, text=i18n.get('upload_arrow', 'Upload →'), 
                                        command=self.upload_selected, state='disabled',
                                        width=COMBO_WIDTH_SMALL)
-        self.upload_button.pack(pady=10)
+        self.upload_button.pack(pady=(0, 20))
         create_tooltip(self.upload_button, i18n.get('upload_tooltip', 'Upload selected files to remote'))
         
         # Download button
         self.download_button = ttk.Button(button_container, text=i18n.get('download_arrow', '← Download'), 
                                          command=self.download_selected, state='disabled',
                                          width=COMBO_WIDTH_SMALL)
-        self.download_button.pack(pady=10)
+        self.download_button.pack(pady=(0, 20))
         create_tooltip(self.download_button, i18n.get('download_tooltip', 'Download selected files from remote'))
+        
+        # Visual separator between transfer buttons and options
+        separator = tk.Frame(button_container, bg='#e0e0e0', height=2)
+        separator.pack(fill='x', pady=(0, 20))
         
         # Options button
         self.options_button = ttk.Button(button_container, text=i18n.get('options', 'Options'), 
                                        command=self.show_transfer_options,
                                        width=COMBO_WIDTH_SMALL)
-        self.options_button.pack(pady=10)
+        self.options_button.pack(pady=(0, 20))
         create_tooltip(self.options_button, i18n.get('options_tooltip', 'Configure transfer options'))
         
         # Add visual separator lines with slightly darker color
@@ -2204,7 +2322,8 @@ class DualPaneFileBrowser:
         
         # Connection status
         conn_frame = tk.Frame(self.remote_frame)
-        conn_frame.pack(fill='x', padx=5, pady=5)
+        conn_frame.grid(row=0, column=0, sticky='ew', padx=5, pady=5)
+        self.remote_frame.grid_columnconfigure(0, weight=1)
         
         self.conn_status_label = tk.Label(conn_frame, text=i18n.get('not_connected', 'Not connected'), fg=COLOR_ERROR)
         self.conn_status_label.pack(side='left')
@@ -2212,55 +2331,62 @@ class DualPaneFileBrowser:
         self.connect_button = ttk.Button(conn_frame, text=i18n.get('connect', 'Connect'), command=self.connect_remote)
         self.connect_button.pack(side='right')
         
-        # Path navigation frame
+        # Navigation frame using grid
         nav_frame = tk.Frame(self.remote_frame)
-        nav_frame.pack(fill='x', padx=5, pady=5)
+        nav_frame.grid(row=1, column=0, sticky='ew', padx=5, pady=5)
+        nav_frame.grid_columnconfigure(3, weight=1)  # Path entry column expands
         
-        # Navigation buttons
-        self.remote_up_button = ttk.Button(nav_frame, text='↑', width=3,
+        # Navigation buttons with consistent width and spacing
+        self.remote_up_button = ttk.Button(nav_frame, text='↑', width=4,
                                           command=self.navigate_remote_up, state='disabled')
-        self.remote_up_button.pack(side='left', padx=2)
+        self.remote_up_button.grid(row=0, column=0, padx=(0, 5))
         create_tooltip(self.remote_up_button, i18n.get('navigate_up_tooltip', 'Navigate to parent folder'))
         
-        self.remote_home_button = ttk.Button(nav_frame, text='🏠', width=3,
+        self.remote_home_button = ttk.Button(nav_frame, text='🏠', width=4,
                                             command=self.navigate_remote_home, state='disabled')
-        self.remote_home_button.pack(side='left', padx=2)
+        self.remote_home_button.grid(row=0, column=1, padx=(0, 5))
         create_tooltip(self.remote_home_button, i18n.get('navigate_home_tooltip', 'Go to home directory'))
         
-        self.remote_refresh_button = ttk.Button(nav_frame, text='↻', width=3,
+        self.remote_refresh_button = ttk.Button(nav_frame, text='↻', width=4,
                                                command=self.refresh_remote, state='disabled')
-        self.remote_refresh_button.pack(side='left', padx=2)
+        self.remote_refresh_button.grid(row=0, column=2, padx=(0, 5))
         create_tooltip(self.remote_refresh_button, i18n.get('refresh_tooltip', 'Refresh file list'))
         
         # Path entry
         self.remote_path_var = tk.StringVar(value=self.remote_current_path)
         self.remote_path_entry = ttk.Entry(nav_frame, textvariable=self.remote_path_var, state='readonly')
-        self.remote_path_entry.pack(side='left', fill='x', expand=True, padx=5)
+        self.remote_path_entry.grid(row=0, column=3, sticky='ew', padx=5)
         
-        # Search frame
+        # Search frame using grid
         search_frame = tk.Frame(self.remote_frame)
-        search_frame.pack(fill='x', padx=5, pady=(5, 0))
+        search_frame.grid(row=2, column=0, sticky='ew', padx=5, pady=(0, 5))
+        search_frame.grid_columnconfigure(1, weight=1)  # Search entry column expands
         
         self.remote_search_label = tk.Label(search_frame, text=i18n.get('search', 'Search:'))
-        self.remote_search_label.pack(side='left', padx=5)
+        self.remote_search_label.grid(row=0, column=0, padx=5)
         
         self.remote_search_var = tk.StringVar()
         self.remote_search_entry = ttk.Entry(search_frame, textvariable=self.remote_search_var, state='disabled')
-        self.remote_search_entry.pack(side='left', fill='x', expand=True, padx=5)
+        self.remote_search_entry.grid(row=0, column=1, sticky='ew', padx=5)
         # Use trace to update on every keystroke
         self.remote_search_var.trace('w', lambda *args: self.on_remote_search_changed())
         
         self.remote_clear_button = ttk.Button(search_frame, text=i18n.get('clear', 'Clear'), 
                                             command=self.clear_remote_search, state='disabled')
-        self.remote_clear_button.pack(side='left', padx=5)
+        self.remote_clear_button.grid(row=0, column=2, padx=5)
         
-        # File list with scrollbar
+        # File list with scrollbar (no extra padding)
         list_frame = tk.Frame(self.remote_frame)
-        list_frame.pack(fill='both', expand=True, padx=5, pady=(0, 5))
+        list_frame.grid(row=3, column=0, sticky='nsew', padx=5, pady=(0, 5))
+        self.remote_frame.grid_rowconfigure(3, weight=1)
         
         # Create Treeview
         columns = ('size', 'modified', 'type')
         self.remote_tree = ttk.Treeview(list_frame, columns=columns, show='tree headings')
+        
+        # Configure alternating row colors
+        self.remote_tree.tag_configure('odd', background='#f5f5f5')
+        self.remote_tree.tag_configure('even', background='white')
         
         # Define columns
         self.remote_tree.heading('#0', text='Name', command=lambda: self.sort_remote('name'))
@@ -2279,10 +2405,10 @@ class DualPaneFileBrowser:
         hsb = ttk.Scrollbar(list_frame, orient='horizontal', command=self.remote_tree.xview)
         self.remote_tree.configure(yscrollcommand=vsb.set, xscrollcommand=hsb.set)
         
-        # Grid layout
-        self.remote_tree.grid(row=0, column=0, sticky='nsew')
-        vsb.grid(row=0, column=1, sticky='ns')
-        hsb.grid(row=1, column=0, sticky='ew')
+        # Grid layout with no padding
+        self.remote_tree.grid(row=0, column=0, sticky='nsew', padx=0, pady=0)
+        vsb.grid(row=0, column=1, sticky='ns', padx=0, pady=0)
+        hsb.grid(row=1, column=0, sticky='ew', padx=0, pady=0)
         
         list_frame.grid_rowconfigure(0, weight=1)
         list_frame.grid_columnconfigure(0, weight=1)
@@ -2368,16 +2494,21 @@ class DualPaneFileBrowser:
         
         sorted_files.sort(key=sort_key, reverse=self.local_sort_reverse)
         
-        # Add items to tree
-        for item in sorted_files:
+        # Add items to tree with alternating row colors
+        for index, item in enumerate(sorted_files):
             size_text = '' if item['is_dir'] else format_size(item['size'])
             modified_text = format_time(item['modified'])
+            
+            # Determine tags for file type and row color
+            file_type = 'dir' if item['is_dir'] else 'file'
+            row_color = 'even' if index % 2 == 0 else 'odd'
+            tags = (file_type, row_color)
             
             # Insert with folder/file icon
             icon = '📁 ' if item['is_dir'] else '📄 '
             self.local_tree.insert('', 'end', text=icon + item['name'],
                                   values=(size_text, modified_text, item['type']),
-                                  tags=('dir' if item['is_dir'] else 'file',))
+                                  tags=tags)
         
         # Update path display
         self.local_path_var.set(str(self.local_current_path))
@@ -2657,16 +2788,21 @@ class DualPaneFileBrowser:
         
         sorted_files.sort(key=sort_key, reverse=self.remote_sort_reverse)
         
-        # Add items to tree
-        for item in sorted_files:
+        # Add items to tree with alternating row colors
+        for index, item in enumerate(sorted_files):
             size_text = '' if item['is_dir'] else format_size(item['size'])
             modified_text = format_time(item['modified'])
+            
+            # Determine tags for file type and row color
+            file_type = 'dir' if item['is_dir'] else 'file'
+            row_color = 'even' if index % 2 == 0 else 'odd'
+            tags = (file_type, row_color)
             
             # Insert with folder/file icon
             icon = '📁 ' if item['is_dir'] else '📄 '
             self.remote_tree.insert('', 'end', text=icon + item['name'],
                                    values=(size_text, modified_text, item['type']),
-                                   tags=('dir' if item['is_dir'] else 'file',))
+                                   tags=tags)
         
         # Update path display
         self.remote_path_var.set(self.remote_current_path)
@@ -2920,14 +3056,19 @@ class DualPaneFileBrowser:
         # Create progress dialog
         progress_dialog = tk.Toplevel(self.parent)
         progress_dialog.title(i18n.get('transfer_progress', 'Transfer Progress'))
-        progress_dialog.geometry('600x500')
+        # Use 0.4 * screen dimensions for progress dialog
+        screen_width = progress_dialog.winfo_screenwidth()
+        screen_height = progress_dialog.winfo_screenheight()
+        dialog_width = int(screen_width * 0.4)
+        dialog_height = int(screen_height * 0.4)
+        
         progress_dialog.transient(self.parent)
         
         # Center the dialog
         progress_dialog.update_idletasks()
-        x = (progress_dialog.winfo_screenwidth() - 600) // 2
-        y = (progress_dialog.winfo_screenheight() - 500) // 2
-        progress_dialog.geometry(f'600x500+{x}+{y}')
+        x = (screen_width - dialog_width) // 2
+        y = (screen_height - dialog_height) // 2
+        progress_dialog.geometry(f'{dialog_width}x{dialog_height}+{x}+{y}')
         
         # Set minimum size
         progress_dialog.minsize(400, 350)
@@ -2994,9 +3135,9 @@ class DualPaneFileBrowser:
         details_frame.pack(fill='both', expand=True, pady=(0, 10))
         
         # Create scrolled text for details
-        details_text = scrolledtext.ScrolledText(details_frame, height=6, wrap='word', 
+        details_text = scrolledtext.ScrolledText(details_frame, height=6, wrap='none', 
                                                 font=('Consolas', 9))
-        details_text.pack(fill='both', expand=True, padx=5, pady=5)
+        details_text.pack(fill='both', expand=True)
         details_text.config(state='disabled')
         
         # Function to add log entry
@@ -3479,26 +3620,34 @@ class DualPaneFileBrowser:
     def show_preview(self):
         """Show the preview pane"""
         if not self.preview_visible:
-            # Calculate half of the current vertical space
+            # Calculate 35% of the total vertical space
             self.vertical_paned.update_idletasks()
             total_height = self.vertical_paned.winfo_height()
             
-            # Get the height of the main panes (first child)
-            try:
-                # Get current height of the horizontal container
-                main_panes_height = self.vertical_paned.panes()[0].winfo_height()
-                # Calculate preview height as approximately half of main panes
-                preview_height = main_panes_height // 2
-                # Ensure minimum height
-                preview_height = max(150, min(preview_height, 300))
-            except:
-                # Fallback to a reasonable default
-                preview_height = 200
+            # Calculate preview height as exactly 35% of total height
+            preview_height = int(total_height * 0.35)
+            # Ensure minimum height
+            preview_height = max(150, preview_height)
             
             # Add preview container to vertical paned window
             self.vertical_paned.add(self.preview_container, minsize=150, height=preview_height)
             self.preview_visible = True
             self.preview_toggle_button.config(text=i18n.get('hide_preview', 'Hide Preview'))
+            
+            # Adjust the pane to maintain the 35% ratio
+            def adjust_preview_pane():
+                try:
+                    self.vertical_paned.update_idletasks()
+                    total_height = self.vertical_paned.winfo_height()
+                    if total_height > 1:
+                        # Set sash position to ensure preview takes 35% of space
+                        main_height = int(total_height * 0.65)
+                        self.vertical_paned.sash_place(0, 0, main_height)
+                except:
+                    pass
+            
+            # Schedule the adjustment
+            self.vertical_paned.after(50, adjust_preview_pane)
     
     def hide_preview(self):
         """Hide the preview pane"""
@@ -3752,7 +3901,7 @@ class DualPaneFileBrowser:
         text_frame = tk.Frame(exclude_frame)
         text_frame.pack(fill='both', expand=True, padx=10, pady=5)
         
-        self.exclude_text = tk.Text(text_frame, height=6, wrap='word')
+        self.exclude_text = tk.Text(text_frame, height=6, wrap='none')
         exclude_scroll = ttk.Scrollbar(text_frame, command=self.exclude_text.yview)
         self.exclude_text.configure(yscrollcommand=exclude_scroll.set)
         

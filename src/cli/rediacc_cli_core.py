@@ -16,16 +16,12 @@ from core import (
 CLI_TOOL = os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))), 'cli', 'rediacc-cli.py')
 
 def get_cli_command() -> list:
-    if not is_windows():
-        return [CLI_TOOL]
-    
+    if not is_windows(): return [CLI_TOOL]
     for cmd in ['python3', 'python', 'py']:
         try:
             result = subprocess.run([cmd, '--version'], capture_output=True, text=True, timeout=5)
-            if result.returncode == 0 and 'Python 3' in result.stdout:
-                return [cmd, CLI_TOOL]
-        except:
-            continue
+            if result.returncode == 0 and 'Python 3' in result.stdout: return [cmd, CLI_TOOL]
+        except: continue
     return ['python', CLI_TOOL]
 
 def is_windows() -> bool:
@@ -36,27 +32,17 @@ def get_null_device() -> str:
 
 def create_temp_file(suffix: str = '', prefix: str = 'tmp', delete: bool = True) -> str:
     if not is_windows():
-        with tempfile.NamedTemporaryFile(mode='w', delete=False, suffix=suffix, prefix=prefix) as f:
-            return f.name
-    
-    temp_dir = get('REDIACC_TEMP_DIR') or os.environ.get('TEMP') or os.environ.get('TMP')
-    if not temp_dir:
+        with tempfile.NamedTemporaryFile(mode='w', delete=False, suffix=suffix, prefix=prefix) as f: return f.name
+    if not (temp_dir := get('REDIACC_TEMP_DIR') or os.environ.get('TEMP') or os.environ.get('TMP')):
         raise ValueError("No temporary directory found. Set REDIACC_TEMP_DIR, TEMP, or TMP environment variable.")
     fd, path = tempfile.mkstemp(suffix=suffix, prefix=prefix, dir=temp_dir)
-    os.close(fd)
-    return path
+    os.close(fd); return path
 
 def set_file_permissions(path: str, mode: int):
-    if not is_windows():
-        os.chmod(path, mode)
-        return
-    
+    if not is_windows(): os.chmod(path, mode); return
     import stat
-    try:
-        perms = stat.S_IREAD if mode & 0o200 == 0 else stat.S_IWRITE | stat.S_IREAD
-        os.chmod(path, perms)
-    except:
-        pass
+    try: os.chmod(path, stat.S_IREAD if mode & 0o200 == 0 else stat.S_IWRITE | stat.S_IREAD)
+    except: pass
 
 def safe_error_message(message: str) -> str:
     import re
@@ -86,31 +72,22 @@ def run_command(cmd, capture_output=True, check=True, quiet=False):
     
     def handle_error(stderr=None):
         if not quiet:
-            safe_cmd = [safe_error_message(arg) for arg in cmd]
-            print(colorize(f"Error running command: {' '.join(safe_cmd)}", 'RED'))
-            if stderr:
-                print(colorize(f"Error: {safe_error_message(stderr)}", 'RED'))
+            print(colorize(f"Error running command: {' '.join([safe_error_message(arg) for arg in cmd])}", 'RED'))
+            if stderr: print(colorize(f"Error: {safe_error_message(stderr)}", 'RED'))
         sys.exit(1)
     
     try:
-        if not capture_output:
-            return subprocess.run(cmd, check=check)
-        
+        if not capture_output: return subprocess.run(cmd, check=check)
         result = subprocess.run(cmd, capture_output=True, text=True, check=check)
         if result.returncode != 0 and check:
             try:
                 error_data = json.loads(result.stdout)
-                if error_data.get('error') and not quiet:
-                    print(colorize(f"API Error: {error_data['error']}", 'RED'))
-                    sys.exit(1)
-            except:
-                pass
+                if error_data.get('error') and not quiet: print(colorize(f"API Error: {error_data['error']}", 'RED')); sys.exit(1)
+            except: pass
             handle_error(result.stderr)
-        
         return result.stdout.strip() if result.returncode == 0 else None
     except subprocess.CalledProcessError as e:
-        if check:
-            handle_error(getattr(e, 'stderr', None))
+        if check: handle_error(getattr(e, 'stderr', None))
         return None
 
 def _retry_with_backoff(func, max_retries=3, initial_delay=0.5, error_msg="Operation failed", exit_on_failure=True):
@@ -134,41 +111,24 @@ def _retry_with_backoff(func, max_retries=3, initial_delay=0.5, error_msg="Opera
         return None
 
 def _get_universal_user_info() -> Tuple[Optional[str], Optional[str]]:
-    config_path = get_main_config_file()
-    if not config_path.exists():
-        return None, None
-    
+    if not (config_path := get_main_config_file()).exists(): return None, None
     try:
-        with open(config_path, 'r') as f:
-            config = json.load(f)
-            if vault_company := config.get('vault_company'):
-                vault_data = json.loads(vault_company)
-                return vault_data.get('UNIVERSAL_USER_NAME'), vault_data.get('UNIVERSAL_USER_ID')
-    except (json.JSONDecodeError, IOError):
-        pass
-    
-    return None, None
+        config = json.load(open(config_path, 'r'))
+        if vault_company := config.get('vault_company'):
+            vault_data = json.loads(vault_company)
+            return vault_data.get('UNIVERSAL_USER_NAME'), vault_data.get('UNIVERSAL_USER_ID')
+    except: return None, None
 
 class _SuppressSysExit:
-    def __init__(self):
-        self.exit_called = False
-        self.original_exit = None
-    
+    def __init__(self): self.exit_called = False; self.original_exit = None
     def __enter__(self):
         self.original_exit = sys.exit
-        def no_exit(code=0):
-            self.exit_called = True
-        sys.exit = no_exit
+        sys.exit = lambda code=0: setattr(self, 'exit_called', True)
         return self
-    
-    def __exit__(self, exc_type, exc_val, exc_tb):
-        sys.exit = self.original_exit
+    def __exit__(self, exc_type, exc_val, exc_tb): sys.exit = self.original_exit
 
 def get_machine_info_with_team(team_name: str, machine_name: str) -> Dict[str, Any]:
-    token = TokenManager.get_token()
-    if not token:
-        print(colorize("No authentication token available", 'RED'))
-        sys.exit(1)
+    if not TokenManager.get_token(): print(colorize("No authentication token available", 'RED')); sys.exit(1)
     
     def try_inspect(quiet: bool = False):
         with _SuppressSysExit() as ctx:
@@ -191,10 +151,8 @@ def get_machine_info_with_team(team_name: str, machine_name: str) -> Dict[str, A
         
         # Parse vault content if available
         if vault_content := machine_info.get('vaultContent'):
-            try:
-                machine_info['vault'] = json.loads(vault_content) if isinstance(vault_content, str) else vault_content
-            except json.JSONDecodeError:
-                pass
+            try: machine_info['vault'] = json.loads(vault_content) if isinstance(vault_content, str) else vault_content
+            except json.JSONDecodeError: pass
         
         return machine_info
     except (json.JSONDecodeError, KeyError) as e:
@@ -203,10 +161,7 @@ def get_machine_info_with_team(team_name: str, machine_name: str) -> Dict[str, A
 
 
 def get_repository_info(team_name: str, repo_name: str) -> Dict[str, Any]:
-    token = TokenManager.get_token()
-    if not token:
-        print(colorize("No authentication token available", 'RED'))
-        sys.exit(1)
+    if not TokenManager.get_token(): print(colorize("No authentication token available", 'RED')); sys.exit(1)
     
     def try_inspect(quiet: bool = False):
         with _SuppressSysExit() as ctx:
@@ -228,10 +183,8 @@ def get_repository_info(team_name: str, repo_name: str) -> Dict[str, Any]:
         repo_info = inspect_data.get('data', [{}])[0]
         
         if vault_content := repo_info.get('vaultContent'):
-            try:
-                repo_info['vault'] = json.loads(vault_content) if isinstance(vault_content, str) else vault_content
-            except json.JSONDecodeError:
-                pass
+            try: repo_info['vault'] = json.loads(vault_content) if isinstance(vault_content, str) else vault_content
+            except json.JSONDecodeError: pass
         
         return repo_info
     except json.JSONDecodeError as e:
@@ -284,21 +237,13 @@ def get_ssh_key_from_vault(team_name: Optional[str] = None) -> Optional[str]:
 
 def _decode_ssh_key(ssh_key: str) -> str:
     import base64
-    
     if not ssh_key.startswith('-----BEGIN') and '\n' not in ssh_key:
-        try:
-            ssh_key = base64.b64decode(ssh_key).decode('utf-8')
-        except Exception:
-            pass
-    
+        try: ssh_key = base64.b64decode(ssh_key).decode('utf-8')
+        except: pass
     return ssh_key if ssh_key.endswith('\n') else ssh_key + '\n'
 
 def _setup_ssh_options(host_entry: str, known_hosts_path: str, key_path: str = None) -> str:
-    if host_entry:
-        base_opts = f"-o StrictHostKeyChecking=yes -o UserKnownHostsFile={known_hosts_path}"
-    else:
-        base_opts = f"-o StrictHostKeyChecking=accept-new -o UserKnownHostsFile={get_null_device()}"
-    
+    base_opts = f"-o StrictHostKeyChecking=yes -o UserKnownHostsFile={known_hosts_path}" if host_entry else f"-o StrictHostKeyChecking=accept-new -o UserKnownHostsFile={get_null_device()}"
     return f"{base_opts} -i {key_path}" if key_path else base_opts
 
 def setup_ssh_agent_connection(ssh_key: str, host_entry: str = None) -> Tuple[str, str, str]:
@@ -313,15 +258,11 @@ def setup_ssh_agent_connection(ssh_key: str, host_entry: str = None) -> Tuple[st
         
         agent_env = {}
         for line in agent_result.stdout.strip().split('\n'):
-            if '=' in line and ';' in line:
-                var_assignment = line.split(';')[0]
-                if '=' in var_assignment:
-                    key, value = var_assignment.split('=', 1)
-                    agent_env[key] = os.environ[key] = value
+            if '=' in line and ';' in line and '=' in (var_assignment := line.split(';')[0]):
+                key, value = var_assignment.split('=', 1)
+                agent_env[key] = os.environ[key] = value
         
-        agent_pid = agent_env.get('SSH_AGENT_PID')
-        if not agent_pid:
-            raise RuntimeError("Could not get SSH agent PID")
+        if not (agent_pid := agent_env.get('SSH_AGENT_PID')): raise RuntimeError("Could not get SSH agent PID")
         
         ssh_add_result = subprocess.run(['ssh-add', '-'], 
                                       input=ssh_key, text=True,
@@ -337,8 +278,7 @@ def setup_ssh_agent_connection(ssh_key: str, host_entry: str = None) -> Tuple[st
     known_hosts_file_path = None
     if host_entry:
         known_hosts_file_path = create_temp_file(suffix='_known_hosts', prefix='known_hosts_')
-        with open(known_hosts_file_path, 'w') as f:
-            f.write(host_entry + '\n')
+        with open(known_hosts_file_path, 'w') as f: f.write(host_entry + '\n')
     
     ssh_opts = _setup_ssh_options(host_entry, known_hosts_file_path)
     
@@ -356,8 +296,7 @@ def setup_ssh_for_connection(ssh_key: str, host_entry: str = None) -> Tuple[str,
     known_hosts_file_path = None
     if host_entry:
         known_hosts_file_path = create_temp_file(suffix='_known_hosts', prefix='known_hosts_')
-        with open(known_hosts_file_path, 'w') as f:
-            f.write(host_entry + '\n')
+        with open(known_hosts_file_path, 'w') as f: f.write(host_entry + '\n')
     
     ssh_opts = _setup_ssh_options(host_entry, known_hosts_file_path, ssh_key_file_path)
     
@@ -366,17 +305,13 @@ def setup_ssh_for_connection(ssh_key: str, host_entry: str = None) -> Tuple[str,
 def cleanup_ssh_agent(agent_pid: str, known_hosts_file: str = None):
     import subprocess
     if agent_pid:
-        try:
-            subprocess.run(['kill', agent_pid], capture_output=True, timeout=5)
-        except Exception:
-            pass
-    if known_hosts_file and os.path.exists(known_hosts_file):
-        os.unlink(known_hosts_file)
+        try: subprocess.run(['kill', agent_pid], capture_output=True, timeout=5)
+        except: pass
+    if known_hosts_file and os.path.exists(known_hosts_file): os.unlink(known_hosts_file)
 
 def cleanup_ssh_key(ssh_key_file: str, known_hosts_file: str = None):
     for file_path in (ssh_key_file, known_hosts_file):
-        if file_path and os.path.exists(file_path):
-            os.unlink(file_path)
+        if file_path and os.path.exists(file_path): os.unlink(file_path)
 
 def get_machine_connection_info(machine_info: Dict[str, Any]) -> Dict[str, Any]:
     machine_name = machine_info.get('machineName')
@@ -436,52 +371,31 @@ def get_repository_paths(repo_guid: str, datastore: str, universal_user_id: str 
     }
 
 def validate_cli_tool():
-    if not os.path.exists(CLI_TOOL):
-        print(colorize(f"Error: rediacc-cli not found at {CLI_TOOL}", 'RED'))
-        sys.exit(1)
-    
-    if not is_windows() and not os.access(CLI_TOOL, os.X_OK):
-        print(colorize(f"Error: rediacc-cli is not executable at {CLI_TOOL}", 'RED'))
-        sys.exit(1)
+    if not os.path.exists(CLI_TOOL): print(colorize(f"Error: rediacc-cli not found at {CLI_TOOL}", 'RED')); sys.exit(1)
+    if not is_windows() and not os.access(CLI_TOOL, os.X_OK): print(colorize(f"Error: rediacc-cli is not executable at {CLI_TOOL}", 'RED')); sys.exit(1)
 
 def wait_for_enter(message: str = "Press Enter to continue..."):
     input(colorize(f"\n{message}", 'YELLOW'))
 
 def test_ssh_connectivity(ip: str, port: int = 22, timeout: int = 5) -> Tuple[bool, str]:
     import socket
-    
     try:
         with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as sock:
             sock.settimeout(timeout)
-            result = sock.connect_ex((ip, port))
-            
-            return (True, "") if result == 0 else (False, f"Cannot connect to {ip}:{port} - port appears to be closed or filtered")
-            
-    except socket.timeout:
-        return False, f"Connection to {ip}:{port} timed out after {timeout} seconds"
-    except socket.gaierror:
-        return False, f"Failed to resolve hostname: {ip}"
-    except Exception as e:
-        return False, f"Connection test failed: {str(e)}"
+            return (True, "") if sock.connect_ex((ip, port)) == 0 else (False, f"Cannot connect to {ip}:{port} - port appears to be closed or filtered")
+    except socket.timeout: return False, f"Connection to {ip}:{port} timed out after {timeout} seconds"
+    except socket.gaierror: return False, f"Failed to resolve hostname: {ip}"
+    except Exception as e: return False, f"Connection test failed: {str(e)}"
 
 def validate_machine_accessibility(machine_name: str, team_name: str, ip: str, repo_name: str = None):
     print(f"Testing connectivity to {ip}...")
     is_accessible, error_msg = test_ssh_connectivity(ip)
-    
-    if is_accessible:
-        print(colorize("✓ Machine is accessible", 'GREEN'))
-        return
+    if is_accessible: print(colorize("✓ Machine is accessible", 'GREEN')); return
     
     print(colorize(f"\n✗ Machine '{machine_name}' is not accessible", 'RED'))
     print(colorize(f"  Error: {error_msg}", 'RED'))
     print(colorize("\nPossible reasons:", 'YELLOW'))
-    reasons = [
-        "The machine is offline or powered down",
-        "Network connectivity issues between client and machine", 
-        "Firewall blocking SSH port (22)",
-        "Incorrect IP address in machine configuration"
-    ]
-    for reason in reasons:
+    for reason in ["The machine is offline or powered down", "Network connectivity issues between client and machine", "Firewall blocking SSH port (22)", "Incorrect IP address in machine configuration"]:
         print(colorize(f"  • {reason}", 'YELLOW'))
     
     print(colorize(f"\nMachine IP: {ip}", 'BLUE'))
@@ -493,9 +407,7 @@ def validate_machine_accessibility(machine_name: str, team_name: str, ip: str, r
     sys.exit(1)
 
 def handle_ssh_exit_code(returncode: int, connection_type: str = "machine"):
-    if returncode == 0:
-        print(colorize(f"\nDisconnected from {connection_type}.", 'GREEN'))
-        return
+    if returncode == 0: print(colorize(f"\nDisconnected from {connection_type}.", 'GREEN')); return
     
     if returncode == 255:
         print(colorize(f"\n✗ SSH connection failed (exit code: {returncode})", 'RED'))

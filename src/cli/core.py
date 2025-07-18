@@ -227,71 +227,42 @@ class Config:
     
     def load(self, env_file: Optional[str] = None):
         """Load configuration from environment and .env files"""
-        if self._loaded:
-            return
-        
-        # Load from .env file if it exists
+        if self._loaded: return
         self._load_env_file(env_file)
-        
-        # Load from environment variables (overrides .env)
         self._load_from_environment()
-        
-        # Validate required configuration
         self._validate()
-        
         self._loaded = True
     
     def _find_env_file(self) -> Optional[Path]:
         """Find .env file in current, parent directories, or home"""
         current = Path.cwd()
+        if (env_path := current / '.env').exists(): return env_path
         
-        # Check current directory
-        env_path = current / '.env'
-        if env_path.exists():
-            return env_path
-        
-        # Check parent directories up to the monorepo root
         for parent in current.parents:
-            env_path = parent / '.env'
-            if env_path.exists():
-                return env_path
-            # Stop at monorepo root (has a 'cli' directory)
-            if (parent / 'cli').is_dir() and (parent / 'middleware').is_dir():
-                break
+            if (env_path := parent / '.env').exists(): return env_path
+            if (parent / 'cli').is_dir() and (parent / 'middleware').is_dir(): break
         
-        # Check local CLI directory
         local_env = get_config_dir() / '.env'
         return local_env if local_env.exists() else None
     
     def _load_env_file(self, env_file: Optional[str] = None):
-        env_path = Path(env_file) if env_file else self._find_env_file()
-        
-        if not env_path or not env_path.exists():
-            return
+        if not (env_path := Path(env_file) if env_file else self._find_env_file()) or not env_path.exists(): return
         
         try:
             with open(env_path, 'r') as f:
                 for line in f:
-                    line = line.strip()
-                    if line and not line.startswith('#') and '=' in line:
+                    if (line := line.strip()) and not line.startswith('#') and '=' in line:
                         key, value = line.split('=', 1)
                         self._config[key.strip()] = value.strip().strip('"\'')
-        except Exception as e:
-            self.logger.warning(f"Failed to load .env file: {e}")
+        except Exception as e: self.logger.warning(f"Failed to load .env file: {e}")
     
     def _load_from_environment(self):
         """Load configuration from environment variables"""
         all_keys = [*self.REQUIRED_KEYS.keys(), *self.OPTIONAL_KEYS.keys()]
-        self._config.update(
-            (key, os.environ[key])
-            for key in all_keys
-            if key in os.environ
-        )
+        self._config.update((key, os.environ[key]) for key in all_keys if key in os.environ)
         
-        # Try to load API URL from shared config file if not set
-        if 'REDIACC_API_URL' not in self._config:
-            if api_url := self._load_api_url_from_shared_config():
-                self._config['REDIACC_API_URL'] = api_url
+        if 'REDIACC_API_URL' not in self._config and (api_url := self._load_api_url_from_shared_config()):
+            self._config['REDIACC_API_URL'] = api_url
     
     def _load_api_url_from_shared_config(self) -> Optional[str]:
         """Load API URL from shared config file (same as desktop app)"""
@@ -323,63 +294,43 @@ class Config:
     
     def get(self, key: str, default: Optional[str] = None) -> Optional[str]:
         """Get a configuration value"""
-        if not self._loaded:
-            self.load()
+        if not self._loaded: self.load()
         return self._config.get(key, default)
     
     def get_required(self, key: str) -> str:
         """Get a required configuration value"""
-        if (value := self.get(key)) is None:
-            raise ConfigError(f"Required configuration '{key}' is not set")
+        if (value := self.get(key)) is None: raise ConfigError(f"Required configuration '{key}' is not set")
         return value
     
     def get_int(self, key: str, default: Optional[int] = None) -> Optional[int]:
         """Get a configuration value as integer"""
-        if (value := self.get(key)) is None:
-            return default
-        try:
-            return int(value)
-        except ValueError:
-            raise ConfigError(f"Configuration '{key}' must be an integer, got: {value}")
+        if (value := self.get(key)) is None: return default
+        try: return int(value)
+        except ValueError: raise ConfigError(f"Configuration '{key}' must be an integer, got: {value}")
     
     def get_bool(self, key: str, default: bool = False) -> bool:
         """Get a configuration value as boolean"""
-        return (
-            self.get(key, '').lower() in ('true', '1', 'yes', 'on')
-            if self.get(key) is not None
-            else default
-        )
+        return self.get(key, '').lower() in ('true', '1', 'yes', 'on') if self.get(key) is not None else default
     
     def get_path(self, key: str, default: Optional[str] = None) -> Optional[Path]:
         """Get a configuration value as Path, expanding ~ and variables"""
-        if (value := self.get(key, default)) is None:
-            return None
-        return Path(os.path.expandvars(os.path.expanduser(value)))
+        return Path(os.path.expandvars(os.path.expanduser(value))) if (value := self.get(key, default)) else None
     
     def print_config(self):
         """Print current configuration (for debugging)"""
-        if not self._loaded:
-            self.load()
+        if not self._loaded: self.load()
         
-        self.logger.debug("Current configuration:")
-        self.logger.debug("-" * 40)
-        
-        # Print required configs
+        self.logger.debug("Current configuration:"); self.logger.debug("-" * 40)
         self.logger.debug("Required:")
-        for key in self.REQUIRED_KEYS:
-            self.logger.debug(f"  {key}={self._config.get(key, '<NOT SET>')}")
+        for key in self.REQUIRED_KEYS: self.logger.debug(f"  {key}={self._config.get(key, '<NOT SET>')}")
         
-        # Print optional configs that are set
         self.logger.debug("\nOptional (set):")
         for key in self.OPTIONAL_KEYS:
-            if key in self._config:
-                self.logger.debug(f"  {key}={self._config[key]}")
+            if key in self._config: self.logger.debug(f"  {key}={self._config[key]}")
         
-        # Print optional configs that are not set
         if unset := [k for k in self.OPTIONAL_KEYS if k not in self._config]:
             self.logger.debug("\nOptional (not set):")
-            for key in unset:
-                self.logger.debug(f"  {key}")
+            for key in unset: self.logger.debug(f"  {key}")
 
 # Global config instance
 _config = Config()
@@ -534,45 +485,23 @@ logger = get_logger(__name__)
 
 
 def is_encrypted(value: str) -> bool:
-    if not value or len(value) < 20:
-        return False
-    
-    try:
-        decoded = base64.b64decode(value)
-        return len(decoded) >= 32
-    except Exception:
-        return False
+    if not value or len(value) < 20: return False
+    try: return len(base64.b64decode(value)) >= 32
+    except Exception: return False
 
 
 def decrypt_string(encrypted: str, password: str) -> str:
-    if not CRYPTO_AVAILABLE:
-        raise RuntimeError("Cryptography library not available")
+    if not CRYPTO_AVAILABLE: raise RuntimeError("Cryptography library not available")
     
-    # Decode from base64
     combined = base64.b64decode(encrypted)
+    salt, iv, ciphertext_and_tag = combined[:16], combined[16:28], combined[28:]
     
-    # Extract components (16 bytes salt, 12 bytes IV, rest is ciphertext + 16 bytes auth tag)
-    salt = combined[:16]
-    iv = combined[16:28]
-    ciphertext_and_tag = combined[28:]
-    
-    # Derive key from password and salt
-    kdf = PBKDF2HMAC(
-        algorithm=hashes.SHA256(),
-        length=32,  # 256 bits
-        salt=salt,
-        iterations=100000,
-        backend=default_backend()
-    )
+    kdf = PBKDF2HMAC(algorithm=hashes.SHA256(), length=32, salt=salt, iterations=100000, backend=default_backend())
     key = kdf.derive(password.encode('utf-8'))
     
-    # Decrypt using AES-GCM
     aesgcm = AESGCM(key)
-    try:
-        plaintext = aesgcm.decrypt(iv, ciphertext_and_tag, None)
-        return plaintext.decode('utf-8')
-    except Exception as e:
-        raise ValueError(f"Decryption failed: {e}")
+    try: return aesgcm.decrypt(iv, ciphertext_and_tag, None).decode('utf-8')
+    except Exception as e: raise ValueError(f"Decryption failed: {e}")
 
 
 class TokenManager:
@@ -592,8 +521,7 @@ class TokenManager:
         """Ensure only one instance exists"""
         if cls._instance is None:
             with cls._lock:
-                if cls._instance is None:
-                    cls._instance = super().__new__(cls)
+                if cls._instance is None: cls._instance = super().__new__(cls)
         return cls._instance
     
     def __init__(self):
@@ -675,62 +603,38 @@ class TokenManager:
             for attempt in range(max_retries):
                 temp_file = cls._config_file.with_suffix(f'.tmp.{attempt}.{int(time.time())}')
                 try:
-                    with open(temp_file, 'w') as f:
-                        json.dump(config, f, indent=2)
-                    
-                    if not is_windows:
-                        temp_file.chmod(0o600)
+                    with open(temp_file, 'w') as f: json.dump(config, f, indent=2)
+                    if not is_windows: temp_file.chmod(0o600)
                     
                     if is_windows and cls._config_file.exists():
-                        with contextlib.suppress(OSError):
-                            cls._config_file.unlink()
+                        with contextlib.suppress(OSError): cls._config_file.unlink()
                     
-                    if is_windows:
-                        shutil.move(str(temp_file), str(cls._config_file))
-                    else:
-                        temp_file.replace(cls._config_file)
-                    
-                    if not is_windows:
-                        cls._config_file.chmod(0o600)
-                    
+                    shutil.move(str(temp_file), str(cls._config_file)) if is_windows else temp_file.replace(cls._config_file)
+                    if not is_windows: cls._config_file.chmod(0o600)
                     return
                     
                 except OSError as e:
                     logger.warning(f"Config save attempt {attempt + 1} failed: {e}")
                     if temp_file.exists():
-                        with contextlib.suppress(OSError):
-                            temp_file.unlink()
-                    
-                    if attempt < max_retries - 1:
-                        time.sleep(0.1 * (attempt + 1))
-                    else:
-                        logger.error(f"Failed to save config after {max_retries} attempts: {e}")
-                        raise
+                        with contextlib.suppress(OSError): temp_file.unlink()
+                    if attempt < max_retries - 1: time.sleep(0.1 * (attempt + 1))
+                    else: logger.error(f"Failed to save config after {max_retries} attempts: {e}"); raise
                 except Exception as e:
                     logger.error(f"Failed to save config: {e}")
                     if temp_file.exists():
-                        with contextlib.suppress(OSError):
-                            temp_file.unlink()
+                        with contextlib.suppress(OSError): temp_file.unlink()
                     raise
     
     @classmethod
     def get_token(cls, override_token: Optional[str] = None) -> Optional[str]:
-        if not cls._initialized:
-            TokenManager()
+        if not cls._initialized: TokenManager()
         
         if override_token:
-            if cls.validate_token(override_token):
-                return override_token
-            else:
-                logger.warning("Invalid override token format")
-                return None
+            return override_token if cls.validate_token(override_token) else (logger.warning("Invalid override token format"), None)[1]
         
-        env_token = os.environ.get('REDIACC_TOKEN')
-        if env_token:
-            if cls.validate_token(env_token):
-                return env_token
-            else:
-                logger.warning("Invalid token in REDIACC_TOKEN environment variable")
+        if env_token := os.environ.get('REDIACC_TOKEN'):
+            if cls.validate_token(env_token): return env_token
+            else: logger.warning("Invalid token in REDIACC_TOKEN environment variable")
         
         try:
             config = cls._load_from_config()
@@ -750,13 +654,9 @@ class TokenManager:
         return None
     
     @classmethod
-    def set_token(cls, token: str, email: Optional[str] = None, 
-                  company: Optional[str] = None, vault_company: Optional[str] = None):
-        if not cls._initialized:
-            TokenManager()
-            
-        if not cls.validate_token(token):
-            raise ValueError("Invalid token format")
+    def set_token(cls, token: str, email: Optional[str] = None, company: Optional[str] = None, vault_company: Optional[str] = None):
+        if not cls._initialized: TokenManager()
+        if not cls.validate_token(token): raise ValueError("Invalid token format")
         
         config = cls._load_from_config()
         

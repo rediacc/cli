@@ -115,27 +115,19 @@ def decrypt_string(encrypted: str, password: str) -> str:
     return plaintext.decode('utf-8')
 
 def is_encrypted(value: str) -> bool:
-    if not value or len(value) < 20:
-        return False
-    try:
-        json.loads(value)
-        return False
+    if not value or len(value) < 20: return False
+    try: json.loads(value); return False
     except:
-        pass
-    import re
-    base64_pattern = re.compile(r'^[A-Za-z0-9+/]+=*$')
-    return base64_pattern.match(value) is not None and len(value) >= 40
+        import re
+        return bool(re.match(r'^[A-Za-z0-9+/]+=*$', value) and len(value) >= 40)
 
 def encrypt_vault_fields(obj: dict, password: str) -> dict:
-    if not password or not obj:
-        return obj
+    if not password or not obj: return obj
     
     def encrypt_field(key: str, value: Any) -> Any:
         if 'vault' in key.lower() and isinstance(value, str) and value and not is_encrypted(value):
-            try:
-                return encrypt_string(value, password)
-            except Exception as e:
-                print(colorize(f"Warning: Failed to encrypt field {key}: {e}", 'YELLOW'))
+            try: return encrypt_string(value, password)
+            except Exception as e: print(colorize(f"Warning: Failed to encrypt field {key}: {e}", 'YELLOW'))
         return value
     
     return {
@@ -147,15 +139,12 @@ def encrypt_vault_fields(obj: dict, password: str) -> dict:
     }
 
 def decrypt_vault_fields(obj: dict, password: str) -> dict:
-    if not password or not obj:
-        return obj
+    if not password or not obj: return obj
     
     def decrypt_field(key: str, value: Any) -> Any:
         if 'vault' in key.lower() and isinstance(value, str) and value and is_encrypted(value):
-            try:
-                return decrypt_string(value, password)
-            except Exception as e:
-                print(colorize(f"Warning: Failed to decrypt field {key}: {e}", 'YELLOW'))
+            try: return decrypt_string(value, password)
+            except Exception as e: print(colorize(f"Warning: Failed to decrypt field {key}: {e}", 'YELLOW'))
         return value
     
     return {
@@ -168,46 +157,23 @@ def decrypt_vault_fields(obj: dict, password: str) -> dict:
 
 def reconstruct_cmd_config():
     def process_value(value):
-        if not isinstance(value, dict):
-            return value
-        
+        if not isinstance(value, dict): return value
         if 'params' in value and isinstance(value['params'], str) and value['params'].startswith('lambda'):
-            result = value.copy()
-            result['params'] = eval(value['params'])
-            return result
-        
-        return {
-            k: process_value(v) if isinstance(v, dict) else v
-            for k, v in value.items()
-        }
-    
+            value = value.copy(); value['params'] = eval(value['params']); return value
+        return {k: process_value(v) if isinstance(v, dict) else v for k, v in value.items()}
     return {key: process_value(value) for key, value in CMD_CONFIG_JSON.items()}
 
 def reconstruct_arg_defs():
     def process_arg(arg):
-        if not isinstance(arg, dict) or 'type' not in arg:
-            return arg
-        
-        arg_copy = arg.copy()
-        arg_type = arg['type']
-        
-        if isinstance(arg_type, str):
-            if arg_type.startswith('lambda'):
-                arg_copy['type'] = eval(arg_type)
-            elif arg_type == 'int':
-                arg_copy['type'] = int
-        
-        return arg_copy
+        if not isinstance(arg, dict) or 'type' not in arg: return arg
+        arg = arg.copy()
+        if isinstance(arg['type'], str):
+            arg['type'] = eval(arg['type']) if arg['type'].startswith('lambda') else int if arg['type'] == 'int' else arg['type']
+        return arg
     
     def process_value(value):
-        if isinstance(value, list):
-            return [process_arg(arg) for arg in value]
-        elif isinstance(value, dict):
-            return {
-                k: process_value(v) if isinstance(v, (list, dict)) else v
-                for k, v in value.items()
-            }
-        return value
+        return [process_arg(arg) for arg in value] if isinstance(value, list) else \
+               {k: process_value(v) if isinstance(v, (list, dict)) else v for k, v in value.items()} if isinstance(value, dict) else value
     
     return {key: process_value(value) for key, value in ARG_DEFS_JSON.items()}
 
@@ -216,15 +182,10 @@ ARG_DEFS = reconstruct_arg_defs()
 
 class APIClient:
     def __init__(self, config_manager):
-        if not config_manager:
-            raise ValueError("config_manager is required for APIClient to ensure proper token management")
-        
+        if not config_manager: raise ValueError("config_manager is required for APIClient to ensure proper token management")
         self.config_manager = config_manager
         self.config = config_manager.config if hasattr(config_manager, 'config') else {}
-        self.base_headers = {
-            "Content-Type": "application/json",
-            "User-Agent": "rediacc-cli/1.0"
-        }
+        self.base_headers = {"Content-Type": "application/json", "User-Agent": "rediacc-cli/1.0"}
         self.config_manager.load_vault_info_from_config()
     
     def request(self, endpoint, data=None, headers=None):
@@ -232,108 +193,67 @@ class APIClient:
         merged_headers = {**self.base_headers, **(headers or {})}
         
         if data and self.config_manager and (master_pwd := self.config_manager.get_master_password()):
-            try:
-                data = encrypt_vault_fields(data, master_pwd)
-            except Exception as e:
-                print(colorize(f"Warning: Failed to encrypt vault fields: {e}", 'YELLOW'))
+            try: data = encrypt_vault_fields(data, master_pwd)
+            except Exception as e: print(colorize(f"Warning: Failed to encrypt vault fields: {e}", 'YELLOW'))
         
-        req = urllib.request.Request(
-            url,
-            data=json.dumps(data or {}).encode('utf-8'),
-            headers=merged_headers,
-            method='POST'
-        )
+        req = urllib.request.Request(url, json.dumps(data or {}).encode('utf-8'), merged_headers, method='POST')
         
         try:
             with urllib.request.urlopen(req, timeout=REQUEST_TIMEOUT) as response:
                 response_data = response.read().decode('utf-8')
-                
-                if response.status != 200:
-                    return {"error": f"API Error: {response.status} - {response_data}", 
-                            "status_code": response.status}
+                if response.status != 200: return {"error": f"API Error: {response.status} - {response_data}", "status_code": response.status}
                 
                 result = json.loads(response_data)
-                
                 if result.get('failure') and result.get('failure') != 0:
                     errors = result.get('errors', [])
-                    error_msg = f"API Error: {'; '.join(errors)}" if errors else f"API Error: {result.get('message', 'Request failed')}"
-                    return {"error": error_msg, "status_code": 400}
+                    return {"error": f"API Error: {'; '.join(errors) if errors else result.get('message', 'Request failed')}", "status_code": 400}
                 
                 if self.config_manager and (master_pwd := self.config_manager.get_master_password()):
-                    try:
-                        result = decrypt_vault_fields(result, master_pwd)
-                    except Exception as e:
-                        print(colorize(f"Warning: Failed to decrypt vault fields: {e}", 'YELLOW'))
+                    try: result = decrypt_vault_fields(result, master_pwd)
+                    except Exception as e: print(colorize(f"Warning: Failed to decrypt vault fields: {e}", 'YELLOW'))
                 
                 return result
-                
         except urllib.error.HTTPError as e:
-            error_body = e.read().decode('utf-8') if e.fp else str(e)
-            return {"error": f"API Error: {e.code} - {error_body}", "status_code": e.code}
+            return {"error": f"API Error: {e.code} - {e.read().decode('utf-8') if e.fp else str(e)}", "status_code": e.code}
         except urllib.error.URLError as e:
             return {"error": f"Connection error: {str(e)}", "status_code": 500}
         except Exception as e:
             return {"error": f"Request error: {str(e)}", "status_code": 500}
     
     def auth_request(self, endpoint, email, pwd_hash, data=None):
-        return self.request(endpoint, data, {
-            "Rediacc-UserEmail": email,
-            "Rediacc-UserHash": pwd_hash
-        })
+        return self.request(endpoint, data, {"Rediacc-UserEmail": email, "Rediacc-UserHash": pwd_hash})
     
     def token_request(self, endpoint, data=None, retry_count=0):
         try:
-            with api_mutex.acquire(timeout=30.0):
-                return self._token_request_impl(endpoint, data, retry_count)
-        except TimeoutError as e:
-            return {"error": f"API call timeout: {str(e)}", "status_code": 408}
-        except Exception as e:
-            return {"error": f"API call error: {str(e)}", "status_code": 500}
+            with api_mutex.acquire(timeout=30.0): return self._token_request_impl(endpoint, data, retry_count)
+        except TimeoutError as e: return {"error": f"API call timeout: {str(e)}", "status_code": 408}
+        except Exception as e: return {"error": f"API call error: {str(e)}", "status_code": 500}
     
     def _token_request_impl(self, endpoint, data=None, retry_count=0):
-        token = TokenManager.get_token()
-        if not token:
-            return {"error": "Not authenticated. Please login first.", "status_code": 401}
+        if not (token := TokenManager.get_token()): return {"error": "Not authenticated. Please login first.", "status_code": 401}
         
-        if endpoint != 'GetCompanyVault':
-            self._ensure_vault_info()
-            self._show_vault_warning_if_needed()
+        if endpoint != 'GetCompanyVault': self._ensure_vault_info(); self._show_vault_warning_if_needed()
         
         response = self.request(endpoint, data, {"Rediacc-RequestToken": token})
         
         if response and response.get('status_code') == 401 and retry_count < 2:
-            import time
-            time.sleep(0.1 * (retry_count + 1))
-            
-            if TokenManager.get_token() != token:
-                return self._token_request_impl(endpoint, data, retry_count + 1)
+            import time; time.sleep(0.1 * (retry_count + 1))
+            if TokenManager.get_token() != token: return self._token_request_impl(endpoint, data, retry_count + 1)
         
         self._update_token_if_needed(response, token)
         return response
     
     def _show_vault_warning_if_needed(self):
-        if (self.config_manager and self.config_manager.has_vault_encryption() 
-            and not self.config_manager.get_master_password() 
-            and not hasattr(self, '_vault_warning_shown')):
+        if self.config_manager and self.config_manager.has_vault_encryption() and not self.config_manager.get_master_password() and not hasattr(self, '_vault_warning_shown'):
             print(colorize("Warning: Your company requires vault encryption but no master password is set.", 'YELLOW'))
             print(colorize("Vault fields will not be decrypted. Use 'rediacc vault set-password' to set it.", 'YELLOW'))
             self._vault_warning_shown = True
     
     def _update_token_if_needed(self, response, current_token):
-        if not (response and not response.get('error') and self.config_manager):
-            return
-            
-        tables = response.get('tables', [])
-        if not (tables and tables[0].get('data')):
-            return
-            
-        new_token = tables[0]['data'][0].get('nextRequestCredential')
-        if not (new_token and new_token != current_token):
-            return
-            
-        if os.environ.get('REDIACC_TOKEN') or self.config_manager.is_token_overridden():
-            return
-            
+        if not (response and not response.get('error') and self.config_manager): return
+        if not (tables := response.get('tables', [])) or not tables[0].get('data'): return
+        if not (new_token := tables[0]['data'][0].get('nextRequestCredential')) or new_token == current_token: return
+        if os.environ.get('REDIACC_TOKEN') or self.config_manager.is_token_overridden(): return
         if TokenManager.get_token() == current_token:
             TokenManager.set_token(
                 new_token,
@@ -390,19 +310,10 @@ class APIClient:
 def format_output(data, format_type, message=None, error=None):
     if format_type == 'json':
         output = {'success': error is None, 'data': data}
-        if message:
-            output['message'] = message
-        if error:
-            output['error'] = error
+        if message: output['message'] = message
+        if error: output['error'] = error
         return json.dumps(output, indent=2)
-    
-    if error:
-        return colorize(f"Error: {error}", 'RED')
-    if data:
-        return data
-    if message:
-        return colorize(message, 'GREEN')
-    return "No data available"
+    return colorize(f"Error: {error}", 'RED') if error else data if data else colorize(message, 'GREEN') if message else "No data available"
 
 STATIC_SALT = 'Rd!@cc111$ecur3P@$$w0rd$@lt#H@$h'
 
@@ -411,39 +322,23 @@ def pwd_hash(pwd):
     return "0x" + hashlib.sha256(salted_password.encode()).digest().hex()
 
 def extract_table_data(response, table_index=0):
-    tables = response.get('tables', []) if response else []
-    return tables[table_index].get('data', []) if len(tables) > table_index else []
+    return response.get('tables', [])[table_index].get('data', []) if response and len(response.get('tables', [])) > table_index else []
 
 def get_vault_data(args):
-    if not (hasattr(args, 'vault_file') and args.vault_file):
-        return getattr(args, 'vault', '{}') or '{}'
-    
-    try:
-        if args.vault_file == '-':
-            return json.dumps(json.loads(sys.stdin.read()))
-        with open(args.vault_file, 'r') as f:
-            return json.dumps(json.load(f))
-    except (IOError, json.JSONDecodeError) as e:
-        print(colorize(f"Warning: Could not load vault data: {e}", 'YELLOW'))
-        return '{}'
+    if not (hasattr(args, 'vault_file') and args.vault_file): return getattr(args, 'vault', '{}') or '{}'
+    try: return json.dumps(json.loads(sys.stdin.read()) if args.vault_file == '-' else json.load(open(args.vault_file, 'r')))
+    except (IOError, json.JSONDecodeError) as e: print(colorize(f"Warning: Could not load vault data: {e}", 'YELLOW')); return '{}'
 
 def get_vault_set_params(args, config_manager=None):
     if args.file and args.file != '-':
-        try:
-            with open(args.file, 'r') as f:
-                vault_data = f.read()
-        except IOError:
-            print(colorize(f"Error: Could not read file: {args.file}", 'RED'))
-            return None
+        try: vault_data = open(args.file, 'r').read()
+        except IOError: print(colorize(f"Error: Could not read file: {args.file}", 'RED')); return None
     else:
         print("Enter JSON vault data (press Ctrl+D when finished):")
         vault_data = sys.stdin.read()
     
-    try:
-        json.loads(vault_data)
-    except json.JSONDecodeError as e:
-        print(colorize(f"Error: Invalid JSON: {str(e)}", 'RED'))
-        return None
+    try: json.loads(vault_data)
+    except json.JSONDecodeError as e: print(colorize(f"Error: Invalid JSON: {str(e)}", 'RED')); return None
     
     params = {'vaultVersion': args.vault_version or 1}
     
@@ -498,33 +393,23 @@ def camel_to_title(name):
         'bridgeUserEmail': 'Bridge User Email'
     }
     
-    if name in special_cases:
-        return special_cases[name]
-    
-    return ''.join(' ' + char if char.isupper() and i > 0 else char 
-                   for i, char in enumerate(name)).strip().title()
+    return special_cases.get(name, ''.join(' ' + char if char.isupper() and i > 0 else char 
+                                          for i, char in enumerate(name)).strip().title())
 
 def format_table(headers, rows):
     if not rows:
         return "No items found"
     
-    widths = [max(len(h), max(len(str(row[i])) for row in rows if i < len(row))) 
-              for i, h in enumerate(headers)]
+    widths = [max(len(h), max(len(str(row[i])) for row in rows if i < len(row))) for i, h in enumerate(headers)]
     
     header_line = '  '.join(h.ljust(w) for h, w in zip(headers, widths))
     separator = '-' * len(header_line)
-    formatted_rows = [
-        '  '.join(str(cell).ljust(w) for cell, w in zip(row, widths))
-        for row in rows
-    ]
+    formatted_rows = ['  '.join(str(cell).ljust(w) for cell, w in zip(row, widths)) for row in rows]
     
     return '\n'.join([header_line, separator] + formatted_rows)
 
 def table_to_dict(headers, rows):
-    return [
-        {header: row[i] for i, header in enumerate(headers) if i < len(row)}
-        for row in rows
-    ]
+    return [{header: row[i] for i, header in enumerate(headers) if i < len(row)} for row in rows]
 
 def format_dynamic_tables(response, output_format='text', skip_fields=None):
     if not response or 'tables' not in response:
@@ -671,19 +556,14 @@ class CommandHandler:
         self.output_format = output_format
     
     def handle_response(self, response, success_message=None, format_args=None):
-        if response.get('error'):
-            print(format_output(None, self.output_format, None, response['error']))
-            return False
+        if response.get('error'): print(format_output(None, self.output_format, None, response['error'])); return False
         
         if success_message and format_args and '{task_id}' in success_message:
-            tables = response.get('tables', [])
-            if len(tables) > 1 and tables[1].get('data'):
-                task_id = tables[1]['data'][0].get('taskId') or tables[1]['data'][0].get('TaskId')
-                if task_id:
+            if (tables := response.get('tables', [])) and len(tables) > 1 and tables[1].get('data'):
+                if task_id := tables[1]['data'][0].get('taskId') or tables[1]['data'][0].get('TaskId'):
                     setattr(format_args, 'task_id', task_id)
         
-        if not success_message:
-            return True
+        if not success_message: return True
         
         if format_args:
             format_dict = {k: getattr(format_args, k, '') for k in dir(format_args) if not k.startswith('_')}
@@ -694,7 +574,6 @@ class CommandHandler:
             print(format_output(data, self.output_format, success_message))
         else:
             print(colorize(success_message, 'GREEN'))
-            
         return True
     
     def login(self, args):
@@ -704,33 +583,15 @@ class CommandHandler:
         
         login_params = {'name': args.session_name or "CLI Session"}
         
-        optional_params = [
-            ('tfa_code', '2FACode'),
-            ('permissions', 'requestedPermissions'),
-            ('expiration', 'tokenExpirationHours'),
-            ('target', 'target')
-        ]
-        
-        for attr, param in optional_params:
-            if hasattr(args, attr) and (value := getattr(args, attr)):
-                login_params[param] = value
+        for attr, param in [('tfa_code', '2FACode'), ('permissions', 'requestedPermissions'), ('expiration', 'tokenExpirationHours'), ('target', 'target')]:
+            if hasattr(args, attr) and (value := getattr(args, attr)): login_params[param] = value
         
         response = self.client.auth_request("CreateAuthenticationRequest", email, hash_pwd, login_params)
         
-        if response.get('error'):
-            print(format_output(None, self.output_format, None, f"Login failed: {response['error']}"))
-            return 1
-        
-        tables = response.get('tables', [])
-        if not tables or not tables[0].get('data'):
-            print(format_output(None, self.output_format, None, "Login failed: Could not get authentication token"))
-            return 1
-        
+        if response.get('error'): print(format_output(None, self.output_format, None, f"Login failed: {response['error']}")); return 1
+        if not (tables := response.get('tables', [])) or not tables[0].get('data'): print(format_output(None, self.output_format, None, "Login failed: Could not get authentication token")); return 1
         auth_data = tables[0]['data'][0]
-        token = auth_data.get('nextRequestCredential')
-        if not token:
-            print(format_output(None, self.output_format, None, "Login failed: Invalid authentication token"))
-            return 1
+        if not (token := auth_data.get('nextRequestCredential')): print(format_output(None, self.output_format, None, "Login failed: Invalid authentication token")); return 1
         
         is_authorized = auth_data.get('isAuthorized', True)
         authentication_status = auth_data.get('authenticationStatus', '')
@@ -1674,11 +1535,7 @@ class CommandHandler:
                     details.append(('Warning', colorize('This queue item is STALE', 'YELLOW')))
                 
                 max_label_width = max(len(label) for label, _ in details)
-                output_parts.extend(
-                    f"{label.ljust(max_label_width)} : {value}"
-                    for label, value in details
-                    if value is not None
-                )
+                output_parts.extend(f"{label.ljust(max_label_width)} : {value}" for label, value in details if value is not None)
                 
             if len(tables) > 2 and tables[2].get('data') and tables[2]['data']:
                 vault_data = tables[2]['data'][0]
