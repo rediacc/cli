@@ -24,6 +24,20 @@ from core import (
 
 # ===== UTILITY FUNCTIONS =====
 
+def center_window(window, width: int, height: int) -> None:
+    """Center a window on the screen
+    
+    Args:
+        window: The tkinter window or Toplevel to center
+        width: The width of the window
+        height: The height of the window
+    """
+    window.update_idletasks()
+    x = (window.winfo_screenwidth() - width) // 2
+    y = (window.winfo_screenheight() - height) // 2
+    window.geometry(f'{width}x{height}+{x}+{y}')
+
+
 def format_size(size: int) -> str:
     """Format file size for display"""
     for unit in ['B', 'KB', 'MB', 'GB', 'TB']:
@@ -78,10 +92,33 @@ def parse_ls_output(output: str) -> List[Dict[str, Any]]:
             day = parts[6]
             time_or_year = parts[7]
             
-            # For now, use current time as approximation
-            # TODO: Proper date parsing
-            modified = time.time()
-        except:
+            # Parse date based on format
+            current_year = datetime.now().year
+            current_time = time.time()
+            
+            if ':' in time_or_year:
+                # Recent file format: "Nov 25 14:23"
+                hour, minute = time_or_year.split(':')
+                # Create datetime with current year
+                date_str = f"{month} {day} {current_year} {hour}:{minute}"
+                try:
+                    dt = datetime.strptime(date_str, "%b %d %Y %H:%M")
+                    # If date is in the future, it's probably from last year
+                    if dt.timestamp() > current_time:
+                        dt = dt.replace(year=current_year - 1)
+                    modified = dt.timestamp()
+                except ValueError:
+                    modified = current_time
+            else:
+                # Older file format: "Nov 25  2023"
+                year = time_or_year
+                date_str = f"{month} {day} {year}"
+                try:
+                    dt = datetime.strptime(date_str, "%b %d %Y")
+                    modified = dt.timestamp()
+                except ValueError:
+                    modified = current_time
+        except (IndexError, ValueError):
             modified = time.time()
         
         files.append({
@@ -89,7 +126,7 @@ def parse_ls_output(output: str) -> List[Dict[str, Any]]:
             'is_dir': is_dir,
             'size': size,
             'modified': modified,
-            'type': i18n.get('folder', 'Folder') if is_dir else i18n.get('file', 'File'),
+            'type': i18n.get('folder') if is_dir else i18n.get('file'),
             'perms': perms
         })
     
