@@ -220,15 +220,6 @@ class DualPaneFileBrowser:
         self.preview_text.config(xscrollcommand=preview_hsb.set)
         
         # Status bar is now in the main window
-    
-        # Create preview toggle button in the paned window area
-        preview_button_frame = tk.Frame(main_frame)
-        preview_button_frame.pack(fill='x', pady=(5, 0))
-        
-        self.preview_toggle_button = ttk.Button(preview_button_frame, 
-                                              text=i18n.get('show_preview'),
-                                              command=self.toggle_preview)
-        self.preview_toggle_button.pack(side='right', padx=5)
         
         # Now that all widgets are created, refresh the local directory
         self.refresh_local()
@@ -611,7 +602,7 @@ class DualPaneFileBrowser:
             self.local_path_var.set(str(self.local_current_path))
         
         # Update status with filter info
-        status_text = i18n.get('local_items', count=len(sorted_files))
+        status_text = i18n.get('local_items').format(count=len(sorted_files))
         if self.local_filter:
             status_text += f" ({i18n.get('filtered')})"
         # Update activity status to show current state
@@ -641,7 +632,7 @@ class DualPaneFileBrowser:
                                    i18n.get('invalid_directory'))
         except Exception as e:
             messagebox.showerror(i18n.get('error'), 
-                               i18n.get('invalid_path'))
+                               i18n.get('invalid_path').format(error=str(e)))
     
     def on_local_double_click(self, event):
         """Handle double-click on local file/folder"""
@@ -748,9 +739,9 @@ class DualPaneFileBrowser:
         """Handle successful remote connection"""
         # Update connection status
         info_dict = {
-            'team': getattr(self.ssh_connection, 'team', 'Unknown'),
-            'machine': getattr(self.ssh_connection, 'machine', 'Unknown'),
-            'repo': getattr(self.ssh_connection, 'repository', 'Unknown'),
+            'team': getattr(self.ssh_connection, 'team_name', 'Unknown'),
+            'machine': getattr(self.ssh_connection, 'machine_name', 'Unknown'),
+            'repo': getattr(self.ssh_connection, 'repo_name', 'Unknown'),
             'path': self.remote_current_path
         }
         self.main_window.update_connection_status(True, info_dict)
@@ -770,7 +761,7 @@ class DualPaneFileBrowser:
         """Handle failed remote connection"""
         self.main_window.update_connection_status(False)
         messagebox.showerror(i18n.get('connection_failed'), 
-                           i18n.get('failed_connect_remote'))
+                           i18n.get('failed_connect_remote').format(error='Connection timeout or refused'))
     
     def disconnect_remote(self):
         """Disconnect from remote repository"""
@@ -871,12 +862,12 @@ class DualPaneFileBrowser:
                     self.parent.after(0, lambda: self.update_remote_tree(files))
                 else:
                     self.parent.after(0, lambda: messagebox.showerror(i18n.get('error'), 
-                                                                     i18n.get('failed_list_remote')))
+                                                                     i18n.get('failed_list_remote').format(error=str(e))))
                     
             except Exception as e:
                 self.logger.error(f"Error refreshing remote files: {e}")
                 self.parent.after(0, lambda: messagebox.showerror(i18n.get('error'), 
-                                                                 i18n.get('failed_refresh_remote')))
+                                                                 i18n.get('failed_refresh_remote').format(error=str(e))))
         
         thread = threading.Thread(target=do_refresh, daemon=True)
         thread.start()
@@ -948,7 +939,7 @@ class DualPaneFileBrowser:
         self.remote_path_var.set(self.remote_current_path)
         
         # Update status with filter info
-        status_text = i18n.get('remote_items', count=len(sorted_files))
+        status_text = i18n.get('remote_items').format(count=len(sorted_files))
         if self.remote_filter:
             status_text += f" ({i18n.get('filtered')})"
         # Update activity status
@@ -1802,13 +1793,13 @@ class DualPaneFileBrowser:
                 
                 # Transfer complete
                 if self.transfer_cancelled:
-                    msg = i18n.get('transfer_cancelled_summary')
+                    msg = i18n.get('transfer_cancelled_summary').format(completed=completed, total=total)
                     success = False
                 elif completed == total:
-                    msg = i18n.get('all_transfers_successful')
+                    msg = i18n.get('all_transfers_successful').format(total=total)
                     success = True
                 else:
-                    msg = i18n.get('some_transfers_failed')
+                    msg = i18n.get('some_transfers_failed').format(completed=completed, total=total)
                     success = False
                 
                 progress_dialog.after(0, lambda: status_label.config(
@@ -2105,7 +2096,7 @@ class DualPaneFileBrowser:
         self.clipboard_files = self.get_current_selection()
         if self.clipboard_files:
             messagebox.showinfo(i18n.get('cut'),
-                              i18n.get('files_cut'))
+                              i18n.get('files_cut').format(count=len(self.clipboard_files)))
     
     def copy_selected(self):
         """Mark selected files for copy (not implemented)"""
@@ -2113,7 +2104,7 @@ class DualPaneFileBrowser:
         self.clipboard_files = self.get_current_selection()
         if self.clipboard_files:
             messagebox.showinfo(i18n.get('copy'),
-                              i18n.get('files_copied'))
+                              i18n.get('files_copied').format(count=len(self.clipboard_files)))
     
     def paste_files(self):
         """Paste files (not implemented)"""
@@ -2181,7 +2172,6 @@ class DualPaneFileBrowser:
             # Add preview container to vertical paned window
             self.vertical_paned.add(self.preview_container, minsize=150, height=preview_height)
             self.preview_visible = True
-            self.preview_toggle_button.config(text=i18n.get('hide_preview'))
             
             # Adjust the pane to maintain the 35% ratio
             def adjust_preview_pane():
@@ -2204,7 +2194,6 @@ class DualPaneFileBrowser:
             # Remove preview container from vertical paned window
             self.vertical_paned.remove(self.preview_container)
             self.preview_visible = False
-            self.preview_toggle_button.config(text=i18n.get('show_preview'))
     
     def preview_selected_file(self, source: str):
         """Preview the selected file"""
@@ -2252,7 +2241,8 @@ class DualPaneFileBrowser:
             # Check file size
             stat_info = file_path.stat()
             if stat_info.st_size > PREVIEW_SIZE_LIMIT:  # 1MB limit
-                self.preview_text.insert(1.0, i18n.get('file_too_large'))
+                size_mb = stat_info.st_size / (1024 * 1024)
+                self.preview_text.insert(1.0, i18n.get('file_too_large').format(size=f'{size_mb:.1f} MB'))
                 self.preview_text.config(state='disabled')
                 return
             
@@ -2270,10 +2260,10 @@ class DualPaneFileBrowser:
                     content = '\n'.join(lines)
                     self.preview_text.insert(1.0, content)
             except Exception as e:
-                self.preview_text.insert(1.0, i18n.get('preview_error'))
+                self.preview_text.insert(1.0, i18n.get('preview_error').format(error=str(e)))
         
         except Exception as e:
-            self.preview_text.insert(1.0, i18n.get('preview_error'))
+            self.preview_text.insert(1.0, i18n.get('preview_error').format(error=str(e)))
         
         finally:
             self.preview_text.config(state='disabled')
@@ -2294,8 +2284,9 @@ class DualPaneFileBrowser:
                     try:
                         file_size = int(size_output.strip())
                         if file_size > PREVIEW_SIZE_LIMIT:  # 1MB limit
-                            self.parent.after(0, lambda: self.update_preview_content(
-                                i18n.get('file_too_large')
+                            size_mb = size / (1024 * 1024)
+                            self.parent.after(0, lambda s=size_mb: self.update_preview_content(
+                                i18n.get('file_too_large').format(size=f'{s:.1f} MB')
                             ))
                             return
                     except:
@@ -2310,12 +2301,12 @@ class DualPaneFileBrowser:
                     # Update preview in UI thread
                     self.parent.after(0, lambda: self.update_preview_content(output))
                 else:
-                    self.parent.after(0, lambda: self.update_preview_content(
-                        i18n.get('preview_error')))
+                    self.parent.after(0, lambda e=e: self.update_preview_content(
+                        i18n.get('preview_error').format(error=str(e))))
             
             except Exception as e:
                 self.parent.after(0, lambda: self.update_preview_content(
-                    i18n.get('preview_error')))
+                    i18n.get('preview_error').format(error='Failed to retrieve remote file')))
         
         thread = threading.Thread(target=load_remote, daemon=True)
         thread.start()
@@ -2664,7 +2655,6 @@ class DualPaneFileBrowser:
         # Update preview pane
         if hasattr(self, 'preview_frame'):
             self.preview_frame.config(text=i18n.get('file_preview'))
-            self.preview_toggle_button.config(text=i18n.get('hide_preview' if self.preview_visible else 'show_preview'))
         
         # Options button removed - using menu instead
         

@@ -270,7 +270,7 @@ class MainWindow(BaseWindow):
         self.file_menu.add_command(
             label=i18n.get('new_session'),
             accelerator='Ctrl+N',
-            command=lambda: messagebox.showinfo(i18n.get('info'), i18n.get('not_implemented'))
+            command=self.new_session
         )
         
         self.file_menu.add_separator()
@@ -292,6 +292,7 @@ class MainWindow(BaseWindow):
         # Logout
         self.file_menu.add_command(
             label=i18n.get('logout'),
+            accelerator='Ctrl+Shift+L',
             command=self.logout
         )
         
@@ -303,8 +304,9 @@ class MainWindow(BaseWindow):
         )
         
         # Bind accelerators
-        self.root.bind_all('<Control-n>', lambda e: messagebox.showinfo(i18n.get('info'), i18n.get('not_implemented')))
+        self.root.bind_all('<Control-n>', lambda e: self.new_session())
         self.root.bind_all('<Control-comma>', lambda e: self.show_preferences())
+        self.root.bind_all('<Control-Shift-L>', lambda e: self.logout())
         self.root.bind_all('<Control-q>', lambda e: self.on_closing())
     
     def populate_language_menu(self):
@@ -392,6 +394,7 @@ class MainWindow(BaseWindow):
         
         self.view_menu.add_radiobutton(
             label=i18n.get('local_files_only'),
+            accelerator='Ctrl+1',
             variable=self.view_mode_var,
             value='local',
             command=lambda: self.set_view_mode('local')
@@ -399,6 +402,7 @@ class MainWindow(BaseWindow):
         
         self.view_menu.add_radiobutton(
             label=i18n.get('remote_files_only'),
+            accelerator='Ctrl+2',
             variable=self.view_mode_var,
             value='remote',
             command=lambda: self.set_view_mode('remote')
@@ -406,6 +410,7 @@ class MainWindow(BaseWindow):
         
         self.view_menu.add_radiobutton(
             label=i18n.get('split_view'),
+            accelerator='Ctrl+3',
             variable=self.view_mode_var,
             value='split',
             command=lambda: self.set_view_mode('split')
@@ -444,6 +449,9 @@ class MainWindow(BaseWindow):
         
         # Bind accelerators
         self.root.bind_all('<F3>', lambda e: self.toggle_preview())
+        self.root.bind_all('<Control-1>', lambda e: self.set_view_mode('local'))
+        self.root.bind_all('<Control-2>', lambda e: self.set_view_mode('remote'))
+        self.root.bind_all('<Control-3>', lambda e: self.set_view_mode('split'))
         self.root.bind_all('<Shift-F5>', lambda e: self.refresh_remote())
         self.root.bind_all('<Control-r>', lambda e: self.refresh_all())
         self.root.bind_all('<F11>', lambda e: self.toggle_fullscreen())
@@ -462,16 +470,19 @@ class MainWindow(BaseWindow):
         
         terminal_menu.add_command(
             label=i18n.get('repository_terminal'),
+            accelerator='Ctrl+T',
             command=self.open_repo_terminal
         )
         
         terminal_menu.add_command(
             label=i18n.get('machine_terminal'),
+            accelerator='Ctrl+Shift+T',
             command=self.open_machine_terminal
         )
         
         terminal_menu.add_command(
             label=i18n.get('quick_command'),
+            accelerator='Ctrl+K',
             command=self.show_quick_command
         )
         
@@ -487,6 +498,7 @@ class MainWindow(BaseWindow):
         # Transfer Options
         self.tools_menu.add_command(
             label=i18n.get('transfer_options'),
+            accelerator='Ctrl+Shift+O',
             command=self.show_transfer_options_wrapper
         )
         
@@ -499,7 +511,10 @@ class MainWindow(BaseWindow):
         
         # Bind accelerators
         self.root.bind_all('<Control-t>', lambda e: self.open_repo_terminal())
+        self.root.bind_all('<Control-Shift-T>', lambda e: self.open_machine_terminal())
+        self.root.bind_all('<Control-k>', lambda e: self.show_quick_command())
         self.root.bind_all('<Control-s>', lambda e: None)  # No tab switching needed
+        self.root.bind_all('<Control-Shift-O>', lambda e: self.show_transfer_options_wrapper())
         self.root.bind_all('<F12>', lambda e: self.show_console())
     
     def populate_plugins_menu(self):
@@ -632,6 +647,7 @@ class MainWindow(BaseWindow):
         # Keyboard Shortcuts
         self.help_menu.add_command(
             label=i18n.get('keyboard_shortcuts'),
+            accelerator='Ctrl+?',
             command=self.show_keyboard_shortcuts
         )
         
@@ -640,17 +656,22 @@ class MainWindow(BaseWindow):
         # Check for Updates
         self.help_menu.add_command(
             label=i18n.get('check_updates'),
+            accelerator='Ctrl+U',
             command=self.check_for_updates
         )
         
         # About
         self.help_menu.add_command(
             label=i18n.get('about'),
+            accelerator='Ctrl+Shift+A',
             command=self.show_about
         )
         
         # Bind accelerators
         self.root.bind_all('<F1>', lambda e: self.show_documentation())
+        self.root.bind_all('<Control-question>', lambda e: self.show_keyboard_shortcuts())
+        self.root.bind_all('<Control-u>', lambda e: self.check_for_updates())
+        self.root.bind_all('<Control-Shift-A>', lambda e: self.show_about())
     
     def create_widgets(self):
         """Create main window widgets"""
@@ -2181,6 +2202,18 @@ class MainWindow(BaseWindow):
         """Show preferences dialog (transfer options)"""
         if hasattr(self, 'file_browser') and self.file_browser:
             self.file_browser.show_transfer_options()
+    
+    def new_session(self):
+        """Launch a new GUI session in a separate window"""
+        import subprocess
+        import sys
+        import os
+        
+        # Get the path to the current script
+        script_path = os.path.abspath(__file__)
+        
+        # Launch a new instance of the GUI
+        subprocess.Popen([sys.executable, script_path])
     
     def change_language(self, language_code):
         """Change the application language"""
