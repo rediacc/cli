@@ -88,7 +88,10 @@ class DualPaneFileBrowser:
             'bandwidth_limit': 0,  # KB/s, 0 = unlimited
             'skip_newer': False,
             'delete_after': False,
-            'dry_run': False
+            'dry_run': False,
+            'mirror': False,
+            'verify': False,
+            'preview_sync': False
         }
         
         # Clipboard for copy/cut operations
@@ -343,6 +346,17 @@ class DualPaneFileBrowser:
         button_container = tk.Frame(self.transfer_frame, bg='#f0f0f0')
         button_container.pack(expand=True)
         
+        # Connect button (moved from main window)
+        self.connect_button = ttk.Button(button_container, text=i18n.get('connect', 'Connect'),
+                                       command=self.on_connect_clicked,
+                                       width=COMBO_WIDTH_SMALL)
+        self.connect_button.pack(pady=(0, 10))
+        create_tooltip(self.connect_button, i18n.get('connect_tooltip', 'Connect to remote repository'))
+        
+        # Separator
+        separator = ttk.Separator(button_container, orient='horizontal')
+        separator.pack(fill='x', pady=(0, 20))
+        
         # Upload button
         self.upload_button = ttk.Button(button_container, text=i18n.get('upload_arrow', 'Upload →'), 
                                        command=self.upload_selected, state='disabled',
@@ -356,8 +370,6 @@ class DualPaneFileBrowser:
                                          width=COMBO_WIDTH_SMALL)
         self.download_button.pack(pady=(0, 20))
         create_tooltip(self.download_button, i18n.get('download_tooltip', 'Download selected files from remote'))
-        
-        # Options button removed - use Tools menu instead
         
         # Add visual separator lines with slightly darker color
         separator_style = {'bg': '#d0d0d0', 'width': 2}
@@ -378,19 +390,12 @@ class DualPaneFileBrowser:
         self.remote_frame = tk.LabelFrame(self.paned_window, text=i18n.get('remote_files', 'Remote Files'))
         self.paned_window.add(self.remote_frame, minsize=400)
         
-        # Connection status
-        conn_frame = tk.Frame(self.remote_frame)
-        conn_frame.grid(row=0, column=0, sticky='ew', padx=5, pady=5)
+        # Configure grid
         self.remote_frame.grid_columnconfigure(0, weight=1)
-        
-        # Connection status now shown in main status bar
-        
-        self.connect_button = ttk.Button(conn_frame, text=i18n.get('connect', 'Connect'), command=self.connect_remote)
-        self.connect_button.pack(side='right')
         
         # Navigation frame using grid
         nav_frame = tk.Frame(self.remote_frame)
-        nav_frame.grid(row=1, column=0, sticky='ew', padx=5, pady=5)
+        nav_frame.grid(row=0, column=0, sticky='ew', padx=5, pady=5)
         nav_frame.grid_columnconfigure(3, weight=1)  # Path entry column expands
         
         # Navigation buttons with consistent width and spacing
@@ -411,7 +416,7 @@ class DualPaneFileBrowser:
         
         # Search frame using grid
         search_frame = tk.Frame(self.remote_frame)
-        search_frame.grid(row=2, column=0, sticky='ew', padx=5, pady=(0, 5))
+        search_frame.grid(row=1, column=0, sticky='ew', padx=5, pady=(0, 5))
         search_frame.grid_columnconfigure(1, weight=1)  # Search entry column expands
         
         self.remote_search_label = tk.Label(search_frame, text=i18n.get('search', 'Search:'))
@@ -429,8 +434,8 @@ class DualPaneFileBrowser:
         
         # File list with scrollbar (no extra padding)
         list_frame = tk.Frame(self.remote_frame)
-        list_frame.grid(row=3, column=0, sticky='nsew', padx=5, pady=(0, 5))
-        self.remote_frame.grid_rowconfigure(3, weight=1)
+        list_frame.grid(row=2, column=0, sticky='nsew', padx=5, pady=(0, 5))
+        self.remote_frame.grid_rowconfigure(2, weight=1)
         
         # Create Treeview
         columns = ('size', 'modified', 'type')
@@ -679,6 +684,26 @@ class DualPaneFileBrowser:
         # Re-sort and display files
         self.display_local_files()
     
+    def on_connect_clicked(self):
+        """Handle connect button click"""
+        if self.ssh_connection:
+            # Disconnect
+            self.disconnect()
+        else:
+            # Connect if all selections are made
+            team = self.main_window.team_combo.get()
+            machine = self.main_window.machine_combo.get()
+            repo = self.main_window.repo_combo.get()
+            
+            if (team and team != i18n.get('select_team', 'Select Team...') and
+                machine and machine != i18n.get('select_machine', 'Select Machine...') and
+                repo and repo != i18n.get('select_repository', 'Select Repository...')):
+                # Connect
+                self.connect_remote()
+            else:
+                messagebox.showinfo(i18n.get('info', 'Info'), 
+                                  i18n.get('select_all_resources', 'Please select team, machine and repository first'))
+    
     # Remote operations
     def connect_remote(self):
         """Connect to remote repository"""
@@ -691,7 +716,7 @@ class DualPaneFileBrowser:
                                i18n.get('select_team_machine_repo', 'Please select team, machine, and repository first'))
             return
         
-        self.connect_button.config(state='disabled')
+        # Connect button is now in main window
         # Update connection status to connecting
         self.main_window.connection_status_label.config(text="🟡 Connecting...", fg='#f57c00')
         
@@ -709,7 +734,8 @@ class DualPaneFileBrowser:
                 
             except Exception as e:
                 self.logger.error(f"Failed to connect: {e}")
-                self.parent.after(0, lambda: self.on_remote_connect_failed(str(e)))
+                error_msg = str(e)
+                self.parent.after(0, lambda: self.on_remote_connect_failed(error_msg))
         
         thread = threading.Thread(target=do_connect, daemon=True)
         thread.start()
@@ -724,8 +750,6 @@ class DualPaneFileBrowser:
             'path': self.remote_current_path
         }
         self.main_window.update_connection_status(True, info_dict)
-        self.connect_button.config(text=i18n.get('disconnect', 'Disconnect'), state='normal')
-        self.connect_button.config(command=self.disconnect_remote)
         
         # Enable remote controls
         self.remote_up_button.config(state='normal')
@@ -741,7 +765,6 @@ class DualPaneFileBrowser:
     def on_remote_connect_failed(self, error: str):
         """Handle failed remote connection"""
         self.main_window.update_connection_status(False)
-        self.connect_button.config(state='normal')
         messagebox.showerror(i18n.get('connection_failed', 'Connection Failed'), 
                            i18n.get('failed_connect_remote', f'Failed to connect to remote: {error}'))
     
@@ -759,7 +782,6 @@ class DualPaneFileBrowser:
         
         # Update UI
         self.main_window.update_connection_status(False)
-        self.connect_button.config(text=i18n.get('connect', 'Connect'), command=self.connect_remote)
         
         # Disable remote controls
         remote_controls = [
@@ -775,6 +797,24 @@ class DualPaneFileBrowser:
         self.remote_filter = ''
         self.remote_selected = []
         self.update_transfer_buttons()
+    
+    def disconnect(self):
+        """Public method to disconnect from remote - called when selection changes"""
+        if self.ssh_connection:
+            self.disconnect_remote()
+    
+    def connect_if_needed(self):
+        """Connect to repository if not already connected and all params are set"""
+        if not self.ssh_connection:
+            team = self.main_window.team_combo.get()
+            machine = self.main_window.machine_combo.get()
+            repo = self.main_window.repo_combo.get()
+            
+            # Validate selections are not placeholder values
+            if (team and team != i18n.get('select_team', 'Select Team...') and
+                machine and machine != i18n.get('select_machine', 'Select Machine...') and
+                repo and repo != i18n.get('select_repository', 'Select Repository...')):
+                self.connect_remote()
     
     def execute_remote_command(self, command: str) -> Tuple[bool, str]:
         """Execute command on remote via SSH"""
@@ -991,6 +1031,14 @@ class DualPaneFileBrowser:
                                 direction: str = 'upload', progress_callback=None) -> Tuple[bool, str]:
         """Perform selective rsync transfer for specific files/folders"""
         try:
+            # Check if sync mode is enabled (any sync option active)
+            is_sync_mode = (self.transfer_options.get('mirror', False) or 
+                           self.transfer_options.get('verify', False) or
+                           self.transfer_options.get('preview_sync', False))
+            
+            # If sync mode and single folder selected, use optimized sync
+            if is_sync_mode and len(local_paths) == 1 and local_paths[0][1]:  # Single folder
+                return self.perform_folder_sync(local_paths[0][0], remote_base, direction, progress_callback)
             # Get rsync command based on platform
             rsync_cmd = 'rsync'
             if is_windows():
@@ -1146,6 +1194,315 @@ class DualPaneFileBrowser:
         except Exception as e:
             return False, f"Transfer error: {str(e)}"
     
+    def perform_folder_sync(self, folder_path: str, remote_base: str, direction: str, progress_callback=None) -> Tuple[bool, str]:
+        """Perform optimized folder sync using sync-specific options"""
+        try:
+            # Import sync utilities
+            sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
+            from rediacc_cli_sync import get_rsync_command, get_rsync_ssh_command, prepare_rsync_paths, get_rsync_changes, parse_rsync_changes, display_changes_and_confirm
+            
+            # Get SSH options
+            ssh_opts, ssh_key_file, known_hosts_file = self.ssh_connection.setup_ssh()
+            ssh_cmd = get_rsync_ssh_command(ssh_opts)
+            
+            # Get universal user if available
+            universal_user = self.ssh_connection.connection_info.get('universal_user')
+            
+            # Prepare source and destination
+            if direction == 'upload':
+                source = folder_path
+                if not source.endswith('/'):
+                    source += '/'
+                dest = f"{self.ssh_connection.ssh_destination}:{remote_base}"
+                if not dest.endswith('/'):
+                    dest += '/'
+            else:  # download
+                source = f"{self.ssh_connection.ssh_destination}:{folder_path}"
+                if not source.endswith('/'):
+                    source += '/'
+                dest = str(self.local_current_path)
+                if not dest.endswith('/'):
+                    dest += '/'
+            
+            # Convert paths for Windows if needed
+            source, dest = prepare_rsync_paths(source, dest)
+            
+            # Get sync options
+            sync_options = {
+                'mirror': self.transfer_options.get('mirror', False),
+                'verify': self.transfer_options.get('verify', False)
+            }
+            
+            # If preview is requested, show changes first
+            if self.transfer_options.get('preview_sync', False):
+                dry_output = get_rsync_changes(source, dest, ssh_cmd, sync_options, universal_user)
+                if dry_output:
+                    changes = parse_rsync_changes(dry_output)
+                    # Show changes in a dialog
+                    if not self.show_sync_preview(changes, direction):
+                        return False, "Sync cancelled by user"
+            
+            # Build rsync command
+            rsync_cmd = [get_rsync_command(), '-av', '--progress', '-e', ssh_cmd]
+            
+            if universal_user:
+                rsync_cmd.extend(['--rsync-path', f'sudo -u {universal_user} rsync'])
+            
+            # Apply sync options
+            if sync_options['mirror']:
+                rsync_cmd.extend(['--delete', '--exclude', '*.sock'])
+            
+            if sync_options['verify']:
+                rsync_cmd.extend(['--checksum', '--ignore-times'])
+            else:
+                rsync_cmd.extend(['--partial', '--append-verify'])
+            
+            # Apply regular transfer options
+            rsync_cmd = self.apply_transfer_options(rsync_cmd)
+            
+            rsync_cmd.extend([source, dest])
+            
+            # Run rsync
+            process = subprocess.Popen(rsync_cmd, stdout=subprocess.PIPE, stderr=subprocess.PIPE, 
+                                     text=True, bufsize=1)
+            
+            # Process output for progress
+            for line in process.stdout:
+                if progress_callback:
+                    if '%' in line:
+                        try:
+                            match = re.search(r'(\d+)%', line)
+                            if match:
+                                percent = int(match.group(1))
+                                progress_callback(percent, line.strip())
+                        except:
+                            pass
+            
+            # Wait for completion
+            process.wait()
+            
+            # Clean up SSH files
+            if ssh_key_file and os.path.exists(ssh_key_file):
+                os.unlink(ssh_key_file)
+            if known_hosts_file and os.path.exists(known_hosts_file):
+                os.unlink(known_hosts_file)
+            
+            if process.returncode == 0:
+                return True, "Folder sync completed successfully"
+            else:
+                stderr = process.stderr.read()
+                return False, f"Sync failed: {stderr}"
+                
+        except Exception as e:
+            self.logger.error(f"Folder sync error: {e}")
+            return False, f"Sync error: {str(e)}"
+    
+    def show_sync_preview(self, changes: Dict[str, list], direction: str) -> bool:
+        """Show preview of sync changes and get user confirmation"""
+        dialog = tk.Toplevel(self.parent)
+        dialog.title(i18n.get('sync_preview', 'Sync Preview'))
+        dialog.transient(self.parent)
+        
+        # Center dialog
+        dialog.update_idletasks()
+        width, height = 600, 500
+        x = (dialog.winfo_screenwidth() - width) // 2
+        y = (dialog.winfo_screenheight() - height) // 2
+        dialog.geometry(f'{width}x{height}+{x}+{y}')
+        dialog.grab_set()
+        
+        # Direction label
+        dir_label = tk.Label(dialog, text=f"{i18n.get('sync_direction', 'Sync Direction')}: {direction.upper()}", 
+                           font=('Arial', 12, 'bold'))
+        dir_label.pack(pady=10)
+        
+        # Changes frame
+        changes_frame = tk.Frame(dialog)
+        changes_frame.pack(fill='both', expand=True, padx=10, pady=5)
+        
+        # Create notebook for different change types
+        notebook = ttk.Notebook(changes_frame)
+        notebook.pack(fill='both', expand=True)
+        
+        # Add tabs for each change type
+        categories = [
+            ('new_files', i18n.get('new_files', 'New Files'), '#008000'),
+            ('modified_files', i18n.get('modified_files', 'Modified Files'), '#FF8C00'),
+            ('deleted_files', i18n.get('deleted_files', 'Deleted Files'), '#DC143C'),
+            ('new_dirs', i18n.get('new_dirs', 'New Directories'), '#4169E1')
+        ]
+        
+        for key, label, color in categories:
+            if changes.get(key):
+                tab_frame = tk.Frame(notebook)
+                notebook.add(tab_frame, text=f"{label} ({len(changes[key])})")
+                
+                # Create scrolled text widget
+                text_widget = scrolledtext.ScrolledText(tab_frame, wrap='none', height=15)
+                text_widget.pack(fill='both', expand=True, padx=5, pady=5)
+                
+                # Add items
+                for item in changes[key]:
+                    text_widget.insert(tk.END, f"{item}\n")
+                
+                text_widget.config(state='disabled')
+        
+        # Summary label
+        total_changes = sum(len(changes.get(key, [])) for key in ['new_files', 'modified_files', 'deleted_files', 'new_dirs'])
+        summary_label = tk.Label(dialog, text=f"{i18n.get('total_changes', 'Total changes')}: {total_changes}")
+        summary_label.pack(pady=5)
+        
+        # Result variable
+        result = {'confirmed': False}
+        
+        # Buttons
+        button_frame = tk.Frame(dialog)
+        button_frame.pack(fill='x', pady=10)
+        
+        def confirm():
+            result['confirmed'] = True
+            dialog.destroy()
+        
+        def cancel():
+            dialog.destroy()
+        
+        confirm_button = ttk.Button(button_frame, text=i18n.get('confirm', 'Confirm'), command=confirm)
+        confirm_button.pack(side='left', padx=5)
+        
+        cancel_button = ttk.Button(button_frame, text=i18n.get('cancel', 'Cancel'), command=cancel)
+        cancel_button.pack(side='left', padx=5)
+        
+        # Wait for dialog
+        dialog.wait_window()
+        
+        return result['confirmed']
+    
+    def sync_folder(self, direction: str):
+        """Sync a selected folder with sync options dialog"""
+        # Get selected folder
+        if direction == 'upload':
+            tree = self.local_tree
+            base_path = self.local_current_path
+            remote_base = str(self.remote_current_path)
+        else:
+            tree = self.remote_tree
+            base_path = self.remote_current_path
+            remote_base = str(self.local_current_path)
+        
+        selection = tree.selection()
+        if not selection:
+            return
+        
+        # Get folder info
+        item = tree.item(selection[0])
+        folder_name = item['text']
+        
+        # Remove icon prefix (📁 or 📄 )
+        if folder_name.startswith('📁 '):
+            folder_name = folder_name[2:]  # Remove icon and space
+        elif folder_name.startswith('📄 '):
+            folder_name = folder_name[2:]  # Remove icon and space
+        
+        folder_path = os.path.join(base_path, folder_name)
+        
+        # Show sync options dialog
+        if not self.show_sync_options_dialog(folder_name, direction):
+            return
+        
+        # Prepare for sync
+        paths = [(folder_path, True)]  # True indicates it's a directory
+        
+        # Show transfer progress
+        self.show_transfer_progress(direction, paths)
+    
+    def show_sync_options_dialog(self, folder_name: str, direction: str) -> bool:
+        """Show dialog to configure sync options for a folder"""
+        dialog = tk.Toplevel(self.parent)
+        dialog.title(i18n.get('sync_folder_options', 'Sync Folder Options'))
+        dialog.transient(self.parent)
+        
+        # Center dialog
+        dialog.update_idletasks()
+        width, height = 500, 400
+        x = (dialog.winfo_screenwidth() - width) // 2
+        y = (dialog.winfo_screenheight() - height) // 2
+        dialog.geometry(f'{width}x{height}+{x}+{y}')
+        dialog.grab_set()
+        
+        # Folder info
+        info_frame = tk.Frame(dialog)
+        info_frame.pack(fill='x', padx=20, pady=10)
+        
+        folder_label = tk.Label(info_frame, text=f"{i18n.get('folder', 'Folder')}: {folder_name}", 
+                              font=('Arial', 12, 'bold'))
+        folder_label.pack()
+        
+        direction_label = tk.Label(info_frame, text=f"{i18n.get('direction', 'Direction')}: {direction.upper()}")
+        direction_label.pack()
+        
+        # Sync options frame
+        options_frame = tk.LabelFrame(dialog, text=i18n.get('sync_options', 'Sync Options'))
+        options_frame.pack(fill='x', padx=20, pady=10)
+        
+        # Mirror option
+        mirror_var = tk.BooleanVar(value=self.transfer_options.get('mirror', False))
+        mirror_check = tk.Checkbutton(options_frame, 
+                                     text=i18n.get('mirror_mode', 'Mirror mode (delete files in destination not present in source)'),
+                                     variable=mirror_var)
+        mirror_check.pack(anchor='w', padx=10, pady=5)
+        
+        # Verify option
+        verify_var = tk.BooleanVar(value=self.transfer_options.get('verify', False))
+        verify_check = tk.Checkbutton(options_frame, 
+                                     text=i18n.get('verify_transfers', 'Verify transfers (use checksums to ensure accuracy)'),
+                                     variable=verify_var)
+        verify_check.pack(anchor='w', padx=10, pady=5)
+        
+        # Preview option
+        preview_var = tk.BooleanVar(value=self.transfer_options.get('preview_sync', False))
+        preview_check = tk.Checkbutton(options_frame, 
+                                      text=i18n.get('preview_sync', 'Preview changes before syncing'),
+                                      variable=preview_var)
+        preview_check.pack(anchor='w', padx=10, pady=5)
+        
+        # Info text
+        info_text = tk.Label(dialog, text=i18n.get('sync_info_text', 
+                           'Sync uses rsync for efficient folder synchronization.\n'
+                           'Only changed files will be transferred.'),
+                           font=('Arial', 9), fg='#666666', justify='left')
+        info_text.pack(padx=20, pady=10)
+        
+        # Result variable
+        result = {'confirmed': False}
+        
+        # Buttons
+        button_frame = tk.Frame(dialog)
+        button_frame.pack(fill='x', pady=20)
+        
+        def start_sync():
+            # Update transfer options temporarily
+            self.transfer_options['mirror'] = mirror_var.get()
+            self.transfer_options['verify'] = verify_var.get()
+            self.transfer_options['preview_sync'] = preview_var.get()
+            result['confirmed'] = True
+            dialog.destroy()
+        
+        def cancel():
+            dialog.destroy()
+        
+        sync_button = ttk.Button(button_frame, text=i18n.get('start_sync', 'Start Sync'), 
+                               command=start_sync)
+        sync_button.pack(side='left', padx=5)
+        
+        cancel_button = ttk.Button(button_frame, text=i18n.get('cancel', 'Cancel'), 
+                                 command=cancel)
+        cancel_button.pack(side='left', padx=5)
+        
+        # Wait for dialog
+        dialog.wait_window()
+        
+        return result['confirmed']
+    
     def upload_selected(self):
         """Upload selected local files to remote"""
         if not self.ssh_connection:
@@ -1186,7 +1543,16 @@ class DualPaneFileBrowser:
         """Show transfer progress dialog"""
         # Create progress dialog
         progress_dialog = tk.Toplevel(self.parent)
-        progress_dialog.title(i18n.get('transfer_progress', 'Transfer Progress'))
+        
+        # Check if sync mode
+        is_sync_mode = (self.transfer_options.get('mirror', False) or 
+                       self.transfer_options.get('verify', False) or
+                       self.transfer_options.get('preview_sync', False))
+        
+        if is_sync_mode:
+            progress_dialog.title(i18n.get('sync_progress', 'Sync Progress'))
+        else:
+            progress_dialog.title(i18n.get('transfer_progress', 'Transfer Progress'))
         # Use 0.4 * screen dimensions for progress dialog
         screen_width = progress_dialog.winfo_screenwidth()
         screen_height = progress_dialog.winfo_screenheight()
@@ -1215,9 +1581,26 @@ class DualPaneFileBrowser:
         main_container.pack(fill='both', expand=True, padx=10, pady=10)
         
         # Status label
-        status_text = i18n.get('preparing_transfer', 'Preparing transfer...')
+        is_sync_mode = (self.transfer_options.get('mirror', False) or 
+                       self.transfer_options.get('verify', False) or
+                       self.transfer_options.get('preview_sync', False))
+        
+        if is_sync_mode:
+            status_text = i18n.get('preparing_sync', 'Preparing folder sync...')
+            # Add sync mode indicators
+            sync_modes = []
+            if self.transfer_options.get('mirror', False):
+                sync_modes.append(i18n.get('mirror', 'Mirror'))
+            if self.transfer_options.get('verify', False):
+                sync_modes.append(i18n.get('verify', 'Verify'))
+            if sync_modes:
+                status_text += f" ({', '.join(sync_modes)})"
+        else:
+            status_text = i18n.get('preparing_transfer', 'Preparing transfer...')
+        
         if self.transfer_options.get('dry_run', False):
             status_text = i18n.get('dry_run_mode', 'DRY RUN MODE - ') + status_text
+        
         status_label = tk.Label(main_container, text=status_text,
                                font=('Arial', 10), fg=COLOR_INFO if self.transfer_options.get('dry_run', False) else 'black')
         status_label.pack(pady=(0, 10))
@@ -1236,9 +1619,9 @@ class DualPaneFileBrowser:
         overall_label = tk.Label(overall_frame, text='0 / 0')
         overall_label.pack()
         
-        # Current file progress
+        # Current file progress - don't expand vertically
         file_frame = tk.LabelFrame(main_container, text=i18n.get('current_file', 'Current File'))
-        file_frame.pack(fill='both', expand=True, pady=(0, 10))
+        file_frame.pack(fill='x', pady=(0, 10))
         
         file_label = tk.Label(file_frame, text='', font=('Arial', 9), wraplength=500)
         file_label.pack(pady=5, padx=10)
@@ -1265,8 +1648,8 @@ class DualPaneFileBrowser:
         details_frame = tk.LabelFrame(main_container, text=i18n.get('details', 'Details'))
         details_frame.pack(fill='both', expand=True, pady=(0, 10))
         
-        # Create scrolled text for details
-        details_text = scrolledtext.ScrolledText(details_frame, height=6, wrap='none', 
+        # Create scrolled text for details with better initial height
+        details_text = scrolledtext.ScrolledText(details_frame, height=10, wrap='none', 
                                                 font=('Consolas', 9))
         details_text.pack(fill='both', expand=True)
         details_text.config(state='disabled')
@@ -1442,6 +1825,13 @@ class DualPaneFileBrowser:
             
             menu.add_command(label=i18n.get('upload', 'Upload'), command=self.upload_selected,
                            state='normal' if self.ssh_connection else 'disabled')
+            
+            # Add sync option for folders
+            if not is_file and len(self.local_tree.selection()) == 1:
+                self.logger.debug(f"Adding sync folder option: is_file={is_file}, selection_count={len(self.local_tree.selection())}, ssh_connection={bool(self.ssh_connection)}")
+                menu.add_command(label=i18n.get('sync_folder', 'Sync Folder...'), 
+                               command=lambda: self.sync_folder('upload'),
+                               state='normal' if self.ssh_connection else 'disabled')
             menu.add_separator()
             menu.add_command(label=i18n.get('refresh', 'Refresh'), command=self.refresh_local)
             
@@ -1470,6 +1860,13 @@ class DualPaneFileBrowser:
                 menu.add_separator()
             
             menu.add_command(label=i18n.get('download', 'Download'), command=self.download_selected)
+            
+            # Add sync option for folders
+            if not is_file and len(self.remote_tree.selection()) == 1:
+                self.logger.debug(f"Adding sync folder option: is_file={is_file}, selection_count={len(self.remote_tree.selection())}, ssh_connection={bool(self.ssh_connection)}")
+                menu.add_command(label=i18n.get('sync_folder', 'Sync Folder...'), 
+                               command=lambda: self.sync_folder('download'),
+                               state='normal' if self.ssh_connection else 'disabled')
             menu.add_separator()
             menu.add_command(label=i18n.get('refresh', 'Refresh'), command=self.refresh_remote)
             
@@ -2018,6 +2415,36 @@ class DualPaneFileBrowser:
                            command=lambda p=pattern: self.add_exclude_pattern(p))
             btn.pack(side='left', padx=2)
         
+        # Sync Options
+        sync_frame = tk.LabelFrame(scrollable_frame, text=i18n.get('sync_options', 'Folder Sync Options'))
+        sync_frame.pack(fill='x', padx=10, pady=10, expand=False)
+        
+        sync_info = tk.Label(sync_frame, 
+                           text=i18n.get('sync_info', 'Enable these options for efficient folder synchronization'),
+                           font=('Arial', 9), fg='#666666')
+        sync_info.pack(anchor='w', padx=10, pady=5)
+        
+        # Mirror mode
+        self.mirror_var = tk.BooleanVar(value=self.transfer_options.get('mirror', False))
+        mirror_check = tk.Checkbutton(sync_frame, 
+                                     text=i18n.get('mirror_mode', 'Mirror mode (delete files in destination not present in source)'),
+                                     variable=self.mirror_var)
+        mirror_check.pack(anchor='w', padx=10, pady=5)
+        
+        # Verify transfers
+        self.verify_var = tk.BooleanVar(value=self.transfer_options.get('verify', False))
+        verify_check = tk.Checkbutton(sync_frame, 
+                                     text=i18n.get('verify_transfers', 'Verify transfers (use checksums to ensure accuracy)'),
+                                     variable=self.verify_var)
+        verify_check.pack(anchor='w', padx=10, pady=5)
+        
+        # Preview changes
+        self.preview_sync_var = tk.BooleanVar(value=self.transfer_options.get('preview_sync', False))
+        preview_sync_check = tk.Checkbutton(sync_frame, 
+                                          text=i18n.get('preview_sync', 'Preview changes before syncing'),
+                                          variable=self.preview_sync_var)
+        preview_sync_check.pack(anchor='w', padx=10, pady=5)
+        
         # Test Mode
         test_frame = tk.LabelFrame(scrollable_frame, text=i18n.get('test_mode', 'Test Mode'))
         test_frame.pack(fill='x', padx=10, pady=10, expand=False)
@@ -2076,6 +2503,11 @@ class DualPaneFileBrowser:
         self.transfer_options['skip_newer'] = self.skip_newer_var.get()
         self.transfer_options['delete_after'] = self.delete_after_var.get()
         self.transfer_options['dry_run'] = self.dry_run_var.get()
+        
+        # Save sync options
+        self.transfer_options['mirror'] = self.mirror_var.get()
+        self.transfer_options['verify'] = self.verify_var.get()
+        self.transfer_options['preview_sync'] = self.preview_sync_var.get()
         
         # Parse bandwidth limit
         try:
@@ -2155,10 +2587,10 @@ class DualPaneFileBrowser:
         # Update connection status
         if self.ssh_connection:
             # Connection status already updated in on_remote_connected
-            self.connect_button.config(text=i18n.get('disconnect', 'Disconnect'))
+            pass
         else:
             # Connection status already updated in disconnect_remote
-            self.connect_button.config(text=i18n.get('connect', 'Connect'))
+            pass
         
         # Update column headings
         self.local_tree.heading('#0', text=i18n.get('name', 'Name'))

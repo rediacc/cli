@@ -21,6 +21,7 @@ from pathlib import Path
 from typing import Callable, Optional, Dict, Any, List, Tuple
 import time
 import datetime
+import re
 
 # Import from consolidated core module
 from core import (
@@ -40,7 +41,7 @@ from rediacc_cli_core import (
 )
 
 # Import GUI components
-from gui_base import BaseWindow
+from gui_base import BaseWindow, create_tooltip
 from gui_login import LoginWindow
 from gui_file_browser import DualPaneFileBrowser
 from gui_utilities import (
@@ -64,6 +65,20 @@ class MainWindow(BaseWindow):
         
         # Initialize plugin tracking
         self.plugins_loaded_for = None
+        self.available_plugins = []  # List of available plugins
+        self.plugin_connections = {}  # Active plugin connections
+        self.active_operations = set()  # Track ongoing operations to prevent multiple clicks
+        
+        # Track active popup menu
+        self.active_popup_menu = None
+        # Bind global click handler for closing popups
+        self.root.bind_all('<Button-1>', self._handle_global_click, add='+')
+        
+        # Startup flag to prevent automatic connections
+        self.is_starting_up = True
+        
+        # Track background threads for cleanup
+        self.background_threads = []
         
         # Initialize machine data storage
         self.machines_data = {}
@@ -108,10 +123,11 @@ class MainWindow(BaseWindow):
         # Register for language changes
         i18n.register_observer(self.update_all_texts)
         
-        # Create menu bar
-        self.create_menu_bar()
-        
+        # Create widgets first (needed by menu bar)
         self.create_widgets()
+        
+        # Create menu bar after widgets
+        self.create_menu_bar()
         
         # Load initial data
         self.load_teams()
@@ -119,16 +135,18 @@ class MainWindow(BaseWindow):
         # Start auto-refresh for plugin connections
         self.auto_refresh_connections()
         
-        # If Plugin Manager tab is active (index 0), load plugins
-        if self.notebook.index(self.notebook.select()) == 0:
-            current_selection = (self.team_combo.get(), self.machine_combo.get(), self.repo_combo.get())
-            if all(current_selection):
-                self.refresh_plugins()
-                self.refresh_connections()
-                self.plugins_loaded_for = current_selection
+        # Load plugins if we have a complete selection
+        current_selection = (self.team_combo.get(), self.machine_combo.get(), self.repo_combo.get())
+        if all(current_selection):
+            self.refresh_plugins()
+            self.refresh_connections()
+            self.plugins_loaded_for = current_selection
         
         # Initial menu state update
         self.update_menu_states()
+        
+        # Initialization complete, allow connections
+        self.is_starting_up = False
     
     def _maximize_window(self):
         """Maximize window using platform-specific methods"""
@@ -416,18 +434,11 @@ class MainWindow(BaseWindow):
             command=self.show_quick_command
         )
         
-        # Plugin Manager
-        self.tools_menu.add_command(
-            label=i18n.get('plugin_manager', 'Plugin Manager'),
-            accelerator='Ctrl+P',
-            command=self.switch_to_plugin_tab
-        )
-        
         # File Sync
         self.tools_menu.add_command(
             label=i18n.get('file_sync', 'File Sync'),
             accelerator='Ctrl+S',
-            command=self.switch_to_sync_tab
+            command=lambda: self.notebook.select(0)  # File Browser tab (will be index 0 after plugin tab removal)
         )
         
         self.tools_menu.add_separator()
@@ -447,9 +458,85 @@ class MainWindow(BaseWindow):
         
         # Bind accelerators
         self.root.bind_all('<Control-t>', lambda e: self.open_repo_terminal())
-        self.root.bind_all('<Control-p>', lambda e: self.switch_to_plugin_tab())
-        self.root.bind_all('<Control-s>', lambda e: self.switch_to_sync_tab())
+        self.root.bind_all('<Control-s>', lambda e: self.notebook.select(0))  # File Browser tab (will be index 0)
         self.root.bind_all('<F12>', lambda e: self.show_console())
+    
+    def populate_plugins_menu(self):
+        """Populate the Plugins menu with available plugins - DEPRECATED"""
+        # This method is kept for compatibility but no longer used
+        # All plugin functionality is now in the toolbar
+        return
+        
+        # Get current selection
+        team = self.team_combo.get()
+        machine = self.machine_combo.get()
+        repo = self.repo_combo.get()
+        
+        # Check if all required fields are selected
+        has_selection = (team and team != i18n.get('select_team', 'Select Team...') and
+                        machine and machine != i18n.get('select_machine', 'Select Machine...') and
+                        repo and repo != i18n.get('select_repository', 'Select Repository...'))
+        
+        if not has_selection:
+            # Add disabled message when no selection
+            self.plugins_menu.add_command(
+                label=i18n.get('select_repository_first', 'Select repository first...'),
+                state='disabled'
+            )
+            return
+        
+        # Add refresh command
+        self.plugins_menu.add_command(
+            label=i18n.get('refresh_plugins', 'Refresh Plugins'),
+            command=self.refresh_plugins_menu
+        )
+        self.plugins_menu.add_separator()
+        
+        # Get available plugins
+        if hasattr(self, 'available_plugins') and self.available_plugins:
+            for plugin in self.available_plugins:
+                # Create submenu for each plugin
+                plugin_submenu = tk.Menu(self.plugins_menu, tearoff=0)
+                self.plugins_menu.add_cascade(label=plugin, menu=plugin_submenu)
+                
+                # Check if plugin is connected
+                is_connected = self.is_plugin_connected(plugin)
+                
+                # Add submenu items
+                plugin_submenu.add_command(
+                    label=i18n.get('connect', 'Connect'),
+                    command=lambda p=plugin: self.connect_plugin_from_menu(p),
+                    state='disabled' if is_connected else 'normal'
+                )
+                
+                if is_connected:
+                    # Get connection info
+                    conn_info = self.get_plugin_connection_info(plugin)
+                    if conn_info:
+                        plugin_submenu.add_command(
+                            label=i18n.get('disconnect', 'Disconnect'),
+                            command=lambda p=plugin, c=conn_info: self.disconnect_plugin_from_menu(p, c)
+                        )
+                        plugin_submenu.add_command(
+                            label=i18n.get('copy_url', 'Copy URL'),
+                            command=lambda url=conn_info['url']: self.copy_url_to_clipboard(url)
+                        )
+                        plugin_submenu.add_command(
+                            label=i18n.get('open_in_browser', 'Open in Browser'),
+                            command=lambda url=conn_info['url']: webbrowser.open(url)
+                        )
+                    
+                plugin_submenu.add_separator()
+                plugin_submenu.add_command(
+                    label=i18n.get('status', 'Status') + ': ' + (i18n.get('connected', 'Connected') if is_connected else i18n.get('not_connected', 'Not Connected')),
+                    state='disabled'
+                )
+        else:
+            # No plugins available
+            self.plugins_menu.add_command(
+                label=i18n.get('no_plugins_available', 'No plugins available'),
+                state='disabled'
+            )
     
     def populate_connection_menu(self):
         """Populate the Connection menu"""
@@ -544,38 +631,58 @@ class MainWindow(BaseWindow):
         toolbar_frame = tk.Frame(self.root)
         toolbar_frame.pack(fill='x', padx=5, pady=5)
         
-        # Common selection frame
-        self.common_frame = tk.LabelFrame(self.root, text=i18n.get('resource_selection'))
-        self.common_frame.pack(fill='x', padx=10, pady=5)
+        # Resource selection frame - two row layout
+        self.resource_frame = tk.Frame(self.root)
+        self.resource_frame.pack(fill='x', padx=10, pady=5)
         
-        # Configure grid columns for common_frame
-        self.common_frame.grid_columnconfigure(0, minsize=120)  # Label column with minimum width
-        self.common_frame.grid_columnconfigure(1, weight=1)     # Combobox column expands
-        self.common_frame.grid_columnconfigure(2, minsize=100)  # Filter indicator column
+        # Configure grid columns
+        self.resource_frame.grid_columnconfigure(0, weight=1)  # Team column
+        self.resource_frame.grid_columnconfigure(1, weight=1)  # Machine column
+        self.resource_frame.grid_columnconfigure(2, weight=1)  # Repository column
+        self.resource_frame.grid_columnconfigure(3, weight=0)  # Connect button (fixed width)
+        self.resource_frame.grid_columnconfigure(4, weight=0)  # Status indicator (fixed width)
         
-        # Team selection
-        self.team_label = tk.Label(self.common_frame, text=i18n.get('team'), anchor='e')
-        self.team_label.grid(row=0, column=0, sticky='e', padx=(20, 10), pady=(8, 8))
-        self.team_combo = ttk.Combobox(self.common_frame, state='readonly')
-        self.team_combo.grid(row=0, column=1, sticky='ew', padx=(0, 10), pady=(8, 8))
+        # Row 1: Labels and Connect button
+        self.team_label = tk.Label(self.resource_frame, text=i18n.get('team', 'Team'), 
+                                  font=('Arial', 9), fg='#666666')
+        self.team_label.grid(row=0, column=0, sticky='w', padx=(5, 5), pady=(0, 2))
+        
+        self.machine_label = tk.Label(self.resource_frame, text=i18n.get('machine', 'Machine'), 
+                                     font=('Arial', 9), fg='#666666')
+        self.machine_label.grid(row=0, column=1, sticky='w', padx=(5, 5), pady=(0, 2))
+        
+        self.repo_label = tk.Label(self.resource_frame, text=i18n.get('repository', 'Repository'), 
+                                  font=('Arial', 9), fg='#666666')
+        self.repo_label.grid(row=0, column=2, sticky='w', padx=(5, 5), pady=(0, 2))
+        
+        # Connection status indicator (just the light) - moved to where Connect button was
+        self.connection_indicator = tk.Label(self.resource_frame, text='○', font=('Arial', 14), fg='#999999')
+        self.connection_indicator.grid(row=0, column=3, rowspan=2, padx=(10, 10))
+        
+        # Row 2: Dropdown combos
+        self.team_combo = ttk.Combobox(self.resource_frame, state='readonly')
+        self.team_combo.set(i18n.get('select_team', 'Select Team...'))
+        self.team_combo.grid(row=1, column=0, sticky='ew', padx=(5, 5), pady=(0, 5))
         self.team_combo.bind('<<ComboboxSelected>>', lambda e: self.on_team_changed())
+        create_tooltip(self.team_combo, i18n.get('team_tooltip', 'Select your team'))
         
-        # Machine selection
-        self.machine_label = tk.Label(self.common_frame, text=i18n.get('machine'), anchor='e')
-        self.machine_label.grid(row=1, column=0, sticky='e', padx=(20, 10), pady=(8, 8))
-        self.machine_combo = ttk.Combobox(self.common_frame, state='readonly')
-        self.machine_combo.grid(row=1, column=1, sticky='ew', padx=(0, 10), pady=(8, 8))
+        self.machine_combo = ttk.Combobox(self.resource_frame, state='readonly')
+        self.machine_combo.set(i18n.get('select_machine', 'Select Machine...'))
+        self.machine_combo.grid(row=1, column=1, sticky='ew', padx=(5, 5), pady=(0, 5))
         self.machine_combo.bind('<<ComboboxSelected>>', lambda e: self.on_machine_changed())
+        create_tooltip(self.machine_combo, i18n.get('machine_tooltip', 'Select target machine'))
         
-        # Repository selection
-        self.repo_label = tk.Label(self.common_frame, text=i18n.get('repository'), anchor='e')
-        self.repo_label.grid(row=2, column=0, sticky='e', padx=(20, 10), pady=(8, 8))
-        self.repo_combo = ttk.Combobox(self.common_frame, state='readonly')
-        self.repo_combo.grid(row=2, column=1, sticky='ew', padx=(0, 10), pady=(8, 8))
+        self.repo_combo = ttk.Combobox(self.resource_frame, state='readonly')
+        self.repo_combo.set(i18n.get('select_repository', 'Select Repository...'))
+        self.repo_combo.grid(row=1, column=2, sticky='ew', padx=(5, 5), pady=(0, 5))
         self.repo_combo.bind('<<ComboboxSelected>>', lambda e: self.on_repository_changed())
-        # Add a filter indicator label
-        self.repo_filter_label = tk.Label(self.common_frame, text="", font=('Arial', 9), fg='gray')
-        self.repo_filter_label.grid(row=2, column=2, sticky='w', padx=(0, 10), pady=(8, 8))
+        create_tooltip(self.repo_combo, i18n.get('repo_tooltip', 'Select repository to work with'))
+        
+        # Hidden repo filter label (for backward compatibility)
+        self.repo_filter_label = tk.Label(self.resource_frame, text="", font=('Arial', 9), fg='gray')
+        
+        # Plugin toolbar - create BEFORE status bar
+        self.create_plugin_toolbar()
         
         # Enhanced multi-section status bar - create BEFORE tabs
         self.create_status_bar()
@@ -587,20 +694,97 @@ class MainWindow(BaseWindow):
         # Bind tab change event
         self.notebook.bind('<<NotebookTabChanged>>', self.on_tab_changed)
         
-        # Plugin Manager tab (first)
-        self.plugin_frame = tk.Frame(self.notebook)
-        self.notebook.add(self.plugin_frame, text=i18n.get('plugin_manager'))
-        self.create_plugin_tab()
-        
-        # File Sync tab (second)
-        self.sync_frame = tk.Frame(self.notebook)
-        self.notebook.add(self.sync_frame, text=i18n.get('file_sync'))
-        self.create_sync_tab()
-        
-        # File Browser tab (third)
+        # File Browser tab (now first and only tab)
         self.browser_frame = tk.Frame(self.notebook)
         self.notebook.add(self.browser_frame, text=i18n.get('file_browser', 'File Browser'))
         self.create_file_browser_tab()
+    
+    def create_plugin_toolbar(self):
+        """Create plugin quick access toolbar"""
+        # Plugin toolbar frame
+        self.plugin_toolbar_frame = tk.Frame(self.root, relief=tk.RIDGE, bd=1)
+        self.plugin_toolbar_frame.pack(fill='x', padx=5, pady=(5, 0))
+        
+        # Inner frame for buttons with padding
+        inner_frame = tk.Frame(self.plugin_toolbar_frame)
+        inner_frame.pack(fill='x', padx=5, pady=5)
+        
+        # Label
+        label = tk.Label(inner_frame, text=i18n.get('plugins', 'Plugins') + ":", 
+                        font=('Arial', 10, 'bold'))
+        label.pack(side=tk.LEFT, padx=(0, 10))
+        
+        # Plugin buttons container
+        self.plugin_buttons_frame = tk.Frame(inner_frame)
+        self.plugin_buttons_frame.pack(side=tk.LEFT, fill='x', expand=True)
+        
+        # Dictionary to store plugin buttons
+        self.plugin_buttons = {}
+        
+        # Dictionary to store tooltips for cleanup
+        self.plugin_tooltips = {}
+        
+        # Dictionary to track keyboard shortcuts
+        self.plugin_shortcuts = {}
+        
+        # Initial message when no plugins available
+        self.no_plugins_label = tk.Label(self.plugin_buttons_frame, 
+                                       text=i18n.get('select_repository_for_plugins', 'Select a repository to see available plugins'),
+                                       font=('Arial', 9), fg='gray')
+        self.no_plugins_label.pack(side=tk.LEFT, padx=5)
+        
+        # Right side container for status and actions
+        right_container = tk.Frame(inner_frame)
+        right_container.pack(side=tk.RIGHT, padx=(10, 0))
+        
+        # Status indicator
+        self.plugin_status_label = tk.Label(right_container, 
+                                          text=i18n.get('plugin_status_loading', 'Loading...'),
+                                          font=('Arial', 9), fg='gray')
+        self.plugin_status_label.pack(side=tk.LEFT, padx=(0, 10))
+        
+        # Separator
+        separator = tk.Frame(right_container, width=1, bg='#d0d0d0')
+        separator.pack(side=tk.LEFT, fill='y', padx=5, pady=2)
+        
+        # Refresh plugins button (always visible)
+        self.refresh_plugins_button = ttk.Button(right_container, 
+                                               text=i18n.get('refresh', 'Refresh'),
+                                               command=self.refresh_plugins_toolbar,
+                                               width=10)
+        self.refresh_plugins_button.pack(side=tk.LEFT, padx=(5, 0))
+        create_tooltip(self.refresh_plugins_button, i18n.get('refresh_plugins_tooltip', 'Refresh available plugins (Ctrl+0)'))
+        
+        # Initialize plugin connection count
+        self.plugin_connection_count = 0
+        self.update_plugin_status_label()
+        
+        # Bind Ctrl+0 for refresh all
+        self.root.bind_all('<Control-Key-0>', lambda e: self.refresh_all_plugins())
+    
+    def update_plugin_status_label(self):
+        """Update the plugin status label with connection count"""
+        if not hasattr(self, 'plugin_status_label'):
+            return
+            
+        total_plugins = len(self.available_plugins) if hasattr(self, 'available_plugins') else 0
+        connected_count = len(self.plugin_connections) if hasattr(self, 'plugin_connections') else 0
+        
+        if total_plugins == 0:
+            status_text = i18n.get('no_plugins_available', 'No plugins available')
+            color = 'gray'
+        elif connected_count == 0:
+            status_text = i18n.get('plugin_status_none_connected', '{count} available').format(count=total_plugins)
+            color = '#666666'
+        elif connected_count == total_plugins:
+            status_text = i18n.get('plugin_status_all_connected', 'All {count} connected').format(count=total_plugins)
+            color = '#006400'  # Dark green
+        else:
+            status_text = i18n.get('plugin_status_some_connected', '{connected} of {total} connected').format(
+                connected=connected_count, total=total_plugins)
+            color = '#FF8C00'  # Dark orange
+        
+        self.plugin_status_label.config(text=status_text, fg=color)
     
     def create_status_bar(self):
         """Create the enhanced multi-section status bar"""
@@ -683,275 +867,6 @@ class MainWindow(BaseWindow):
         # Schedule initial space calculation
         self.root.after(100, self.update_space_info)
     
-    def create_sync_tab(self):
-        """Create file sync interface"""
-        # Control frame
-        control_frame = tk.Frame(self.sync_frame)
-        control_frame.pack(fill='x', padx=10, pady=10)
-        
-        # Sync direction
-        direction_frame = tk.Frame(control_frame)
-        direction_frame.pack(fill='x', pady=5)
-        self.sync_direction_label = tk.Label(direction_frame, text=i18n.get('direction'), width=12, anchor='w')
-        self.sync_direction_label.pack(side='left', padx=5)
-        self.sync_direction = tk.StringVar(value='upload')
-        self.upload_radio = ttk.Radiobutton(direction_frame, text=i18n.get('upload'), variable=self.sync_direction,
-                       value='upload')
-        self.upload_radio.pack(side='left', padx=(0, 30))
-        self.download_radio = ttk.Radiobutton(direction_frame, text=i18n.get('download'), variable=self.sync_direction,
-                       value='download')
-        self.download_radio.pack(side='left', padx=(0, 30))
-        
-        # Local path
-        path_frame = tk.Frame(control_frame)
-        path_frame.pack(fill='x', pady=5)
-        self.local_path_label = tk.Label(path_frame, text=i18n.get('local_path'), width=12, anchor='w')
-        self.local_path_label.pack(side='left', padx=5)
-        self.local_path_entry = ttk.Entry(path_frame)
-        self.local_path_entry.pack(side='left', padx=5, fill='x', expand=True)
-        self.browse_button = ttk.Button(path_frame, text=i18n.get('browse'),
-                  command=self.browse_local_path)
-        self.browse_button.pack(side='left', padx=5)
-        
-        # Options
-        self.options_frame = tk.LabelFrame(control_frame, text=i18n.get('options'))
-        self.options_frame.pack(fill='x', pady=10)
-        
-        # Sync options sub-frame
-        self.sync_options_frame = tk.LabelFrame(self.options_frame, text=i18n.get('sync_options', 'Sync Options'))
-        self.sync_options_frame.pack(fill='x', padx=10, pady=5)
-        
-        # Use grid for sync options
-        self.mirror_var = tk.BooleanVar()
-        self.mirror_check = tk.Checkbutton(self.sync_options_frame, text=i18n.get('mirror_delete'),
-                      variable=self.mirror_var,
-                      command=self.on_mirror_changed)
-        self.mirror_check.grid(row=0, column=0, padx=(20, 40), pady=5, sticky='w')
-        
-        self.verify_var = tk.BooleanVar()
-        self.verify_check = tk.Checkbutton(self.sync_options_frame, text=i18n.get('verify_transfer'),
-                      variable=self.verify_var)
-        self.verify_check.grid(row=0, column=1, padx=(20, 40), pady=5, sticky='w')
-        
-        # Safety options sub-frame
-        self.safety_options_frame = tk.LabelFrame(self.options_frame, text=i18n.get('safety_options', 'Safety Options'))
-        self.safety_options_frame.pack(fill='x', padx=10, pady=5)
-        
-        self.confirm_var = tk.BooleanVar()
-        self.confirm_check = tk.Checkbutton(self.safety_options_frame, text=i18n.get('preview_changes'),
-                      variable=self.confirm_var)
-        self.confirm_check.grid(row=0, column=0, padx=(20, 40), pady=5, sticky='w')
-        
-        # Sync button
-        self.sync_button = ttk.Button(control_frame, text=i18n.get('start_sync'),
-                                    command=self.start_sync, width=25)
-        self.sync_button.pack(pady=(20, 10))
-        
-        # Output area
-        output_frame = tk.Frame(self.sync_frame)
-        output_frame.pack(fill='both', expand=True)
-        
-        self.sync_output_label = tk.Label(output_frame, text=i18n.get('output'))
-        self.sync_output_label.pack(anchor='w')
-        
-        self.sync_output = scrolledtext.ScrolledText(output_frame, height=15,
-                                                    font=('Consolas', 10), wrap='none')
-        self.sync_output.pack(fill='both', expand=True)
-        self.sync_output.config(state='disabled')  # Make it read-only
-    
-    def create_plugin_tab(self):
-        """Create plugin manager interface"""
-        # Main container with paned window
-        paned = tk.PanedWindow(self.plugin_frame, orient=tk.VERTICAL)
-        paned.pack(fill='both', expand=True, padx=5, pady=5)
-        
-        # Top section - Plugin Management
-        self.plugin_management_frame = tk.LabelFrame(self.plugin_frame, text=i18n.get('plugin_management'))
-        paned.add(self.plugin_management_frame, minsize=300)
-        
-        # Create two columns inside the plugin management frame using grid
-        columns_frame = tk.Frame(self.plugin_management_frame)
-        columns_frame.grid(row=0, column=0, sticky='nsew', padx=10, pady=10)
-        
-        # Configure the plugin management frame to expand the columns frame
-        self.plugin_management_frame.grid_rowconfigure(0, weight=1)
-        self.plugin_management_frame.grid_columnconfigure(0, weight=1)
-        
-        # Configure columns frame weights: 0.45, 0.1, 0.45
-        columns_frame.grid_columnconfigure(0, weight=45)  # Left column
-        columns_frame.grid_columnconfigure(1, weight=10)  # Spacer
-        columns_frame.grid_columnconfigure(2, weight=45)  # Right column
-        columns_frame.grid_rowconfigure(0, weight=1)
-        
-        # Left column - Available plugins
-        left_column = tk.Frame(columns_frame)
-        left_column.grid(row=0, column=0, sticky='nsew')
-        
-        # Configure left column to expand
-        left_column.grid_rowconfigure(1, weight=1)
-        left_column.grid_columnconfigure(0, weight=1)
-        
-        # Available plugins label
-        self.available_plugins_label = tk.Label(left_column, text=i18n.get('available_plugins'), font=('Arial', 10, 'bold'))
-        self.available_plugins_label.grid(row=0, column=0, sticky='w', pady=(0, 5))
-        
-        # Available plugins listbox with scrollbar
-        list_frame = tk.Frame(left_column)
-        list_frame.grid(row=1, column=0, sticky='nsew')
-        list_frame.grid_rowconfigure(0, weight=1)
-        list_frame.grid_columnconfigure(0, weight=1)
-        
-        scrollbar = tk.Scrollbar(list_frame)
-        scrollbar.grid(row=0, column=1, sticky='ns')
-        
-        self.plugin_listbox = tk.Listbox(list_frame, yscrollcommand=scrollbar.set)
-        self.plugin_listbox.grid(row=0, column=0, sticky='nsew')
-        scrollbar.config(command=self.plugin_listbox.yview)
-        
-        # Bind selection event to update combo box
-        self.plugin_listbox.bind('<<ListboxSelect>>', self.on_plugin_selected)
-        
-        # Refresh button
-        self.refresh_plugins_button = ttk.Button(left_column, text=i18n.get('refresh_plugins'),
-                  command=self.refresh_plugins)
-        self.refresh_plugins_button.grid(row=2, column=0, pady=(10, 0))
-        
-        # Spacer column
-        spacer = tk.Frame(columns_frame, width=20)
-        spacer.grid(row=0, column=1, sticky='ns')
-        
-        # Right column - Connect to plugin
-        right_column = tk.Frame(columns_frame)
-        right_column.grid(row=0, column=2, sticky='nsew')
-        
-        # Configure right column
-        right_column.grid_columnconfigure(0, weight=1)
-        
-        # Connect to plugin label
-        self.connect_plugin_label = tk.Label(right_column, text=i18n.get('connect_to_plugin'), font=('Arial', 10, 'bold'))
-        self.connect_plugin_label.grid(row=0, column=0, sticky='w', pady=(0, 5))
-        
-        # Plugin selection
-        plugin_select_frame = tk.Frame(right_column)
-        plugin_select_frame.grid(row=1, column=0, sticky='ew', pady=(10, 5))
-        plugin_select_frame.grid_columnconfigure(1, weight=1)
-        
-        self.plugin_select_label = tk.Label(plugin_select_frame, text=i18n.get('plugin'), width=12, anchor='w')
-        self.plugin_select_label.grid(row=0, column=0, sticky='w')
-        self.plugin_combo = ttk.Combobox(plugin_select_frame, width=COMBO_WIDTH_MEDIUM, state='readonly')
-        self.plugin_combo.grid(row=0, column=1, sticky='ew', padx=(5, 0))
-        
-        # Port selection frame
-        self.port_frame = tk.LabelFrame(right_column, text=i18n.get('local_port'))
-        self.port_frame.grid(row=2, column=0, sticky='ew', pady=5)
-        
-        # Configure port frame interior grid
-        self.port_frame.grid_columnconfigure(0, weight=1)
-        self.port_frame.grid_columnconfigure(1, weight=1)
-        
-        # Port mode variable
-        self.port_mode = tk.StringVar(value='auto')
-        
-        # Auto port radio button (spans both columns)
-        self.auto_port_radio = ttk.Radiobutton(self.port_frame, text=i18n.get('auto_port'), 
-                       variable=self.port_mode, value='auto',
-                       command=self.on_port_mode_changed)
-        self.auto_port_radio.grid(row=0, column=0, columnspan=2, sticky='w', padx=10, pady=(5, 0))
-        
-        # Manual port radio button
-        self.manual_port_radio = ttk.Radiobutton(self.port_frame, text=i18n.get('manual_port'), 
-                       variable=self.port_mode, value='manual',
-                       command=self.on_port_mode_changed)
-        self.manual_port_radio.grid(row=1, column=0, sticky='w', padx=10, pady=(0, 5))
-        
-        # Port entry with validation
-        vcmd = (self.root.register(self.validate_port), '%P')
-        self.port_entry = ttk.Entry(self.port_frame, width=10, 
-                                   validate='key', validatecommand=vcmd)
-        self.port_entry.grid(row=1, column=1, sticky='w', padx=(5, 10), pady=(0, 5))
-        self.port_entry.insert(0, "7111")
-        self.port_entry.config(state='disabled')  # Initially disabled
-        
-        # Connect button
-        self.connect_button = ttk.Button(right_column, text=i18n.get('connect'),
-                                       command=self.connect_plugin, width=20)
-        self.connect_button.grid(row=3, column=0, pady=(20, 10))
-        
-        # Middle section - Active connections
-        self.connections_frame = tk.LabelFrame(self.plugin_frame, text=i18n.get('active_connections'))
-        paned.add(self.connections_frame, minsize=200)
-        
-        # Treeview for connections
-        tree_frame = tk.Frame(self.connections_frame)
-        tree_frame.pack(fill='both', expand=True, padx=10, pady=10)
-        
-        # Create treeview with columns
-        columns = ('Plugin', 'URL', 'Status')
-        # Style for treeview
-        style = ttk.Style()
-        style.configure('Treeview', padding=(2,2,2,2))
-        
-        self.connections_tree = ttk.Treeview(tree_frame, columns=columns, show='tree headings', height=6)
-        
-        # Configure alternating row colors
-        self.connections_tree.tag_configure('odd', background='#f5f5f5')
-        self.connections_tree.tag_configure('even', background='white')
-        
-        # Define column headings
-        self.connections_tree.heading('#0', text='ID')
-        self.connections_tree.heading('Plugin', text='Plugin')
-        self.connections_tree.heading('URL', text='URL')
-        self.connections_tree.heading('Status', text='Status')
-        
-        # Column widths
-        self.connections_tree.column('#0', width=COLUMN_WIDTH_SIZE)
-        self.connections_tree.column('Plugin', width=COLUMN_WIDTH_PLUGIN)
-        self.connections_tree.column('URL', width=COLUMN_WIDTH_URL)
-        self.connections_tree.column('Status', width=COLUMN_WIDTH_STATUS)
-        
-        # Scrollbar for treeview
-        tree_scroll = tk.Scrollbar(tree_frame)
-        tree_scroll.pack(side='right', fill='y')
-        self.connections_tree.pack(side='left', fill='both', expand=True)
-        tree_scroll.config(command=self.connections_tree.yview)
-        self.connections_tree.config(yscrollcommand=tree_scroll.set)
-        
-        # Bind double-click to open URL
-        self.connections_tree.bind('<Double-Button-1>', lambda e: self.open_plugin_url())
-        
-        # Bind Ctrl+C to copy URL
-        self.connections_tree.bind('<Control-c>', lambda e: self.copy_plugin_url())
-        
-        # Bind selection change to update button states
-        self.connections_tree.bind('<<TreeviewSelect>>', self.on_connection_selected)
-        
-        # Connection action buttons
-        action_frame = tk.Frame(self.connections_frame)
-        action_frame.pack(pady=5)
-        
-        # Create buttons with references so we can enable/disable them
-        self.open_browser_button = ttk.Button(action_frame, text=i18n.get('open_in_browser'),
-                                            command=self.open_plugin_url, state='disabled')
-        self.open_browser_button.pack(side='left', padx=5)
-        
-        self.copy_url_button = ttk.Button(action_frame, text=i18n.get('copy_url'),
-                                         command=self.copy_plugin_url, state='disabled')
-        self.copy_url_button.pack(side='left', padx=5)
-        
-        self.disconnect_button = ttk.Button(action_frame, text=i18n.get('disconnect'),
-                                          command=self.disconnect_plugin, state='disabled')
-        self.disconnect_button.pack(side='left', padx=5)
-        
-        # Refresh button is always enabled
-        self.refresh_status_button = ttk.Button(action_frame, text=i18n.get('refresh_status'),
-                  command=self.refresh_connections)
-        self.refresh_status_button.pack(side='left', padx=5)
-        
-        # Info label about shortcuts
-        self.plugin_info_label = tk.Label(self.connections_frame, 
-                            text=i18n.get('plugin_tip'),
-                            font=('Arial', 9), fg='gray')
-        self.plugin_info_label.pack(pady=(0, 5))
     
     def create_file_browser_tab(self):
         """Create dual-pane file browser interface"""
@@ -960,50 +875,62 @@ class MainWindow(BaseWindow):
     
     def on_tab_changed(self, event):
         """Handle tab change event"""
-        # Get the currently selected tab
-        current_tab = self.notebook.index(self.notebook.select())
-        
         # Update menu states based on current tab
         self.update_menu_states()
         
-        # If switching to File Browser tab (index 2), auto-connect
-        if current_tab == 2 and hasattr(self, 'file_browser'):
+        # Auto-connect file browser if needed
+        if hasattr(self, 'file_browser'):
             if self.file_browser.ssh_connection is None:
                 # Only connect if we have team, machine, and repo selected
                 if all([self.team_combo.get(), self.machine_combo.get(), self.repo_combo.get()]):
                     self.file_browser.connect_remote()
-        
-        # If switching to Plugin Manager tab (index 0)
-        if current_tab == 0:
-            # Check if we need to refresh plugins
-            current_selection = (self.team_combo.get(), self.machine_combo.get(), self.repo_combo.get())
-            
-            # Only refresh if selection has changed or plugins never loaded
-            if current_selection != self.plugins_loaded_for and all(current_selection):
-                self.refresh_plugins()
-                self.refresh_connections()
-                self.plugins_loaded_for = current_selection
+    
+    def on_connect_clicked(self):
+        """Handle connect button click - redirects to file browser"""
+        # This method is kept for compatibility
+        # The actual connect button is now in the file browser's Transfer Actions section
+        pass
     
     # Status Bar Update Methods
     
     def update_connection_status(self, connected: bool, info_dict: dict = None):
         """Update the connection status section"""
         if connected:
+            # Update connection indicator
+            self.connection_indicator.config(text='●', fg='#28a745')  # Green filled circle
+            
+            # Update Connect button in file browser if it exists
+            if hasattr(self, 'file_browser') and hasattr(self.file_browser, 'connect_button'):
+                self.file_browser.connect_button.config(text=i18n.get('disconnect', 'Disconnect'))
+            
             if info_dict:
                 team = info_dict.get('team', 'Unknown')
                 machine = info_dict.get('machine', 'Unknown')
                 repo = info_dict.get('repo', 'Unknown')
+                
+                # Update status bar
                 status_text = f"🟢 Connected to {team}/{machine}/{repo}"
                 tooltip = f"Team: {team}\nMachine: {machine}\nRepository: {repo}\nPath: {info_dict.get('path', '/')}"
             else:
                 status_text = "🟢 Connected"
                 tooltip = "Connected to remote"
+            
+            # Update status bar
             if self.connection_status_label:
                 self.connection_status_label.config(text=status_text, fg='#2e7d32')
         else:
+            # Update connection indicator
+            self.connection_indicator.config(text='○', fg='#999999')  # Gray empty circle
+            
+            # Update Connect button in file browser if it exists
+            if hasattr(self, 'file_browser') and hasattr(self.file_browser, 'connect_button'):
+                self.file_browser.connect_button.config(text=i18n.get('connect', 'Connect'))
+            
+            # Update status bar
             if self.connection_status_label:
                 self.connection_status_label.config(text="🔴 Not connected", fg='#c62828')
-            tooltip = "Click to connect to a remote repository"
+            
+            tooltip = "Click Connect to establish connection"
         
         # Update tooltip
         if hasattr(self.connection_status_label, '_tooltip'):
@@ -1194,6 +1121,9 @@ class MainWindow(BaseWindow):
         self.load_machines()
         # Reset plugin tracking since selection changed
         self.plugins_loaded_for = None
+        # Disconnect file browser SSH connection since team changed
+        if hasattr(self, 'file_browser') and self.file_browser:
+            self.file_browser.disconnect()
         # Update menu states
         self.update_menu_states()
     
@@ -1202,6 +1132,9 @@ class MainWindow(BaseWindow):
         self.load_repositories()
         # Reset plugin tracking since selection changed
         self.plugins_loaded_for = None
+        # Disconnect file browser SSH connection since machine changed
+        if hasattr(self, 'file_browser') and self.file_browser:
+            self.file_browser.disconnect()
         # Update menu states
         self.update_menu_states()
     
@@ -1209,13 +1142,18 @@ class MainWindow(BaseWindow):
         """Handle repository selection change"""
         # Reset plugin tracking since selection changed
         self.plugins_loaded_for = None
+        # Disconnect file browser SSH connection since repository changed
+        if hasattr(self, 'file_browser') and self.file_browser:
+            self.file_browser.disconnect()
         # Always refresh plugins when repository changes (not just when on plugin tab)
         current_selection = (self.team_combo.get(), self.machine_combo.get(), self.repo_combo.get())
         if all(current_selection):
             self.refresh_plugins()
-            # Only refresh connections if on plugin tab to avoid unnecessary API calls
-            if self.notebook.index(self.notebook.select()) == 0:
-                self.refresh_connections()
+            self.refresh_connections()
+            # If we're on the file browser tab, reconnect immediately (but not during startup)
+            if hasattr(self, 'file_browser') and not self.is_starting_up:
+                # This will trigger auto-connect in the file browser
+                self.file_browser.connect_if_needed()
             self.plugins_loaded_for = current_selection
         # Update menu states
         self.update_menu_states()
@@ -1226,12 +1164,14 @@ class MainWindow(BaseWindow):
         if teams:
             self.team_combo.set(teams[0])
             self.on_team_changed()
+        else:
+            self.team_combo.set(i18n.get('select_team', 'Select Team...'))
         self.update_activity_status()
     
     def load_machines(self):
         """Load machines for selected team"""
         team = self.team_combo.get()
-        if not team:
+        if not team or team == i18n.get('select_team', 'Select Team...'):
             return
         
         self.activity_status_label.config(text=i18n.get('loading_machines', team=team))
@@ -1257,8 +1197,8 @@ class MainWindow(BaseWindow):
             self.machine_combo.set(machines[0])
             self.load_repositories()
         else:
-            # Clear the combo box if no machines are available
-            self.machine_combo.set('')
+            # Set placeholder if no machines are available
+            self.machine_combo.set(i18n.get('select_machine', 'Select Machine...'))
             # Also clear repositories since no machine is selected
             self.update_repositories([])
         self.update_activity_status()
@@ -1267,7 +1207,7 @@ class MainWindow(BaseWindow):
         """Load repositories for selected team/machine"""
         team = self.team_combo.get()
         machine = self.machine_combo.get()
-        if not team:
+        if not team or team == i18n.get('select_team', 'Select Team...'):
             return
         
         self.activity_status_label.config(text=i18n.get('loading_repositories', team=team))
@@ -1329,8 +1269,7 @@ class MainWindow(BaseWindow):
             # Trigger repository change event to load plugins
             self.on_repository_changed()
         else:
-            # Clear the combo box if no repositories are available
-            self.repo_combo.set('')
+            self.repo_combo.set(i18n.get('select_repository', 'Select Repository...'))
             # Clear the filter label when no repos
             self.repo_filter_label.config(text="")
             # Also trigger change event to clear plugins
@@ -1387,190 +1326,6 @@ class MainWindow(BaseWindow):
         command = f'term --team "{team}" --machine "{machine}"'
         self._launch_terminal(command, i18n.get('an_interactive_machine_terminal'))
     
-    def on_mirror_changed(self):
-        """Handle mirror checkbox change"""
-        if self.mirror_var.get():
-            # When mirror is enabled, force confirm on and disable the checkbox
-            self.confirm_var.set(True)
-            self.confirm_check.config(state='disabled')
-        else:
-            # When mirror is disabled, re-enable the confirm checkbox
-            self.confirm_check.config(state='normal')
-    
-    def browse_local_path(self):
-        """Browse for local directory"""
-        path = filedialog.askdirectory()
-        if path:
-            self.local_path_entry.delete(0, tk.END)
-            self.local_path_entry.insert(0, path)
-    
-    def start_sync(self):
-        """Start file synchronization"""
-        direction = self.sync_direction.get()
-        team, machine, repo = self.team_combo.get(), self.machine_combo.get(), self.repo_combo.get()
-        local_path = self.local_path_entry.get().strip()
-        
-        if not all([team, machine, repo, local_path]):
-            messagebox.showerror(i18n.get('error'), i18n.get('fill_all_fields'))
-            return
-        
-        self.show_sync_progress(direction, team, machine, repo, local_path)
-    
-    def show_sync_progress(self, direction: str, team: str, machine: str, repo: str, local_path: str):
-        """Show sync progress dialog"""
-        # Create progress dialog
-        progress_dialog = tk.Toplevel(self.root)
-        progress_dialog.title(i18n.get('sync_progress', 'Sync Progress'))
-        # Use 0.4 * screen dimensions for progress dialog
-        screen_width = self.root.winfo_screenwidth()
-        screen_height = self.root.winfo_screenheight()
-        dialog_width = int(screen_width * 0.4)
-        dialog_height = int(screen_height * 0.4)
-        
-        progress_dialog.transient(self.root)
-        
-        # Center the dialog
-        progress_dialog.update_idletasks()
-        x = (screen_width - dialog_width) // 2
-        y = (screen_height - dialog_height) // 2
-        progress_dialog.geometry(f'{dialog_width}x{dialog_height}+{x}+{y}')
-        
-        # Set minimum size
-        progress_dialog.minsize(500, 400)
-        
-        # Make dialog resizable
-        progress_dialog.resizable(True, True)
-        
-        # Prevent closing during sync
-        progress_dialog.protocol('WM_DELETE_WINDOW', lambda: None)
-        
-        # Main container
-        main_container = tk.Frame(progress_dialog)
-        main_container.pack(fill='both', expand=True, padx=10, pady=10)
-        
-        # Status label
-        status_text = i18n.get('preparing_sync', f'Preparing {direction}...')
-        if self.confirm_var.get():
-            status_text = i18n.get('preview_mode', 'PREVIEW MODE - ') + status_text
-        status_label = tk.Label(main_container, text=status_text,
-                               font=('Arial', 10), fg=COLOR_INFO if self.confirm_var.get() else 'black')
-        status_label.pack(pady=(0, 10))
-        
-        # Sync details frame
-        details_frame = tk.LabelFrame(main_container, text=i18n.get('sync_details', 'Sync Details'))
-        details_frame.pack(fill='x', pady=(0, 10))
-        
-        details_text = f"{i18n.get('direction', 'Direction')}: {i18n.get(direction, direction)}\n"
-        details_text += f"{i18n.get('team', 'Team')}: {team}\n"
-        details_text += f"{i18n.get('machine', 'Machine')}: {machine}\n"
-        details_text += f"{i18n.get('repository', 'Repository')}: {repo}\n"
-        details_text += f"{i18n.get('local_path', 'Local Path')}: {local_path}\n"
-        details_text += f"\n{i18n.get('options', 'Options')}:\n"
-        if self.mirror_var.get():
-            details_text += f"  • {i18n.get('mirror_delete', 'Mirror mode')}\n"
-        if self.verify_var.get():
-            details_text += f"  • {i18n.get('verify_transfer', 'Verify mode')}\n"
-        if self.confirm_var.get():
-            details_text += f"  • {i18n.get('preview_changes', 'Preview mode')}\n"
-        
-        details_label = tk.Label(details_frame, text=details_text, justify='left', 
-                               font=('Arial', 9))
-        details_label.pack(padx=10, pady=10)
-        
-        # Progress frame
-        progress_frame = tk.LabelFrame(main_container, text=i18n.get('progress', 'Progress'))
-        progress_frame.pack(fill='x', pady=(0, 10))
-        
-        # Progress bar (indeterminate since rsync doesn't give percentage for whole sync)
-        progress_bar = ttk.Progressbar(progress_frame, mode='indeterminate')
-        progress_bar.pack(fill='x', padx=10, pady=10)
-        progress_bar.start(10)  # Start animation
-        
-        current_file_label = tk.Label(progress_frame, text='', font=('Arial', 9))
-        current_file_label.pack(pady=(0, 10))
-        
-        # Output frame
-        output_frame = tk.LabelFrame(main_container, text=i18n.get('output', 'Output'))
-        output_frame.pack(fill='both', expand=True)
-        
-        # Create scrolled text for output
-        output_text = scrolledtext.ScrolledText(output_frame, wrap='none', 
-                                               font=('Consolas', 9))
-        output_text.pack(fill='both', expand=True)
-        
-        # Buttons
-        button_frame = tk.Frame(main_container)
-        button_frame.pack(fill='x', pady=(10, 0))
-        
-        cancel_button = ttk.Button(button_frame, text=i18n.get('cancel', 'Cancel'), 
-                                  state='disabled')  # TODO: Implement cancel
-        cancel_button.pack(side='left', padx=5)
-        
-        close_button = ttk.Button(button_frame, text=i18n.get('close', 'Close'),
-                                 state='disabled', command=progress_dialog.destroy)
-        close_button.pack(side='left', padx=5)
-        
-        # Disable sync button during operation
-        self.sync_button.config(state='disabled')
-        
-        # Sync thread
-        def do_sync():
-            try:
-                cmd = ['sync', direction, '--team', team, '--machine', machine, 
-                       '--repo', repo, '--local', local_path]
-                
-                if self.mirror_var.get():
-                    cmd.append('--mirror')
-                if self.verify_var.get():
-                    cmd.append('--verify')
-                if self.confirm_var.get():
-                    cmd.append('--confirm')
-                
-                # Function to update output
-                def update_output(text: str):
-                    progress_dialog.after(0, lambda: output_text.insert(tk.END, text))
-                    progress_dialog.after(0, lambda: output_text.see(tk.END))
-                    
-                    # Try to extract current file from rsync output
-                    if ' -> ' in text or 'building file list' in text or 'sending incremental' in text:
-                        progress_dialog.after(0, lambda t=text: current_file_label.config(text=t.strip()[:80] + '...' if len(t.strip()) > 80 else t.strip()))
-                
-                # Run command with streaming output
-                result = self.runner.run_command_streaming(cmd, update_output)
-                
-                # Stop progress animation
-                progress_dialog.after(0, progress_bar.stop)
-                
-                # Determine success
-                success = result.get('success', False)
-                if success:
-                    msg = i18n.get('sync_completed_successfully', 'Sync completed successfully!')
-                    color = 'green'
-                else:
-                    msg = i18n.get('sync_failed', 'Sync failed!')
-                    if result.get('error'):
-                        msg += f"\n{result.get('error')}"
-                    color = 'red'
-                
-                progress_dialog.after(0, lambda: status_label.config(text=msg, fg=color))
-                progress_dialog.after(0, lambda: close_button.config(state='normal'))
-                progress_dialog.after(0, lambda: progress_dialog.protocol('WM_DELETE_WINDOW', progress_dialog.destroy))
-                
-            except Exception as e:
-                msg = i18n.get('sync_error', f'Error: {str(e)}')
-                progress_dialog.after(0, lambda: update_output(f"\n{msg}\n"))
-                progress_dialog.after(0, lambda: status_label.config(text=msg, fg=COLOR_ERROR))
-                progress_dialog.after(0, lambda: close_button.config(state='normal'))
-                progress_dialog.after(0, lambda: progress_dialog.protocol('WM_DELETE_WINDOW', progress_dialog.destroy))
-                progress_dialog.after(0, progress_bar.stop)
-            finally:
-                # Re-enable sync button
-                self.root.after(0, lambda: self.sync_button.config(state='normal'))
-                self.root.after(0, lambda: self.update_activity_status())
-        
-        thread = threading.Thread(target=do_sync, daemon=True)
-        thread.start()
-    
     # Plugin management methods
     def refresh_plugins(self):
         """Refresh available plugins for selected repository"""
@@ -1582,9 +1337,10 @@ class MainWindow(BaseWindow):
             messagebox.showerror(i18n.get('error'), i18n.get('select_team_machine_repo'))
             return
         
+        # Update the selection we're loading plugins for
+        self.plugins_loaded_for = (team, machine, repo)
+        
         self.activity_status_label.config(text=i18n.get('loading_plugins'))
-        self.plugin_listbox.delete(0, tk.END)
-        self.plugin_combo['values'] = []
         
         def load():
             cmd = ['plugin', 'list', '--team', team, '--machine', machine, '--repo', repo]
@@ -1620,28 +1376,24 @@ class MainWindow(BaseWindow):
                     break
             
             self.logger.debug(f"Final plugins list: {plugins}")
+            # Store available plugins
+            self.available_plugins = plugins
             self.root.after(0, lambda: self.update_plugin_list(plugins))
+            # Plugin menu removed - all functionality in toolbar
         
         thread = threading.Thread(target=load, daemon=True)
         thread.start()
     
     def update_plugin_list(self, plugins: list):
-        """Update plugin listbox and combo"""
+        """Update available plugins list"""
         self.logger.debug(f"update_plugin_list called with {len(plugins)} plugins: {plugins}")
         
-        self.plugin_listbox.delete(0, tk.END)
-        for plugin in plugins:
-            self.logger.debug(f"Adding plugin to listbox: '{plugin}'")
-            self.plugin_listbox.insert(tk.END, plugin)
+        # Plugins are now stored in self.available_plugins
+        # The UI update is handled by update_plugin_toolbar
         
-        self.plugin_combo['values'] = plugins
-        if plugins:
-            self.logger.debug(f"Setting combo default to: '{plugins[0]}'")
-            self.plugin_combo.set(plugins[0])
-        else:
-            self.logger.debug(f"No plugins to set in combo")
-            # Clear the combo box if no plugins are available
-            self.plugin_combo.set('')
+        # Update plugin toolbar if it exists
+        if hasattr(self, 'plugin_toolbar_frame'):
+            self.update_plugin_toolbar()
         
         status_msg = i18n.get('found_plugins', count=len(plugins))
         self.logger.debug(f"Setting status: '{status_msg}'")
@@ -1678,224 +1430,740 @@ class MainWindow(BaseWindow):
         thread.start()
     
     def update_connections_tree(self, connections: list):
-        """Update connections treeview"""
-        # Save current selection
-        selected_ids = []
-        for item in self.connections_tree.selection():
-            selected_ids.append(self.connections_tree.item(item)['text'])
+        """Update connections list - now only updates internal state"""
+        # Update plugin connections dict
+        self.plugin_connections = {}
         
-        # Clear existing items
-        for item in self.connections_tree.get_children():
-            self.connections_tree.delete(item)
-        
-        # Track new items for re-selection
-        new_items = {}
-        
-        # Add new items with alternating row colors
-        row_index = 0
         for conn in connections:
-            # Filter by current selection if applicable
-            team = self.team_combo.get()
-            machine = self.machine_combo.get()
-            repo = self.repo_combo.get()
-            
-            # Only show connections for current machine/repo if selected
-            if machine and conn['machine'] != machine:
-                continue
-            if repo and conn['repo'] != repo:
-                continue
-            
-            # Determine tags based on status and row index
-            status = 'green' if conn['status'] == 'Active' else 'red'
-            row_type = 'even' if row_index % 2 == 0 else 'odd'
-            tags = (f"{status}_{row_type}",)
-            
-            url = f"http://localhost:{conn['port']}"
-            item = self.connections_tree.insert('', 'end', 
-                                              text=conn['id'],
-                                              values=(conn['plugin'], url, conn['status']),
-                                              tags=tags)
-            new_items[conn['id']] = item
-            row_index += 1
+            # Only store active connections
+            if conn['status'] == 'Active':
+                url = f"http://localhost:{conn['port']}"
+                self.plugin_connections[conn['plugin']] = {
+                    'url': url,
+                    'conn_id': conn['id']  # This is the actual 8-character connection ID
+                }
         
-        # Configure tag colors
-        self.connections_tree.tag_configure('green', foreground='green')
-        self.connections_tree.tag_configure('red', foreground='red')
-        self.connections_tree.tag_configure('green_odd', foreground='green', background='#f5f5f5')
-        self.connections_tree.tag_configure('red_odd', foreground='red', background='#f5f5f5')
-        self.connections_tree.tag_configure('green_even', foreground='green', background='white')
-        self.connections_tree.tag_configure('red_even', foreground='red', background='white')
+        # Plugin menu removed - all updates handled by toolbar
         
-        # Re-select previously selected items if they still exist
-        for conn_id in selected_ids:
-            if conn_id in new_items:
-                self.connections_tree.selection_add(new_items[conn_id])
+        # Update toolbar button states if toolbar exists
+        if hasattr(self, 'plugin_buttons'):
+            for plugin_name in self.plugin_buttons:
+                self.update_plugin_button_state(plugin_name)
         
-        # Update button states based on selection
-        self.on_connection_selected(None)
+        # Update plugin status label
+        self.update_plugin_status_label()
         
         self.activity_status_label.config(text=i18n.get('found_connections', count=len(connections)))
     
-    def on_plugin_selected(self, event):
-        """Handle plugin selection from listbox"""
-        selection = event.widget.curselection()
-        if selection:
-            plugin_name = self.plugin_listbox.get(selection[0])
-            self.plugin_combo.set(plugin_name)
-    
-    def on_port_mode_changed(self):
-        """Handle port mode radio button change"""
-        is_auto = self.port_mode.get() == 'auto'
-        self.port_entry.config(state='disabled' if is_auto else 'normal')
-        if not is_auto:
-            self.port_entry.focus()
-    
-    def validate_port(self, value):
-        """Validate port number input"""
-        if not value:
-            return True
-        try:
-            return 1 <= int(value) <= 65535
-        except ValueError:
-            return False
-    
-    def on_connection_selected(self, event):
-        """Handle connection selection in treeview"""
-        has_selection = bool(self.connections_tree.selection())
-        state = 'normal' if has_selection else 'disabled'
-        
-        for button in [self.open_browser_button, self.copy_url_button, self.disconnect_button]:
-            button.config(state=state)
+    # Plugin tab methods removed - functionality moved to menu
     
     def connect_plugin(self):
-        """Connect to selected plugin"""
-        team = self.team_combo.get()
-        machine = self.machine_combo.get()
-        repo = self.repo_combo.get()
-        plugin = self.plugin_combo.get()
-        
-        if not all([team, machine, repo, plugin]):
-            messagebox.showerror(i18n.get('error'), i18n.get('select_all_plugin_fields'))
-            return
-        
-        self.connect_button.config(state='disabled')
-        self.activity_status_label.config(text=i18n.get('connecting_to', plugin=plugin))
-        
-        def connect():
-            cmd = ['plugin', 'connect', '--team', team, '--machine', machine, 
-                   '--repo', repo, '--plugin', plugin]
-            
-            # Add port if manual mode
-            if self.port_mode.get() == 'manual':
-                port_text = self.port_entry.get().strip()
-                if not port_text:
-                    self.root.after(0, lambda: messagebox.showerror(i18n.get('error'), i18n.get('port_error')))
-                    self.root.after(0, lambda: self.connect_button.config(state='normal'))
-                    return
-                try:
-                    port = int(port_text)
-                    if not (1024 <= port <= 65535):
-                        self.root.after(0, lambda: messagebox.showerror(i18n.get('error'), i18n.get('port_range_error')))
-                        self.root.after(0, lambda: self.connect_button.config(state='normal'))
-                        return
-                    cmd.extend(['--port', str(port)])
-                except ValueError:
-                    self.root.after(0, lambda: messagebox.showerror(i18n.get('error'), i18n.get('invalid_port')))
-                    self.root.after(0, lambda: self.connect_button.config(state='normal'))
-                    return
-            
-            result = self.runner.run_command(cmd)
-            output = result.get('output', '')
-            
-            if result['success']:
-                # Extract URL from output
-                url = next((line.split('Local URL:')[1].strip() 
-                           for line in output.split('\n') 
-                           if 'Local URL:' in line), None)
-                
-                msg = i18n.get('successfully_connected', plugin=plugin)
-                if url:
-                    msg += f"\n\n{i18n.get('access_at', url=url)}"
-                
-                self.root.after(0, lambda: messagebox.showinfo(i18n.get('success'), msg))
-                self.root.after(0, self.refresh_connections)
-            else:
-                error = result.get('error', i18n.get('connection_failed'))
-                self.root.after(0, lambda: messagebox.showerror(i18n.get('error'), error))
-            
-            self.root.after(0, lambda: self.connect_button.config(state='normal'))
-            self.root.after(0, lambda: self.update_activity_status())
-        
-        thread = threading.Thread(target=connect, daemon=True)
-        thread.start()
+        """Connect to selected plugin - deprecated, use connect_plugin_from_menu"""
+        # This method is deprecated. Plugin connections are now handled via the menu
+        pass
     
     def disconnect_plugin(self):
-        """Disconnect selected plugin connection"""
-        selection = self.connections_tree.selection()
-        if not selection:
-            messagebox.showerror(i18n.get('error'), i18n.get('select_connection', action=i18n.get('disconnect').lower()))
-            return
-        
-        item = self.connections_tree.item(selection[0])
-        conn_id = item['text']
-        plugin_name = item['values'][0]
-        
-        if messagebox.askyesno(i18n.get('confirm'), i18n.get('disconnect_confirm', plugin=plugin_name)):
-            self.activity_status_label.config(text=i18n.get('disconnecting', plugin=plugin_name))
-            
-            def disconnect():
-                cmd = ['plugin', 'disconnect', '--connection-id', conn_id]
-                result = self.runner.run_command(cmd)
-                
-                if result['success']:
-                    self.root.after(0, lambda: messagebox.showinfo(i18n.get('success'), i18n.get('disconnected', plugin=plugin_name)))
-                else:
-                    error = result.get('error', i18n.get('disconnect_failed'))
-                    self.root.after(0, lambda: messagebox.showerror(i18n.get('error'), error))
-                
-                self.root.after(0, self.refresh_connections)
-                self.root.after(0, lambda: self.update_activity_status())
-            
-            thread = threading.Thread(target=disconnect, daemon=True)
-            thread.start()
+        """Disconnect selected plugin connection - deprecated, use disconnect_plugin_from_menu"""
+        # This method is deprecated. Plugin disconnections are now handled via the menu
+        pass
     
     def open_plugin_url(self):
-        """Open plugin URL in browser"""
-        selection = self.connections_tree.selection()
-        if not selection:
-            messagebox.showerror(i18n.get('error'), i18n.get('select_connection', action=i18n.get('open_in_browser').lower()))
-            return
-        
-        url = self.connections_tree.item(selection[0])['values'][1]  # URL is second column
-        
-        import webbrowser
-        webbrowser.open(url)
-        self.activity_status_label.config(text=i18n.get('opened_in_browser', url=url))
+        """Open plugin URL in browser - deprecated, functionality now in menu"""
+        # This method is deprecated. URL opening is now handled via the menu
+        pass
     
     def copy_plugin_url(self):
-        """Copy plugin URL to clipboard"""
-        selection = self.connections_tree.selection()
-        if not selection:
-            messagebox.showerror(i18n.get('error'), i18n.get('select_connection', action=i18n.get('copy_url').lower()))
-            return
-        
-        url = self.connections_tree.item(selection[0])['values'][1]  # URL is second column
-        
-        self.root.clipboard_clear()
-        self.root.clipboard_append(url)
-        self.root.update()  # Required on Windows
-        
-        self.activity_status_label.config(text=i18n.get('copied_to_clipboard', url=url), fg=COLOR_SUCCESS)
-        self.root.after(2000, lambda: self.activity_status_label.config(fg='black'))
+        """Copy plugin URL to clipboard - deprecated, functionality now in menu"""
+        # This method is deprecated. URL copying is now handled via the menu
+        pass
     
     def auto_refresh_connections(self):
         """Auto-refresh connections every 5 seconds"""
-        # Only refresh if plugin tab is active
-        if self.notebook.index(self.notebook.select()) == 0:  # Plugin tab is index 0
+        # Always refresh connections to keep plugin menu updated
+        # Check if we have a valid selection to refresh
+        team = self.team_combo.get()
+        machine = self.machine_combo.get()
+        repo = self.repo_combo.get()
+        
+        if team and machine and repo:
             self.refresh_connections()
         
         # Schedule next refresh
         self.root.after(AUTO_REFRESH_INTERVAL, self.auto_refresh_connections)
+    
+    # Plugin menu helper methods
+    def refresh_plugins_menu(self):
+        """Refresh plugins - DEPRECATED, use refresh_plugins_toolbar"""
+        self.refresh_plugins()
+    
+    def is_plugin_connected(self, plugin_name):
+        """Check if a plugin is currently connected"""
+        return plugin_name in self.plugin_connections
+    
+    def get_plugin_connection_info(self, plugin_name):
+        """Get connection info for a plugin"""
+        return self.plugin_connections.get(plugin_name)
+    
+    def update_plugin_toolbar(self):
+        """Update the plugin toolbar with available plugins - now stable without recreating widgets"""
+        current_plugins = set(self.available_plugins)
+        existing_plugins = set(self.plugin_buttons.keys())
+        
+        # Update status label
+        self.update_plugin_status_label()
+        
+        # Handle no plugins case
+        if not current_plugins:
+            # Remove all existing buttons
+            for plugin_name in existing_plugins:
+                # Clean up tooltip
+                if plugin_name in self.plugin_tooltips:
+                    old_tooltip = self.plugin_tooltips[plugin_name]
+                    if hasattr(old_tooltip, 'tooltip') and old_tooltip.tooltip:
+                        old_tooltip.tooltip.destroy()
+                    del self.plugin_tooltips[plugin_name]
+                
+                # Clean up keyboard shortcuts
+                if plugin_name in self.plugin_shortcuts:
+                    for binding in self.plugin_shortcuts[plugin_name]:
+                        try:
+                            self.root.unbind_all(binding)
+                        except:
+                            pass
+                    del self.plugin_shortcuts[plugin_name]
+                
+                # Destroy button
+                self.plugin_buttons[plugin_name].destroy()
+                del self.plugin_buttons[plugin_name]
+            
+            # Show no plugins message if not already shown
+            if not hasattr(self, 'no_plugins_label') or not self.no_plugins_label.winfo_exists():
+                self.no_plugins_label = tk.Label(self.plugin_buttons_frame, 
+                                               text=i18n.get('no_plugins_available', 'No plugins available'),
+                                               font=('Arial', 9), fg='gray')
+                self.no_plugins_label.pack(side=tk.LEFT, padx=5)
+            return
+        
+        # Remove no plugins label if it exists
+        if hasattr(self, 'no_plugins_label') and self.no_plugins_label.winfo_exists():
+            self.no_plugins_label.destroy()
+        
+        # Remove buttons for plugins that no longer exist
+        for plugin_name in existing_plugins - current_plugins:
+            # Clean up tooltip
+            if plugin_name in self.plugin_tooltips:
+                old_tooltip = self.plugin_tooltips[plugin_name]
+                if hasattr(old_tooltip, 'tooltip') and old_tooltip.tooltip:
+                    old_tooltip.tooltip.destroy()
+                del self.plugin_tooltips[plugin_name]
+            
+            # Clean up keyboard shortcuts
+            if plugin_name in self.plugin_shortcuts:
+                for binding in self.plugin_shortcuts[plugin_name]:
+                    try:
+                        self.root.unbind_all(binding)
+                    except:
+                        pass
+                del self.plugin_shortcuts[plugin_name]
+            
+            # Destroy button
+            self.plugin_buttons[plugin_name].destroy()
+            del self.plugin_buttons[plugin_name]
+        
+        # Add buttons for new plugins
+        for i, plugin_name in enumerate(sorted(current_plugins)):
+            if plugin_name not in existing_plugins:
+                # Create plugin button
+                btn = tk.Button(self.plugin_buttons_frame, 
+                               text=plugin_name.capitalize(),
+                               font=('Arial', 10),
+                               relief=tk.RAISED,
+                               bd=2,
+                               padx=15,
+                               pady=5,
+                               cursor='hand2')
+                btn.pack(side=tk.LEFT, padx=5)
+                
+                # Store button reference
+                self.plugin_buttons[plugin_name] = btn
+                
+                # Bind click actions - now both show menu
+                btn.bind('<Button-1>', lambda e, p=plugin_name: self.show_plugin_menu(e, p))
+                btn.bind('<Button-3>', lambda e, p=plugin_name: self.show_plugin_menu(e, p))
+                
+                # Add keyboard shortcuts
+                if i < 9:  # Only for first 9 plugins
+                    # Track shortcuts for cleanup
+                    shortcuts = []
+                    
+                    # Ctrl+1-9 for quick access
+                    shortcut1 = f'<Control-Key-{i+1}>'
+                    self.root.bind_all(shortcut1, lambda e, p=plugin_name: self.handle_plugin_shortcut(p))
+                    shortcuts.append(shortcut1)
+                    
+                    # Ctrl+Shift+1-9 for disconnect
+                    shortcut2 = f'<Control-Shift-Key-{i+1}>'
+                    self.root.bind_all(shortcut2, lambda e, p=plugin_name: self.disconnect_plugin_shortcut(p))
+                    shortcuts.append(shortcut2)
+                    
+                    self.plugin_shortcuts[plugin_name] = shortcuts
+        
+        # Update all button states
+        for plugin_name in current_plugins:
+            if plugin_name in self.plugin_buttons:
+                self.update_plugin_button_state(plugin_name)
+    
+    def update_plugin_button_state(self, plugin_name):
+        """Update the visual state of a plugin button"""
+        if plugin_name not in self.plugin_buttons:
+            return
+            
+        btn = self.plugin_buttons[plugin_name]
+        
+        # Clean up old tooltip if exists
+        if plugin_name in self.plugin_tooltips:
+            old_tooltip = self.plugin_tooltips[plugin_name]
+            if hasattr(old_tooltip, 'tooltip') and old_tooltip.tooltip:
+                old_tooltip.tooltip.destroy()
+            # Unbind events from the old tooltip
+            btn.unbind("<Enter>")
+            btn.unbind("<Leave>")
+            del self.plugin_tooltips[plugin_name]
+        
+        # Check if operation is in progress
+        if plugin_name in self.active_operations:
+            # Operation in progress - disabled state
+            btn.config(state='disabled', bg='#CCCCCC', fg='#666666', text=f"⟳ {plugin_name.capitalize()}")
+            self.plugin_tooltips[plugin_name] = create_tooltip(btn, i18n.get('operation_in_progress', 'Operation in progress...'))
+            return
+        
+        # Enable button
+        btn.config(state='normal')
+        
+        is_connected = self.is_plugin_connected(plugin_name)
+        
+        if is_connected:
+            # Connected state - green
+            btn.config(bg='#90EE90', fg='#006400', text=f"✓ {plugin_name.capitalize()}")
+            conn_info = self.get_plugin_connection_info(plugin_name)
+            if conn_info and 'url' in conn_info:
+                # Build detailed tooltip
+                tooltip_parts = [
+                    i18n.get('enabled', 'Enabled'),
+                    f"URL: {conn_info['url']}",
+                    f"Port: {conn_info.get('url', '').split(':')[-1] if ':' in conn_info.get('url', '') else 'N/A'}",
+                    f"ID: {conn_info.get('conn_id', 'N/A')[:8]}",
+                    "",
+                    i18n.get('click_for_menu', 'Click for menu')
+                ]
+                self.plugin_tooltips[plugin_name] = create_tooltip(btn, '\n'.join(tooltip_parts))
+        else:
+            # Disconnected state - gray
+            btn.config(bg='#F0F0F0', fg='#333333', text=plugin_name.capitalize())
+            self.plugin_tooltips[plugin_name] = create_tooltip(btn, i18n.get('click_for_menu', 'Click for menu'))
+    
+    def show_plugin_menu(self, event, plugin_name):
+        """Show plugin menu on button click"""
+        # Check if operation is in progress
+        if plugin_name in self.active_operations:
+            return  # Don't show menu during operations
+        
+        # Show the context menu
+        self.show_plugin_context_menu(event, plugin_name)
+    
+    def handle_plugin_shortcut(self, plugin_name):
+        """Handle keyboard shortcut for plugin"""
+        # Check if operation is in progress
+        if plugin_name in self.active_operations:
+            return
+        
+        # If connected, open URL; if not, connect
+        if self.is_plugin_connected(plugin_name):
+            conn_info = self.get_plugin_connection_info(plugin_name)
+            if conn_info and 'url' in conn_info:
+                webbrowser.open(conn_info['url'])
+                self.activity_status_label.config(text=i18n.get('opened_in_browser', 'Opened {url} in browser').format(url=conn_info['url']))
+        else:
+            self.connect_plugin_from_toolbar(plugin_name)
+    
+    def _close_active_popup(self):
+        """Close the currently active popup menu if any"""
+        if self.active_popup_menu:
+            try:
+                self.active_popup_menu.unpost()
+                self.active_popup_menu.destroy()
+            except:
+                pass  # Menu might already be destroyed
+            self.active_popup_menu = None
+    
+    def _handle_global_click(self, event):
+        """Handle global clicks to close popup menus"""
+        # Check if we have an active popup menu
+        if self.active_popup_menu:
+            try:
+                # Get the popup menu's position and size
+                menu_x = self.active_popup_menu.winfo_x()
+                menu_y = self.active_popup_menu.winfo_y()
+                menu_width = self.active_popup_menu.winfo_width()
+                menu_height = self.active_popup_menu.winfo_height()
+                
+                # Check if click is outside the menu
+                if not (menu_x <= event.x_root <= menu_x + menu_width and
+                        menu_y <= event.y_root <= menu_y + menu_height):
+                    self._close_active_popup()
+            except:
+                # Menu might not be fully initialized or already destroyed
+                self._close_active_popup()
+    
+    def show_plugin_context_menu(self, event, plugin_name):
+        """Show context menu for plugin button"""
+        # Close any existing popup menu
+        self._close_active_popup()
+        
+        # Create new menu
+        menu = tk.Menu(self.root, tearoff=0)
+        self.active_popup_menu = menu
+        
+        is_connected = self.is_plugin_connected(plugin_name)
+        
+        if is_connected:
+            conn_info = self.get_plugin_connection_info(plugin_name)
+            menu.add_command(label=i18n.get('open_browser', 'Open in Browser'),
+                           command=lambda: webbrowser.open(conn_info['url']) if conn_info and 'url' in conn_info else None)
+            menu.add_command(label=i18n.get('copy_url', 'Copy URL'),
+                           command=lambda: self.copy_url_to_clipboard(conn_info['url']) if conn_info and 'url' in conn_info else None)
+            menu.add_separator()
+            menu.add_command(label=i18n.get('show_details', 'Show Details...'),
+                           command=lambda: self.show_plugin_details(plugin_name, conn_info))
+            menu.add_command(label=i18n.get('restart_plugin', 'Restart Plugin'),
+                           command=lambda: self.restart_plugin(plugin_name))
+            menu.add_command(label=i18n.get('view_logs', 'View Logs...'),
+                           command=lambda: self.view_plugin_logs(plugin_name))
+            menu.add_separator()
+            menu.add_command(label=i18n.get('disable_plugin', 'Disable Plugin'),
+                           command=lambda: self.disconnect_plugin_from_toolbar(plugin_name))
+        else:
+            menu.add_command(label=i18n.get('enable_plugin', 'Enable Plugin'),
+                           command=lambda: self.connect_plugin_from_toolbar(plugin_name))
+            menu.add_separator()
+            menu.add_command(label=i18n.get('show_details', 'Show Details...'),
+                           command=lambda: self.show_plugin_details(plugin_name, None))
+        
+        menu.add_separator()
+        menu.add_command(label=i18n.get('refresh', 'Refresh'),
+                       command=self.refresh_plugins_toolbar)
+        menu.add_command(label=i18n.get('refresh_all', 'Refresh All Plugins') + ' (Ctrl+0)',
+                       command=self.refresh_all_plugins)
+        
+        # Show menu at cursor position
+        menu.post(event.x_root, event.y_root)
+    
+    def lock_plugin_operation(self, plugin_name):
+        """Lock plugin button during operation"""
+        self.active_operations.add(plugin_name)
+        self.update_plugin_button_state(plugin_name)
+    
+    def unlock_plugin_operation(self, plugin_name):
+        """Unlock plugin button after operation"""
+        self.active_operations.discard(plugin_name)
+        self.update_plugin_button_state(plugin_name)
+    
+    def connect_plugin_from_toolbar(self, plugin_name):
+        """Connect to a plugin from the toolbar"""
+        # Lock the plugin during operation
+        self.lock_plugin_operation(plugin_name)
+        
+        # Use existing connect method
+        self.connect_plugin_from_menu(plugin_name)
+    
+    def disconnect_plugin_from_toolbar(self, plugin_name):
+        """Disconnect a plugin from the toolbar"""
+        conn_info = self.get_plugin_connection_info(plugin_name)
+        if conn_info:
+            # Lock the plugin during operation
+            self.lock_plugin_operation(plugin_name)
+            self.disconnect_plugin_from_menu(plugin_name, conn_info)
+    
+    def refresh_plugins_toolbar(self):
+        """Refresh plugins from toolbar button"""
+        # Store original button states for recovery
+        original_states = {}
+        for plugin_name, btn in self.plugin_buttons.items():
+            original_states[plugin_name] = {
+                'bg': btn.cget('bg'),
+                'text': btn.cget('text'),
+                'state': btn.cget('state')
+            }
+            # Show loading state
+            btn.config(bg='#F0F0F0', text=f"⟳ {plugin_name.capitalize()}")
+        
+        # Set a timeout to recover button states if refresh fails
+        def recover_button_states():
+            try:
+                if self.root.winfo_exists():
+                    # Check if buttons are still in loading state
+                    for plugin_name, btn in self.plugin_buttons.items():
+                        if btn.winfo_exists() and "⟳" in btn.cget('text'):
+                            # Restore original state
+                            if plugin_name in original_states:
+                                btn.config(**original_states[plugin_name])
+                            else:
+                                # Fallback to updating state normally
+                                self.update_plugin_button_state(plugin_name)
+            except:
+                pass
+        
+        # Set recovery timeout (10 seconds)
+        self.root.after(10000, recover_button_states)
+        
+        # Refresh plugins
+        self.refresh_plugins()
+        # The toolbar will be updated when plugins are loaded
+    
+    def connect_plugin_from_menu(self, plugin_name):
+        """Connect to a plugin from the menu"""
+        team = self.team_combo.get()
+        machine = self.machine_combo.get()
+        repo = self.repo_combo.get()
+        
+        if not all([team, machine, repo, plugin_name]):
+            # Unlock if it was locked by connect_plugin_from_toolbar
+            if plugin_name in self.active_operations:
+                self.unlock_plugin_operation(plugin_name)
+            return
+        
+        self.activity_status_label.config(text=i18n.get('enabling_plugin', 'Enabling {plugin}...').format(plugin=plugin_name))
+        
+        def connect():
+            # Build command
+            cmd = ['plugin', 'connect', '--team', team, '--machine', machine, 
+                   '--repo', repo, '--plugin', plugin_name]
+            
+            # Don't specify port, let it auto-assign
+            
+            result = self.runner.run_command(cmd)
+            
+            if result['success']:
+                # Parse connection info from output
+                output = result.get('output', '')
+                # Look for "Local URL:" in output
+                url = None
+                for line in output.split('\n'):
+                    if 'Local URL:' in line:
+                        url = line.split('Local URL:')[1].strip()
+                        break
+                
+                if url:
+                    # Look for connection ID in output
+                    conn_id = None
+                    for line in output.split('\n'):
+                        if 'Connection ID:' in line:
+                            conn_id = line.split('Connection ID:')[1].strip()
+                            break
+                    
+                    self.plugin_connections[plugin_name] = {
+                        'url': url,
+                        'conn_id': conn_id or f"{team}/{machine}/{repo}/{plugin_name}"
+                    }
+                
+                # Safe UI update wrapper
+                def safe_ui_update(func):
+                    try:
+                        if self.root.winfo_exists():
+                            self.root.after(0, func)
+                    except:
+                        pass
+                
+                safe_ui_update(lambda: self.activity_status_label.config(
+                    text=i18n.get('plugin_enabled', '{plugin} enabled').format(plugin=plugin_name)))
+                # Plugin menu removed - toolbar updates automatically
+                
+                # Update toolbar button if it exists
+                if hasattr(self, 'plugin_buttons') and plugin_name in self.plugin_buttons:
+                    safe_ui_update(lambda p=plugin_name: self.update_plugin_button_state(p))
+                
+                # Refresh connections to get accurate status
+                safe_ui_update(lambda: self.root.after(100, self.refresh_connections))
+                
+                # Unlock the plugin operation
+                safe_ui_update(lambda: self.unlock_plugin_operation(plugin_name))
+            else:
+                error = result.get('error', i18n.get('connection_failed'))
+                
+                # Safe UI update wrapper
+                def safe_ui_update(func):
+                    try:
+                        if self.root.winfo_exists():
+                            self.root.after(0, func)
+                    except:
+                        pass
+                
+                safe_ui_update(lambda: messagebox.showerror(i18n.get('error'), error))
+                safe_ui_update(lambda: self.activity_status_label.config(text=''))
+                
+                # Unlock the plugin operation on error
+                safe_ui_update(lambda: self.unlock_plugin_operation(plugin_name))
+        
+        thread = threading.Thread(target=connect, daemon=True)
+        thread.start()
+    
+    def disconnect_plugin_from_menu(self, plugin_name, conn_info):
+        """Disconnect a plugin from the menu"""
+        self.activity_status_label.config(text=i18n.get('disabling_plugin', 'Disabling {plugin}...').format(plugin=plugin_name))
+        
+        def disconnect():
+            # Use connection ID if available
+            if 'conn_id' in conn_info:
+                cmd = ['plugin', 'disconnect', '--connection-id', conn_info['conn_id']]
+            else:
+                # Fallback to disconnect by team/machine/repo/plugin
+                team = self.team_combo.get()
+                machine = self.machine_combo.get()
+                repo = self.repo_combo.get()
+                cmd = ['plugin', 'disconnect', '--team', team, '--machine', machine,
+                       '--repo', repo, '--plugin', plugin_name]
+            
+            result = self.runner.run_command(cmd)
+            
+            # Safe UI update wrapper
+            def safe_ui_update(func):
+                try:
+                    if self.root.winfo_exists():
+                        self.root.after(0, func)
+                except:
+                    pass
+            
+            if result['success']:
+                self.plugin_connections.pop(plugin_name, None)
+                safe_ui_update(lambda: self.activity_status_label.config(
+                    text=i18n.get('plugin_disabled', '{plugin} disabled').format(plugin=plugin_name)))
+                # Plugin menu removed - toolbar updates automatically
+                
+                # Update toolbar button if it exists
+                if hasattr(self, 'plugin_buttons') and plugin_name in self.plugin_buttons:
+                    safe_ui_update(lambda p=plugin_name: self.update_plugin_button_state(p))
+                
+                # Refresh connections to update status
+                safe_ui_update(lambda: self.root.after(100, self.refresh_connections))
+                
+                # Unlock the plugin operation
+                safe_ui_update(lambda: self.unlock_plugin_operation(plugin_name))
+            else:
+                error = result.get('error', i18n.get('disconnect_failed'))
+                safe_ui_update(lambda: messagebox.showerror(i18n.get('error'), error))
+                
+                # Unlock the plugin operation on error
+                safe_ui_update(lambda: self.unlock_plugin_operation(plugin_name))
+            
+            safe_ui_update(lambda: self.activity_status_label.config(text=''))
+        
+        thread = threading.Thread(target=disconnect, daemon=True)
+        thread.start()
+    
+    def disconnect_all_plugins(self):
+        """Disconnect all active plugin connections"""
+        if not self.plugin_connections:
+            return True
+        
+        self.logger.info(f"Disconnecting {len(self.plugin_connections)} plugin connections...")
+        
+        # First, get all active connections from the plugin status
+        try:
+            cmd = ['plugin', 'status']
+            result = self.runner.run_command(cmd, timeout=5)
+            
+            if result['success']:
+                output = result.get('output', '')
+                # Parse connection IDs from status output
+                connection_ids = []
+                for line in output.split('\n'):
+                    # Look for lines with connection IDs (8-character hex)
+                    parts = line.split()
+                    if len(parts) > 0 and len(parts[0]) == 8 and all(c in '0123456789abcdef' for c in parts[0].lower()):
+                        connection_ids.append(parts[0])
+                
+                # Disconnect each connection by ID
+                for conn_id in connection_ids:
+                    try:
+                        disconnect_cmd = ['plugin', 'disconnect', '--connection-id', conn_id]
+                        disconnect_result = self.runner.run_command(disconnect_cmd, timeout=5)
+                        if disconnect_result['success']:
+                            self.logger.info(f"Disconnected plugin connection: {conn_id}")
+                        else:
+                            self.logger.error(f"Failed to disconnect {conn_id}: {disconnect_result.get('error')}")
+                    except Exception as e:
+                        self.logger.error(f"Error disconnecting {conn_id}: {e}")
+            
+            # Also try to disconnect using our local tracking
+            for plugin_name, conn_info in list(self.plugin_connections.items()):
+                try:
+                    if 'conn_id' in conn_info:
+                        cmd = ['plugin', 'disconnect', '--connection-id', conn_info['conn_id']]
+                        result = self.runner.run_command(cmd, timeout=5)
+                        if result['success']:
+                            self.logger.info(f"Disconnected plugin: {plugin_name}")
+                except Exception as e:
+                    self.logger.error(f"Error disconnecting plugin {plugin_name}: {e}")
+            
+            self.plugin_connections.clear()
+            return True
+            
+        except Exception as e:
+            self.logger.error(f"Error during plugin cleanup: {e}")
+            return False
+    
+    def copy_url_to_clipboard(self, url):
+        """Copy URL to clipboard"""
+        try:
+            self.root.clipboard_clear()
+            self.root.clipboard_append(url)
+            self.activity_status_label.config(text=i18n.get('url_copied', 'URL copied to clipboard'), fg='green')
+            
+            # Safe delayed update
+            def reset_color():
+                try:
+                    if self.root.winfo_exists():
+                        self.activity_status_label.config(fg='black')
+                except:
+                    pass
+            
+            self.root.after(2000, reset_color)
+        except Exception as e:
+            self.logger.error(f"Error copying to clipboard: {e}")
+    
+    def show_plugin_details(self, plugin_name, conn_info):
+        """Show detailed information about a plugin"""
+        dialog = tk.Toplevel(self.root)
+        dialog.title(i18n.get('plugin_details', 'Plugin Details: {plugin}').format(plugin=plugin_name))
+        dialog.geometry('400x300')
+        dialog.transient(self.root)
+        dialog.grab_set()
+        
+        # Center the dialog
+        dialog.update_idletasks()
+        x = (dialog.winfo_screenwidth() - 400) // 2
+        y = (dialog.winfo_screenheight() - 300) // 2
+        dialog.geometry(f'400x300+{x}+{y}')
+        
+        # Create info frame
+        info_frame = tk.Frame(dialog, padx=20, pady=20)
+        info_frame.pack(fill='both', expand=True)
+        
+        # Plugin name
+        tk.Label(info_frame, text=i18n.get('plugin_name', 'Plugin Name:'), 
+                font=('Arial', 10, 'bold')).grid(row=0, column=0, sticky='w', pady=5)
+        tk.Label(info_frame, text=plugin_name.capitalize()).grid(row=0, column=1, sticky='w', pady=5)
+        
+        # Status
+        is_connected = conn_info is not None
+        status_text = i18n.get('connected', 'Connected') if is_connected else i18n.get('disconnected', 'Disconnected')
+        status_color = 'green' if is_connected else 'red'
+        tk.Label(info_frame, text=i18n.get('status', 'Status:'), 
+                font=('Arial', 10, 'bold')).grid(row=1, column=0, sticky='w', pady=5)
+        tk.Label(info_frame, text=status_text, fg=status_color).grid(row=1, column=1, sticky='w', pady=5)
+        
+        if conn_info:
+            # URL
+            tk.Label(info_frame, text='URL:', 
+                    font=('Arial', 10, 'bold')).grid(row=2, column=0, sticky='w', pady=5)
+            tk.Label(info_frame, text=conn_info.get('url', 'N/A')).grid(row=2, column=1, sticky='w', pady=5)
+            
+            # Port
+            port = conn_info.get('url', '').split(':')[-1] if ':' in conn_info.get('url', '') else 'N/A'
+            tk.Label(info_frame, text=i18n.get('port', 'Port:'), 
+                    font=('Arial', 10, 'bold')).grid(row=3, column=0, sticky='w', pady=5)
+            tk.Label(info_frame, text=port).grid(row=3, column=1, sticky='w', pady=5)
+            
+            # Connection ID
+            tk.Label(info_frame, text=i18n.get('connection_id', 'Connection ID:'), 
+                    font=('Arial', 10, 'bold')).grid(row=4, column=0, sticky='w', pady=5)
+            tk.Label(info_frame, text=conn_info.get('conn_id', 'N/A')).grid(row=4, column=1, sticky='w', pady=5)
+        
+        # Repository info
+        tk.Label(info_frame, text=i18n.get('repository', 'Repository:'), 
+                font=('Arial', 10, 'bold')).grid(row=5, column=0, sticky='w', pady=5)
+        tk.Label(info_frame, text=self.repo_combo.get()).grid(row=5, column=1, sticky='w', pady=5)
+        
+        # Machine
+        tk.Label(info_frame, text=i18n.get('machine', 'Machine:'), 
+                font=('Arial', 10, 'bold')).grid(row=6, column=0, sticky='w', pady=5)
+        tk.Label(info_frame, text=self.machine_combo.get()).grid(row=6, column=1, sticky='w', pady=5)
+        
+        # Close button
+        tk.Button(dialog, text=i18n.get('close', 'Close'), 
+                 command=dialog.destroy).pack(pady=10)
+    
+    def restart_plugin(self, plugin_name):
+        """Restart a plugin by disconnecting and reconnecting"""
+        self.activity_status_label.config(text=i18n.get('restarting_plugin', 'Restarting {plugin}...').format(plugin=plugin_name))
+        
+        # Lock the plugin operation
+        self.lock_plugin_operation(plugin_name)
+        
+        # First disconnect if connected
+        conn_info = self.get_plugin_connection_info(plugin_name)
+        if conn_info:
+            # Use a flag to indicate this is a restart operation
+            def restart_sequence():
+                # Disconnect without locking (we already locked)
+                team = self.team_combo.get()
+                machine = self.machine_combo.get()
+                repo = self.repo_combo.get()
+                
+                # Build disconnect command
+                if 'conn_id' in conn_info:
+                    cmd = ['plugin', 'disconnect', '--connection-id', conn_info['conn_id']]
+                else:
+                    cmd = ['plugin', 'disconnect', '--team', team, '--machine', machine,
+                           '--repo', repo, '--plugin', plugin_name]
+                
+                result = self.runner.run_command(cmd)
+                
+                # Safe UI update wrapper
+                def safe_ui_update(func):
+                    try:
+                        if self.root.winfo_exists():
+                            self.root.after(0, func)
+                    except:
+                        pass
+                
+                if result['success']:
+                    self.plugin_connections.pop(plugin_name, None)
+                    # Update button state
+                    if hasattr(self, 'plugin_buttons') and plugin_name in self.plugin_buttons:
+                        safe_ui_update(lambda p=plugin_name: self.update_plugin_button_state(p))
+                    
+                    # Wait a bit then reconnect
+                    safe_ui_update(lambda: self.root.after(1000, lambda: self.connect_plugin_from_menu(plugin_name)))
+                else:
+                    # Unlock on error
+                    safe_ui_update(lambda: self.unlock_plugin_operation(plugin_name))
+                    error = result.get('error', i18n.get('disconnect_failed'))
+                    safe_ui_update(lambda: messagebox.showerror(i18n.get('error'), error))
+            
+            # Run restart sequence in thread
+            thread = threading.Thread(target=restart_sequence, daemon=True)
+            thread.start()
+        else:
+            # Just connect if not connected
+            self.connect_plugin_from_menu(plugin_name)
+    
+    def view_plugin_logs(self, plugin_name):
+        """View plugin container logs"""
+        messagebox.showinfo(i18n.get('feature_not_available', 'Feature Not Available'), 
+                           i18n.get('plugin_logs_not_implemented', 'Plugin logs viewing is not yet implemented.'))
+    
+    def refresh_all_plugins(self):
+        """Refresh all plugins and connections"""
+        self.refresh_plugins()
+        self.refresh_connections()
+    
+    def disconnect_plugin_shortcut(self, plugin_name):
+        """Disconnect a plugin via keyboard shortcut"""
+        if self.is_plugin_connected(plugin_name):
+            conn_info = self.get_plugin_connection_info(plugin_name)
+            if conn_info:
+                self.disconnect_plugin_from_toolbar(plugin_name)
     
     # Menu action methods
     def show_preferences(self):
@@ -1976,14 +2244,9 @@ class MainWindow(BaseWindow):
         messagebox.showinfo(i18n.get('info', 'Info'), i18n.get('not_implemented', 'Not implemented'))
     
     def switch_to_plugin_tab(self):
-        """Switch to Plugin Manager tab"""
-        if hasattr(self, 'notebook'):
-            self.notebook.select(0)  # Plugin Manager is the first tab
-    
-    def switch_to_sync_tab(self):
-        """Switch to File Sync tab"""
-        if hasattr(self, 'notebook'):
-            self.notebook.select(1)  # File Sync is the second tab
+        """Switch to Plugin Manager tab - deprecated, now using menu"""
+        # Plugin Manager is now in the Tools > Plugins menu
+        pass
     
     def show_transfer_options_wrapper(self):
         """Show transfer options dialog"""
@@ -2035,7 +2298,6 @@ class MainWindow(BaseWindow):
     
     def show_documentation(self):
         """Open documentation in web browser"""
-        import webbrowser
         webbrowser.open('https://docs.rediacc.com')
     
     def show_keyboard_shortcuts(self):
@@ -2080,7 +2342,6 @@ class MainWindow(BaseWindow):
             ('', ''),
             ('Tools Menu:', ''),
             ('Ctrl+T', 'Repository Terminal'),
-            ('Ctrl+P', 'Plugin Manager'),
             ('Ctrl+S', 'File Sync'),
             ('F12', 'Console'),
             ('', ''),
@@ -2149,16 +2410,29 @@ Version: 1.0.0
         self.populate_language_menu()  # Update language submenu checkmarks
         self.update_menu_texts()
         
-        # Update resource selection frame
-        self.common_frame.config(text=i18n.get('resource_selection'))
-        self.team_label.config(text=i18n.get('team'))
-        self.machine_label.config(text=i18n.get('machine'))
-        self.repo_label.config(text=i18n.get('repository'))
+        # Update resource selection placeholders
+        if not self.team_combo.get() or self.team_combo.get() in ['Select Team...', 'حدد الفريق...', 'Team auswählen...']:
+            self.team_combo.set(i18n.get('select_team', 'Select Team...'))
+        if not self.machine_combo.get() or self.machine_combo.get() in ['Select Machine...', 'حدد الجهاز...', 'Maschine auswählen...']:
+            self.machine_combo.set(i18n.get('select_machine', 'Select Machine...'))
+        if not self.repo_combo.get() or self.repo_combo.get() in ['Select Repository...', 'حدد المستودع...', 'Repository auswählen...']:
+            self.repo_combo.set(i18n.get('select_repository', 'Select Repository...'))
+        
+        # Update labels
+        self.team_label.config(text=i18n.get('team', 'Team'))
+        self.machine_label.config(text=i18n.get('machine', 'Machine'))
+        self.repo_label.config(text=i18n.get('repository', 'Repository'))
+        
+        # Update Connect button text in file browser
+        if hasattr(self, 'file_browser') and hasattr(self.file_browser, 'connect_button'):
+            if self.file_browser.ssh_connection:
+                self.file_browser.connect_button.config(text=i18n.get('disconnect', 'Disconnect'))
+            else:
+                self.file_browser.connect_button.config(text=i18n.get('connect', 'Connect'))
         
         # Update notebook tabs
         self.notebook.tab(0, text=i18n.get('plugin_manager'))
-        self.notebook.tab(1, text=i18n.get('file_sync'))
-        self.notebook.tab(2, text=i18n.get('file_browser', 'File Browser'))
+        self.notebook.tab(1, text=i18n.get('file_browser', 'File Browser'))
         
         # Update status bar
         current_text = self.activity_status_label.cget('text')
@@ -2166,15 +2440,7 @@ Version: 1.0.0
             self.update_activity_status()
         
         # Update each tab's contents
-        self.update_plugin_tab_texts()
-        self.update_sync_tab_texts()
         self.update_file_browser_tab_texts()
-        
-        # Update LabelFrame texts that might have been missed
-        if hasattr(self, 'sync_options_frame'):
-            self.sync_options_frame.config(text=i18n.get('sync_options', 'Sync Options'))
-        if hasattr(self, 'safety_options_frame'):
-            self.safety_options_frame.config(text=i18n.get('safety_options', 'Safety Options'))
     
     def update_menu_texts(self):
         """Update all menu item texts"""
@@ -2216,8 +2482,7 @@ Version: 1.0.0
         has_full_selection = has_team and has_machine and has_repo
         
         # Update Edit menu states
-        file_browser_active = hasattr(self, 'file_browser') and self.file_browser and \
-                            self.notebook.index(self.notebook.select()) == 2
+        file_browser_active = hasattr(self, 'file_browser') and self.file_browser
         
         self.edit_menu.entryconfig(0, state='normal' if file_browser_active else 'disabled')  # Cut
         self.edit_menu.entryconfig(1, state='normal' if file_browser_active else 'disabled')  # Copy
@@ -2248,6 +2513,8 @@ Version: 1.0.0
         
         # Update recent connections
         self.update_recent_connections()
+        
+        # Plugin menu removed - toolbar handles all plugin UI
     
     def update_recent_connections(self):
         """Update the recent connections list in the Connection menu"""
@@ -2297,54 +2564,88 @@ Version: 1.0.0
             self.repo_combo.set(repo)
             self.on_repository_changed()
     
-    def update_plugin_tab_texts(self):
-        """Update all texts in plugin tab"""
-        updates = [
-            (self.plugin_management_frame, 'plugin_management'),
-            (self.available_plugins_label, 'available_plugins'),
-            (self.refresh_plugins_button, 'refresh_plugins'),
-            (self.connect_plugin_label, 'connect_to_plugin'),
-            (self.plugin_select_label, 'plugin'),
-            (self.port_frame, 'local_port'),
-            (self.auto_port_radio, 'auto_port'),
-            (self.manual_port_radio, 'manual_port'),
-            (self.connect_button, 'connect'),
-            (self.connections_frame, 'active_connections'),
-            (self.open_browser_button, 'open_in_browser'),
-            (self.copy_url_button, 'copy_url'),
-            (self.disconnect_button, 'disconnect'),
-            (self.refresh_status_button, 'refresh_status'),
-            (self.plugin_info_label, 'plugin_tip')
-        ]
-        for widget, key in updates:
-            widget.config(text=i18n.get(key))
+    # Plugin tab texts update method removed - plugin manager is now in Tools menu
+    # def update_plugin_tab_texts(self):
+    #     pass
     
-    def update_sync_tab_texts(self):
-        """Update all texts in sync tab"""
-        updates = [
-            (self.sync_direction_label, 'direction'),
-            (self.upload_radio, 'upload'),
-            (self.download_radio, 'download'),
-            (self.local_path_label, 'local_path'),
-            (self.browse_button, 'browse'),
-            (self.options_frame, 'options'),
-            (self.mirror_check, 'mirror_delete'),
-            (self.verify_check, 'verify_transfer'),
-            (self.confirm_check, 'preview_changes'),
-            (self.sync_button, 'start_sync'),
-            (self.sync_output_label, 'output')
-        ]
-        for widget, key in updates:
-            widget.config(text=i18n.get(key))
-        
-        # Update LabelFrame texts
-        self.sync_options_frame.config(text=i18n.get('sync_options', 'Sync Options'))
-        self.safety_options_frame.config(text=i18n.get('safety_options', 'Safety Options'))
     
     def update_file_browser_tab_texts(self):
         """Update all texts in file browser tab"""
         if hasattr(self, 'file_browser'):
             self.file_browser.update_texts()
+    
+    def on_closing(self):
+        """Override base class on_closing to perform cleanup"""
+        self.logger.info("Application closing, performing cleanup...")
+        
+        # Check if there are active plugin connections
+        if self.plugin_connections:
+            # Build list of active connections
+            active_list = []
+            for plugin_name, conn_info in self.plugin_connections.items():
+                if 'url' in conn_info:
+                    active_list.append(f"• {plugin_name} ({conn_info['url']})")
+                else:
+                    active_list.append(f"• {plugin_name}")
+            
+            active_connections_str = '\n'.join(active_list[:5])  # Show first 5
+            if len(active_list) > 5:
+                active_connections_str += f"\n... and {len(active_list) - 5} more"
+            
+            message = i18n.get('active_plugins_warning', 
+                             f'There are {len(self.plugin_connections)} active plugin connections:\n\n'
+                             f'{active_connections_str}\n\n'
+                             'Do you want to disconnect all plugins and exit?')
+            
+            response = messagebox.askyesnocancel(
+                i18n.get('confirm_exit', 'Confirm Exit'),
+                message,
+                icon='warning'
+            )
+            
+            if response is None:  # Cancel
+                return
+            elif response:  # Yes - disconnect and exit
+                # Show progress dialog
+                progress_window = tk.Toplevel(self.root)
+                progress_window.title(i18n.get('closing', 'Closing...'))
+                progress_window.geometry('300x100')
+                progress_window.transient(self.root)
+                progress_window.grab_set()
+                
+                # Center the progress window
+                progress_window.update_idletasks()
+                x = (progress_window.winfo_screenwidth() - 300) // 2
+                y = (progress_window.winfo_screenheight() - 100) // 2
+                progress_window.geometry(f'300x100+{x}+{y}')
+                
+                ttk.Label(progress_window, 
+                         text=i18n.get('disconnecting_plugins', 'Disconnecting plugins...'),
+                         font=('TkDefaultFont', 10)).pack(pady=20)
+                progress_bar = ttk.Progressbar(progress_window, mode='indeterminate')
+                progress_bar.pack(pady=10, padx=20, fill='x')
+                progress_bar.start()
+                
+                self.root.update()
+                
+                # Disconnect all plugins
+                self.disconnect_all_plugins()
+                
+                progress_window.destroy()
+        
+        # Disconnect file browser SSH connection
+        if hasattr(self, 'file_browser') and self.file_browser:
+            self.logger.info("Disconnecting file browser SSH connection...")
+            self.file_browser.disconnect()
+        
+        # Cancel any background operations
+        self.logger.info("Canceling background operations...")
+        # The threads are daemon threads, so they'll be terminated automatically
+        
+        self.logger.info("Cleanup complete, exiting application")
+        
+        # Call parent class on_closing
+        super().on_closing()
 
 
 # ===== MAIN EXECUTION =====
@@ -2365,16 +2666,24 @@ def launch_gui():
         import traceback
         traceback.print_exc()
     
+    # Variable to track the main window instance
+    main_window_instance = None
+    
     # Set up signal handler for graceful shutdown
     def signal_handler(sig, frame):
         print("\nReceived interrupt signal. Closing GUI...")
         try:
-            import tkinter as tk
-            for widget in tk._default_root.winfo_children() if tk._default_root else []:
-                widget.destroy()
-            if tk._default_root:
-                tk._default_root.quit()
-                tk._default_root.destroy()
+            # If we have a main window instance, call its on_closing method
+            if main_window_instance and hasattr(main_window_instance, 'on_closing'):
+                main_window_instance.on_closing()
+            else:
+                # Fallback to basic cleanup
+                import tkinter as tk
+                for widget in tk._default_root.winfo_children() if tk._default_root else []:
+                    widget.destroy()
+                if tk._default_root:
+                    tk._default_root.quit()
+                    tk._default_root.destroy()
         except:
             pass
         finally:
@@ -2389,14 +2698,15 @@ def launch_gui():
     try:
         if token_valid:
             logger.debug("Token is valid, launching main window...")
-            main_window = MainWindow()
-            main_window.root.mainloop()
+            main_window_instance = MainWindow()
+            main_window_instance.root.mainloop()
         else:
             logger.debug("No valid token, showing login window...")
             def on_login_success():
                 logger.debug("Login successful, launching main window...")
-                main_window = MainWindow()
-                main_window.root.mainloop()
+                nonlocal main_window_instance
+                main_window_instance = MainWindow()
+                main_window_instance.root.mainloop()
             
             login_window = LoginWindow(on_login_success)
             # Make the main loop check for interrupts periodically

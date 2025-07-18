@@ -158,7 +158,10 @@ def get_machine_info_with_team(team_name: str, machine_name: str) -> Dict[str, A
         if not inspect_data.get('success'):
             error_exit(f"inspecting machine: {inspect_data.get('error', 'Unknown error')}")
         
-        machine_info = inspect_data.get('data', [{}])[0]
+        data_list = inspect_data.get('data', [])
+        if not data_list:
+            error_exit(f"No machine data found for '{machine_name}' in team '{team_name}'")
+        machine_info = data_list[0]
         
         # Parse vault content if available
         if vault_content := machine_info.get('vaultContent'):
@@ -190,7 +193,10 @@ def get_repository_info(team_name: str, repo_name: str) -> Dict[str, Any]:
         if not inspect_data.get('success'):
             error_exit(f"inspecting repository: {inspect_data.get('error', 'Unknown error')}")
         
-        repo_info = inspect_data.get('data', [{}])[0]
+        data_list = inspect_data.get('data', [])
+        if not data_list:
+            error_exit(f"No repository data found for '{repo_name}' in team '{team_name}'")
+        repo_info = data_list[0]
         
         if vault_content := repo_info.get('vaultContent'):
             try: repo_info['vault'] = json.loads(vault_content) if isinstance(vault_content, str) else vault_content
