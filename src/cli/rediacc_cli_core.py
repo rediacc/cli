@@ -54,9 +54,8 @@ def create_temp_file(suffix: str = '', prefix: str = 'tmp', delete: bool = True)
     """Create a temporary file in a platform-appropriate way"""
     if not is_windows():
         # On Unix, use standard tempfile
-        f = tempfile.NamedTemporaryFile(mode='w', delete=False, suffix=suffix, prefix=prefix)
-        f.close()
-        return f.name
+        with tempfile.NamedTemporaryFile(mode='w', delete=False, suffix=suffix, prefix=prefix) as f:
+            return f.name
     
     # Windows: Use appropriate temp directory
     temp_dir = get('REDIACC_TEMP_DIR') or os.environ.get('TEMP') or os.environ.get('TMP')
@@ -109,8 +108,7 @@ def colorize(text: str, color: str) -> str:
 
 def run_command(cmd, capture_output=True, check=True, quiet=False):
     """Run a command and return the result"""
-    if isinstance(cmd, str):
-        cmd = cmd.split()
+    cmd = cmd.split() if isinstance(cmd, str) else cmd
     
     def handle_error(stderr=None):
         if not quiet:
@@ -142,47 +140,77 @@ def run_command(cmd, capture_output=True, check=True, quiet=False):
             handle_error(getattr(e, 'stderr', None))
         return None
 
+def _retry_with_backoff(func, max_retries=3, initial_delay=0.5, error_msg="Operation failed", exit_on_failure=True):
+    """Helper function to retry an operation with exponential backoff"""
+    import time
+    delay = initial_delay
+    
+    for attempt in range(max_retries):
+        output, exit_called = func(quiet=attempt > 0)
+        
+        if output and not exit_called:
+            return output
+        
+        if attempt < max_retries - 1:
+            print(colorize(f"API call failed, retrying in {delay}s... (attempt {attempt + 1}/{max_retries})", 'YELLOW'))
+            time.sleep(delay)
+            delay *= 2
+    else:
+        if exit_on_failure:
+            print(colorize(f"{error_msg} after {max_retries} attempts", 'RED'))
+            sys.exit(1)
+        return None
+
+def _get_universal_user_info() -> Tuple[Optional[str], Optional[str]]:
+    """Get universal user name and ID from company vault"""
+    config_path = get_main_config_file()
+    if not config_path.exists():
+        return None, None
+    
+    try:
+        with open(config_path, 'r') as f:
+            config = json.load(f)
+            if vault_company := config.get('vault_company'):
+                vault_data = json.loads(vault_company)
+                return vault_data.get('UNIVERSAL_USER_NAME'), vault_data.get('UNIVERSAL_USER_ID')
+    except (json.JSONDecodeError, IOError):
+        pass
+    
+    return None, None
+
+class _SuppressSysExit:
+    """Context manager to temporarily suppress sys.exit calls"""
+    def __init__(self):
+        self.exit_called = False
+        self.original_exit = None
+    
+    def __enter__(self):
+        self.original_exit = sys.exit
+        def no_exit(code=0):
+            self.exit_called = True
+        sys.exit = no_exit
+        return self
+    
+    def __exit__(self, exc_type, exc_val, exc_tb):
+        sys.exit = self.original_exit
+
 def get_machine_info_with_team(team_name: str, machine_name: str) -> Dict[str, Any]:
     """Get machine information when team is known"""
-    import time
-    max_retries = 3
-    retry_delay = 0.5
-    
     token = TokenManager.get_token()
     if not token:
         print(colorize("No authentication token available", 'RED'))
         sys.exit(1)
     
     def try_inspect(quiet: bool = False):
-        # Temporarily suppress sys.exit
-        original_exit = sys.exit
-        exit_called = False
-        
-        def no_exit(code=0):
-            nonlocal exit_called
-            exit_called = True
-        
-        sys.exit = no_exit
-        try:
+        with _SuppressSysExit() as ctx:
             cmd = get_cli_command() + ['--output', 'json', 'inspect', 'machine', team_name, machine_name]
             output = run_command(cmd, quiet=quiet)
-            return output, exit_called
-        finally:
-            sys.exit = original_exit
+            return output, ctx.exit_called
     
-    for attempt in range(max_retries):
-        inspect_output, exit_called = try_inspect(quiet=attempt > 0)
-        
-        if inspect_output and not exit_called:
-            break
-        
-        if attempt < max_retries - 1:
-            print(colorize(f"API call failed, retrying in {retry_delay}s... (attempt {attempt + 1}/{max_retries})", 'YELLOW'))
-            time.sleep(retry_delay)
-            retry_delay *= 2
-        else:
-            print(colorize(f"Failed to inspect machine {machine_name} in team {team_name} after {max_retries} attempts", 'RED'))
-            sys.exit(1)
+    inspect_output = _retry_with_backoff(
+        try_inspect,
+        error_msg=f"Failed to inspect machine {machine_name} in team {team_name}"
+    )
     
     try:
         inspect_data = json.loads(inspect_output)
@@ -193,8 +221,7 @@ def get_machine_info_with_team(team_name: str, machine_name: str) -> Dict[str, A
         machine_info = inspect_data.get('data', [{}])[0]
         
         # Parse vault content if available
-        vault_content = machine_info.get('vaultContent')
-        if vault_content:
+        if vault_content := machine_info.get('vaultContent'):
             try:
                 machine_info['vault'] = json.loads(vault_content) if isinstance(vault_content, str) else vault_content
             except json.JSONDecodeError:
@@ -208,45 +235,21 @@ def get_machine_info_with_team(team_name: str, machine_name: str) -> Dict[str, A
 
 def get_repository_info(team_name: str, repo_name: str) -> Dict[str, Any]:
     """Get repository information using rediacc-cli inspect command"""
-    import time
-    max_retries = 3
-    retry_delay = 0.5
-    
     token = TokenManager.get_token()
     if not token:
         print(colorize("No authentication token available", 'RED'))
         sys.exit(1)
     
     def try_inspect(quiet: bool = False):
-        # Temporarily suppress sys.exit
-        original_exit = sys.exit
-        exit_called = False
-        
-        def no_exit(code=0):
-            nonlocal exit_called
-            exit_called = True
-        
-        sys.exit = no_exit
-        try:
+        with _SuppressSysExit() as ctx:
             cmd = get_cli_command() + ['--output', 'json', 'inspect', 'repository', team_name, repo_name]
             output = run_command(cmd, quiet=quiet)
-            return output, exit_called
-        finally:
-            sys.exit = original_exit
+            return output, ctx.exit_called
     
-    for attempt in range(max_retries):
-        inspect_output, exit_called = try_inspect(quiet=attempt > 0)
-        
-        if inspect_output and not exit_called:
-            break
-        
-        if attempt < max_retries - 1:
-            print(colorize(f"API call failed, retrying in {retry_delay}s... (attempt {attempt + 1}/{max_retries})", 'YELLOW'))
-            time.sleep(retry_delay)
-            retry_delay *= 2
-        else:
-            print(colorize(f"Failed to inspect repository {repo_name} after {max_retries} attempts", 'RED'))
-            sys.exit(1)
+    inspect_output = _retry_with_backoff(
+        try_inspect,
+        error_msg=f"Failed to inspect repository {repo_name}"
+    )
     
     try:
         inspect_data = json.loads(inspect_output)
@@ -257,8 +260,7 @@ def get_repository_info(team_name: str, repo_name: str) -> Dict[str, Any]:
         repo_info = inspect_data.get('data', [{}])[0]
         
         # Parse vault content if available
-        vault_content = repo_info.get('vaultContent')
-        if vault_content:
+        if vault_content := repo_info.get('vaultContent'):
             try:
                 repo_info['vault'] = json.loads(vault_content) if isinstance(vault_content, str) else vault_content
             except json.JSONDecodeError:
@@ -278,44 +280,25 @@ def get_ssh_key_from_vault(team_name: Optional[str] = None) -> Optional[str]:
     Args:
         team_name: Optional team name to get SSH key for. If not provided, returns first found SSH key.
     """
-    import time
-    max_retries = 3
-    retry_delay = 0.5
-    
     token = TokenManager.get_token()
     if not token:
         print(colorize("No authentication token available", 'RED'))
         return None
     
     def try_get_teams(quiet: bool = False):
-        # Temporarily suppress sys.exit
-        original_exit = sys.exit
-        exit_called = False
-        
-        def no_exit(code=0):
-            nonlocal exit_called
-            exit_called = True
-        
-        sys.exit = no_exit
-        try:
+        with _SuppressSysExit() as ctx:
             cmd = get_cli_command() + ['--output', 'json', 'list', 'teams']
             output = run_command(cmd, quiet=quiet)
-            return output, exit_called
-        finally:
-            sys.exit = original_exit
+            return output, ctx.exit_called
     
-    for attempt in range(max_retries):
-        teams_output, exit_called = try_get_teams(quiet=attempt > 0)
-        
-        if teams_output and not exit_called:
-            break
-        
-        if attempt < max_retries - 1:
-            print(colorize(f"API call failed, retrying in {retry_delay}s... (attempt {attempt + 1}/{max_retries})", 'YELLOW'))
-            time.sleep(retry_delay)
-            retry_delay *= 2
-        else:
-            return None
+    teams_output = _retry_with_backoff(
+        try_get_teams,
+        error_msg="Failed to get teams list",
+        exit_on_failure=False
+    )
+    
+    if not teams_output:
+        return None
     
     try:
         result = json.loads(teams_output)
@@ -327,14 +310,12 @@ def get_ssh_key_from_vault(team_name: Optional[str] = None) -> Optional[str]:
             if team_name and team.get('teamName') != team_name:
                 continue
             
-            vault_content = team.get('vaultContent')
-            if not vault_content:
+            if not (vault_content := team.get('vaultContent')):
                 continue
             
             try:
                 vault_data = json.loads(vault_content) if isinstance(vault_content, str) else vault_content
-                ssh_key = vault_data.get('SSH_PRIVATE_KEY')
-                if ssh_key:
+                if ssh_key := vault_data.get('SSH_PRIVATE_KEY'):
                     return ssh_key
             except json.JSONDecodeError:
                 continue
@@ -343,21 +324,32 @@ def get_ssh_key_from_vault(team_name: Optional[str] = None) -> Optional[str]:
     
     return None
 
-def setup_ssh_agent_connection(ssh_key: str, host_entry: str = None) -> Tuple[str, str, str]:
-    """Set up SSH agent for connection and return SSH command options, agent PID, and known_hosts file"""
-    import subprocess
+def _decode_ssh_key(ssh_key: str) -> str:
+    """Decode SSH key from base64 if needed and ensure it ends with newline"""
     import base64
     
-    # Decode base64 SSH key if needed
     if not ssh_key.startswith('-----BEGIN') and '\n' not in ssh_key:
         try:
             ssh_key = base64.b64decode(ssh_key).decode('utf-8')
         except Exception:
             pass
     
-    # Ensure the SSH key ends with a newline
-    if not ssh_key.endswith('\n'):
-        ssh_key += '\n'
+    return ssh_key if ssh_key.endswith('\n') else ssh_key + '\n'
+
+def _setup_ssh_options(host_entry: str, known_hosts_path: str, key_path: str = None) -> str:
+    """Set up SSH command line options based on host entry"""
+    if host_entry:
+        base_opts = f"-o StrictHostKeyChecking=yes -o UserKnownHostsFile={known_hosts_path}"
+    else:
+        base_opts = f"-o StrictHostKeyChecking=accept-new -o UserKnownHostsFile={get_null_device()}"
+    
+    return f"{base_opts} -i {key_path}" if key_path else base_opts
+
+def setup_ssh_agent_connection(ssh_key: str, host_entry: str = None) -> Tuple[str, str, str]:
+    """Set up SSH agent for connection and return SSH command options, agent PID, and known_hosts file"""
+    import subprocess
+    
+    ssh_key = _decode_ssh_key(ssh_key)
     
     # Start SSH agent
     try:
@@ -372,8 +364,7 @@ def setup_ssh_agent_connection(ssh_key: str, host_entry: str = None) -> Tuple[st
                 var_assignment = line.split(';')[0]
                 if '=' in var_assignment:
                     key, value = var_assignment.split('=', 1)
-                    agent_env[key] = value
-                    os.environ[key] = value
+                    agent_env[key] = os.environ[key] = value
         
         agent_pid = agent_env.get('SSH_AGENT_PID')
         if not agent_pid:
@@ -397,27 +388,19 @@ def setup_ssh_agent_connection(ssh_key: str, host_entry: str = None) -> Tuple[st
         known_hosts_file_path = create_temp_file(suffix='_known_hosts', prefix='known_hosts_')
         with open(known_hosts_file_path, 'w') as f:
             f.write(host_entry + '\n')
-        ssh_opts = f"-o StrictHostKeyChecking=yes -o UserKnownHostsFile={known_hosts_file_path}"
-    else:
-        ssh_opts = f"-o StrictHostKeyChecking=accept-new -o UserKnownHostsFile={get_null_device()}"
+    
+    ssh_opts = _setup_ssh_options(host_entry, known_hosts_file_path)
     
     return ssh_opts, agent_pid, known_hosts_file_path
 
 def setup_ssh_for_connection(ssh_key: str, host_entry: str = None) -> Tuple[str, str, str]:
     """Set up SSH key for connection and return SSH command options, cleanup path, and known_hosts file"""
-    import base64
-    
-    # Decode base64 SSH key if needed
-    if not ssh_key.startswith('-----BEGIN') and '\n' not in ssh_key:
-        try:
-            ssh_key = base64.b64decode(ssh_key).decode('utf-8')
-        except Exception:
-            pass
+    ssh_key = _decode_ssh_key(ssh_key)
     
     # Create temporary SSH key file
     ssh_key_file_path = create_temp_file(suffix='_rsa', prefix='ssh_key_')
     with open(ssh_key_file_path, 'w') as f:
-        f.write(ssh_key if ssh_key.endswith('\n') else ssh_key + '\n')
+        f.write(ssh_key)
     
     set_file_permissions(ssh_key_file_path, 0o600)
     
@@ -427,9 +410,8 @@ def setup_ssh_for_connection(ssh_key: str, host_entry: str = None) -> Tuple[str,
         known_hosts_file_path = create_temp_file(suffix='_known_hosts', prefix='known_hosts_')
         with open(known_hosts_file_path, 'w') as f:
             f.write(host_entry + '\n')
-        ssh_opts = f"-o StrictHostKeyChecking=yes -o UserKnownHostsFile={known_hosts_file_path} -i {ssh_key_file_path}"
-    else:
-        ssh_opts = f"-o StrictHostKeyChecking=accept-new -o UserKnownHostsFile={get_null_device()} -i {ssh_key_file_path}"
+    
+    ssh_opts = _setup_ssh_options(host_entry, known_hosts_file_path, ssh_key_file_path)
     
     return ssh_opts, ssh_key_file_path, known_hosts_file_path
 
@@ -456,12 +438,10 @@ def get_machine_connection_info(machine_info: Dict[str, Any]) -> Dict[str, Any]:
     vault = machine_info.get('vault', {})
     
     # Try to parse vaultContent if vault is missing
-    if not vault:
-        vault_content = machine_info.get('vaultContent')
-        if vault_content and isinstance(vault_content, str):
+    if not vault and (vault_content := machine_info.get('vaultContent')):
+        if isinstance(vault_content, str):
             try:
-                vault = json.loads(vault_content)
-                machine_info['vault'] = vault
+                vault = machine_info['vault'] = json.loads(vault_content)
             except json.JSONDecodeError as e:
                 print(colorize(f"Failed to parse vaultContent: {e}", 'RED'))
     
@@ -472,20 +452,9 @@ def get_machine_connection_info(machine_info: Dict[str, Any]) -> Dict[str, Any]:
     host_entry = vault.get('hostEntry') or vault.get('HOST_ENTRY')
     
     # Get universal user and ID from company vault
-    universal_user, universal_user_id = None, None
-    config_path = get_main_config_file()
-    if config_path.exists():
-        try:
-            with open(config_path, 'r') as f:
-                config = json.load(f)
-                if vault_company := config.get('vault_company'):
-                    vault_data = json.loads(vault_company)
-                    universal_user = vault_data.get('UNIVERSAL_USER_NAME')
-                    universal_user_id = vault_data.get('UNIVERSAL_USER_ID')
-        except (json.JSONDecodeError, IOError) as e:
-            print(colorize(f"Warning: Failed to read universal user from config: {e}", 'YELLOW'))
-    else:
-        print(colorize(f"Warning: Config file not found at {config_path}", 'YELLOW'))
+    universal_user, universal_user_id = _get_universal_user_info()
+    if not universal_user:
+        print(colorize("Warning: Failed to read universal user from config", 'YELLOW'))
     
     # Validate required fields
     if not ssh_user:
@@ -559,9 +528,7 @@ def test_ssh_connectivity(ip: str, port: int = 22, timeout: int = 5) -> Tuple[bo
             sock.settimeout(timeout)
             result = sock.connect_ex((ip, port))
             
-            if result == 0:
-                return True, ""
-            return False, f"Cannot connect to {ip}:{port} - port appears to be closed or filtered"
+            return (True, "") if result == 0 else (False, f"Cannot connect to {ip}:{port} - port appears to be closed or filtered")
             
     except socket.timeout:
         return False, f"Connection to {ip}:{port} timed out after {timeout} seconds"
@@ -590,12 +557,13 @@ def validate_machine_accessibility(machine_name: str, team_name: str, ip: str, r
     print(colorize(f"\n✗ Machine '{machine_name}' is not accessible", 'RED'))
     print(colorize(f"  Error: {error_msg}", 'RED'))
     print(colorize("\nPossible reasons:", 'YELLOW'))
-    for reason in [
+    reasons = [
         "The machine is offline or powered down",
         "Network connectivity issues between client and machine", 
         "Firewall blocking SSH port (22)",
         "Incorrect IP address in machine configuration"
-    ]:
+    ]
+    for reason in reasons:
         print(colorize(f"  • {reason}", 'YELLOW'))
     
     print(colorize(f"\nMachine IP: {ip}", 'BLUE'))
@@ -620,12 +588,13 @@ def handle_ssh_exit_code(returncode: int, connection_type: str = "machine"):
     if returncode == 255:
         print(colorize(f"\n✗ SSH connection failed (exit code: {returncode})", 'RED'))
         print(colorize("\nPossible reasons:", 'YELLOW'))
-        for reason in [
+        reasons = [
             "SSH authentication failed (check SSH key in team vault)",
             "SSH host key verification failed",
             "SSH service not running on the machine",
             "Network connection interrupted"
-        ]:
+        ]
+        for reason in reasons:
             print(colorize(f"  • {reason}", 'YELLOW'))
     else:
         print(colorize(f"\nDisconnected from {connection_type} (exit code: {returncode})", 'YELLOW'))
@@ -650,7 +619,7 @@ class RepositoryConnection:
         self._machine_info = get_machine_info_with_team(self.team_name, self.machine_name)
         self._connection_info = get_machine_connection_info(self._machine_info)
         
-        if not (self._connection_info.get('ip') and self._connection_info.get('user')):
+        if not all([self._connection_info.get('ip'), self._connection_info.get('user')]):
             print(colorize("Machine IP or user not found in vault", 'RED'))
             sys.exit(1)
         
@@ -658,24 +627,13 @@ class RepositoryConnection:
         self._repo_info = get_repository_info(self._connection_info['team'], self.repo_name)
         
         # Get repository GUID
-        repo_guid = self._repo_info.get('repoGuid') or self._repo_info.get('grandGuid')
-        if not repo_guid:
+        if not (repo_guid := self._repo_info.get('repoGuid') or self._repo_info.get('grandGuid')):
             print(colorize(f"Repository GUID not found for '{self.repo_name}'", 'RED'))
             print(colorize(f"Repository info: {json.dumps(self._repo_info, indent=2)}", 'YELLOW'))
             sys.exit(1)
         
         # Get universal user ID from company vault
-        universal_user_id = None
-        config_path = get_main_config_file()
-        if config_path.exists():
-            try:
-                with open(config_path, 'r') as f:
-                    config = json.load(f)
-                    if vault_company := config.get('vault_company'):
-                        vault_data = json.loads(vault_company)
-                        universal_user_id = vault_data.get('UNIVERSAL_USER_ID')
-            except (json.JSONDecodeError, IOError):
-                pass
+        _, universal_user_id = _get_universal_user_info()
         
         self._repo_paths = get_repository_paths(repo_guid, self._connection_info['datastore'], universal_user_id)
         

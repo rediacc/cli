@@ -836,13 +836,10 @@ class CommandHandler:
         """Log in to the Rediacc API"""
         email = args.email or input("Email: ")
         password = args.password or getpass.getpass("Password: ")
-        
         hash_pwd = pwd_hash(password)
         
-        # Prepare login parameters
         login_params = {'name': args.session_name or "CLI Session"}
         
-        # Add optional parameters if provided
         optional_params = [
             ('tfa_code', '2FACode'),
             ('permissions', 'requestedPermissions'),
@@ -854,87 +851,57 @@ class CommandHandler:
             if hasattr(args, attr) and (value := getattr(args, attr)):
                 login_params[param] = value
         
-        # Try to create authentication request
-        response = self.client.auth_request(
-            "CreateAuthenticationRequest", 
-            email, hash_pwd, 
-            login_params
-        )
+        response = self.client.auth_request("CreateAuthenticationRequest", email, hash_pwd, login_params)
         
         if response.get('error'):
-            output = format_output(None, self.output_format, None, f"Login failed: {response['error']}")
-            print(output)
+            print(format_output(None, self.output_format, None, f"Login failed: {response['error']}"))
             return 1
         
-        # Extract token and company info from response
         tables = response.get('tables', [])
         if not tables or not tables[0].get('data'):
-            error_msg = "Login failed: Could not get authentication token"
-            output = format_output(None, self.output_format, None, error_msg)
-            print(output)
+            print(format_output(None, self.output_format, None, "Login failed: Could not get authentication token"))
             return 1
         
         auth_data = tables[0]['data'][0]
         token = auth_data.get('nextRequestCredential')
         if not token:
-            error_msg = "Login failed: Invalid authentication token"
-            output = format_output(None, self.output_format, None, error_msg)
-            print(output)
+            print(format_output(None, self.output_format, None, "Login failed: Invalid authentication token"))
             return 1
         
-        # Check if 2FA is required
         is_authorized = auth_data.get('isAuthorized', True)
         authentication_status = auth_data.get('authenticationStatus', '')
         
         if authentication_status == '2FA_REQUIRED' and not is_authorized:
-            # 2FA is required
             if not hasattr(args, 'tfa_code') or not args.tfa_code:
-                # No TFA code provided, prompt for it
                 if self.output_format != 'json':
-                    # Import i18n module for translation
                     from core import I18n
                     i18n = I18n()
                     tfa_code = input(i18n.get('enter_tfa_code'))
                 else:
-                    error_msg = "2FA_REQUIRED. Please provide --tfa-code parameter."
-                    output = format_output(None, self.output_format, None, error_msg)
-                    print(output)
+                    print(format_output(None, self.output_format, None, "2FA_REQUIRED. Please provide --tfa-code parameter."))
                     return 1
                 
-                # Retry login with 2FA code
                 login_params['2FACode'] = tfa_code
-                response = self.client.auth_request(
-                    "CreateAuthenticationRequest", 
-                    email, hash_pwd, 
-                    login_params
-                )
+                response = self.client.auth_request("CreateAuthenticationRequest", email, hash_pwd, login_params)
                 
                 if response.get('error'):
-                    output = format_output(None, self.output_format, None, f"2FA verification failed: {response['error']}")
-                    print(output)
+                    print(format_output(None, self.output_format, None, f"2FA verification failed: {response['error']}"))
                     return 1
                 
-                # Extract updated token after 2FA
                 tables = response.get('tables', [])
                 if not tables or not tables[0].get('data'):
-                    error_msg = "2FA verification failed: Could not get authentication token"
-                    output = format_output(None, self.output_format, None, error_msg)
-                    print(output)
+                    print(format_output(None, self.output_format, None, "2FA verification failed: Could not get authentication token"))
                     return 1
                 
                 auth_data = tables[0]['data'][0]
                 token = auth_data.get('nextRequestCredential')
                 if not token:
-                    error_msg = "2FA verification failed: Invalid authentication token"
-                    output = format_output(None, self.output_format, None, error_msg)
-                    print(output)
+                    print(format_output(None, self.output_format, None, "2FA verification failed: Invalid authentication token"))
                     return 1
         
-        # Extract company information and VaultCompany from the response
         company = auth_data.get('companyName')
         vault_company = auth_data.get('vaultCompany') or auth_data.get('VaultCompany')
         
-        # Save authentication data first (without master password)
         self.config_manager.set_token_with_auth(token, email, company, vault_company)
         
         # Check if company has vault encryption enabled
@@ -945,24 +912,18 @@ class CommandHandler:
                 print(colorize("Your company requires a master password for vault encryption.", 'YELLOW'))
                 master_password = getpass.getpass("Master Password: ")
             
-            # Validate master password
             if self.config_manager.validate_master_password(master_password):
                 self.config_manager.set_master_password(master_password)
                 if self.output_format != 'json':
                     print(colorize("Master password validated successfully", 'GREEN'))
             else:
-                error_msg = "Invalid master password. Please check with your administrator for the correct company master password."
-                output = format_output(None, self.output_format, None, error_msg)
-                print(output)
-                # Still logged in but without vault decryption capability
+                print(format_output(None, self.output_format, None, 
+                    "Invalid master password. Please check with your administrator for the correct company master password."))
                 if self.output_format != 'json':
                     print(colorize("Warning: Logged in but vault data will not be decrypted", 'YELLOW'))
-        elif hasattr(args, 'master_password') and args.master_password:
-            # User provided master password but company doesn't have encryption enabled
-            if self.output_format != 'json':
-                print(colorize("Note: Your company has not enabled vault encryption. The master password will not be used.", 'YELLOW'))
+        elif hasattr(args, 'master_password') and args.master_password and self.output_format != 'json':
+            print(colorize("Note: Your company has not enabled vault encryption. The master password will not be used.", 'YELLOW'))
         
-        # Generate output based on format
         if self.output_format == 'json':
             result = {
                 'email': email,
@@ -970,18 +931,14 @@ class CommandHandler:
                 'vault_encryption_enabled': bool(vault_company and is_encrypted(vault_company)),
                 'master_password_set': bool(self.config_manager.get_master_password())
             }
-            output = format_output(result, self.output_format, f"Successfully logged in as {email}")
-            print(output)
+            print(format_output(result, self.output_format, f"Successfully logged in as {email}"))
         else:
             print(colorize(f"Successfully logged in as {email}", 'GREEN'))
             if company:
                 print(f"Company: {company}")
             if vault_company and is_encrypted(vault_company):
                 print(f"Vault Encryption: Enabled")
-                if self.config_manager.get_master_password():
-                    print(f"Master Password: Set")
-                else:
-                    print(f"Master Password: Not set (vault data will remain encrypted)")
+                print(f"Master Password: {'Set' if self.config_manager.get_master_password() else 'Not set (vault data will remain encrypted)'}")
         
         return 0
     
@@ -1391,7 +1348,6 @@ class CommandHandler:
         
         if resource_type == 'team':
             if args.new_name:
-                # Update team name
                 response = self.client.token_request(
                     "UpdateTeamName", 
                     {"currentTeamName": args.name, "newTeamName": args.new_name}
@@ -1403,7 +1359,6 @@ class CommandHandler:
                 else:
                     result_data['team_name'] = args.new_name
             
-            # Update vault if provided
             if (args.vault or args.vault_file) and success:
                 vault_data = get_vault_data(args)
                 team_name = args.new_name if args.new_name else args.name
@@ -1693,9 +1648,7 @@ class CommandHandler:
         endpoints = CMD_CONFIG['vault']['set']['endpoints']
         
         if resource_type not in endpoints:
-            error = f"Unsupported resource type: {resource_type}"
-            output = format_output(None, self.output_format, None, error)
-            print(output)
+            print(format_output(None, self.output_format, None, f"Unsupported resource type: {resource_type}"))
             return 1
         
         params = get_vault_set_params(args, self.config_manager)
@@ -1718,8 +1671,7 @@ class CommandHandler:
                 if resource_type == 'bridge':
                     result['region'] = args.region
                 
-                output = format_output(result, self.output_format, success_msg)
-                print(output)
+                print(format_output(result, self.output_format, success_msg))
             return 0
         return 1
     
@@ -1737,7 +1689,6 @@ class CommandHandler:
                 "Your company has not enabled vault encryption. Contact your administrator to enable it."))
             return 1
         
-        # Prompt for master password
         master_password = getpass.getpass("Enter master password: ")
         confirm_password = getpass.getpass("Confirm master password: ")
         
@@ -1745,28 +1696,22 @@ class CommandHandler:
             print(format_output(None, self.output_format, None, "Passwords do not match"))
             return 1
         
-        # Validate master password
         if self.config_manager.validate_master_password(master_password):
             self.config_manager.set_master_password(master_password)
             success_msg = "Master password set successfully"
-            if self.output_format == 'json':
-                output = format_output({'success': True}, self.output_format, success_msg)
-            else:
-                output = colorize(success_msg, 'GREEN')
-            print(output)
+            print(format_output({'success': True}, self.output_format, success_msg) if self.output_format == 'json' 
+                  else colorize(success_msg, 'GREEN'))
             return 0
         else:
-            error = "Invalid master password. Please check with your administrator for the correct company master password."
-            output = format_output(None, self.output_format, None, error)
-            print(output)
+            print(format_output(None, self.output_format, None, 
+                "Invalid master password. Please check with your administrator for the correct company master password."))
             return 1
     
     def vault_clear_password(self, args):
         """Clear master password from memory"""
         self.config_manager.clear_master_password()
         success_msg = "Master password cleared from memory"
-        print(format_output({'success': True}, self.output_format, success_msg) 
-              if self.output_format == 'json' 
+        print(format_output({'success': True}, self.output_format, success_msg) if self.output_format == 'json' 
               else colorize(success_msg, 'GREEN'))
         return 0
     
@@ -1785,8 +1730,7 @@ class CommandHandler:
         }
         
         if self.output_format == 'json':
-            output = format_output(status_data, self.output_format)
-            print(output)
+            print(format_output(status_data, self.output_format))
         else:
             print(colorize("VAULT ENCRYPTION STATUS", 'HEADER'))
             print("=" * 40)
@@ -1797,16 +1741,13 @@ class CommandHandler:
             print(f"Master Password: {'Set' if status_data['master_password_set'] else 'Not Set'}")
             
             if not status_data['crypto_available']:
-                print("")
-                print(colorize("To enable vault encryption, install the cryptography library:", 'YELLOW'))
+                print("\n" + colorize("To enable vault encryption, install the cryptography library:", 'YELLOW'))
                 print("  pip install cryptography")
             elif status_data['vault_encryption_enabled'] and not status_data['master_password_set']:
-                print("")
-                print(colorize("Your company requires a master password for vault encryption.", 'YELLOW'))
+                print("\n" + colorize("Your company requires a master password for vault encryption.", 'YELLOW'))
                 print("Use 'rediacc vault set-password' to set it.")
             elif not status_data['vault_company_present']:
-                print("")
-                print(colorize("Note: Vault company information will be fetched on next command.", 'BLUE'))
+                print("\n" + colorize("Note: Vault company information will be fetched on next command.", 'BLUE'))
         
         return 0
     
@@ -1879,11 +1820,8 @@ class CommandHandler:
                     ('Last Heartbeat', item_data.get('LastHeartbeat')),
                 ]
                 
-                # Add priority if available
                 if item_data.get('Priority') is not None:
-                    details.extend([
-                        ('Priority', f"{item_data.get('Priority')} ({item_data.get('PriorityLabel')})"),
-                    ])
+                    details.append(('Priority', f"{item_data.get('Priority')} ({item_data.get('PriorityLabel')})"))
                 
                 # Time calculations
                 details.extend([
@@ -1905,11 +1843,12 @@ class CommandHandler:
                 if item_data.get('IsStale'):
                     details.append(('Warning', colorize('This queue item is STALE', 'YELLOW')))
                 
-                # Format details
                 max_label_width = max(len(label) for label, _ in details)
-                for label, value in details:
-                    if value is not None:
-                        output_parts.append(f"{label.ljust(max_label_width)} : {value}")
+                output_parts.extend(
+                    f"{label.ljust(max_label_width)} : {value}"
+                    for label, value in details
+                    if value is not None
+                )
                 
             # Request Vault
             if len(tables) > 2 and tables[2].get('data') and tables[2]['data']:
@@ -1947,14 +1886,13 @@ class CommandHandler:
                 
                 timeline_data = tables[4]['data']
                 if timeline_data:
-                    # Format timeline as a table
                     headers = ['Time', 'Status', 'Description']
-                    rows = []
-                    for event in timeline_data:
-                        time = event.get('Timestamp', 'N/A')
-                        status = event.get('NewValue', event.get('Status', 'N/A'))
-                        desc = event.get('ChangeDetails', event.get('Action', 'Status change'))
-                        rows.append([time, status, desc])
+                    rows = [
+                        [event.get('Timestamp', 'N/A'),
+                         event.get('NewValue', event.get('Status', 'N/A')),
+                         event.get('ChangeDetails', event.get('Action', 'Status change'))]
+                        for event in timeline_data
+                    ]
                     
                     if rows:
                         output_parts.append(format_table(headers, rows))

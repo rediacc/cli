@@ -1073,7 +1073,7 @@ class I18n:
     def __init__(self):
         # Load configuration from JSON file
         self._load_config()
-        self.current_language = self.DEFAULT_LANGUAGE
+        self.current_language = self.load_language_preference()
         self._observers = []
     
     def _load_config(self):
@@ -1142,7 +1142,7 @@ class I18n:
         translation = (
             self.translations.get(self.current_language, {}).get(key) or
             self.translations.get('en', {}).get(key) or
-            fallback if fallback is not None else key
+            (fallback if fallback is not None else key)
         )
         
         # Format with provided arguments
@@ -1203,10 +1203,8 @@ class SubprocessRunner:
         self.wrapper_path = os.path.join(os.path.dirname(base_dir), 'rediacc')
         
         # Check for MSYS2 on Windows for better compatibility
-        self.msys2_path = None
+        self.msys2_path = self._find_msys2_installation() if platform.system().lower() == 'windows' else None
         self.use_msys2_python = False
-        if platform.system().lower() == 'windows':
-            self.msys2_path = self._find_msys2_installation()
             
         self.python_cmd = self._find_python()
         
@@ -1478,11 +1476,27 @@ class TerminalDetector:
     def __init__(self):
         self.logger = get_logger(__name__)
         self.cache_dir = os.path.dirname(self.CACHE_FILE)
-        if not os.path.exists(self.cache_dir):
-            os.makedirs(self.cache_dir, exist_ok=True)
+        os.makedirs(self.cache_dir, exist_ok=True)
         
         # Check if running in WSL
         is_wsl = self._is_wsl()
+        
+        # Define common Linux methods
+        linux_methods = [
+            ('gnome_terminal', self._test_gnome_terminal),
+            ('konsole', self._test_konsole),
+            ('xfce4_terminal', self._test_xfce4_terminal),
+            ('mate_terminal', self._test_mate_terminal),
+            ('terminator', self._test_terminator),
+            ('xterm', self._test_xterm)
+        ]
+        
+        # If in WSL, prioritize Windows terminal methods
+        wsl_methods = [
+            ('wsl_wt', self._test_wsl_windows_terminal),
+            ('wsl_powershell', self._test_wsl_powershell),
+            ('wsl_cmd', self._test_wsl_cmd),
+        ] + linux_methods
         
         self.methods = {
             'win32': [
@@ -1497,26 +1511,7 @@ class TerminalDetector:
             'darwin': [
                 ('terminal_app', self._test_macos_terminal)
             ],
-            'linux': [
-                # If in WSL, prioritize Windows terminal methods
-                ('wsl_wt', self._test_wsl_windows_terminal),
-                ('wsl_powershell', self._test_wsl_powershell),
-                ('wsl_cmd', self._test_wsl_cmd),
-                ('gnome_terminal', self._test_gnome_terminal),
-                ('konsole', self._test_konsole),
-                ('xfce4_terminal', self._test_xfce4_terminal),
-                ('mate_terminal', self._test_mate_terminal),
-                ('terminator', self._test_terminator),
-                ('xterm', self._test_xterm)
-            ] if is_wsl else [
-                # Regular Linux
-                ('gnome_terminal', self._test_gnome_terminal),
-                ('konsole', self._test_konsole),
-                ('xfce4_terminal', self._test_xfce4_terminal),
-                ('mate_terminal', self._test_mate_terminal),
-                ('terminator', self._test_terminator),
-                ('xterm', self._test_xterm)
-            ]
+            'linux': wsl_methods if is_wsl else linux_methods
         }
         
         # Load cache
@@ -2050,12 +2045,11 @@ class TerminalDetector:
         }
         
         # Determine the correct CLI script
-        if cmd_parts and cmd_parts[0] in script_map:
-            cli_script = script_map[cmd_parts[0]]
-            args = ' '.join(f'"{arg}"' if ' ' in arg else arg for arg in cmd_parts[1:])
-        else:
-            cli_script = './rediacc'
-            args = command
+        cli_script, args = (
+            (script_map[cmd_parts[0]], ' '.join(f'"{arg}"' if ' ' in arg else arg for arg in cmd_parts[1:]))
+            if cmd_parts and cmd_parts[0] in script_map
+            else ('./rediacc', command)
+        )
         
         # Use start with /D to set working directory and /max to maximize
         cmd_cmd = f'start /max "WSL Terminal" /D "%WINDIR%" wsl bash -c "cd {cli_dir} && {cli_script} {args}"'
