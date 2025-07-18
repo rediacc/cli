@@ -9,11 +9,12 @@ from pathlib import Path
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 
 from rediacc_cli_core import (
-    colorize, validate_cli_tool, RepositoryConnection,
-    INTERIM_FOLDER_NAME, get_ssh_key_from_vault
+    colorize, add_common_arguments,
+    error_exit, initialize_cli_command, RepositoryConnection, INTERIM_FOLDER_NAME, 
+    get_ssh_key_from_vault, SSHConnection
 )
 
-from core import TokenManager, setup_logging, get_logger
+from core import setup_logging, get_logger
 
 # Load configuration
 def load_config():
@@ -33,27 +34,6 @@ def print_message(key, color='BLUE', **kwargs):
     if kwargs: msg = msg.format(**kwargs)
     print(colorize(msg, color))
 
-def setup_ssh_connection(ssh_key, host_entry, dev_mode=False):
-    """Setup SSH connection with agent or fallback to temp files"""
-    from rediacc_cli_core import (
-        setup_ssh_agent_connection, cleanup_ssh_agent,
-        setup_ssh_for_connection, cleanup_ssh_key
-    )
-    
-    try:
-        ssh_opts, agent_pid, known_hosts_file = setup_ssh_agent_connection(ssh_key, host_entry)
-        print_message('ssh_agent_setup', pid=agent_pid)
-        return ssh_opts, agent_pid, None, known_hosts_file
-    except Exception as e:
-        print_message('ssh_agent_failed', 'YELLOW', error=e)
-        ssh_opts, ssh_key_file, known_hosts_file = setup_ssh_for_connection(ssh_key, host_entry)
-        return ssh_opts, None, ssh_key_file, known_hosts_file
-
-def cleanup_ssh(agent_pid, ssh_key_file, known_hosts_file, conn=None):
-    """Cleanup SSH resources"""
-    from rediacc_cli_core import cleanup_ssh_agent, cleanup_ssh_key
-    if agent_pid: cleanup_ssh_agent(agent_pid, known_hosts_file)
-    elif ssh_key_file: conn.cleanup_ssh(ssh_key_file, known_hosts_file) if conn else cleanup_ssh_key(ssh_key_file, known_hosts_file)
 
 def get_config_value(*keys, default=''):
     """Get nested config value with default"""
@@ -75,13 +55,16 @@ def connect_to_machine(args):
     validate_machine_accessibility(args.machine, args.team, connection_info['ip'])
     
     print(MESSAGES.get('retrieving_ssh_key', 'Retrieving SSH key...'))
-    if not (ssh_key := get_ssh_key_from_vault(args.team)): print_message('ssh_key_not_found', 'RED', team=args.team); sys.exit(1)
+    if not (ssh_key := get_ssh_key_from_vault(args.team)): 
+        error_exit(MESSAGES.get('ssh_key_not_found', 'SSH key not found').format(team=args.team))
     
     host_entry = None if args.dev else connection_info.get('host_entry')
-    ssh_opts, agent_pid, ssh_key_file, known_hosts_file = setup_ssh_connection(ssh_key, host_entry, args.dev)
     
-    try:
-        ssh_cmd = ['ssh', '-tt', *ssh_opts.split(), f"{connection_info['user']}@{connection_info['ip']}"]
+    with SSHConnection(ssh_key, host_entry) as ssh_conn:
+        if ssh_conn.is_using_agent:
+            print_message('ssh_agent_setup', pid=ssh_conn.agent_pid)
+        
+        ssh_cmd = ['ssh', '-tt', *ssh_conn.ssh_opts.split(), f"{connection_info['user']}@{connection_info['ip']}"]
         universal_user = connection_info.get('universal_user', 'rediacc')
         universal_user_id = connection_info.get('universal_user_id')
         datastore_path = f"{connection_info['datastore']}/{universal_user_id}" if universal_user_id else connection_info['datastore']
@@ -100,9 +83,6 @@ def connect_to_machine(args):
         
         result = subprocess.run(ssh_cmd)
         handle_ssh_exit_code(result.returncode, "machine")
-            
-    finally:
-        cleanup_ssh(agent_pid, ssh_key_file, known_hosts_file)
 
 
 def connect_to_terminal(args):
@@ -115,24 +95,17 @@ def connect_to_terminal(args):
     
     original_host_entry = conn.connection_info.get('host_entry') if args.dev else None
     if args.dev: conn.connection_info['host_entry'] = None
-    if not (ssh_key := get_ssh_key_from_vault(args.team)): print_message('ssh_key_not_found', 'RED', team=args.team); sys.exit(1)
+    if not (ssh_key := get_ssh_key_from_vault(args.team)): 
+        error_exit(MESSAGES.get('ssh_key_not_found', 'SSH key not found').format(team=args.team))
     
     host_entry = None if args.dev else conn.connection_info.get('host_entry')
     
-    # Try agent first, then fallback to conn.setup_ssh()
-    try:
-        from rediacc_cli_core import setup_ssh_agent_connection
-        ssh_opts, agent_pid, known_hosts_file = setup_ssh_agent_connection(ssh_key, host_entry)
-        print_message('ssh_agent_setup', pid=agent_pid)
-        ssh_key_file = None
-    except Exception as e:
-        print_message('ssh_agent_failed', 'YELLOW', error=e)
-        ssh_opts, ssh_key_file, known_hosts_file = conn.setup_ssh()
-        agent_pid = None
-    
-    if args.dev and original_host_entry is not None: conn.connection_info['host_entry'] = original_host_entry
-    
-    try:
+    with SSHConnection(ssh_key, host_entry) as ssh_conn:
+        if ssh_conn.is_using_agent:
+            print_message('ssh_agent_setup', pid=ssh_conn.agent_pid)
+        
+        if args.dev and original_host_entry is not None: 
+            conn.connection_info['host_entry'] = original_host_entry
         repo_paths = conn.repo_paths
         docker_socket = repo_paths['docker_socket']
         docker_host = f"unix://{docker_socket}"
@@ -157,7 +130,7 @@ def connect_to_terminal(args):
             ssh_env_setup = f"""{env_exports}export PS1='{ps1_prompt}'\n{extended_cd_logic}\n\n{functions}\n\n{exports}\n\n{chr(10).join(welcome_lines)}\n"""
         
         universal_user = conn.connection_info.get('universal_user', 'rediacc')
-        ssh_cmd = ['ssh', '-tt', *ssh_opts.split(), conn.ssh_destination]
+        ssh_cmd = ['ssh', '-tt', *ssh_conn.ssh_opts.split(), conn.ssh_destination]
         escaped_env = ssh_env_setup.replace("'", "'\"'\"'")
         
         if args.command:
@@ -170,9 +143,6 @@ def connect_to_terminal(args):
         ssh_cmd.append(f"sudo -u {universal_user} bash -c '{full_command}'")
         result = subprocess.run(ssh_cmd)
         handle_ssh_exit_code(result.returncode, "repository terminal")
-            
-    finally:
-        cleanup_ssh(agent_pid, ssh_key_file, known_hosts_file, conn)
 
 def main():
     help_config = CONFIG.get('help_text', {})
@@ -200,11 +170,10 @@ def main():
         formatter_class=argparse.RawDescriptionHelpFormatter,
         epilog=epilog_text
     )
-    parser.add_argument('--verbose', '-v', action='store_true',
-                       help='Enable verbose logging output')
-    parser.add_argument('--token', help='Authentication token (GUID)')
-    parser.add_argument('--team', help='Team name')
-    parser.add_argument('--machine', help='Target machine name')
+    # Add common arguments
+    add_common_arguments(parser, include_args=['verbose', 'token', 'team', 'machine'])
+    
+    # Add repo separately since it has different requirements
     parser.add_argument('--repo', help='Target repository name (optional - if not specified, connects to machine only)')
     parser.add_argument('--command', help='Command to execute (interactive shell if not specified)')
     parser.add_argument('--dev', action='store_true', help='Development mode - relaxes SSH host key checking')
@@ -217,10 +186,7 @@ def main():
     if args.verbose: logger.debug("Rediacc CLI Term starting up"); logger.debug(f"Arguments: {vars(args)}")
     if not (args.team and args.machine): parser.error("--team and --machine are required in CLI mode")
     
-    if args.token: os.environ['REDIACC_TOKEN'] = args.token
-    elif not TokenManager.get_token(): parser.error("No authentication token available. Please login first.")
-    
-    validate_cli_tool()
+    initialize_cli_command(args, parser)
     (connect_to_terminal if args.repo else connect_to_machine)(args)
 
 if __name__ == '__main__':

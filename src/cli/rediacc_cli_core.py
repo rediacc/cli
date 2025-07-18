@@ -67,14 +67,25 @@ COLORS = {
 def colorize(text: str, color: str) -> str:
     return f"{COLORS.get(color, '')}{text}{COLORS['ENDC']}" if sys.stdout.isatty() else text
 
+def error_exit(message: str, code: int = 1):
+    """Print an error message in red and exit with the specified code.
+    
+    Args:
+        message: The error message to display (without "Error: " prefix)
+        code: Exit code (default: 1)
+    """
+    print(colorize(f"Error: {message}", 'RED'))
+    sys.exit(code)
+
 def run_command(cmd, capture_output=True, check=True, quiet=False):
     cmd = cmd.split() if isinstance(cmd, str) else cmd
     
     def handle_error(stderr=None):
         if not quiet:
-            print(colorize(f"Error running command: {' '.join([safe_error_message(arg) for arg in cmd])}", 'RED'))
-            if stderr: print(colorize(f"Error: {safe_error_message(stderr)}", 'RED'))
-        sys.exit(1)
+            error_msg = f"running command: {' '.join([safe_error_message(arg) for arg in cmd])}"
+            if stderr: 
+                error_msg += f"\n{safe_error_message(stderr)}"
+            error_exit(error_msg)
     
     try:
         if not capture_output: return subprocess.run(cmd, check=check)
@@ -82,7 +93,8 @@ def run_command(cmd, capture_output=True, check=True, quiet=False):
         if result.returncode != 0 and check:
             try:
                 error_data = json.loads(result.stdout)
-                if error_data.get('error') and not quiet: print(colorize(f"API Error: {error_data['error']}", 'RED')); sys.exit(1)
+                if error_data.get('error') and not quiet: 
+                    error_exit(f"API Error: {error_data['error']}")
             except: pass
             handle_error(result.stderr)
         return result.stdout.strip() if result.returncode == 0 else None
@@ -106,8 +118,7 @@ def _retry_with_backoff(func, max_retries=3, initial_delay=0.5, error_msg="Opera
             delay *= 2
     else:
         if exit_on_failure:
-            print(colorize(f"{error_msg} after {max_retries} attempts", 'RED'))
-            sys.exit(1)
+            error_exit(f"{error_msg} after {max_retries} attempts")
         return None
 
 def _get_universal_user_info() -> Tuple[Optional[str], Optional[str]]:
@@ -128,7 +139,8 @@ class _SuppressSysExit:
     def __exit__(self, exc_type, exc_val, exc_tb): sys.exit = self.original_exit
 
 def get_machine_info_with_team(team_name: str, machine_name: str) -> Dict[str, Any]:
-    if not TokenManager.get_token(): print(colorize("No authentication token available", 'RED')); sys.exit(1)
+    if not TokenManager.get_token(): 
+        error_exit("No authentication token available")
     
     def try_inspect(quiet: bool = False):
         with _SuppressSysExit() as ctx:
@@ -144,8 +156,7 @@ def get_machine_info_with_team(team_name: str, machine_name: str) -> Dict[str, A
     try:
         inspect_data = json.loads(inspect_output)
         if not inspect_data.get('success'):
-            print(colorize(f"Error inspecting machine: {inspect_data.get('error', 'Unknown error')}", 'RED'))
-            sys.exit(1)
+            error_exit(f"inspecting machine: {inspect_data.get('error', 'Unknown error')}")
         
         machine_info = inspect_data.get('data', [{}])[0]
         
@@ -156,12 +167,12 @@ def get_machine_info_with_team(team_name: str, machine_name: str) -> Dict[str, A
         
         return machine_info
     except (json.JSONDecodeError, KeyError) as e:
-        print(colorize(f"Error parsing machine data: {str(e)}", 'RED'))
-        sys.exit(1)
+        error_exit(f"parsing machine data: {str(e)}")
 
 
 def get_repository_info(team_name: str, repo_name: str) -> Dict[str, Any]:
-    if not TokenManager.get_token(): print(colorize("No authentication token available", 'RED')); sys.exit(1)
+    if not TokenManager.get_token(): 
+        error_exit("No authentication token available")
     
     def try_inspect(quiet: bool = False):
         with _SuppressSysExit() as ctx:
@@ -177,8 +188,7 @@ def get_repository_info(team_name: str, repo_name: str) -> Dict[str, Any]:
     try:
         inspect_data = json.loads(inspect_output)
         if not inspect_data.get('success'):
-            print(colorize(f"Error inspecting repository: {inspect_data.get('error', 'Unknown error')}", 'RED'))
-            sys.exit(1)
+            error_exit(f"inspecting repository: {inspect_data.get('error', 'Unknown error')}")
         
         repo_info = inspect_data.get('data', [{}])[0]
         
@@ -188,8 +198,7 @@ def get_repository_info(team_name: str, repo_name: str) -> Dict[str, Any]:
         
         return repo_info
     except json.JSONDecodeError as e:
-        print(colorize(f"Failed to parse JSON response: {e}", 'RED'))
-        sys.exit(1)
+        error_exit(f"Failed to parse JSON response: {e}")
 
 def get_ssh_key_from_vault(team_name: Optional[str] = None) -> Optional[str]:
     token = TokenManager.get_token()
@@ -313,6 +322,95 @@ def cleanup_ssh_key(ssh_key_file: str, known_hosts_file: str = None):
     for file_path in (ssh_key_file, known_hosts_file):
         if file_path and os.path.exists(file_path): os.unlink(file_path)
 
+class SSHConnection:
+    """Context manager for SSH connections with automatic cleanup.
+    
+    Tries SSH agent first, falls back to file-based keys if agent fails.
+    Automatically cleans up resources on exit.
+    """
+    
+    def __init__(self, ssh_key: str, host_entry: str = None, prefer_agent: bool = True):
+        """Initialize SSH connection context.
+        
+        Args:
+            ssh_key: SSH private key content
+            host_entry: Optional known_hosts entry
+            prefer_agent: Whether to try SSH agent first (default: True)
+        """
+        self.ssh_key = ssh_key
+        self.host_entry = host_entry
+        self.prefer_agent = prefer_agent
+        self.ssh_opts = None
+        self.agent_pid = None
+        self.ssh_key_file = None
+        self.known_hosts_file = None
+        self._using_agent = False
+    
+    def __enter__(self):
+        """Setup SSH connection."""
+        if self.prefer_agent:
+            try:
+                self.ssh_opts, self.agent_pid, self.known_hosts_file = setup_ssh_agent_connection(
+                    self.ssh_key, self.host_entry
+                )
+                self._using_agent = True
+                return self
+            except Exception as e:
+                # Log warning and fall back to file-based
+                if sys.stdout.isatty():
+                    print(colorize(f"SSH agent setup failed: {e}, falling back to file-based keys", 'YELLOW'))
+        
+        # File-based fallback
+        self.ssh_opts, self.ssh_key_file, self.known_hosts_file = setup_ssh_for_connection(
+            self.ssh_key, self.host_entry
+        )
+        return self
+    
+    def __exit__(self, exc_type, exc_val, exc_tb):
+        """Cleanup SSH resources."""
+        if self.agent_pid:
+            cleanup_ssh_agent(self.agent_pid, self.known_hosts_file)
+        elif self.ssh_key_file:
+            cleanup_ssh_key(self.ssh_key_file, self.known_hosts_file)
+    
+    @property
+    def is_using_agent(self) -> bool:
+        """Check if using SSH agent."""
+        return self._using_agent
+    
+    @property
+    def connection_method(self) -> str:
+        """Get the connection method being used."""
+        return "ssh-agent" if self._using_agent else "file-based"
+
+class SSHTunnelConnection(SSHConnection):
+    """Context manager for SSH connections that need to maintain tunnels.
+    
+    This is a special variant that doesn't automatically cleanup SSH resources
+    on exit, allowing tunnels to persist. Cleanup must be done manually.
+    """
+    
+    def __init__(self, ssh_key: str, host_entry: str = None, prefer_agent: bool = True):
+        """Initialize SSH tunnel connection context."""
+        super().__init__(ssh_key, host_entry, prefer_agent)
+        self._cleanup_on_exit = True
+    
+    def disable_auto_cleanup(self):
+        """Disable automatic cleanup on exit (for persistent tunnels)."""
+        self._cleanup_on_exit = False
+    
+    def __exit__(self, exc_type, exc_val, exc_tb):
+        """Only cleanup if auto-cleanup is enabled."""
+        if self._cleanup_on_exit:
+            super().__exit__(exc_type, exc_val, exc_tb)
+    
+    def manual_cleanup(self):
+        """Manually cleanup SSH resources."""
+        if self.agent_pid:
+            cleanup_ssh_agent(self.agent_pid, self.known_hosts_file)
+        elif self.ssh_key_file:
+            cleanup_ssh_key(self.ssh_key_file, self.known_hosts_file)
+
 def get_machine_connection_info(machine_info: Dict[str, Any]) -> Dict[str, Any]:
     machine_name = machine_info.get('machineName')
     vault = machine_info.get('vault', {})
@@ -370,9 +468,104 @@ def get_repository_paths(repo_guid: str, datastore: str, universal_user_id: str 
         'docker_exec': f"{docker_base}/exec",
     }
 
-def validate_cli_tool():
-    if not os.path.exists(CLI_TOOL): print(colorize(f"Error: rediacc-cli not found at {CLI_TOOL}", 'RED')); sys.exit(1)
-    if not is_windows() and not os.access(CLI_TOOL, os.X_OK): print(colorize(f"Error: rediacc-cli is not executable at {CLI_TOOL}", 'RED')); sys.exit(1)
+def initialize_cli_command(args, parser, requires_cli_tool=True):
+    """Standard initialization for CLI commands.
+    
+    Performs common initialization tasks:
+    1. Validates authentication
+    2. Validates CLI tool availability (if required)
+    
+    Args:
+        args: Parsed command line arguments
+        parser: ArgumentParser instance for error reporting
+        requires_cli_tool: Whether to validate rediacc-cli.py exists (default: True)
+    """
+    # Validate authentication
+    if hasattr(args, 'token') and args.token:
+        os.environ['REDIACC_TOKEN'] = args.token
+    elif not TokenManager.get_token():
+        parser.error("No authentication token available. Please login first.")
+    
+    # Validate CLI tool if required
+    if requires_cli_tool:
+        if not os.path.exists(CLI_TOOL): 
+            error_exit(f"rediacc-cli not found at {CLI_TOOL}")
+        if not is_windows() and not os.access(CLI_TOOL, os.X_OK): 
+            error_exit(f"rediacc-cli is not executable at {CLI_TOOL}")
+
+def add_common_arguments(parser, include_args=None, required_overrides=None):
+    """Add common arguments to an argument parser.
+    
+    Args:
+        parser: ArgumentParser or subparser to add arguments to
+        include_args: List of argument names to include. If None, includes all.
+                     Valid names: 'token', 'team', 'machine', 'repo', 'verbose'
+        required_overrides: Dict mapping argument names to their required status.
+                           E.g., {'team': False, 'machine': False} to make them optional
+    
+    Returns:
+        parser: The modified parser (for chaining)
+    """
+    # Define all common arguments with their configurations
+    common_args = {
+        'token': {
+            'flags': ['--token'],
+            'kwargs': {
+                'help': 'Authentication token (GUID) - uses saved token if not specified',
+                'required': False
+            }
+        },
+        'team': {
+            'flags': ['--team'],
+            'kwargs': {
+                'help': 'Team name',
+                'required': True
+            }
+        },
+        'machine': {
+            'flags': ['--machine'],
+            'kwargs': {
+                'help': 'Machine name',
+                'required': True
+            }
+        },
+        'repo': {
+            'flags': ['--repo'],
+            'kwargs': {
+                'help': 'Repository name',
+                'required': True
+            }
+        },
+        'verbose': {
+            'flags': ['--verbose', '-v'],
+            'kwargs': {
+                'action': 'store_true',
+                'help': 'Enable verbose logging output'
+            }
+        }
+    }
+    
+    # If no specific args requested, include all
+    if include_args is None:
+        include_args = list(common_args.keys())
+    
+    # Initialize required_overrides if not provided
+    if required_overrides is None:
+        required_overrides = {}
+    
+    # Add requested arguments
+    for arg_name in include_args:
+        if arg_name in common_args:
+            arg_config = common_args[arg_name].copy()
+            kwargs = arg_config['kwargs'].copy()
+            
+            # Apply required override if specified
+            if arg_name in required_overrides:
+                kwargs['required'] = required_overrides[arg_name]
+            
+            parser.add_argument(*arg_config['flags'], **kwargs)
+    
+    return parser
 
 def wait_for_enter(message: str = "Press Enter to continue..."):
     input(colorize(f"\n{message}", 'YELLOW'))
@@ -404,7 +597,7 @@ def validate_machine_accessibility(machine_name: str, team_name: str, ip: str, r
         print(colorize(f"Repository: {repo_name}", 'BLUE'))
     print(colorize("\nPlease verify the machine is online and accessible from your network.", 'YELLOW'))
     wait_for_enter("Press Enter to exit...")
-    sys.exit(1)
+    sys.exit(1)  # Keep as is - this is a special user interaction case
 
 def handle_ssh_exit_code(returncode: int, connection_type: str = "machine"):
     if returncode == 0: print(colorize(f"\nDisconnected from {connection_type}.", 'GREEN')); return
@@ -441,16 +634,14 @@ class RepositoryConnection:
         self._connection_info = get_machine_connection_info(self._machine_info)
         
         if not all([self._connection_info.get('ip'), self._connection_info.get('user')]):
-            print(colorize("Machine IP or user not found in vault", 'RED'))
-            sys.exit(1)
+            error_exit("Machine IP or user not found in vault")
         
         print(f"Fetching repository information for '{self.repo_name}'...")
         self._repo_info = get_repository_info(self._connection_info['team'], self.repo_name)
         
         if not (repo_guid := self._repo_info.get('repoGuid') or self._repo_info.get('grandGuid')):
-            print(colorize(f"Repository GUID not found for '{self.repo_name}'", 'RED'))
             print(colorize(f"Repository info: {json.dumps(self._repo_info, indent=2)}", 'YELLOW'))
-            sys.exit(1)
+            error_exit(f"Repository GUID not found for '{self.repo_name}'")
         
         _, universal_user_id = _get_universal_user_info()
         
@@ -463,7 +654,7 @@ class RepositoryConnection:
             print(colorize(f"SSH private key not found in vault for team '{team_name}'", 'RED'))
             print(colorize("The team vault should contain 'SSH_PRIVATE_KEY' field with the SSH private key.", 'YELLOW'))
             print(colorize("Please ensure SSH keys are properly configured in your team's vault settings.", 'YELLOW'))
-            sys.exit(1)
+            sys.exit(1)  # Keep as is - provides additional context before exit
     
     def setup_ssh(self) -> Tuple[str, str, str]:
         host_entry = self._connection_info.get('host_entry')
@@ -471,6 +662,18 @@ class RepositoryConnection:
     
     def cleanup_ssh(self, ssh_key_file: str, known_hosts_file: str = None):
         cleanup_ssh_key(ssh_key_file, known_hosts_file)
+    
+    def ssh_context(self, prefer_agent: bool = True):
+        """Get SSH connection context manager.
+        
+        Args:
+            prefer_agent: Whether to try SSH agent first (default: True)
+            
+        Returns:
+            SSHConnection context manager
+        """
+        host_entry = self._connection_info.get('host_entry')
+        return SSHConnection(self._ssh_key, host_entry, prefer_agent)
     
     @property
     def ssh_destination(self) -> str:

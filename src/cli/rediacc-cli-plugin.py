@@ -15,16 +15,17 @@ sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 
 from rediacc_cli_core import (
     colorize,
-    validate_cli_tool,
+    add_common_arguments,
+    error_exit,
+    initialize_cli_command,
     RepositoryConnection,
-    setup_ssh_for_connection,
-    cleanup_ssh_key,
+    SSHTunnelConnection,
     is_windows,
-    safe_error_message
+    safe_error_message,
+    get_ssh_key_from_vault
 )
 
 from core import (
-    TokenManager,
     get_config_dir, get_plugin_connections_file, get_ssh_control_dir
 )
 
@@ -87,13 +88,13 @@ def list_plugins(args):
     
     original_host_entry = conn.connection_info.get('host_entry') if args.dev else None
     if args.dev: conn.connection_info['host_entry'] = None
-    ssh_opts, ssh_key_file, known_hosts_file = conn.setup_ssh()
-    if args.dev and original_host_entry is not None: conn.connection_info['host_entry'] = original_host_entry
     
-    try:
+    with conn.ssh_context() as ssh_conn:
+        if args.dev and original_host_entry is not None: 
+            conn.connection_info['host_entry'] = original_host_entry
         universal_user = conn.connection_info.get('universal_user', 'rediacc')
         
-        ssh_cmd = ['ssh', *ssh_opts.split(), conn.ssh_destination,
+        ssh_cmd = ['ssh', *ssh_conn.ssh_opts.split(), conn.ssh_destination,
                    f"sudo -u {universal_user} bash -c 'cd {conn.repo_paths['mount_path']} && ls -la *.sock 2>/dev/null || true'"]
         
         result = subprocess.run(ssh_cmd, capture_output=True, text=True)
@@ -115,7 +116,7 @@ def list_plugins(args):
                 print(colorize("\nPlugin container status:", 'BLUE'))
                 docker_cmd = f"sudo -u {universal_user} bash -c 'export DOCKER_HOST=\"{conn.repo_paths['docker_socket']}\" && docker ps --format \"table {{{{.Names}}}}\\t{{{{.Image}}}}\\t{{{{.Status}}}}\" | grep plugin || true'"
                 
-                ssh_cmd = ['ssh', *ssh_opts.split(), conn.ssh_destination, docker_cmd]
+                ssh_cmd = ['ssh', *ssh_conn.ssh_opts.split(), conn.ssh_destination, docker_cmd]
                 
                 docker_result = subprocess.run(ssh_cmd, capture_output=True, text=True)
                 if docker_result.returncode == 0 and docker_result.stdout.strip():
@@ -134,9 +135,6 @@ def list_plugins(args):
             print(colorize("No plugins found or repository not accessible", 'YELLOW'))
             if result.stderr:
                 print(colorize(f"Error: {safe_error_message(result.stderr)}", 'RED'))
-                
-    finally:
-        conn.cleanup_ssh(ssh_key_file, known_hosts_file)
 
 def connect_plugin(args):
     print(colorize(f"Connecting to plugin '{args.plugin}' in repository '{args.repo}'...", 'HEADER'))
@@ -162,28 +160,43 @@ def connect_plugin(args):
         return
     
     if args.port:
-        if not is_port_available(args.port): print(colorize(f"Port {args.port} is not available", 'RED')); sys.exit(1)
+        if not is_port_available(args.port): 
+            error_exit(f"Port {args.port} is not available")
         local_port = args.port
-    elif not (local_port := find_available_port()): print(colorize("No available ports in range 7111-9111", 'RED')); sys.exit(1)
+    elif not (local_port := find_available_port()): 
+        error_exit("No available ports in range 7111-9111")
     
     conn = RepositoryConnection(args.team, args.machine, args.repo); conn.connect()
     
     original_host_entry = conn.connection_info.get('host_entry') if args.dev else None
     if args.dev: conn.connection_info['host_entry'] = None
-    ssh_opts, ssh_key_file, known_hosts_file = conn.setup_ssh()
-    if args.dev and original_host_entry is not None: conn.connection_info['host_entry'] = original_host_entry
+    
+    # Get SSH key for tunnel connection
+    if not (ssh_key := get_ssh_key_from_vault(args.team)):
+        error_exit(f"SSH key not found for team '{args.team}'")
+    
+    # Use SSHTunnelConnection for persistent tunnels
+    host_entry = None if args.dev else conn.connection_info.get('host_entry')
+    ssh_tunnel_conn = SSHTunnelConnection(ssh_key, host_entry)
+    ssh_tunnel_conn.__enter__()  # Setup connection
+    ssh_tunnel_conn.disable_auto_cleanup()  # Prevent auto cleanup for persistent tunnel
+    
+    if args.dev and original_host_entry is not None: 
+        conn.connection_info['host_entry'] = original_host_entry
     
     try:
         # Verify plugin socket exists
         universal_user = conn.connection_info.get('universal_user', 'rediacc')
         socket_path = f"{conn.repo_paths['mount_path']}/{args.plugin}.sock"
         
-        check_cmd = ['ssh', *ssh_opts.split(), conn.ssh_destination,
+        check_cmd = ['ssh', *ssh_tunnel_conn.ssh_opts.split(), conn.ssh_destination,
                      f"sudo -u {universal_user} test -S {socket_path} && echo 'exists' || echo 'not found'"]
         
         result = subprocess.run(check_cmd, capture_output=True, text=True)
         if result.returncode != 0 or 'not found' in result.stdout:
-            print(colorize(f"Plugin socket '{args.plugin}.sock' not found", 'RED')); print("Use 'list' command to see available plugins"); sys.exit(1)
+            print(colorize(f"Plugin socket '{args.plugin}.sock' not found", 'RED'))
+            print("Use 'list' command to see available plugins")
+            sys.exit(1)
         
         # Generate connection ID
         conn_id = generate_connection_id(args.team, args.machine, args.repo, args.plugin)
@@ -212,7 +225,7 @@ def connect_plugin(args):
                 '-o', 'ControlPersist=10m',
                 '-o', 'ExitOnForwardFailure=yes',
                 '-L', f'localhost:{local_port}:{socket_path}',
-                *ssh_opts.split(),
+                *ssh_tunnel_conn.ssh_opts.split(),
                 conn.ssh_destination,
             ]
             
@@ -221,7 +234,9 @@ def connect_plugin(args):
             # Start SSH tunnel
             result = subprocess.run(ssh_tunnel_cmd, capture_output=True, text=True)
             if result.returncode != 0:
-                print(colorize(f"Failed to establish tunnel: {safe_error_message(result.stderr)}", 'RED')); cleanup_ssh_key(ssh_key_file, known_hosts_file); sys.exit(1)
+                print(colorize(f"Failed to establish tunnel: {safe_error_message(result.stderr)}", 'RED'))
+                ssh_tunnel_conn.manual_cleanup()
+                sys.exit(1)
             
             def get_ssh_pid(control_path: str) -> Optional[int]:
                 try:
@@ -235,14 +250,14 @@ def connect_plugin(args):
         else:
             # Fallback: Use socat if available
             # First, check if socat is available on remote
-            check_socat_cmd = ['ssh', *ssh_opts.split(), conn.ssh_destination,
+            check_socat_cmd = ['ssh', *ssh_tunnel_conn.ssh_opts.split(), conn.ssh_destination,
                               "which socat >/dev/null 2>&1 && echo 'available' || echo 'missing'"]
             
             socat_check = subprocess.run(check_socat_cmd, capture_output=True, text=True)
             if 'missing' in socat_check.stdout:
                 print(colorize("Error: Your SSH client doesn't support Unix socket forwarding", 'RED'))
                 print("Please upgrade to OpenSSH 6.7+ or install socat on the remote machine")
-                cleanup_ssh_key(ssh_key_file, known_hosts_file)
+                ssh_tunnel_conn.manual_cleanup()
                 sys.exit(1)
             
             # Build SSH command with remote socat forwarding
@@ -252,7 +267,7 @@ def connect_plugin(args):
                 '-o', 'ControlMaster=auto',
                 '-o', f'ControlPath={control_path}',
                 '-o', 'ControlPersist=10m',
-                *ssh_opts.split(),
+                *ssh_tunnel_conn.ssh_opts.split(),
                 conn.ssh_destination,
                 f"sudo -u {universal_user} socat TCP-LISTEN:{local_port},bind=localhost,reuseaddr,fork UNIX-CONNECT:{socket_path}"
             ]
@@ -271,7 +286,7 @@ def connect_plugin(args):
             if process.poll() is not None:
                 stdout, stderr = process.communicate()
                 print(colorize(f"Failed to establish tunnel: {safe_error_message(stderr.decode())}", 'RED'))
-                cleanup_ssh_key(ssh_key_file, known_hosts_file)
+                ssh_tunnel_conn.manual_cleanup()
                 sys.exit(1)
         
         # Save connection info
@@ -284,8 +299,8 @@ def connect_plugin(args):
             'local_port': local_port,
             'ssh_pid': process.pid,
             'control_path': control_path,
-            'ssh_key_file': ssh_key_file,
-            'known_hosts_file': known_hosts_file,
+            'ssh_key_file': ssh_tunnel_conn.ssh_key_file,
+            'known_hosts_file': ssh_tunnel_conn.known_hosts_file,
             'created_at': datetime.now().isoformat()
         }
         
@@ -301,13 +316,16 @@ def connect_plugin(args):
         print(f"\nTo disconnect, run: {colorize(f'rediacc plugin disconnect --connection-id {conn_id}', 'YELLOW')}")
         
     except Exception as e:
-        print(colorize(f"Error: {e}", 'RED')); cleanup_ssh_key(ssh_key_file, known_hosts_file); sys.exit(1)
+        print(colorize(f"Error: {e}", 'RED'))
+        ssh_tunnel_conn.manual_cleanup()
+        sys.exit(1)
 
 def disconnect_plugin(args):
     connections = load_connections()
     
     if args.connection_id:
-        if args.connection_id not in connections: print(colorize(f"Connection ID '{args.connection_id}' not found", 'RED')); sys.exit(1)
+        if args.connection_id not in connections: 
+            error_exit(f"Connection ID '{args.connection_id}' not found")
         to_disconnect = [args.connection_id]
     else:
         to_disconnect = [conn_id for conn_id, conn_info in connections.items() if all([conn_info.get('team') == args.team, conn_info.get('machine') == args.machine, conn_info.get('repo') == args.repo, not args.plugin or conn_info.get('plugin') == args.plugin])]
@@ -394,19 +412,13 @@ Plugin Access:
     
     # List command
     list_parser = subparsers.add_parser('list', help='List available plugins in a repository')
-    list_parser.add_argument('--token', required=False, help='Authentication token (GUID) - uses saved token if not specified')
-    list_parser.add_argument('--team', required=True, help='Team name')
-    list_parser.add_argument('--machine', required=True, help='Machine name')
-    list_parser.add_argument('--repo', required=True, help='Repository name')
+    add_common_arguments(list_parser, include_args=['token', 'team', 'machine', 'repo'])
     list_parser.add_argument('--dev', action='store_true', help='Development mode - relaxes SSH host key checking')
     list_parser.set_defaults(func=list_plugins)
     
     # Connect command
     connect_parser = subparsers.add_parser('connect', help='Connect to a plugin')
-    connect_parser.add_argument('--token', required=False, help='Authentication token (GUID) - uses saved token if not specified')
-    connect_parser.add_argument('--team', required=True, help='Team name')
-    connect_parser.add_argument('--machine', required=True, help='Machine name')
-    connect_parser.add_argument('--repo', required=True, help='Repository name')
+    add_common_arguments(connect_parser, include_args=['token', 'team', 'machine', 'repo'])
     connect_parser.add_argument('--plugin', required=True, help='Plugin name (e.g., browser, terminal)')
     connect_parser.add_argument('--port', type=int, help='Local port to use (auto-assigned if not specified)')
     connect_parser.add_argument('--dev', action='store_true', help='Development mode - relaxes SSH host key checking')
@@ -415,9 +427,8 @@ Plugin Access:
     # Disconnect command
     disconnect_parser = subparsers.add_parser('disconnect', help='Disconnect plugin connection(s)')
     disconnect_parser.add_argument('--connection-id', help='Connection ID to disconnect')
-    disconnect_parser.add_argument('--team', help='Team name')
-    disconnect_parser.add_argument('--machine', help='Machine name')
-    disconnect_parser.add_argument('--repo', help='Repository name')
+    add_common_arguments(disconnect_parser, include_args=['team', 'machine', 'repo'], 
+                        required_overrides={'team': False, 'machine': False, 'repo': False})
     disconnect_parser.add_argument('--plugin', help='Plugin name (disconnect all if not specified)')
     disconnect_parser.set_defaults(func=disconnect_plugin)
     
@@ -428,11 +439,9 @@ Plugin Access:
     args = parser.parse_args()
     if not args.command: parser.print_help(); sys.exit(1)
     
-    if hasattr(args, 'token') and args.command in ['list', 'connect']:
-        if args.token: os.environ['REDIACC_TOKEN'] = args.token
-        elif not TokenManager.get_token(): parser.error("No authentication token available. Please login first.")
+    if args.command in ['list', 'connect']:
+        initialize_cli_command(args, parser)
     
-    if args.command in ['list', 'connect']: validate_cli_tool()
     args.func(args)
 
 if __name__ == '__main__':
