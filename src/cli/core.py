@@ -264,7 +264,6 @@ class Config:
         return local_env if local_env.exists() else None
     
     def _load_env_file(self, env_file: Optional[str] = None):
-        """Load configuration from .env file"""
         env_path = Path(env_file) if env_file else self._find_env_file()
         
         if not env_path or not env_path.exists():
@@ -399,34 +398,26 @@ def get(key: str, default: Optional[str] = None) -> Optional[str]:
     return _config.get(key, default)
 
 def get_required(key: str) -> str:
-    """Get a required configuration value"""
     return _config.get_required(key)
 
 def get_int(key: str, default: Optional[int] = None) -> Optional[int]:
-    """Get a configuration value as integer"""
     return _config.get_int(key, default)
 
 def get_bool(key: str, default: bool = False) -> bool:
-    """Get a configuration value as boolean"""
     return _config.get_bool(key, default)
 
 def get_path(key: str, default: Optional[str] = None) -> Optional[Path]:
-    """Get a configuration value as Path"""
     return _config.get_path(key, default)
 
 
-# ============================================================================
-# API MUTEX MODULE (from api_mutex.py)
-# ============================================================================
+# API MUTEX MODULE
 
-# Try to import fcntl (Unix/Linux/MSYS2)
 try:
     import fcntl
     HAS_FCNTL = True
 except ImportError:
     HAS_FCNTL = False
 
-# Try to import msvcrt (Windows)
 try:
     import msvcrt
     HAS_MSVCRT = True
@@ -434,26 +425,20 @@ except ImportError:
     HAS_MSVCRT = False
 
 class APIMutex:
-    """Simple file-based mutex for API calls"""
-    
     def __init__(self, lock_file: Path = None):
         if lock_file is None:
-            # Use centralized lock file path
             lock_file = get_api_lock_file()
         
         self.lock_file = str(lock_file)
     
     @contextmanager
     def acquire(self, timeout: float = 30.0):
-        """Acquire exclusive lock for API call"""
         start_time = time.time()
         lock_fd = None
         
         try:
-            # Open or create lock file
             lock_fd = os.open(self.lock_file, os.O_CREAT | os.O_WRONLY)
             
-            # Try to acquire exclusive lock with timeout
             while True:
                 try:
                     fcntl.flock(lock_fd, fcntl.LOCK_EX | fcntl.LOCK_NB)
@@ -462,91 +447,66 @@ class APIMutex:
                     if e.errno != errno.EAGAIN:
                         raise
                     
-                    # Check timeout
                     if time.time() - start_time > timeout:
                         raise TimeoutError(f"Could not acquire API lock after {timeout}s")
                     
-                    # Brief sleep before retry
                     time.sleep(0.05)
             
-            # Lock acquired, yield control
             yield
             
         finally:
-            # Release lock and close file
             if lock_fd is not None:
                 with contextlib.suppress(Exception):
                     fcntl.flock(lock_fd, fcntl.LOCK_UN)
                 with contextlib.suppress(Exception):
                     os.close(lock_fd)
 
-# For Windows compatibility when fcntl is not available
 if not HAS_FCNTL and HAS_MSVCRT:
     class APIMutexWindows:
-        """Windows-compatible mutex using msvcrt"""
-        
         def __init__(self, lock_file: Path = None):
             if lock_file is None:
-                # Use centralized lock file path
                 lock_file = get_api_lock_file()
             
             self.lock_file = str(lock_file)
         
         @contextmanager
         def acquire(self, timeout: float = 30.0):
-            """Acquire exclusive lock for API call on Windows"""
             start_time = time.time()
             file_handle = None
             
             try:
-                # Ensure directory exists
                 os.makedirs(os.path.dirname(self.lock_file), exist_ok=True)
                 
-                # Try to open/create the lock file
                 while True:
                     try:
-                        # Open file in binary write mode
                         file_handle = open(self.lock_file, 'wb')
-                        
-                        # Try to acquire exclusive lock
                         msvcrt.locking(file_handle.fileno(), msvcrt.LK_NBLCK, 1)
                         break
                     except IOError:
-                        # Lock is held by another process
                         if file_handle:
                             file_handle.close()
                             file_handle = None
                         
-                        # Check timeout
                         if time.time() - start_time > timeout:
                             raise TimeoutError(f"Could not acquire API lock after {timeout}s")
                         
-                        # Brief sleep before retry
                         time.sleep(0.05)
                 
-                # Lock acquired, yield control
                 yield
                 
             finally:
-                # Release lock and close file
                 if file_handle:
                     with contextlib.suppress(Exception):
-                        # Unlock the file
                         msvcrt.locking(file_handle.fileno(), msvcrt.LK_UNLCK, 1)
                     with contextlib.suppress(Exception):
                         file_handle.close()
 
-# Create the appropriate mutex instance based on platform capabilities
 if HAS_FCNTL:
-    # Use fcntl-based locking (Unix/Linux/MSYS2 with POSIX support)
     api_mutex = APIMutex()
 elif HAS_MSVCRT:
-    # Use msvcrt-based locking (Native Windows)
     api_mutex = APIMutexWindows()
 else:
-    # Fallback: No locking available
     class APIMutexNoOp:
-        """No-op mutex when no locking mechanism is available"""
         def __init__(self, lock_file: Path = None):
             pass
         
@@ -558,11 +518,8 @@ else:
     print("Warning: No file locking mechanism available", file=sys.stderr)
 
 
-# ============================================================================
-# TOKEN MANAGER MODULE (from token_manager.py)
-# ============================================================================
+# TOKEN MANAGER MODULE
 
-# Try to import cryptography library for vault operations
 try:
     from cryptography.hazmat.primitives import hashes
     from cryptography.hazmat.primitives.kdf.pbkdf2 import PBKDF2HMAC
@@ -573,30 +530,21 @@ try:
 except ImportError:
     CRYPTO_AVAILABLE = False
 
-# Get logger
 logger = get_logger(__name__)
 
 
 def is_encrypted(value: str) -> bool:
-    """Check if a value appears to be encrypted
-    Encrypted values are base64 encoded and typically longer than the original
-    """
     if not value or len(value) < 20:
         return False
     
     try:
-        # Try to decode as base64
         decoded = base64.b64decode(value)
-        # Encrypted values should be at least 32 bytes (salt + iv + minimal ciphertext)
         return len(decoded) >= 32
     except Exception:
         return False
 
 
 def decrypt_string(encrypted: str, password: str) -> str:
-    """Decrypt a string encrypted with encrypt_string
-    Expects base64 encoded string: salt || iv || ciphertext || authTag
-    """
     if not CRYPTO_AVAILABLE:
         raise RuntimeError("Cryptography library not available")
     
@@ -649,12 +597,10 @@ class TokenManager:
         return cls._instance
     
     def __init__(self):
-        """Initialize only once"""
         if not TokenManager._initialized:
             with TokenManager._lock:
                 if not TokenManager._initialized:
                     self._initialize()
-                    # Session state variables (not persisted)
                     self._master_password = None
                     self._vault_company = None
                     self._company_name = None
@@ -664,27 +610,21 @@ class TokenManager:
     
     @classmethod
     def _initialize(cls):
-        """Initialize static configuration"""
         config_dir = get_config_dir()
         
-        # Handle MSYS2 path resolution - try both Windows and MSYS2 formats
         if 'MSYSTEM' in os.environ:
             config_dir_str = str(config_dir)
             
-            # First try the Windows path as-is (might work in some MSYS2 setups)
             if not config_dir.exists():
-                # Try MSYS2 format conversion
                 if config_dir_str.startswith(('C:', 'c:')):
                     drive = config_dir_str[0].lower()
                     rest = config_dir_str[2:].replace('\\', '/')
                     
-                    # Try MSYS2 path format
                     msys2_path = f'/{drive}{rest}'
                     if Path(msys2_path).exists():
                         config_dir = Path(msys2_path)
                         logger.debug(f"MSYS2: Using converted path: {msys2_path}")
                     else:
-                        # Try WSL format as fallback
                         wsl_path = f'/mnt/{drive}{rest}'
                         if Path(wsl_path).exists():
                             config_dir = Path(wsl_path)
@@ -699,22 +639,17 @@ class TokenManager:
     
     @classmethod
     def _ensure_secure_config(cls):
-        """Ensure config directory and file have proper permissions"""
-        # Create directory with secure permissions (Unix systems only)
         try:
             cls._config_dir.mkdir(mode=0o700, exist_ok=True)
         except OSError:
-            # Fallback for Windows or systems that don't support mode
             cls._config_dir.mkdir(exist_ok=True)
         
-        # Set secure permissions on existing config file (Unix systems only)
         if cls._config_file.exists():
             with contextlib.suppress(OSError, NotImplementedError):
                 cls._config_file.chmod(0o600)
     
     @classmethod
     def _load_from_config(cls) -> Dict[str, Any]:
-        """Load configuration from file with thread safety - NO CACHING"""
         with cls._lock:
             if not cls._config_file.exists():
                 return {}
@@ -728,54 +663,45 @@ class TokenManager:
     
     @classmethod
     def _save_config(cls, config: Dict[str, Any]):
-        """Save configuration to file with secure permissions and thread safety"""
         import platform
         import shutil
         
         with cls._lock:
             cls._config_dir.mkdir(mode=0o700, exist_ok=True)
             
-            # On Windows/MSYS2, use more robust file handling
             is_windows = platform.system() == 'Windows' or 'MSYSTEM' in os.environ
             max_retries = 3 if is_windows else 1
             
             for attempt in range(max_retries):
                 temp_file = cls._config_file.with_suffix(f'.tmp.{attempt}.{int(time.time())}')
                 try:
-                    # Write to unique temporary file
                     with open(temp_file, 'w') as f:
                         json.dump(config, f, indent=2)
                     
-                    # Set secure permissions if not Windows
                     if not is_windows:
                         temp_file.chmod(0o600)
                     
-                    # Try to replace the config file
                     if is_windows and cls._config_file.exists():
                         with contextlib.suppress(OSError):
                             cls._config_file.unlink()
                     
-                    # Move temp file to final location
                     if is_windows:
                         shutil.move(str(temp_file), str(cls._config_file))
                     else:
                         temp_file.replace(cls._config_file)
                     
-                    # Success - set final permissions
                     if not is_windows:
                         cls._config_file.chmod(0o600)
                     
-                    return  # Success
+                    return
                     
                 except OSError as e:
                     logger.warning(f"Config save attempt {attempt + 1} failed: {e}")
-                    # Clean up temp file
                     if temp_file.exists():
                         with contextlib.suppress(OSError):
                             temp_file.unlink()
                     
                     if attempt < max_retries - 1:
-                        # Wait before retry
                         time.sleep(0.1 * (attempt + 1))
                     else:
                         logger.error(f"Failed to save config after {max_retries} attempts: {e}")
@@ -789,17 +715,9 @@ class TokenManager:
     
     @classmethod
     def get_token(cls, override_token: Optional[str] = None) -> Optional[str]:
-        """
-        Get token with clear precedence - ALWAYS READ FROM FILE:
-        1. Override token (from command line)
-        2. Environment variable (REDIACC_TOKEN)
-        3. Config file (always read fresh)
-        """
-        # Ensure initialization
         if not cls._initialized:
             TokenManager()
         
-        # 1. Override token has highest priority
         if override_token:
             if cls.validate_token(override_token):
                 return override_token
@@ -807,7 +725,6 @@ class TokenManager:
                 logger.warning("Invalid override token format")
                 return None
         
-        # 2. Check environment variable
         env_token = os.environ.get('REDIACC_TOKEN')
         if env_token:
             if cls.validate_token(env_token):
@@ -815,7 +732,6 @@ class TokenManager:
             else:
                 logger.warning("Invalid token in REDIACC_TOKEN environment variable")
         
-        # 3. Always load fresh from config file - NO CACHING
         try:
             config = cls._load_from_config()
             token = config.get('token')
@@ -836,8 +752,6 @@ class TokenManager:
     @classmethod
     def set_token(cls, token: str, email: Optional[str] = None, 
                   company: Optional[str] = None, vault_company: Optional[str] = None):
-        """Store token and related auth info securely"""
-        # Ensure initialization
         if not cls._initialized:
             TokenManager()
             
@@ -846,7 +760,6 @@ class TokenManager:
         
         config = cls._load_from_config()
         
-        # Update auth information
         config['token'] = token
         config['token_updated_at'] = datetime.now(timezone.utc).isoformat()
         
@@ -1078,7 +991,7 @@ class I18n:
     
     def _load_config(self):
         """Load languages and translations from JSON configuration file"""
-        config_path = Path(__file__).parent.parent / 'config' / 'rediacc-gui.json'
+        config_path = Path(__file__).parent.parent / 'config' / 'rediacc-gui-translations.json'
         
         if not config_path.exists():
             raise FileNotFoundError(f"Translation configuration file not found: {config_path}")

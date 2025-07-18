@@ -17,22 +17,13 @@ import base64
 from typing import Dict, Any, Optional, List, Union
 from pathlib import Path
 
-# Add parent directory to path for module imports
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 
-# Import all core modules from consolidated core module
 from core import (
-    # Config loader
     load_config, get_required, get, get_path, ConfigError,
-    # Token manager
-    TokenManager,
-    # API mutex
-    api_mutex,
-    # Logging
-    setup_logging, get_logger
+    TokenManager, api_mutex, setup_logging, get_logger
 )
 
-# Try to import cryptography library
 try:
     from cryptography.hazmat.primitives import hashes
     from cryptography.hazmat.primitives.kdf.pbkdf2 import PBKDF2HMAC
@@ -40,47 +31,38 @@ try:
     CRYPTO_AVAILABLE = True
 except ImportError:
     CRYPTO_AVAILABLE = False
-    # Print warning after colorize is defined
 
-# Load configuration
 try:
     load_config()
 except ConfigError as e:
     print(f"Configuration error: {e}", file=sys.stderr)
     sys.exit(1)
 
-# Configuration
+from core import get_config_dir, get_main_config_file
+
 HTTP_PORT = get_required('SYSTEM_HTTP_PORT')
 BASE_URL = get_required('REDIACC_API_URL')
 API_PREFIX = '/StoredProcedure'
-# Import config path functions from core module
-from core import get_config_dir, get_main_config_file
-
 CONFIG_DIR = str(get_config_dir())
 CONFIG_FILE = str(get_main_config_file())
 REQUEST_TIMEOUT = 30
 TEST_ACTIVATION_CODE = get('REDIACC_TEST_ACTIVATION_CODE') or '111111'
 
-# Color codes for terminal output
 COLORS = {
     'HEADER': '\033[95m', 'BLUE': '\033[94m', 'GREEN': '\033[92m',
     'YELLOW': '\033[93m', 'RED': '\033[91m', 'ENDC': '\033[0m', 'BOLD': '\033[1m',
 }
 
 def colorize(text, color):
-    """Add color to terminal output if supported"""
     return f"{COLORS.get(color, '')}{text}{COLORS['ENDC']}" if sys.stdout.isatty() else text
 
-# Print crypto warning if needed (to stderr to avoid contaminating JSON output)
 if not CRYPTO_AVAILABLE:
     print(colorize("Warning: cryptography library not installed. Vault encryption will not be available.", 'YELLOW'), file=sys.stderr)
-    # Check if we're in MSYS2 environment
     if os.environ.get('MSYSTEM') or (sys.platform == 'win32' and ('/msys' in sys.executable.lower() or '/mingw' in sys.executable.lower())):
         print(colorize("For MSYS2: Run 'pacman -S mingw-w64-x86_64-python-cryptography' or './scripts/install_msys2_packages.sh'", 'YELLOW'), file=sys.stderr)
     else:
         print(colorize("Install with: pip install cryptography", 'YELLOW'), file=sys.stderr)
 
-# Load CLI configuration from JSON file
 CLI_CONFIG_PATH = Path(__file__).parent.parent / 'config' / 'rediacc-cli.json'
 try:
     with open(CLI_CONFIG_PATH, 'r') as f:
@@ -92,19 +74,15 @@ except Exception as e:
     print(colorize(f"Error loading CLI configuration from {CLI_CONFIG_PATH}: {e}", 'RED'))
     sys.exit(1)
 
-# Vault Encryption Functions
-# Following the same protocol as the web console (AES-256-GCM with PBKDF2)
 ITERATIONS = 100000
-SALT_SIZE = 16  # 128 bits
-IV_SIZE = 12    # 96 bits for GCM
-TAG_SIZE = 16   # 128 bits for GCM
-KEY_SIZE = 32   # 256 bits
+SALT_SIZE = 16
+IV_SIZE = 12
+TAG_SIZE = 16
+KEY_SIZE = 32
 
 def derive_key(password: str, salt: bytes) -> bytes:
-    """Derive a 256-bit key from password using PBKDF2-HMAC-SHA256"""
     if not CRYPTO_AVAILABLE:
         raise RuntimeError("Cryptography library not available")
-    
     kdf = PBKDF2HMAC(
         algorithm=hashes.SHA256(),
         length=KEY_SIZE,
@@ -114,76 +92,41 @@ def derive_key(password: str, salt: bytes) -> bytes:
     return kdf.derive(password.encode('utf-8'))
 
 def encrypt_string(plaintext: str, password: str) -> str:
-    """Encrypt a string using AES-256-GCM
-    Returns base64 encoded string: salt || iv || ciphertext || authTag
-    """
     if not CRYPTO_AVAILABLE:
         raise RuntimeError("Cryptography library not available")
-    
-    # Generate random salt and IV
     salt = os.urandom(SALT_SIZE)
     iv = os.urandom(IV_SIZE)
-    
-    # Derive key
     key = derive_key(password, salt)
     aesgcm = AESGCM(key)
-    
-    # Encrypt (ciphertext includes auth tag at the end)
     ciphertext = aesgcm.encrypt(iv, plaintext.encode('utf-8'), None)
-    
-    # Combine salt + IV + ciphertext (includes auth tag)
     combined = salt + iv + ciphertext
-    
-    # Return base64 encoded
     return base64.b64encode(combined).decode('ascii')
 
 def decrypt_string(encrypted: str, password: str) -> str:
-    """Decrypt a string encrypted with encrypt_string
-    Expects base64 encoded string: salt || iv || ciphertext || authTag
-    """
     if not CRYPTO_AVAILABLE:
         raise RuntimeError("Cryptography library not available")
-    
-    # Decode from base64
     combined = base64.b64decode(encrypted)
-    
-    # Extract components
     salt = combined[:SALT_SIZE]
     iv = combined[SALT_SIZE:SALT_SIZE + IV_SIZE]
     ciphertext = combined[SALT_SIZE + IV_SIZE:]
-    
-    # Derive key
     key = derive_key(password, salt)
     aesgcm = AESGCM(key)
-    
-    # Decrypt
     plaintext = aesgcm.decrypt(iv, ciphertext, None)
     return plaintext.decode('utf-8')
 
 def is_encrypted(value: str) -> bool:
-    """Check if a value appears to be encrypted
-    Encrypted values are base64 encoded and typically longer than the original
-    """
     if not value or len(value) < 20:
         return False
-    
-    # Check if the value is valid JSON (not encrypted)
     try:
         json.loads(value)
-        # If it parses as JSON, it's not encrypted
         return False
     except:
-        # Not valid JSON, continue checking if it's encrypted
         pass
-    
-    # Check if it matches base64 pattern and has reasonable length
-    # Encrypted values are typically much longer than originals due to IV + encrypted data
     import re
     base64_pattern = re.compile(r'^[A-Za-z0-9+/]+=*$')
     return base64_pattern.match(value) is not None and len(value) >= 40
 
 def encrypt_vault_fields(obj: dict, password: str) -> dict:
-    """Recursively encrypt fields containing 'vault' in their name"""
     if not password or not obj:
         return obj
     
@@ -204,7 +147,6 @@ def encrypt_vault_fields(obj: dict, password: str) -> dict:
     }
 
 def decrypt_vault_fields(obj: dict, password: str) -> dict:
-    """Recursively decrypt fields containing 'vault' in their name"""
     if not password or not obj:
         return obj
     
@@ -224,10 +166,7 @@ def decrypt_vault_fields(obj: dict, password: str) -> dict:
         for key, value in obj.items()
     }
 
-# Available bash functions for queuing
-# Convert lambda functions from JSON strings to actual functions
 def reconstruct_cmd_config():
-    """Reconstruct CMD_CONFIG with actual lambda functions"""
     def process_value(value):
         if not isinstance(value, dict):
             return value
@@ -237,7 +176,6 @@ def reconstruct_cmd_config():
             result['params'] = eval(value['params'])
             return result
         
-        # Nested dict case
         return {
             k: process_value(v) if isinstance(v, dict) else v
             for k, v in value.items()
@@ -245,9 +183,7 @@ def reconstruct_cmd_config():
     
     return {key: process_value(value) for key, value in CMD_CONFIG_JSON.items()}
 
-# Convert ARG_DEFS type lambdas
 def reconstruct_arg_defs():
-    """Reconstruct ARG_DEFS with actual type functions"""
     def process_arg(arg):
         if not isinstance(arg, dict) or 'type' not in arg:
             return arg
@@ -275,18 +211,11 @@ def reconstruct_arg_defs():
     
     return {key: process_value(value) for key, value in ARG_DEFS_JSON.items()}
 
-# Reconstruct configurations with actual functions
 CMD_CONFIG = reconstruct_cmd_config()
 ARG_DEFS = reconstruct_arg_defs()
 
-# NOTE: ConfigManager class was removed and consolidated into TokenManager
-# All configuration management is now handled by TokenManager in token_manager.py
-# This eliminates code duplication and provides better thread safety and token management
-
 class APIClient:
-    """Client for interacting with the Rediacc Middleware API"""
     def __init__(self, config_manager):
-        """Initialize API client with required config_manager for proper token management"""
         if not config_manager:
             raise ValueError("config_manager is required for APIClient to ensure proper token management")
         
@@ -296,16 +225,12 @@ class APIClient:
             "Content-Type": "application/json",
             "User-Agent": "rediacc-cli/1.0"
         }
-        # Load vault info from config
         self.config_manager.load_vault_info_from_config()
     
     def request(self, endpoint, data=None, headers=None):
-        """Make an API request to the middleware service"""
         url = f"{BASE_URL}{API_PREFIX}/{endpoint}"
-        
         merged_headers = {**self.base_headers, **(headers or {})}
         
-        # Encrypt vault fields if master password is set
         if data and self.config_manager and (master_pwd := self.config_manager.get_master_password()):
             try:
                 data = encrypt_vault_fields(data, master_pwd)
@@ -329,13 +254,11 @@ class APIClient:
                 
                 result = json.loads(response_data)
                 
-                # Check for actual failure (failure != 0)
                 if result.get('failure') and result.get('failure') != 0:
                     errors = result.get('errors', [])
                     error_msg = f"API Error: {'; '.join(errors)}" if errors else f"API Error: {result.get('message', 'Request failed')}"
                     return {"error": error_msg, "status_code": 400}
                 
-                # Decrypt vault fields if master password is set
                 if self.config_manager and (master_pwd := self.config_manager.get_master_password()):
                     try:
                         result = decrypt_vault_fields(result, master_pwd)
@@ -353,16 +276,12 @@ class APIClient:
             return {"error": f"Request error: {str(e)}", "status_code": 500}
     
     def auth_request(self, endpoint, email, pwd_hash, data=None):
-        """Make an authenticated request with user credentials"""
         return self.request(endpoint, data, {
             "Rediacc-UserEmail": email,
             "Rediacc-UserHash": pwd_hash
         })
     
     def token_request(self, endpoint, data=None, retry_count=0):
-        """Make a request authenticated with a token"""
-        # Use mutex to ensure only one API call at a time
-        # This prevents token rotation race conditions
         try:
             with api_mutex.acquire(timeout=30.0):
                 return self._token_request_impl(endpoint, data, retry_count)
@@ -372,19 +291,16 @@ class APIClient:
             return {"error": f"API call error: {str(e)}", "status_code": 500}
     
     def _token_request_impl(self, endpoint, data=None, retry_count=0):
-        """Implementation of token request (called within mutex)"""
         token = TokenManager.get_token()
         if not token:
             return {"error": "Not authenticated. Please login first.", "status_code": 401}
         
-        # Ensure vault info is fetched before making requests (except for GetCompanyVault itself)
         if endpoint != 'GetCompanyVault':
             self._ensure_vault_info()
             self._show_vault_warning_if_needed()
         
         response = self.request(endpoint, data, {"Rediacc-RequestToken": token})
         
-        # Handle token race condition - retry if we get 401 and token has changed
         if response and response.get('status_code') == 401 and retry_count < 2:
             import time
             time.sleep(0.1 * (retry_count + 1))
@@ -392,12 +308,10 @@ class APIClient:
             if TokenManager.get_token() != token:
                 return self._token_request_impl(endpoint, data, retry_count + 1)
         
-        # Update token if a new one is provided
         self._update_token_if_needed(response, token)
         return response
     
     def _show_vault_warning_if_needed(self):
-        """Show vault encryption warning if needed"""
         if (self.config_manager and self.config_manager.has_vault_encryption() 
             and not self.config_manager.get_master_password() 
             and not hasattr(self, '_vault_warning_shown')):
@@ -406,7 +320,6 @@ class APIClient:
             self._vault_warning_shown = True
     
     def _update_token_if_needed(self, response, current_token):
-        """Update token if server provided a new one"""
         if not (response and not response.get('error') and self.config_manager):
             return
             
@@ -418,11 +331,9 @@ class APIClient:
         if not (new_token and new_token != current_token):
             return
             
-        # Don't update if using environment variable or command line override
         if os.environ.get('REDIACC_TOKEN') or self.config_manager.is_token_overridden():
             return
             
-        # Only update if our token is still current
         if TokenManager.get_token() == current_token:
             TokenManager.set_token(
                 new_token,
@@ -432,19 +343,15 @@ class APIClient:
             )
     
     def _ensure_vault_info(self):
-        """Ensure vault info is fetched if needed"""
         if not (self.config_manager and self.config_manager.needs_vault_info_fetch()):
             return
         
-        # Mark as fetched to avoid infinite recursion
         self.config_manager.mark_vault_info_fetched()
         
-        # Fetch company vault info
         company_info = self.get_company_vault()
         if not company_info:
             return
         
-        # Update config manager with vault info, but only if we have the required data
         email = self.config_manager.config.get('email')
         token = TokenManager.get_token()
         if email and token:
@@ -456,20 +363,17 @@ class APIClient:
             )
     
     def get_company_vault(self):
-        """Get company vault information for the current authenticated session"""
         response = self.token_request("GetCompanyVault", {})
         
         if response.get('error'):
             return None
         
-        # Extract company information from response
         for table in response.get('tables', []):
             data = table.get('data', [])
             if not data:
                 continue
             
             row = data[0]
-            # Skip credentials table
             if 'nextRequestCredential' in row:
                 continue
             
@@ -483,9 +387,7 @@ class APIClient:
         
         return None
 
-# Output format handler
 def format_output(data, format_type, message=None, error=None):
-    """Format output based on the specified format type"""
     if format_type == 'json':
         output = {'success': error is None, 'data': data}
         if message:
@@ -494,7 +396,6 @@ def format_output(data, format_type, message=None, error=None):
             output['error'] = error
         return json.dumps(output, indent=2)
     
-    # Text format (default)
     if error:
         return colorize(f"Error: {error}", 'RED')
     if data:
@@ -503,25 +404,17 @@ def format_output(data, format_type, message=None, error=None):
         return colorize(message, 'GREEN')
     return "No data available"
 
-# Utility functions
-
-# Static salt for password hashing - provides additional protection against dictionary attacks
-# This salt is concatenated with the password before hashing to ensure even common passwords
-# produce unique hashes. The salt value must be consistent across all components.
 STATIC_SALT = 'Rd!@cc111$ecur3P@$$w0rd$@lt#H@$h'
 
 def pwd_hash(pwd):
-    """Generate a hexadecimal password hash for authentication and user operations"""
     salted_password = pwd + STATIC_SALT
     return "0x" + hashlib.sha256(salted_password.encode()).digest().hex()
 
 def extract_table_data(response, table_index=0):
-    """Extract data from API response tables"""
     tables = response.get('tables', []) if response else []
     return tables[table_index].get('data', []) if len(tables) > table_index else []
 
 def get_vault_data(args):
-    """Get vault data from arguments"""
     if not (hasattr(args, 'vault_file') and args.vault_file):
         return getattr(args, 'vault', '{}') or '{}'
     
@@ -535,8 +428,6 @@ def get_vault_data(args):
         return '{}'
 
 def get_vault_set_params(args, config_manager=None):
-    """Generate params for vault set commands"""
-    # Load vault data
     if args.file and args.file != '-':
         try:
             with open(args.file, 'r') as f:
@@ -548,17 +439,14 @@ def get_vault_set_params(args, config_manager=None):
         print("Enter JSON vault data (press Ctrl+D when finished):")
         vault_data = sys.stdin.read()
     
-    # Validate JSON
     try:
         json.loads(vault_data)
     except json.JSONDecodeError as e:
         print(colorize(f"Error: Invalid JSON: {str(e)}", 'RED'))
         return None
     
-    # Base params
     params = {'vaultVersion': args.vault_version or 1}
     
-    # Resource-specific params mapping
     resource_mappings = {
         'team': {'teamName': args.name, 'teamVault': vault_data},
         'machine': {'teamName': args.team, 'machineName': args.name, 'machineVault': vault_data},
@@ -579,7 +467,6 @@ def get_vault_set_params(args, config_manager=None):
     return params
 
 def camel_to_title(name):
-    """Convert camelCase or PascalCase to Title Case"""
     special_cases = {
         'vaultVersion': 'Vault Version', 'vaultContent': 'Vault Content',
         'memberCount': 'Members', 'machineCount': 'Machines',
@@ -614,20 +501,16 @@ def camel_to_title(name):
     if name in special_cases:
         return special_cases[name]
     
-    # Insert spaces before capital letters
     return ''.join(' ' + char if char.isupper() and i > 0 else char 
                    for i, char in enumerate(name)).strip().title()
 
 def format_table(headers, rows):
-    """Format data as a table for display"""
     if not rows:
         return "No items found"
     
-    # Calculate column widths
     widths = [max(len(h), max(len(str(row[i])) for row in rows if i < len(row))) 
               for i, h in enumerate(headers)]
     
-    # Format the headers and rows
     header_line = '  '.join(h.ljust(w) for h, w in zip(headers, widths))
     separator = '-' * len(header_line)
     formatted_rows = [
@@ -638,14 +521,12 @@ def format_table(headers, rows):
     return '\n'.join([header_line, separator] + formatted_rows)
 
 def table_to_dict(headers, rows):
-    """Convert table data to a list of dictionaries for JSON output"""
     return [
         {header: row[i] for i, header in enumerate(headers) if i < len(row)}
         for row in rows
     ]
 
 def format_dynamic_tables(response, output_format='text', skip_fields=None):
-    """Format all tables from response dynamically, skipping table index 0"""
     if not response or 'tables' not in response:
         return format_output("No data available", output_format)
     
@@ -660,7 +541,6 @@ def format_dynamic_tables(response, output_format='text', skip_fields=None):
         if not data:
             return None
             
-        # Process records, removing skip fields
         processed_data = [{k: v for k, v in record.items() if k not in skip_fields} for record in data]
         return processed_data if any(processed_data) else None
     
@@ -672,14 +552,12 @@ def format_dynamic_tables(response, output_format='text', skip_fields=None):
                 result.extend(processed)
         return format_output(result, output_format)
     
-    # Text output
     output_parts = []
     for table in tables[1:]:
         data = table.get('data', [])
         if not data:
             continue
         
-        # Get all unique keys from all records
         all_keys = set().union(*(record.keys() for record in data))
         display_keys = sorted(k for k in all_keys if k not in skip_fields)
         
@@ -695,19 +573,16 @@ def format_dynamic_tables(response, output_format='text', skip_fields=None):
     return format_output('\n\n'.join(output_parts) if output_parts else "No records found", output_format)
 
 def build_queue_vault_data(function_name, args):
-    """Build vault data for queue item based on function and arguments"""
     func_def = QUEUE_FUNCTIONS.get(function_name)
     if not func_def:
         return None
     
-    # Build parameters from provided arguments
     params = {}
     for param_name, param_info in func_def.get('params', {}).items():
         value = getattr(args, param_name, param_info.get('default'))
         if value is not None or param_info.get('required', False):
             params[param_name] = value
     
-    # Create vault data structure
     vault_data = {
         'type': 'bash_function',
         'function': function_name,
@@ -719,13 +594,11 @@ def build_queue_vault_data(function_name, args):
     
     return json.dumps(vault_data)
 
-# License Management Functions
 def generate_hardware_id():
-    """Generate hardware ID by calling the middleware API"""
     possible_urls = [
-        "http://localhost:7322/api/health/hardware-id",  # Default local with nginx
-        "http://localhost:5000/api/health/hardware-id",  # Direct middleware port
-        "http://localhost:80/api/health/hardware-id",    # Alternative port
+        "http://localhost:7322/api/health/hardware-id",
+        "http://localhost:5000/api/health/hardware-id",
+        "http://localhost:80/api/health/hardware-id",
     ]
     
     last_error = None
@@ -745,10 +618,8 @@ def generate_hardware_id():
     )
 
 def request_license_from_server(hardware_id, base_url=None):
-    """Request license from the license server"""
     base_url = base_url or BASE_URL
     
-    # Remove API suffixes
     base_url = base_url.removesuffix('/api/StoredProcedure').removesuffix('/api')
     license_url = f"{base_url}/api/license/request"
     
@@ -769,12 +640,10 @@ def request_license_from_server(hardware_id, base_url=None):
         raise Exception(f"Failed to connect to license server: {str(e)}")
 
 def install_license_file(license_file, target_path=None):
-    """Install license file to the specified location"""
     if not os.path.exists(license_file):
         raise FileNotFoundError(f"License file not found: {license_file}")
     
     if not target_path:
-        # Check common locations
         possible_paths = [
             ".", "./bin", "../middleware",
             "../middleware/bin/Debug/net8.0",
@@ -795,7 +664,6 @@ def install_license_file(license_file, target_path=None):
     return target_file
 
 class CommandHandler:
-    """Unified command handler"""
     def __init__(self, config_manager, output_format='text'):
         self.config = config_manager.config
         self.config_manager = config_manager
@@ -803,12 +671,10 @@ class CommandHandler:
         self.output_format = output_format
     
     def handle_response(self, response, success_message=None, format_args=None):
-        """Handle API response and print appropriate message"""
         if response.get('error'):
             print(format_output(None, self.output_format, None, response['error']))
             return False
         
-        # Extract task ID if present for queue operations
         if success_message and format_args and '{task_id}' in success_message:
             tables = response.get('tables', [])
             if len(tables) > 1 and tables[1].get('data'):
@@ -819,7 +685,6 @@ class CommandHandler:
         if not success_message:
             return True
         
-        # Format success message with args if provided
         if format_args:
             format_dict = {k: getattr(format_args, k, '') for k in dir(format_args) if not k.startswith('_')}
             success_message = success_message.format(**format_dict)
@@ -833,7 +698,6 @@ class CommandHandler:
         return True
     
     def login(self, args):
-        """Log in to the Rediacc API"""
         email = args.email or input("Email: ")
         password = args.password or getpass.getpass("Password: ")
         hash_pwd = pwd_hash(password)
@@ -997,21 +861,17 @@ class CommandHandler:
                 
         elif args.license_command == 'request':
             try:
-                # Read hardware ID from file or argument
                 if os.path.isfile(args.hardware_id):
                     with open(args.hardware_id, 'r') as f:
                         hardware_id = f.read().strip()
                 else:
                     hardware_id = args.hardware_id
                 
-                # Request license from server
                 print(colorize("Requesting license from server...", 'BLUE'))
                 license_data = request_license_from_server(hardware_id, args.server_url)
                 
-                # Save license
                 output_file = args.output or 'license.lic'
                 with open(output_file, 'w') as f:
-                    # Handle both uppercase and lowercase field names
                     lic_data = license_data.get('licenseData') or license_data.get('LicenseData')
                     if not lic_data:
                         raise Exception("License data not found in response")
@@ -1047,7 +907,6 @@ class CommandHandler:
                 
         elif args.license_command == 'install':
             try:
-                # Install license file
                 target_file = install_license_file(args.file, args.target)
                 
                 if self.output_format == 'json':
@@ -1076,39 +935,19 @@ class CommandHandler:
             return 1
     
     def queue_add(self, args):
-        """Add a bash function to the queue"""
         func_def = QUEUE_FUNCTIONS.get(args.function)
         if not func_def:
             print(format_output(None, self.output_format, None, f"Unknown function: {args.function}"))
             return 1
         
-        # Collect parameters for the function
         if not self._collect_function_params(args, func_def):
             return 1
         
-        # Build vault data
         vault_data = build_queue_vault_data(args.function, args)
         if not vault_data:
             print(format_output(None, self.output_format, None, "Failed to build queue item data"))
             return 1
-    
-    def _collect_function_params(self, args, func_def):
-        """Collect required parameters for a function"""
-        for param_name, param_info in func_def.get('params', {}).items():
-            if not hasattr(args, param_name):
-                setattr(args, param_name, None)
-            
-            # Prompt for required parameters if not provided
-            if param_info.get('required', False) and getattr(args, param_name) is None:
-                if self.output_format == 'json':
-                    print(format_output(None, self.output_format, None, f"Missing required parameter: {param_name}"))
-                    return False
-                
-                value = input(f"{param_info.get('help', param_name)}: ")
-                setattr(args, param_name, value)
-        return True
         
-        # Create the queue item
         response = self.client.token_request(
             "CreateQueueItem",
             {
@@ -1124,7 +963,6 @@ class CommandHandler:
             print(output)
             return 1
         
-        # Extract task ID
         tables = response.get('tables', [])
         task_id = None
         if len(tables) > 1 and tables[1].get('data'):
@@ -1147,8 +985,21 @@ class CommandHandler:
         
         return 0
     
+    def _collect_function_params(self, args, func_def):
+        for param_name, param_info in func_def.get('params', {}).items():
+            if not hasattr(args, param_name):
+                setattr(args, param_name, None)
+            
+            if param_info.get('required', False) and getattr(args, param_name) is None:
+                if self.output_format == 'json':
+                    print(format_output(None, self.output_format, None, f"Missing required parameter: {param_name}"))
+                    return False
+                
+                value = input(f"{param_info.get('help', param_name)}: ")
+                setattr(args, param_name, value)
+        return True
+    
     def queue_list_functions(self, args):
-        """List available functions that can be queued"""
         if self.output_format == 'json':
             result = {
                 func_name: {
@@ -1167,7 +1018,6 @@ class CommandHandler:
             }
             print(format_output(result, self.output_format))
         else:
-            # Text output with formatted table
             print(colorize("Available Queue Functions", 'HEADER'))
             print("=" * 80)
             
@@ -1191,8 +1041,6 @@ class CommandHandler:
         return 0
     
     def generic_command(self, cmd_type, resource_type, args):
-        """Handle generic commands using configuration"""
-        # Special command handlers
         special_handlers = {
             ('queue', 'add'): self.queue_add,
             ('queue', 'list-functions'): self.queue_list_functions,
@@ -1212,7 +1060,6 @@ class CommandHandler:
         cmd_config = CMD_CONFIG[cmd_type][resource_type]
         auth_required = cmd_config.get('auth_required', True)
         
-        # Handle password prompts for special cases
         password_prompts = [
             (cmd_type == 'create' and resource_type == 'user' and not hasattr(args, 'password'), 
              lambda: setattr(args, 'password', getpass.getpass("Password for new user: "))),
@@ -1226,7 +1073,6 @@ class CommandHandler:
             if condition:
                 action()
         
-        # For remove commands, confirm before proceeding (unless JSON output or force flag)
         confirm_msg = cmd_config.get('confirm_msg')
         if confirm_msg and not args.force and self.output_format != 'json':
             confirm_msg = confirm_msg.format(**{k: getattr(args, k, '') 
@@ -1237,7 +1083,6 @@ class CommandHandler:
                 print("Operation cancelled")
                 return 0
         
-        # Handle vault commands specially
         if cmd_type == 'vault':
             if resource_type == 'set':
                 return self.vault_set(args)
@@ -1249,12 +1094,9 @@ class CommandHandler:
                 return self.vault_status(args)
             return 1
         
-        # Prepare parameters
         params = cmd_config['params'](args) if callable(cmd_config.get('params')) else {}
         
-        # Execute API request
         if cmd_config.get('auth_type') == 'credentials' and hasattr(args, 'email'):
-            # Use credential authentication (for company creation)
             email = args.email or input("Admin Email: ")
             password = args.password
             if not password:
@@ -1392,7 +1234,6 @@ class CommandHandler:
                 else:
                     result_data['region_name'] = args.new_name
             
-            # Update vault if provided
             if (args.vault or args.vault_file) and success:
                 vault_data = get_vault_data(args)
                 region_name = args.new_name if args.new_name else args.name
@@ -1430,7 +1271,6 @@ class CommandHandler:
                 else:
                     result_data['bridge_name'] = args.new_name
             
-            # Update vault if provided
             if (args.vault or args.vault_file) and success:
                 vault_data = get_vault_data(args)
                 bridge_name = args.new_name if args.new_name else args.name
@@ -1491,7 +1331,6 @@ class CommandHandler:
                 else:
                     result_data['bridge'] = args.new_bridge
             
-            # Update vault if provided
             if (args.vault or args.vault_file) and success:
                 vault_data = get_vault_data(args)
                 machine_name = args.new_name if args.new_name else args.name
@@ -1530,7 +1369,6 @@ class CommandHandler:
                 else:
                     result_data['repository_name'] = args.new_name
             
-            # Update vault if provided
             if (args.vault or args.vault_file) and success:
                 vault_data = get_vault_data(args)
                 repo_name = args.new_name if args.new_name else args.name
@@ -1569,7 +1407,6 @@ class CommandHandler:
                 else:
                     result_data['storage_name'] = args.new_name
             
-            # Update vault if provided
             if (args.vault or args.vault_file) and success:
                 vault_data = get_vault_data(args)
                 storage_name = args.new_name if args.new_name else args.name
@@ -1608,7 +1445,6 @@ class CommandHandler:
                 else:
                     result_data['schedule_name'] = args.new_name
             
-            # Update vault if provided
             if (args.vault or args.vault_file) and success:
                 vault_data = get_vault_data(args)
                 schedule_name = args.new_name if args.new_name else args.name
@@ -1801,16 +1637,13 @@ class CommandHandler:
             
             return format_output(result, output_format)
         else:
-            # For text output, format each section separately
             output_parts = []
             
-            # Queue Item Details
             if len(tables) > 1 and tables[1].get('data') and tables[1]['data']:
                 item_data = tables[1]['data'][0]
                 output_parts.append(colorize("QUEUE ITEM DETAILS", 'HEADER'))
                 output_parts.append("=" * 80)
                 
-                # Core details
                 details = [
                     ('Task ID', item_data.get('TaskId')),
                     ('Status', item_data.get('Status')),
@@ -1823,14 +1656,12 @@ class CommandHandler:
                 if item_data.get('Priority') is not None:
                     details.append(('Priority', f"{item_data.get('Priority')} ({item_data.get('PriorityLabel')})"))
                 
-                # Time calculations
                 details.extend([
                     ('Seconds to Assignment', item_data.get('SecondsToAssignment')),
                     ('Processing Duration (seconds)', item_data.get('ProcessingDurationSeconds')),
                     ('Total Duration (seconds)', item_data.get('TotalDurationSeconds')),
                 ])
                 
-                # Resource hierarchy
                 details.extend([
                     ('Company', f"{item_data.get('CompanyName')} (ID: {item_data.get('CompanyId')})"),
                     ('Team', f"{item_data.get('TeamName')} (ID: {item_data.get('TeamId')})"),
@@ -1839,7 +1670,6 @@ class CommandHandler:
                     ('Machine', f"{item_data.get('MachineName')} (ID: {item_data.get('MachineId')})"),
                 ])
                 
-                # Flags
                 if item_data.get('IsStale'):
                     details.append(('Warning', colorize('This queue item is STALE', 'YELLOW')))
                 
@@ -1850,7 +1680,6 @@ class CommandHandler:
                     if value is not None
                 )
                 
-            # Request Vault
             if len(tables) > 2 and tables[2].get('data') and tables[2]['data']:
                 vault_data = tables[2]['data'][0]
                 if vault_data.get('HasContent'):
@@ -1864,7 +1693,6 @@ class CommandHandler:
                     except:
                         output_parts.append(vault_data.get('VaultContent', 'No content'))
             
-            # Response Vault
             if len(tables) > 3 and tables[3].get('data') and tables[3]['data']:
                 vault_data = tables[3]['data'][0]
                 if vault_data.get('HasContent'):
@@ -1878,7 +1706,6 @@ class CommandHandler:
                     except:
                         output_parts.append(vault_data.get('VaultContent', 'No content'))
             
-            # Timeline
             if len(tables) > 4 and tables[4].get('data') and tables[4]['data']:
                 output_parts.append("")
                 output_parts.append(colorize("PROCESSING TIMELINE", 'HEADER'))
@@ -1902,89 +1729,70 @@ class CommandHandler:
             return '\n'.join(output_parts)
 
 def setup_parser():
-    """Create and configure the argument parser from definitions"""
     parser = argparse.ArgumentParser(
         description='Rediacc CLI - Complete interface for Rediacc Middleware API with enhanced queue support'
     )
-    # Add global output format option
     parser.add_argument('--output', '-o', choices=['text', 'json'], default='text',
                        help='Output format (text or json)')
-    # Add global token option to override config
     parser.add_argument('--token', '-t', help='Authentication token (overrides saved token)')
-    # Add verbose logging option
     parser.add_argument('--verbose', '-v', action='store_true',
                        help='Enable verbose logging output')
     
     subparsers = parser.add_subparsers(dest='command', help='Command')
     
-    # Add command parsers
     for cmd_name, cmd_def in ARG_DEFS.items():
-        if isinstance(cmd_def, list):  # Simple command without subcommands
+        if isinstance(cmd_def, list):
             cmd_parser = subparsers.add_parser(cmd_name, help=f"{cmd_name} command")
             for arg in cmd_def:
                 kwargs = {k: v for k, v in arg.items() if k != 'name'}
                 cmd_parser.add_argument(arg['name'], **kwargs)
-        else:  # Command with subcommands
+        else:
             cmd_parser = subparsers.add_parser(cmd_name, help=f"{cmd_name} command")
             subcmd_parsers = cmd_parser.add_subparsers(dest='resource', help='Resource')
             
             for subcmd_name, subcmd_def in cmd_def.items():
                 subcmd_parser = subcmd_parsers.add_parser(subcmd_name, help=f"{subcmd_name} resource")
                 
-                # Special handling for queue add command - add function-specific arguments
                 if cmd_name == 'queue' and subcmd_name == 'add':
-                    # Add the basic arguments
                     for arg in subcmd_def:
                         kwargs = {k: v for k, v in arg.items() if k != 'name'}
                         subcmd_parser.add_argument(arg['name'], **kwargs)
                     
-                    # Add all possible function parameters as optional arguments
-                    # Use a dict to ensure unique parameter names
                     all_params = {}
                     for func_def in QUEUE_FUNCTIONS.values():
                         for param_name, param_info in func_def.get('params', {}).items():
-                            # Only add if not already present or update with more descriptive help
                             if param_name not in all_params or len(param_info.get('help', '')) > len(all_params[param_name]):
                                 all_params[param_name] = param_info.get('help', f'Parameter for function')
                     
-                    # Add each unique parameter
                     for param_name, help_text in sorted(all_params.items()):
-                        # Skip parameters that might conflict with Python keywords or argparse
                         if param_name.replace('-', '_').replace('_', '').isidentifier():
                             subcmd_parser.add_argument(f'--{param_name.replace("_", "-")}', 
                                                      dest=param_name,
                                                      help=help_text)
                 else:
-                    # Normal argument handling
                     for arg in subcmd_def:
                         kwargs = {k: v for k, v in arg.items() if k != 'name'}
                         subcmd_parser.add_argument(arg['name'], **kwargs)
                     
-                    # Special handling for update commands - add vault arguments
                     if cmd_name == 'update' and subcmd_name in ['team', 'region', 'bridge', 'machine', 'repository', 'storage', 'schedule']:
                         subcmd_parser.add_argument('--vault', help='JSON vault data')
                         subcmd_parser.add_argument('--vault-file', help='File containing JSON vault data')
                         subcmd_parser.add_argument('--vault-version', type=int, help='Vault version')
                         
-                        # Add new_bridge for machine updates
                         if subcmd_name == 'machine':
                             subcmd_parser.add_argument('--new-bridge', help='New bridge name for machine')
     
-    # Add license command
     license_parser = subparsers.add_parser('license', help='License management commands')
     license_subparsers = license_parser.add_subparsers(dest='license_command', help='License commands')
     
-    # generate-id command
     generate_id_parser = license_subparsers.add_parser('generate-id', help='Generate hardware ID for offline licensing')
     generate_id_parser.add_argument('--output', '-o', help='Output file (default: hardware-id.txt)')
     
-    # request command
     request_parser = license_subparsers.add_parser('request', help='Request license using hardware ID')
     request_parser.add_argument('--hardware-id', '-i', required=True, help='Hardware ID or file containing it')
     request_parser.add_argument('--output', '-o', help='Output file (default: license.lic)')
     request_parser.add_argument('--server-url', '-s', help='License server URL (optional)')
     
-    # install command
     install_parser = license_subparsers.add_parser('install', help='Install license file')
     install_parser.add_argument('--file', '-f', required=True, help='License file to install')
     install_parser.add_argument('--target', '-t', help='Target directory (default: auto-detect)')
@@ -1992,68 +1800,52 @@ def setup_parser():
     return parser
 
 def main():
-    """Main CLI entry point"""
     parser = setup_parser()
     args = parser.parse_args()
     
-    # Setup logging based on verbose flag
     setup_logging(verbose=args.verbose)
     logger = get_logger(__name__)
     
-    # Log startup information in verbose mode
     if args.verbose:
         logger.debug("Rediacc CLI starting up")
         logger.debug(f"Command: {args.command}")
         logger.debug(f"Arguments: {vars(args)}")
     
-    # Check if GUI mode is requested
-    
     if not args.command:
         parser.print_help()
         return 1
     
-    # Get output format
     output_format = args.output
     
-    # Load configuration - use TokenManager instead of ConfigManager
     config_manager = TokenManager()
-    # Load vault info from config for compatibility
     config_manager.load_vault_info_from_config()
     
-    # Handle --token override
     if args.token:
-        # Validate the override token
         if not TokenManager.validate_token(args.token):
             error = f"Invalid token format: {TokenManager.mask_token(args.token)}"
             output = format_output(None, output_format, None, error)
             print(output)
             return 1
-        # Set override token in environment variable so TokenManager will use it
         os.environ['REDIACC_TOKEN'] = args.token
         config_manager.set_token_overridden(True)
     
     handler = CommandHandler(config_manager, output_format)
     
-    # Handle authentication commands directly
     if args.command == 'login':
         return handler.login(args)
     elif args.command == 'logout':
         return handler.logout(args)
     elif args.command == 'license':
-        # License commands don't require authentication
         return handler.handle_license_command(args)
     
-    # Check if command requires authentication
     auth_not_required_commands = {
         ('user', 'activate'),
         ('create', 'company'),
         ('queue', 'list-functions')
     }
     
-    # Check if it's a standalone command (like 'bridge')
     standalone_commands = ['bridge']
     
-    # Check if authenticated for commands that require it
     if (args.command, getattr(args, 'resource', None)) not in auth_not_required_commands:
         if not config_manager.is_authenticated():
             error = "Not authenticated. Please login first."
@@ -2061,21 +1853,17 @@ def main():
             print(output)
             return 1
     
-    # Handle other commands with resource types
     if not hasattr(args, 'resource') or not args.resource:
         error = f"No resource specified for command: {args.command}"
         output = format_output(None, output_format, None, error)
         print(output)
         return 1
     
-    # Special handling for certain commands
     if args.command == 'update':
         return handler.update_resource(args.resource, args)
     elif args.command in standalone_commands:
-        # Handle standalone commands (like bridge)
         return handler.generic_command(args.command, args.resource, args)
     else:
-        # Generic command handling for create, list, rm, vault, permission, user, team-member, queue
         return handler.generic_command(args.command, args.resource, args)
 
 if __name__ == "__main__":

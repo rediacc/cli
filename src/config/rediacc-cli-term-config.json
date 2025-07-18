@@ -1,0 +1,139 @@
+{
+  "terminal_config": {
+    "colors": {
+      "header": "\\033[1;36m",
+      "success": "\\033[1;32m",
+      "warning": "\\033[1;33m",
+      "info": "\\033[1;34m",
+      "error": "\\033[1;31m",
+      "reset": "\\033[0m"
+    },
+    "separator": "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
+  },
+  "machine_welcome": {
+    "commands": [
+      "clear",
+      "echo -e \"\\033[1;36m━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━\\033[0m\"",
+      "echo -e \"\\033[1;32mConnected to Rediacc Machine:\\033[0m \\033[1;33m{machine}\\033[0m\"",
+      "echo -e \"\\033[1;36m━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━\\033[0m\"",
+      "echo",
+      "echo -e \"\\033[1;34mMachine Info:\\033[0m\"",
+      "echo \"  • IP: {ip}\"",
+      "echo \"  • Connected as: {user}\"",
+      "echo \"  • Switched to: {universal_user}\"",
+      "echo \"  • Datastore: {datastore_path}\"",
+      "echo",
+      "echo -e \"\\033[1;33mUseful Commands:\\033[0m\"",
+      "echo \"  • ls -la                               - List current directory\"",
+      "echo \"  • ls -la mounts/                       - List repository mounts\"",
+      "echo \"  • docker ps -a                         - List all containers\"",
+      "echo",
+      "echo -e \"\\033[1;36m━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━\\033[0m\"",
+      "echo",
+      "cd {datastore_path} 2>/dev/null || echo \"Warning: Could not change to datastore directory\"",
+      "exec bash -l"
+    ]
+  },
+  "repository_welcome": {
+    "commands": [
+      "clear",
+      "echo -e \"\\033[1;36m━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━\\033[0m\"",
+      "echo -e \"\\033[1;32mConnected to Rediacc Repository:\\033[0m \\033[1;33m{repo}\\033[0m\"",
+      "echo -e \"\\033[1;36m━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━\\033[0m\"",
+      "echo",
+      "echo -e \"\\033[1;34mRepository Path:\\033[0m $REPO_PATH\"",
+      "echo -e \"\\033[1;34mDocker Socket:\\033[0m   $DOCKER_SOCKET\"",
+      "echo",
+      "echo -e \"\\033[1;33mQuick Commands:\\033[0m\"",
+      "echo \"  • status                       - Show repository status\"",
+      "echo \"  • enter_container <name>       - Enter a container\"",
+      "echo \"  • logs <name>                  - View container logs\"",
+      "echo \"  • docker ps                    - List running containers\"",
+      "echo",
+      "echo -e \"\\033[1;36m━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━\\033[0m\"",
+      "echo"
+    ]
+  },
+  "environment_exports": {
+    "REPO_PATH": "{repo_mount_path}",
+    "DOCKER_HOST": "{docker_host}",
+    "DOCKER_FOLDER": "{docker_folder}",
+    "DOCKER_SOCKET": "{docker_socket}",
+    "DOCKER_DATA": "{docker_data}",
+    "DOCKER_EXEC": "{docker_exec}"
+  },
+  "cd_logic": {
+    "basic": "if [ -d \"$REPO_PATH\" ]; then\n    cd \"$REPO_PATH\"\nelse\n    MOUNTS_DIR=$(dirname \"$REPO_PATH\")\n    [ -d \"$MOUNTS_DIR\" ] && cd \"$MOUNTS_DIR\"\nfi",
+    "extended": "if [ -d \"$REPO_PATH\" ]; then\n    cd \"$REPO_PATH\"\nelse\n    MOUNTS_DIR=$(dirname \"$REPO_PATH\")\n    if [ -d \"$MOUNTS_DIR\" ]; then\n        cd \"$MOUNTS_DIR\"\n        echo \"Note: Repository not mounted yet. You are in the mounts directory.\"\n        echo \"Mount path will be: $REPO_PATH\"\n    else\n        echo \"Warning: Could not find repository or mounts directory\"\n    fi\nfi"
+  },
+  "bash_functions": {
+    "enter_container": "enter_container() {\n    local container=\"${1:-}\"\n    if [ -z \"$container\" ]; then\n        echo \"Usage: enter_container <container_name_or_id>\"\n        echo \"Available containers:\"\n        docker ps --format \"table {{.Names}}\\t{{.Image}}\\t{{.Status}}\"\n        return 1\n    fi\n    docker exec -it \"$container\" bash || docker exec -it \"$container\" sh\n}",
+    "logs": "logs() {\n    local container=\"${1:-}\"\n    local lines=\"${2:-50}\"\n    if [ -z \"$container\" ]; then\n        echo \"Usage: logs <container_name_or_id> [lines]\"\n        echo \"Available containers:\"\n        docker ps -a --format \"table {{.Names}}\\t{{.Status}}\"\n        return 1\n    fi\n    docker logs --tail \"$lines\" -f \"$container\"\n}",
+    "status": "status() {\n    echo -e '\\033[1;36m━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━\\033[0m'\n    echo -e '\\033[1;32mRepository Status\\033[0m'\n    echo -e '\\033[1;36m━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━\\033[0m'\n    echo -e \"\\n\\033[1;34mDocker Status:\\033[0m\"\n    if docker version >/dev/null 2>&1; then\n        echo \"  ✓ Docker daemon is running\"\n        docker ps -q | wc -l | xargs -I {} echo \"  • {} containers running\"\n    else\n        echo \"  ✗ Docker daemon is not accessible\"\n    fi\n    echo -e \"\\n\\033[1;34mRepository Files:\\033[0m\"\n    ls -la \"$REPO_PATH\" 2>/dev/null | tail -n +2 | head -10\n    echo \"\"\n}"
+  },
+  "ps1_prompt": "\\[\\033[01;32m\\][\\u@{repo}\\[\\033[00m\\]:\\[\\033[01;34m\\]\\w\\[\\033[00m\\]]\\$ ",
+  "messages": {
+    "connecting_machine": "Connecting to machine '{machine}'...",
+    "connecting_repository": "Connecting to repository '{repo}' on machine '{machine}'...",
+    "fetching_info": "Fetching machine information...",
+    "retrieving_ssh_key": "Retrieving SSH key...",
+    "ssh_key_not_found": "SSH private key not found in vault for team '{team}'",
+    "ssh_agent_setup": "SSH agent set up with PID {pid}",
+    "ssh_agent_failed": "SSH agent setup failed, falling back to temporary files: {error}",
+    "executing_command": "Executing command: {command}",
+    "executing_as_user": "Executing command as {user}: {command}",
+    "working_directory": "Working directory: {path}",
+    "opening_terminal": "Opening interactive terminal...",
+    "exit_instruction": "Type 'exit' to disconnect."
+  },
+  "help_text": {
+    "description": "Rediacc CLI Terminal - Interactive terminal access to Rediacc machines and repository Docker environments",
+    "examples": {
+      "machine_only": {
+        "title": "Connect to machine only (no repository):",
+        "command": "%(prog)s --token=<GUID> --team=MyTeam --machine=server1"
+      },
+      "machine_command": {
+        "title": "Execute a command on machine:",
+        "command": "%(prog)s --token=<GUID> --team=MyTeam --machine=server1 --command=\"ls -la mounts/\""
+      },
+      "repository_terminal": {
+        "title": "Connect to repository terminal:",
+        "command": "%(prog)s --token=<GUID> --team=MyTeam --machine=server1 --repo=myrepo"
+      },
+      "repository_command": {
+        "title": "Execute a command in repository environment:",
+        "command": "%(prog)s --token=<GUID> --team=MyTeam --machine=server1 --repo=myrepo --command=\"docker ps\""
+      },
+      "enter_container": {
+        "title": "Enter a specific container:",
+        "command": "%(prog)s --token=<GUID> --team=MyTeam --machine=server1 --repo=myrepo --command=\"docker exec -it mycontainer bash\""
+      },
+      "docker_status": {
+        "title": "Check Docker status:",
+        "command": "%(prog)s --token=<GUID> --team=MyTeam --machine=server1 --repo=myrepo --command=\"docker stats --no-stream\""
+      }
+    },
+    "repository_env_vars": {
+      "title": "When connected to a repository:",
+      "subtitle": "Environment Variables Set:",
+      "vars": {
+        "REPO_PATH": "Repository mount path",
+        "DOCKER_HOST": "Repository's Docker socket",
+        "DOCKER_FOLDER": "Docker configuration folder",
+        "DOCKER_SOCKET": "Docker socket path",
+        "DOCKER_DATA": "Docker data directory",
+        "DOCKER_EXEC": "Docker exec directory"
+      }
+    },
+    "machine_only_info": {
+      "title": "When connected to machine only:",
+      "points": [
+        "- Automatically switches to universal user (e.g., rediacc)",
+        "- Changes to user's datastore directory (e.g., /mnt/datastore/7111)",
+        "- Commands are executed in this context",
+        "- Useful for managing repositories and datastore"
+      ]
+    }
+  }
+}

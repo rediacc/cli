@@ -1,13 +1,4 @@
 #!/usr/bin/env python3
-"""
-Rediacc CLI Core - Common functionality for Rediacc CLI tools
-Provides shared functions for authentication, API communication, and SSH operations
-
-RESOLVED LIMITATIONS:
-1. Added inspect command for machines and repositories to get detailed vault data
-2. SSH keys are retrieved from team vault (SSH_PRIVATE_KEY field)
-3. Machine connection details (ip, user, datastore) come from machine vault
-"""
 import json
 import os
 import subprocess
@@ -16,22 +7,18 @@ import tempfile
 import platform
 from pathlib import Path
 from typing import Dict, Any, Optional, Tuple
-# Import from consolidated core module
 from core import (
     get_config_dir, get_main_config_file,
     TokenManager,
     get, get_required, get_path
 )
 
-# Configuration
 CLI_TOOL = os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))), 'cli', 'rediacc-cli.py')
 
 def get_cli_command() -> list:
-    """Get the CLI command list for cross-platform execution"""
     if not is_windows():
         return [CLI_TOOL]
     
-    # On Windows, find the best Python command
     for cmd in ['python3', 'python', 'py']:
         try:
             result = subprocess.run([cmd, '--version'], capture_output=True, text=True, timeout=5)
@@ -39,25 +26,19 @@ def get_cli_command() -> list:
                 return [cmd, CLI_TOOL]
         except:
             continue
-    return ['python', CLI_TOOL]  # Fallback to python
+    return ['python', CLI_TOOL]
 
-# Platform utilities
 def is_windows() -> bool:
-    """Check if running on Windows"""
     return platform.system().lower() == 'windows'
 
 def get_null_device() -> str:
-    """Get the null device path for the current platform"""
     return 'NUL' if is_windows() else '/dev/null'
 
 def create_temp_file(suffix: str = '', prefix: str = 'tmp', delete: bool = True) -> str:
-    """Create a temporary file in a platform-appropriate way"""
     if not is_windows():
-        # On Unix, use standard tempfile
         with tempfile.NamedTemporaryFile(mode='w', delete=False, suffix=suffix, prefix=prefix) as f:
             return f.name
     
-    # Windows: Use appropriate temp directory
     temp_dir = get('REDIACC_TEMP_DIR') or os.environ.get('TEMP') or os.environ.get('TMP')
     if not temp_dir:
         raise ValueError("No temporary directory found. Set REDIACC_TEMP_DIR, TEMP, or TMP environment variable.")
@@ -66,32 +47,27 @@ def create_temp_file(suffix: str = '', prefix: str = 'tmp', delete: bool = True)
     return path
 
 def set_file_permissions(path: str, mode: int):
-    """Set file permissions in a platform-appropriate way"""
     if not is_windows():
         os.chmod(path, mode)
         return
     
-    # Windows: Set read-only attribute for 0o400 type permissions
     import stat
     try:
         perms = stat.S_IREAD if mode & 0o200 == 0 else stat.S_IWRITE | stat.S_IREAD
         os.chmod(path, perms)
     except:
-        pass  # Ignore permission errors on Windows
+        pass
 
 def safe_error_message(message: str) -> str:
-    """Sanitize error messages to prevent token leakage"""
     import re
     guid_pattern = r'\b[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}\b'
     return re.sub(guid_pattern, lambda m: f"{m.group(0)[:8]}...", message, flags=re.IGNORECASE)
 
-# Get paths from configuration
 DATASTORE_PATH = get('REDIACC_DATASTORE_PATH') or '/mnt/datastore'
 INTERIM_FOLDER_NAME = get('REDIACC_INTERIM_FOLDER') or 'interim'
 MOUNTS_FOLDER_NAME = get('REDIACC_MOUNTS_FOLDER') or 'mounts'
 REPOS_FOLDER_NAME = get('REDIACC_REPOS_FOLDER') or 'repos'
 
-# Color codes for terminal output
 COLORS = {
     'HEADER': '\033[95m', 
     'BLUE': '\033[94m', 
@@ -103,11 +79,9 @@ COLORS = {
 }
 
 def colorize(text: str, color: str) -> str:
-    """Add color to terminal output if supported"""
     return f"{COLORS.get(color, '')}{text}{COLORS['ENDC']}" if sys.stdout.isatty() else text
 
 def run_command(cmd, capture_output=True, check=True, quiet=False):
-    """Run a command and return the result"""
     cmd = cmd.split() if isinstance(cmd, str) else cmd
     
     def handle_error(stderr=None):
@@ -124,7 +98,6 @@ def run_command(cmd, capture_output=True, check=True, quiet=False):
         
         result = subprocess.run(cmd, capture_output=True, text=True, check=check)
         if result.returncode != 0 and check:
-            # Try to parse JSON error
             try:
                 error_data = json.loads(result.stdout)
                 if error_data.get('error') and not quiet:
@@ -141,7 +114,6 @@ def run_command(cmd, capture_output=True, check=True, quiet=False):
         return None
 
 def _retry_with_backoff(func, max_retries=3, initial_delay=0.5, error_msg="Operation failed", exit_on_failure=True):
-    """Helper function to retry an operation with exponential backoff"""
     import time
     delay = initial_delay
     
@@ -162,7 +134,6 @@ def _retry_with_backoff(func, max_retries=3, initial_delay=0.5, error_msg="Opera
         return None
 
 def _get_universal_user_info() -> Tuple[Optional[str], Optional[str]]:
-    """Get universal user name and ID from company vault"""
     config_path = get_main_config_file()
     if not config_path.exists():
         return None, None
@@ -179,7 +150,6 @@ def _get_universal_user_info() -> Tuple[Optional[str], Optional[str]]:
     return None, None
 
 class _SuppressSysExit:
-    """Context manager to temporarily suppress sys.exit calls"""
     def __init__(self):
         self.exit_called = False
         self.original_exit = None
@@ -195,7 +165,6 @@ class _SuppressSysExit:
         sys.exit = self.original_exit
 
 def get_machine_info_with_team(team_name: str, machine_name: str) -> Dict[str, Any]:
-    """Get machine information when team is known"""
     token = TokenManager.get_token()
     if not token:
         print(colorize("No authentication token available", 'RED'))
@@ -234,7 +203,6 @@ def get_machine_info_with_team(team_name: str, machine_name: str) -> Dict[str, A
 
 
 def get_repository_info(team_name: str, repo_name: str) -> Dict[str, Any]:
-    """Get repository information using rediacc-cli inspect command"""
     token = TokenManager.get_token()
     if not token:
         print(colorize("No authentication token available", 'RED'))
@@ -259,7 +227,6 @@ def get_repository_info(team_name: str, repo_name: str) -> Dict[str, Any]:
         
         repo_info = inspect_data.get('data', [{}])[0]
         
-        # Parse vault content if available
         if vault_content := repo_info.get('vaultContent'):
             try:
                 repo_info['vault'] = json.loads(vault_content) if isinstance(vault_content, str) else vault_content
@@ -272,14 +239,6 @@ def get_repository_info(team_name: str, repo_name: str) -> Dict[str, Any]:
         sys.exit(1)
 
 def get_ssh_key_from_vault(team_name: Optional[str] = None) -> Optional[str]:
-    """Extract SSH private key from team vault
-    
-    The SSH private key should be stored in the team's vault with the key 'SSH_PRIVATE_KEY'.
-    This is different from the machine vault which contains connection details (IP, user, etc).
-    
-    Args:
-        team_name: Optional team name to get SSH key for. If not provided, returns first found SSH key.
-    """
     token = TokenManager.get_token()
     if not token:
         print(colorize("No authentication token available", 'RED'))
@@ -305,7 +264,6 @@ def get_ssh_key_from_vault(team_name: Optional[str] = None) -> Optional[str]:
         if not (result.get('success') and result.get('data')):
             return None
         
-        # Look through teams for SSH key in vault
         for team in result.get('data', []):
             if team_name and team.get('teamName') != team_name:
                 continue
@@ -325,7 +283,6 @@ def get_ssh_key_from_vault(team_name: Optional[str] = None) -> Optional[str]:
     return None
 
 def _decode_ssh_key(ssh_key: str) -> str:
-    """Decode SSH key from base64 if needed and ensure it ends with newline"""
     import base64
     
     if not ssh_key.startswith('-----BEGIN') and '\n' not in ssh_key:
@@ -337,7 +294,6 @@ def _decode_ssh_key(ssh_key: str) -> str:
     return ssh_key if ssh_key.endswith('\n') else ssh_key + '\n'
 
 def _setup_ssh_options(host_entry: str, known_hosts_path: str, key_path: str = None) -> str:
-    """Set up SSH command line options based on host entry"""
     if host_entry:
         base_opts = f"-o StrictHostKeyChecking=yes -o UserKnownHostsFile={known_hosts_path}"
     else:
@@ -346,18 +302,15 @@ def _setup_ssh_options(host_entry: str, known_hosts_path: str, key_path: str = N
     return f"{base_opts} -i {key_path}" if key_path else base_opts
 
 def setup_ssh_agent_connection(ssh_key: str, host_entry: str = None) -> Tuple[str, str, str]:
-    """Set up SSH agent for connection and return SSH command options, agent PID, and known_hosts file"""
     import subprocess
     
     ssh_key = _decode_ssh_key(ssh_key)
     
-    # Start SSH agent
     try:
         agent_result = subprocess.run(['ssh-agent', '-s'], capture_output=True, text=True, timeout=10)
         if agent_result.returncode != 0:
             raise RuntimeError(f"Failed to start ssh-agent: {agent_result.stderr}")
         
-        # Parse SSH agent output
         agent_env = {}
         for line in agent_result.stdout.strip().split('\n'):
             if '=' in line and ';' in line:
@@ -370,7 +323,6 @@ def setup_ssh_agent_connection(ssh_key: str, host_entry: str = None) -> Tuple[st
         if not agent_pid:
             raise RuntimeError("Could not get SSH agent PID")
         
-        # Add SSH key to agent
         ssh_add_result = subprocess.run(['ssh-add', '-'], 
                                       input=ssh_key, text=True,
                                       capture_output=True, timeout=10)
@@ -382,7 +334,6 @@ def setup_ssh_agent_connection(ssh_key: str, host_entry: str = None) -> Tuple[st
     except Exception as e:
         raise RuntimeError(f"SSH agent setup failed: {e}")
     
-    # Set up SSH options and known_hosts file
     known_hosts_file_path = None
     if host_entry:
         known_hosts_file_path = create_temp_file(suffix='_known_hosts', prefix='known_hosts_')
@@ -394,17 +345,14 @@ def setup_ssh_agent_connection(ssh_key: str, host_entry: str = None) -> Tuple[st
     return ssh_opts, agent_pid, known_hosts_file_path
 
 def setup_ssh_for_connection(ssh_key: str, host_entry: str = None) -> Tuple[str, str, str]:
-    """Set up SSH key for connection and return SSH command options, cleanup path, and known_hosts file"""
     ssh_key = _decode_ssh_key(ssh_key)
     
-    # Create temporary SSH key file
     ssh_key_file_path = create_temp_file(suffix='_rsa', prefix='ssh_key_')
     with open(ssh_key_file_path, 'w') as f:
         f.write(ssh_key)
     
     set_file_permissions(ssh_key_file_path, 0o600)
     
-    # Set up SSH options and known_hosts file
     known_hosts_file_path = None
     if host_entry:
         known_hosts_file_path = create_temp_file(suffix='_known_hosts', prefix='known_hosts_')
@@ -416,7 +364,6 @@ def setup_ssh_for_connection(ssh_key: str, host_entry: str = None) -> Tuple[str,
     return ssh_opts, ssh_key_file_path, known_hosts_file_path
 
 def cleanup_ssh_agent(agent_pid: str, known_hosts_file: str = None):
-    """Clean up SSH agent and known_hosts files"""
     import subprocess
     if agent_pid:
         try:
@@ -427,17 +374,14 @@ def cleanup_ssh_agent(agent_pid: str, known_hosts_file: str = None):
         os.unlink(known_hosts_file)
 
 def cleanup_ssh_key(ssh_key_file: str, known_hosts_file: str = None):
-    """Clean up temporary SSH key and known_hosts files"""
     for file_path in (ssh_key_file, known_hosts_file):
         if file_path and os.path.exists(file_path):
             os.unlink(file_path)
 
 def get_machine_connection_info(machine_info: Dict[str, Any]) -> Dict[str, Any]:
-    """Extract connection information from machine info"""
     machine_name = machine_info.get('machineName')
     vault = machine_info.get('vault', {})
     
-    # Try to parse vaultContent if vault is missing
     if not vault and (vault_content := machine_info.get('vaultContent')):
         if isinstance(vault_content, str):
             try:
@@ -445,18 +389,15 @@ def get_machine_connection_info(machine_info: Dict[str, Any]) -> Dict[str, Any]:
             except json.JSONDecodeError as e:
                 print(colorize(f"Failed to parse vaultContent: {e}", 'RED'))
     
-    # Extract machine details
     ip = vault.get('ip') or vault.get('IP')
     ssh_user = vault.get('user') or vault.get('USER')
     datastore = vault.get('datastore') or vault.get('DATASTORE', DATASTORE_PATH)
     host_entry = vault.get('hostEntry') or vault.get('HOST_ENTRY')
     
-    # Get universal user and ID from company vault
     universal_user, universal_user_id = _get_universal_user_info()
     if not universal_user:
         print(colorize("Warning: Failed to read universal user from config", 'YELLOW'))
     
-    # Validate required fields
     if not ssh_user:
         print(colorize(f"ERROR: SSH user not found in machine vault. Vault contents: {vault}", 'RED'))
         raise ValueError(f"SSH user not found in machine vault for {machine_name}. The machine vault should contain 'user' field.")
@@ -482,7 +423,6 @@ def get_machine_connection_info(machine_info: Dict[str, Any]) -> Dict[str, Any]:
     }
 
 def get_repository_paths(repo_guid: str, datastore: str, universal_user_id: str = None) -> Dict[str, str]:
-    """Get all repository-related paths based on repo GUID"""
     base_path = f"{datastore}/{universal_user_id}" if universal_user_id else datastore
     docker_base = f"{base_path}/{INTERIM_FOLDER_NAME}/{repo_guid}/docker"
     
@@ -496,31 +436,18 @@ def get_repository_paths(repo_guid: str, datastore: str, universal_user_id: str 
     }
 
 def validate_cli_tool():
-    """Check if rediacc-cli exists and is executable"""
     if not os.path.exists(CLI_TOOL):
         print(colorize(f"Error: rediacc-cli not found at {CLI_TOOL}", 'RED'))
         sys.exit(1)
     
-    # Skip executable check on Windows (we use Python to run it)
     if not is_windows() and not os.access(CLI_TOOL, os.X_OK):
         print(colorize(f"Error: rediacc-cli is not executable at {CLI_TOOL}", 'RED'))
         sys.exit(1)
 
 def wait_for_enter(message: str = "Press Enter to continue..."):
-    """Wait for user to press Enter key"""
     input(colorize(f"\n{message}", 'YELLOW'))
 
 def test_ssh_connectivity(ip: str, port: int = 22, timeout: int = 5) -> Tuple[bool, str]:
-    """Test if SSH port is accessible on the target machine
-    
-    Args:
-        ip: Target IP address
-        port: SSH port (default: 22)
-        timeout: Connection timeout in seconds
-        
-    Returns:
-        Tuple of (success, error_message)
-    """
     import socket
     
     try:
@@ -538,14 +465,6 @@ def test_ssh_connectivity(ip: str, port: int = 22, timeout: int = 5) -> Tuple[bo
         return False, f"Connection test failed: {str(e)}"
 
 def validate_machine_accessibility(machine_name: str, team_name: str, ip: str, repo_name: str = None):
-    """Validate machine is accessible and show appropriate error messages if not
-    
-    Args:
-        machine_name: Name of the machine
-        team_name: Name of the team
-        ip: IP address of the machine
-        repo_name: Optional repository name for context
-    """
     print(f"Testing connectivity to {ip}...")
     is_accessible, error_msg = test_ssh_connectivity(ip)
     
@@ -553,7 +472,6 @@ def validate_machine_accessibility(machine_name: str, team_name: str, ip: str, r
         print(colorize("✓ Machine is accessible", 'GREEN'))
         return
     
-    # Machine not accessible - show error
     print(colorize(f"\n✗ Machine '{machine_name}' is not accessible", 'RED'))
     print(colorize(f"  Error: {error_msg}", 'RED'))
     print(colorize("\nPossible reasons:", 'YELLOW'))
@@ -575,12 +493,6 @@ def validate_machine_accessibility(machine_name: str, team_name: str, ip: str, r
     sys.exit(1)
 
 def handle_ssh_exit_code(returncode: int, connection_type: str = "machine"):
-    """Handle SSH command exit codes and display appropriate messages
-    
-    Args:
-        returncode: SSH command exit code
-        connection_type: Type of connection ("machine" or "repository terminal")
-    """
     if returncode == 0:
         print(colorize(f"\nDisconnected from {connection_type}.", 'GREEN'))
         return
@@ -600,8 +512,6 @@ def handle_ssh_exit_code(returncode: int, connection_type: str = "machine"):
         print(colorize(f"\nDisconnected from {connection_type} (exit code: {returncode})", 'YELLOW'))
 
 class RepositoryConnection:
-    """Helper class to manage repository connections"""
-    
     def __init__(self, team_name: str, machine_name: str, repo_name: str):
         self.team_name = team_name
         self.machine_name = machine_name
@@ -614,7 +524,6 @@ class RepositoryConnection:
         self._ssh_key_file = None
     
     def connect(self):
-        """Establish connection and gather all necessary information"""
         print("Fetching machine information...")
         self._machine_info = get_machine_info_with_team(self.team_name, self.machine_name)
         self._connection_info = get_machine_connection_info(self._machine_info)
@@ -626,13 +535,11 @@ class RepositoryConnection:
         print(f"Fetching repository information for '{self.repo_name}'...")
         self._repo_info = get_repository_info(self._connection_info['team'], self.repo_name)
         
-        # Get repository GUID
         if not (repo_guid := self._repo_info.get('repoGuid') or self._repo_info.get('grandGuid')):
             print(colorize(f"Repository GUID not found for '{self.repo_name}'", 'RED'))
             print(colorize(f"Repository info: {json.dumps(self._repo_info, indent=2)}", 'YELLOW'))
             sys.exit(1)
         
-        # Get universal user ID from company vault
         _, universal_user_id = _get_universal_user_info()
         
         self._repo_paths = get_repository_paths(repo_guid, self._connection_info['datastore'], universal_user_id)
@@ -647,17 +554,14 @@ class RepositoryConnection:
             sys.exit(1)
     
     def setup_ssh(self) -> Tuple[str, str, str]:
-        """Set up SSH and return (ssh_options, key_file_path, known_hosts_file_path)"""
         host_entry = self._connection_info.get('host_entry')
         return setup_ssh_for_connection(self._ssh_key, host_entry)
     
     def cleanup_ssh(self, ssh_key_file: str, known_hosts_file: str = None):
-        """Clean up SSH key and known_hosts files"""
         cleanup_ssh_key(ssh_key_file, known_hosts_file)
     
     @property
     def ssh_destination(self) -> str:
-        """Get SSH destination string (user@host)"""
         return f"{self._connection_info['user']}@{self._connection_info['ip']}"
     
     @property

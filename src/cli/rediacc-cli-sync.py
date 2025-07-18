@@ -1,9 +1,4 @@
 #!/usr/bin/env python3
-# -*- coding: utf-8 -*-
-"""
-Rediacc CLI Sync - Rsync-based synchronization utility for Rediacc
-Handles secure file synchronization between local system and Rediacc repositories using rsync over SSH
-"""
 import argparse
 import os
 import subprocess
@@ -11,10 +6,8 @@ import sys
 from pathlib import Path
 from typing import Dict, Any, Optional
 
-# Add parent directory to path for module imports
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 
-# Import common functionality from core module
 from rediacc_cli_core import (
     colorize,
     validate_cli_tool,
@@ -23,7 +16,6 @@ from rediacc_cli_core import (
     is_windows
 )
 
-# Import from consolidated core module
 from core import (
     TokenManager,
     setup_logging, get_logger
@@ -33,9 +25,7 @@ import shutil
 import platform
 from typing import List, Tuple
 
-# Platform-specific rsync utilities
 def find_msys2_executable(exe_name: str) -> Optional[str]:
-    """Find an executable in MSYS2 installation"""
     if not is_windows():
         return None
     
@@ -59,7 +49,6 @@ def find_msys2_executable(exe_name: str) -> Optional[str]:
     return None
 
 def get_rsync_command() -> str:
-    """Get the rsync command for the current platform"""
     if is_windows():
         if msys2_rsync := find_msys2_executable('rsync'):
             return msys2_rsync
@@ -70,7 +59,6 @@ def get_rsync_command() -> str:
     raise RuntimeError("rsync not found. Please install rsync.")
 
 def get_rsync_ssh_command(ssh_opts: str) -> str:
-    """Get the SSH command string for rsync -e option"""
     if not is_windows():
         return f'ssh {ssh_opts}'
     
@@ -83,7 +71,6 @@ def get_rsync_ssh_command(ssh_opts: str) -> str:
     raise RuntimeError("SSH not found for rsync")
 
 def prepare_rsync_paths(source: str, dest: str) -> Tuple[str, str]:
-    """Prepare source and destination paths for rsync on current platform"""
     if not is_windows():
         return source, dest
     
@@ -105,7 +92,6 @@ def prepare_rsync_paths(source: str, dest: str) -> Tuple[str, str]:
     )
 
 def run_platform_command(cmd: List[str], **kwargs) -> subprocess.CompletedProcess:
-    """Run a command with platform-specific handling"""
     logger = get_logger(__name__)
     
     if is_windows() and cmd[0] == 'rsync':
@@ -121,7 +107,6 @@ def run_platform_command(cmd: List[str], **kwargs) -> subprocess.CompletedProces
 
 
 def get_rsync_changes(source: str, dest: str, ssh_cmd: str, options: Dict[str, Any], universal_user: str = None) -> Optional[str]:
-    """Get list of changes that rsync would make using --dry-run"""
     source, dest = prepare_rsync_paths(source, dest)
     
     rsync_cmd = [get_rsync_command(), '-av', '--dry-run', '--itemize-changes', '-e', ssh_cmd]
@@ -148,7 +133,6 @@ def get_rsync_changes(source: str, dest: str, ssh_cmd: str, options: Dict[str, A
     return result.stdout
 
 def parse_rsync_changes(dry_run_output: str) -> Dict[str, list]:
-    """Parse rsync dry-run output and categorize changes"""
     changes = {
         'new_files': [],
         'modified_files': [],
@@ -185,9 +169,7 @@ def parse_rsync_changes(dry_run_output: str) -> Dict[str, list]:
     return changes
 
 def display_changes_and_confirm(changes: Dict[str, list], operation: str) -> bool:
-    """Display planned changes and ask for confirmation"""
     def show_changes_summary(limit: int = None):
-        """Helper to display changes with optional limit"""
         categories = [
             ('new_files', 'New files to be transferred', 'GREEN', '+', ''),
             ('modified_files', 'Files to be updated', 'YELLOW', '~', ''),
@@ -235,7 +217,6 @@ def display_changes_and_confirm(changes: Dict[str, list], operation: str) -> boo
             return False
 
 def perform_rsync(source: str, dest: str, ssh_cmd: str, options: Dict[str, Any], universal_user: str = None):
-    """Perform rsync operation with given options"""
     source, dest = prepare_rsync_paths(source, dest)
     
     if options.get('confirm'):
@@ -284,7 +265,6 @@ def perform_rsync(source: str, dest: str, ssh_cmd: str, options: Dict[str, Any],
     return False
 
 def upload(args):
-    """Handle upload command"""
     print(colorize(f"Uploading from {args.local} to {args.machine}:{args.repo}", 'HEADER'))
     
     source_path = Path(args.local)
@@ -326,7 +306,6 @@ def upload(args):
         conn.cleanup_ssh(ssh_key_file, known_hosts_file)
 
 def download(args):
-    """Handle download command"""
     print(colorize(f"Downloading from {args.machine}:{args.repo} to {args.local}", 'HEADER'))
     
     dest_path = Path(args.local)
