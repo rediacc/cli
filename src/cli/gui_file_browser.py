@@ -17,6 +17,8 @@ from typing import List, Dict, Any, Tuple, TYPE_CHECKING
 import tempfile
 import shutil
 import re
+import time
+import datetime
 
 if TYPE_CHECKING:
     from rediacc_gui import MainWindow
@@ -73,6 +75,10 @@ class DualPaneFileBrowser:
         self.local_filter = ''
         self.remote_filter = ''
         
+        # Initialize search variables early to prevent access errors
+        self.local_search_var = tk.StringVar()
+        self.remote_search_var = tk.StringVar()
+        
         # Transfer options
         self.transfer_options = {
             'preserve_timestamps': True,
@@ -89,10 +95,15 @@ class DualPaneFileBrowser:
         self.clipboard_operation = None
         self.clipboard_files = []
         
+        # Transfer tracking (keep for file browser functionality)
+        self.transfer_speed = 0
+        self.transfer_start_time = None
+        self.bytes_transferred = 0
+        
         self.create_widgets()
         self.setup_drag_drop()
         self.setup_keyboard_shortcuts()
-        self.refresh_local()
+        # Note: refresh_local() is now called at the end of create_widgets()
     
     def create_widgets(self):
         """Create the dual-pane browser interface"""
@@ -201,22 +212,19 @@ class DualPaneFileBrowser:
         preview_hsb.pack(fill='x')
         self.preview_text.config(xscrollcommand=preview_hsb.set)
         
-        # Status bar with frame wrapper
-        status_bar_frame = tk.Frame(main_frame, relief='sunken', bd=1)
-        status_bar_frame.pack(fill='x', side='bottom', pady=(5, 0))
+        # Status bar is now in the main window
+    
+        # Create preview toggle button in the paned window area
+        preview_button_frame = tk.Frame(main_frame)
+        preview_button_frame.pack(fill='x', pady=(5, 0))
         
-        self.status_frame = tk.Frame(status_bar_frame)
-        self.status_frame.pack(fill='both', expand=True)
-        
-        self.status_label = tk.Label(self.status_frame, text=i18n.get('ready', 'Ready'), 
-                                   bd=0, anchor='w')
-        self.status_label.pack(side='left', fill='x', expand=True, padx=(10,5), pady=(2,2))
-        
-        # Preview toggle button in status bar
-        self.preview_toggle_button = ttk.Button(self.status_frame, 
+        self.preview_toggle_button = ttk.Button(preview_button_frame, 
                                               text=i18n.get('show_preview', 'Show Preview'),
                                               command=self.toggle_preview)
         self.preview_toggle_button.pack(side='right', padx=5)
+        
+        # Now that all widgets are created, refresh the local directory
+        self.refresh_local()
     
     def create_local_pane(self):
         """Create the local file browser pane"""
@@ -243,15 +251,10 @@ class DualPaneFileBrowser:
         self.local_home_button.grid(row=0, column=1, padx=(0, 5))
         create_tooltip(self.local_home_button, i18n.get('navigate_home_tooltip', 'Go to home directory'))
         
-        self.local_refresh_button = ttk.Button(nav_frame, text='↻', width=4,
-                                              command=self.refresh_local)
-        self.local_refresh_button.grid(row=0, column=2, padx=(0, 5))
-        create_tooltip(self.local_refresh_button, i18n.get('refresh_tooltip', 'Refresh file list'))
-        
         # Path entry
         self.local_path_var = tk.StringVar(value=str(self.local_current_path))
         self.local_path_entry = ttk.Entry(nav_frame, textvariable=self.local_path_var, state='readonly')
-        self.local_path_entry.grid(row=0, column=3, sticky='ew', padx=5)
+        self.local_path_entry.grid(row=0, column=2, sticky='ew', padx=5)
         
         # Search frame using grid
         search_frame = tk.Frame(self.local_frame)
@@ -261,7 +264,7 @@ class DualPaneFileBrowser:
         self.local_search_label = tk.Label(search_frame, text=i18n.get('search', 'Search:'))
         self.local_search_label.grid(row=0, column=0, padx=5)
         
-        self.local_search_var = tk.StringVar()
+        # Note: self.local_search_var is already initialized in __init__
         self.local_search_entry = ttk.Entry(search_frame, textvariable=self.local_search_var)
         self.local_search_entry.grid(row=0, column=1, sticky='ew', padx=5)
         # Use trace to update on every keystroke
@@ -354,16 +357,7 @@ class DualPaneFileBrowser:
         self.download_button.pack(pady=(0, 20))
         create_tooltip(self.download_button, i18n.get('download_tooltip', 'Download selected files from remote'))
         
-        # Visual separator between transfer buttons and options
-        separator = tk.Frame(button_container, bg='#e0e0e0', height=2)
-        separator.pack(fill='x', pady=(0, 20))
-        
-        # Options button
-        self.options_button = ttk.Button(button_container, text=i18n.get('options', 'Options'), 
-                                       command=self.show_transfer_options,
-                                       width=COMBO_WIDTH_SMALL)
-        self.options_button.pack(pady=(0, 20))
-        create_tooltip(self.options_button, i18n.get('options_tooltip', 'Configure transfer options'))
+        # Options button removed - use Tools menu instead
         
         # Add visual separator lines with slightly darker color
         separator_style = {'bg': '#d0d0d0', 'width': 2}
@@ -389,8 +383,7 @@ class DualPaneFileBrowser:
         conn_frame.grid(row=0, column=0, sticky='ew', padx=5, pady=5)
         self.remote_frame.grid_columnconfigure(0, weight=1)
         
-        self.conn_status_label = tk.Label(conn_frame, text=i18n.get('not_connected', 'Not connected'), fg=COLOR_ERROR)
-        self.conn_status_label.pack(side='left')
+        # Connection status now shown in main status bar
         
         self.connect_button = ttk.Button(conn_frame, text=i18n.get('connect', 'Connect'), command=self.connect_remote)
         self.connect_button.pack(side='right')
@@ -411,15 +404,10 @@ class DualPaneFileBrowser:
         self.remote_home_button.grid(row=0, column=1, padx=(0, 5))
         create_tooltip(self.remote_home_button, i18n.get('navigate_home_tooltip', 'Go to home directory'))
         
-        self.remote_refresh_button = ttk.Button(nav_frame, text='↻', width=4,
-                                               command=self.refresh_remote, state='disabled')
-        self.remote_refresh_button.grid(row=0, column=2, padx=(0, 5))
-        create_tooltip(self.remote_refresh_button, i18n.get('refresh_tooltip', 'Refresh file list'))
-        
         # Path entry
         self.remote_path_var = tk.StringVar(value=self.remote_current_path)
         self.remote_path_entry = ttk.Entry(nav_frame, textvariable=self.remote_path_var, state='readonly')
-        self.remote_path_entry.grid(row=0, column=3, sticky='ew', padx=5)
+        self.remote_path_entry.grid(row=0, column=2, sticky='ew', padx=5)
         
         # Search frame using grid
         search_frame = tk.Frame(self.remote_frame)
@@ -429,7 +417,7 @@ class DualPaneFileBrowser:
         self.remote_search_label = tk.Label(search_frame, text=i18n.get('search', 'Search:'))
         self.remote_search_label.grid(row=0, column=0, padx=5)
         
-        self.remote_search_var = tk.StringVar()
+        # Note: self.remote_search_var is already initialized in __init__
         self.remote_search_entry = ttk.Entry(search_frame, textvariable=self.remote_search_var, state='disabled')
         self.remote_search_entry.grid(row=0, column=1, sticky='ew', padx=5)
         # Use trace to update on every keystroke
@@ -490,9 +478,35 @@ class DualPaneFileBrowser:
     def refresh_local(self):
         """Refresh local file list"""
         try:
+            # Log current path for debugging
+            self.logger.debug(f"Refreshing local directory: {self.local_current_path}")
+            
+            # Ensure path exists and is accessible
+            if not self.local_current_path.exists():
+                self.logger.error(f"Path does not exist: {self.local_current_path}")
+                self.local_current_path = Path.home()
+                if hasattr(self, 'local_path_var') and self.local_path_var:
+                    self.local_path_var.set(str(self.local_current_path))
+            
+            if not self.local_current_path.is_dir():
+                self.logger.error(f"Path is not a directory: {self.local_current_path}")
+                self.local_current_path = Path.home()
+                if hasattr(self, 'local_path_var') and self.local_path_var:
+                    self.local_path_var.set(str(self.local_current_path))
+            
             # List directory contents
             self.local_files = []
-            for path in self.local_current_path.iterdir():
+            try:
+                paths = list(self.local_current_path.iterdir())
+            except Exception as e:
+                self.logger.error(f"Failed to list directory {self.local_current_path}: {e}")
+                # Try home directory as fallback
+                self.local_current_path = Path.home()
+                if hasattr(self, 'local_path_var') and self.local_path_var:
+                    self.local_path_var.set(str(self.local_current_path))
+                paths = list(self.local_current_path.iterdir())
+            
+            for path in paths:
                 try:
                     stat_info = path.stat()
                     self.local_files.append({
@@ -511,9 +525,14 @@ class DualPaneFileBrowser:
             self.display_local_files()
             
         except Exception as e:
+            import traceback
             self.logger.error(f"Error refreshing local files: {e}")
-            messagebox.showerror(i18n.get('error', 'Error'), 
-                               i18n.get('failed_list_local', f'Failed to list local directory: {str(e)}'))
+            self.logger.error(f"Traceback: {traceback.format_exc()}")
+            error_msg = f"Failed to list local directory: {str(e)}"
+            # Add more context about what was being accessed
+            if 'attribute' in str(e):
+                error_msg += "\n\nThis appears to be an initialization issue. Please report this error."
+            messagebox.showerror(i18n.get('error', 'Error'), error_msg)
     
     def on_local_search_changed(self):
         """Handle local search text change"""
@@ -528,6 +547,10 @@ class DualPaneFileBrowser:
     
     def display_local_files(self):
         """Display local files with current sorting and filtering"""
+        # Check if tree widget exists
+        if not hasattr(self, 'local_tree') or not self.local_tree:
+            return
+            
         # Clear existing items
         for item in self.local_tree.get_children():
             self.local_tree.delete(item)
@@ -575,13 +598,15 @@ class DualPaneFileBrowser:
                                   tags=tags)
         
         # Update path display
-        self.local_path_var.set(str(self.local_current_path))
+        if hasattr(self, 'local_path_var') and self.local_path_var:
+            self.local_path_var.set(str(self.local_current_path))
         
         # Update status with filter info
         status_text = i18n.get('local_items', 'Local: {count} items').format(count=len(sorted_files))
         if self.local_filter:
             status_text += f" ({i18n.get('filtered', 'filtered')})"
-        self.status_label.config(text=status_text)
+        # Update activity status to show current state
+        self.main_window.update_activity_status()
     
     def navigate_local_up(self):
         """Navigate to parent directory in local pane"""
@@ -667,7 +692,8 @@ class DualPaneFileBrowser:
             return
         
         self.connect_button.config(state='disabled')
-        self.conn_status_label.config(text=i18n.get('connecting', 'Connecting...'), fg='orange')
+        # Update connection status to connecting
+        self.main_window.connection_status_label.config(text="🟡 Connecting...", fg='#f57c00')
         
         def do_connect():
             try:
@@ -690,14 +716,21 @@ class DualPaneFileBrowser:
     
     def on_remote_connected(self):
         """Handle successful remote connection"""
-        self.conn_status_label.config(text=i18n.get('connected', 'Connected'), fg=COLOR_SUCCESS)
+        # Update connection status
+        info_dict = {
+            'team': getattr(self.ssh_connection, 'team', 'Unknown'),
+            'machine': getattr(self.ssh_connection, 'machine', 'Unknown'),
+            'repo': getattr(self.ssh_connection, 'repository', 'Unknown'),
+            'path': self.remote_current_path
+        }
+        self.main_window.update_connection_status(True, info_dict)
         self.connect_button.config(text=i18n.get('disconnect', 'Disconnect'), state='normal')
         self.connect_button.config(command=self.disconnect_remote)
         
         # Enable remote controls
         self.remote_up_button.config(state='normal')
         self.remote_home_button.config(state='normal')
-        self.remote_refresh_button.config(state='normal')
+        # Refresh button removed - use menu instead
         self.remote_path_entry.config(state='readonly')
         self.remote_search_entry.config(state='normal')
         self.remote_clear_button.config(state='normal')
@@ -707,7 +740,7 @@ class DualPaneFileBrowser:
     
     def on_remote_connect_failed(self, error: str):
         """Handle failed remote connection"""
-        self.conn_status_label.config(text=i18n.get('not_connected', 'Not connected'), fg=COLOR_ERROR)
+        self.main_window.update_connection_status(False)
         self.connect_button.config(state='normal')
         messagebox.showerror(i18n.get('connection_failed', 'Connection Failed'), 
                            i18n.get('failed_connect_remote', f'Failed to connect to remote: {error}'))
@@ -725,12 +758,12 @@ class DualPaneFileBrowser:
             self.remote_tree.delete(item)
         
         # Update UI
-        self.conn_status_label.config(text=i18n.get('not_connected', 'Not connected'), fg=COLOR_ERROR)
+        self.main_window.update_connection_status(False)
         self.connect_button.config(text=i18n.get('connect', 'Connect'), command=self.connect_remote)
         
         # Disable remote controls
         remote_controls = [
-            self.remote_up_button, self.remote_home_button, self.remote_refresh_button,
+            self.remote_up_button, self.remote_home_button,
             self.remote_search_entry, self.remote_clear_button
         ]
         for control in remote_controls:
@@ -782,7 +815,7 @@ class DualPaneFileBrowser:
         if not self.ssh_connection:
             return
         
-        self.status_label.config(text=i18n.get('loading_remote_files', 'Loading remote files...'))
+        self.main_window.activity_status_label.config(text="Loading remote files...")
         
         def do_refresh():
             try:
@@ -874,7 +907,8 @@ class DualPaneFileBrowser:
         status_text = i18n.get('remote_items', 'Remote: {count} items').format(count=len(sorted_files))
         if self.remote_filter:
             status_text += f" ({i18n.get('filtered', 'filtered')})"
-        self.status_label.config(text=status_text)
+        # Update activity status
+        self.main_window.update_activity_status()
     
     def navigate_remote_up(self):
         """Navigate to parent directory in remote pane"""
@@ -1063,6 +1097,23 @@ class DualPaneFileBrowser:
                                     if match:
                                         percent = int(match.group(1))
                                         progress_callback(percent, line.strip())
+                                        
+                                        # Extract speed info for status bar
+                                        speed_match = re.search(r'([\d.]+[KMG]?B/s)', line)
+                                        if speed_match:
+                                            speed_str = speed_match.group(1)
+                                            # Convert to bytes/sec
+                                            if speed_str.endswith('KB/s'):
+                                                speed = float(speed_str[:-4]) * 1024
+                                            elif speed_str.endswith('MB/s'):
+                                                speed = float(speed_str[:-4]) * 1024 * 1024
+                                            elif speed_str.endswith('GB/s'):
+                                                speed = float(speed_str[:-4]) * 1024 * 1024 * 1024
+                                            else:
+                                                speed = float(speed_str[:-3])
+                                            
+                                            # Update performance status bar
+                                            self.parent.after(0, lambda s=speed: self.main_window.update_performance_status(speed=s))
                                 except:
                                     pass
                     
@@ -1244,6 +1295,27 @@ class DualPaneFileBrowser:
         self.upload_button.config(state='disabled')
         self.download_button.config(state='disabled')
         
+        # Initialize transfer tracking
+        self.transfer_start_time = time.time()
+        self.bytes_transferred = 0
+        
+        # Calculate total size
+        total_size = 0
+        for path, is_dir in paths:
+            try:
+                if is_dir:
+                    # Estimate directory size (rough)
+                    total_size += 1000000  # 1MB estimate per directory
+                else:
+                    total_size += os.path.getsize(path) if direction == 'upload' else 1000000
+            except:
+                pass
+        
+        # Update status bar for transfer start
+        # Update status bar for transfer start
+        self.main_window.start_activity_animation()
+        self.main_window.update_activity_status(direction, len(paths), total_size)
+        
         # Transfer thread
         def do_transfer():
             try:
@@ -1322,6 +1394,11 @@ class DualPaneFileBrowser:
                 progress_dialog.after(0, lambda: close_button.config(state='normal'))
                 progress_dialog.after(0, lambda: progress_dialog.protocol('WM_DELETE_WINDOW', progress_dialog.destroy))
                 self.parent.after(0, lambda: self.on_transfer_complete(str(e), False))
+                
+                # Reset status bar on error
+                # Reset status bar
+                self.parent.after(0, self.main_window.stop_activity_animation)
+                self.parent.after(0, self.main_window.update_activity_status)
         
         thread = threading.Thread(target=do_transfer, daemon=True)
         thread.start()
@@ -1332,7 +1409,7 @@ class DualPaneFileBrowser:
         self.update_transfer_buttons()
         
         # Update status
-        self.status_label.config(text=message)
+        # Activity status will be updated after transfer
         
         # Show message
         if success:
@@ -2077,10 +2154,10 @@ class DualPaneFileBrowser:
         
         # Update connection status
         if self.ssh_connection:
-            self.conn_status_label.config(text=i18n.get('connected', 'Connected'))
+            # Connection status already updated in on_remote_connected
             self.connect_button.config(text=i18n.get('disconnect', 'Disconnect'))
         else:
-            self.conn_status_label.config(text=i18n.get('not_connected', 'Not connected'))
+            # Connection status already updated in disconnect_remote
             self.connect_button.config(text=i18n.get('connect', 'Connect'))
         
         # Update column headings
@@ -2100,9 +2177,7 @@ class DualPaneFileBrowser:
             self.preview_toggle_button.config(text=i18n.get('hide_preview' if self.preview_visible else 'show_preview', 
                                                            'Hide Preview' if self.preview_visible else 'Show Preview'))
         
-        # Update transfer options button
-        if hasattr(self, 'options_button'):
-            self.options_button.config(text=i18n.get('options', 'Options'))
+        # Options button removed - using menu instead
         
         # Update search labels and buttons
         if hasattr(self, 'local_search_label'):
@@ -2110,3 +2185,4 @@ class DualPaneFileBrowser:
             self.local_clear_button.config(text=i18n.get('clear', 'Clear'))
             self.remote_search_label.config(text=i18n.get('search', 'Search:'))
             self.remote_clear_button.config(text=i18n.get('clear', 'Clear'))
+    

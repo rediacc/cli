@@ -939,10 +939,16 @@ class I18n:
     
     def set_language(self, language: str):
         """Set the current language"""
+        logger = get_logger(__name__)
+        logger.debug(f"Setting language from {self.current_language} to {language}")
+        
         if language in self.LANGUAGES:
             self.current_language = language
             self.save_language_preference(language)
+            logger.debug(f"Language changed successfully to {language}")
             self._notify_observers()
+        else:
+            logger.warning(f"Attempted to set invalid language: {language}")
     
     def get(self, key: str, fallback: str = None, **kwargs) -> str:
         """Get a translated string for the current language
@@ -976,9 +982,15 @@ class I18n:
     
     def _notify_observers(self):
         """Notify all observers of language change"""
+        logger = get_logger(__name__)
+        logger.debug(f"Notifying {len(self._observers)} observers of language change to {self.current_language}")
+        
         for callback in self._observers:
-            with contextlib.suppress(Exception):
+            try:
                 callback()
+                logger.debug(f"Successfully called observer: {callback.__name__ if hasattr(callback, '__name__') else callback}")
+            except Exception as e:
+                logger.error(f"Error calling language observer {callback}: {e}", exc_info=True)
     
     def get_language_name(self, code: str) -> str:
         """Get the display name for a language code"""
