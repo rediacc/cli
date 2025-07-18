@@ -35,7 +35,7 @@ from rediacc_cli_core import (
 # Import GUI components
 from gui_base import create_tooltip
 from gui_utilities import (
-    format_size, format_time, parse_ls_output,
+    format_size, format_time, parse_ls_output, center_window,
     COMBO_WIDTH_SMALL, COMBO_WIDTH_MEDIUM, COLUMN_WIDTH_NAME, COLUMN_WIDTH_SIZE,
     COLUMN_WIDTH_MODIFIED, COLUMN_WIDTH_TYPE, COLOR_SUCCESS, COLOR_ERROR,
     COLOR_INFO, PREVIEW_SIZE_LIMIT, PREVIEW_LINE_LIMIT
@@ -74,6 +74,10 @@ class DualPaneFileBrowser:
         # Search filters
         self.local_filter = ''
         self.remote_filter = ''
+        
+        # Transfer subprocess tracking
+        self.current_transfer_process = None
+        self.transfer_cancelled = False
         
         # Initialize search variables early to prevent access errors
         self.local_search_var = tk.StringVar()
@@ -181,7 +185,7 @@ class DualPaneFileBrowser:
         self.preview_visible = False
         
         # Preview pane with improved padding
-        self.preview_frame = tk.LabelFrame(self.preview_container, text=i18n.get('file_preview', 'File Preview'))
+        self.preview_frame = tk.LabelFrame(self.preview_container, text=i18n.get('file_preview'))
         self.preview_frame.pack(fill='both', expand=True, padx=10, pady=5)
         
         # Preview controls with grid layout
@@ -222,7 +226,7 @@ class DualPaneFileBrowser:
         preview_button_frame.pack(fill='x', pady=(5, 0))
         
         self.preview_toggle_button = ttk.Button(preview_button_frame, 
-                                              text=i18n.get('show_preview', 'Show Preview'),
+                                              text=i18n.get('show_preview'),
                                               command=self.toggle_preview)
         self.preview_toggle_button.pack(side='right', padx=5)
         
@@ -232,7 +236,7 @@ class DualPaneFileBrowser:
     def create_local_pane(self):
         """Create the local file browser pane"""
         # Container frame
-        self.local_frame = tk.LabelFrame(self.paned_window, text=i18n.get('local_files', 'Local Files'))
+        self.local_frame = tk.LabelFrame(self.paned_window, text=i18n.get('local_files'))
         self.paned_window.add(self.local_frame, minsize=400)
         
         # Navigation frame using grid
@@ -247,12 +251,12 @@ class DualPaneFileBrowser:
         self.local_up_button = ttk.Button(nav_frame, text='↑', width=4,
                                          command=self.navigate_local_up)
         self.local_up_button.grid(row=0, column=0, padx=(0, 5))
-        create_tooltip(self.local_up_button, i18n.get('navigate_up_tooltip', 'Navigate to parent folder'))
+        create_tooltip(self.local_up_button, i18n.get('navigate_up_tooltip'))
         
         self.local_home_button = ttk.Button(nav_frame, text='🏠', width=4,
                                            command=self.navigate_local_home)
         self.local_home_button.grid(row=0, column=1, padx=(0, 5))
-        create_tooltip(self.local_home_button, i18n.get('navigate_home_tooltip', 'Go to home directory'))
+        create_tooltip(self.local_home_button, i18n.get('navigate_home_tooltip'))
         
         # Path entry
         self.local_path_var = tk.StringVar(value=str(self.local_current_path))
@@ -264,7 +268,7 @@ class DualPaneFileBrowser:
         search_frame.grid(row=1, column=0, sticky='ew', padx=5, pady=(0, 5))
         search_frame.grid_columnconfigure(1, weight=1)  # Search entry column expands
         
-        self.local_search_label = tk.Label(search_frame, text=i18n.get('search', 'Search:'))
+        self.local_search_label = tk.Label(search_frame, text=i18n.get('search'))
         self.local_search_label.grid(row=0, column=0, padx=5)
         
         # Note: self.local_search_var is already initialized in __init__
@@ -273,7 +277,7 @@ class DualPaneFileBrowser:
         # Use trace to update on every keystroke
         self.local_search_var.trace('w', lambda *args: self.on_local_search_changed())
         
-        self.local_clear_button = ttk.Button(search_frame, text=i18n.get('clear', 'Clear'), 
+        self.local_clear_button = ttk.Button(search_frame, text=i18n.get('clear'), 
                                            command=self.clear_local_search)
         self.local_clear_button.grid(row=0, column=2, padx=5)
         
@@ -338,7 +342,7 @@ class DualPaneFileBrowser:
         self.paned_window.add(self.transfer_frame, minsize=160, width=160)
         
         # Add title
-        title_label = tk.Label(self.transfer_frame, text=i18n.get('transfer_actions', 'Transfer Actions'),
+        title_label = tk.Label(self.transfer_frame, text=i18n.get('transfer_actions'),
                               font=('Arial', 10, 'bold'), bg='#f0f0f0')
         title_label.pack(pady=(10, 5))
         
@@ -347,29 +351,29 @@ class DualPaneFileBrowser:
         button_container.pack(expand=True)
         
         # Connect button (moved from main window)
-        self.connect_button = ttk.Button(button_container, text=i18n.get('connect', 'Connect'),
+        self.connect_button = ttk.Button(button_container, text=i18n.get('connect'),
                                        command=self.on_connect_clicked,
                                        width=COMBO_WIDTH_SMALL)
         self.connect_button.pack(pady=(0, 10))
-        create_tooltip(self.connect_button, i18n.get('connect_tooltip', 'Connect to remote repository'))
+        create_tooltip(self.connect_button, i18n.get('connect_tooltip'))
         
         # Separator
         separator = ttk.Separator(button_container, orient='horizontal')
         separator.pack(fill='x', pady=(0, 20))
         
         # Upload button
-        self.upload_button = ttk.Button(button_container, text=i18n.get('upload_arrow', 'Upload →'), 
+        self.upload_button = ttk.Button(button_container, text=i18n.get('upload_arrow'), 
                                        command=self.upload_selected, state='disabled',
                                        width=COMBO_WIDTH_SMALL)
         self.upload_button.pack(pady=(0, 20))
-        create_tooltip(self.upload_button, i18n.get('upload_tooltip', 'Upload selected files to remote'))
+        create_tooltip(self.upload_button, i18n.get('upload_tooltip'))
         
         # Download button
-        self.download_button = ttk.Button(button_container, text=i18n.get('download_arrow', '← Download'), 
+        self.download_button = ttk.Button(button_container, text=i18n.get('download_arrow'), 
                                          command=self.download_selected, state='disabled',
                                          width=COMBO_WIDTH_SMALL)
         self.download_button.pack(pady=(0, 20))
-        create_tooltip(self.download_button, i18n.get('download_tooltip', 'Download selected files from remote'))
+        create_tooltip(self.download_button, i18n.get('download_tooltip'))
         
         # Add visual separator lines with slightly darker color
         separator_style = {'bg': '#d0d0d0', 'width': 2}
@@ -380,14 +384,14 @@ class DualPaneFileBrowser:
         
         # Add hover effect instructions
         info_label = tk.Label(self.transfer_frame, 
-                            text=i18n.get('select_files_to_transfer', 'Select files to transfer'),
+                            text=i18n.get('select_files_to_transfer'),
                             font=('Arial', 8), fg='gray', bg='#f0f0f0')
         info_label.pack(side='bottom', pady=10)
     
     def create_remote_pane(self):
         """Create the remote file browser pane"""
         # Container frame
-        self.remote_frame = tk.LabelFrame(self.paned_window, text=i18n.get('remote_files', 'Remote Files'))
+        self.remote_frame = tk.LabelFrame(self.paned_window, text=i18n.get('remote_files'))
         self.paned_window.add(self.remote_frame, minsize=400)
         
         # Configure grid
@@ -402,12 +406,12 @@ class DualPaneFileBrowser:
         self.remote_up_button = ttk.Button(nav_frame, text='↑', width=4,
                                           command=self.navigate_remote_up, state='disabled')
         self.remote_up_button.grid(row=0, column=0, padx=(0, 5))
-        create_tooltip(self.remote_up_button, i18n.get('navigate_up_tooltip', 'Navigate to parent folder'))
+        create_tooltip(self.remote_up_button, i18n.get('navigate_up_tooltip'))
         
         self.remote_home_button = ttk.Button(nav_frame, text='🏠', width=4,
                                             command=self.navigate_remote_home, state='disabled')
         self.remote_home_button.grid(row=0, column=1, padx=(0, 5))
-        create_tooltip(self.remote_home_button, i18n.get('navigate_home_tooltip', 'Go to home directory'))
+        create_tooltip(self.remote_home_button, i18n.get('navigate_home_tooltip'))
         
         # Path entry
         self.remote_path_var = tk.StringVar(value=self.remote_current_path)
@@ -419,7 +423,7 @@ class DualPaneFileBrowser:
         search_frame.grid(row=1, column=0, sticky='ew', padx=5, pady=(0, 5))
         search_frame.grid_columnconfigure(1, weight=1)  # Search entry column expands
         
-        self.remote_search_label = tk.Label(search_frame, text=i18n.get('search', 'Search:'))
+        self.remote_search_label = tk.Label(search_frame, text=i18n.get('search'))
         self.remote_search_label.grid(row=0, column=0, padx=5)
         
         # Note: self.remote_search_var is already initialized in __init__
@@ -428,7 +432,7 @@ class DualPaneFileBrowser:
         # Use trace to update on every keystroke
         self.remote_search_var.trace('w', lambda *args: self.on_remote_search_changed())
         
-        self.remote_clear_button = ttk.Button(search_frame, text=i18n.get('clear', 'Clear'), 
+        self.remote_clear_button = ttk.Button(search_frame, text=i18n.get('clear'), 
                                             command=self.clear_remote_search, state='disabled')
         self.remote_clear_button.grid(row=0, column=2, padx=5)
         
@@ -520,7 +524,7 @@ class DualPaneFileBrowser:
                         'is_dir': path.is_dir(),
                         'size': stat_info.st_size if not path.is_dir() else 0,
                         'modified': stat_info.st_mtime,
-                        'type': i18n.get('folder', 'Folder') if path.is_dir() else i18n.get('file', 'File')
+                        'type': i18n.get('folder') if path.is_dir() else i18n.get('file')
                     })
                 except (PermissionError, OSError):
                     # Skip files we can't access
@@ -537,7 +541,7 @@ class DualPaneFileBrowser:
             # Add more context about what was being accessed
             if 'attribute' in str(e):
                 error_msg += "\n\nThis appears to be an initialization issue. Please report this error."
-            messagebox.showerror(i18n.get('error', 'Error'), error_msg)
+            messagebox.showerror(i18n.get('error'), error_msg)
     
     def on_local_search_changed(self):
         """Handle local search text change"""
@@ -607,9 +611,9 @@ class DualPaneFileBrowser:
             self.local_path_var.set(str(self.local_current_path))
         
         # Update status with filter info
-        status_text = i18n.get('local_items', 'Local: {count} items').format(count=len(sorted_files))
+        status_text = i18n.get('local_items', count=len(sorted_files))
         if self.local_filter:
-            status_text += f" ({i18n.get('filtered', 'filtered')})"
+            status_text += f" ({i18n.get('filtered')})"
         # Update activity status to show current state
         self.main_window.update_activity_status()
     
@@ -633,11 +637,11 @@ class DualPaneFileBrowser:
                 self.local_current_path = path
                 self.refresh_local()
             else:
-                messagebox.showerror(i18n.get('error', 'Error'), 
-                                   i18n.get('invalid_directory', 'Invalid directory path'))
+                messagebox.showerror(i18n.get('error'), 
+                                   i18n.get('invalid_directory'))
         except Exception as e:
-            messagebox.showerror(i18n.get('error', 'Error'), 
-                               i18n.get('invalid_path', f'Invalid path: {str(e)}'))
+            messagebox.showerror(i18n.get('error'), 
+                               i18n.get('invalid_path'))
     
     def on_local_double_click(self, event):
         """Handle double-click on local file/folder"""
@@ -667,9 +671,9 @@ class DualPaneFileBrowser:
         # Update column headers to show sort indicator
         for col in ['name', 'size', 'modified', 'type']:
             if col == 'name':
-                header = i18n.get('name', 'Name')
+                header = i18n.get('name')
             else:
-                header = i18n.get(col, col.capitalize())
+                header = i18n.get(col) or col.capitalize()
             
             if col == column:
                 # Add sort indicator
@@ -695,14 +699,14 @@ class DualPaneFileBrowser:
             machine = self.main_window.machine_combo.get()
             repo = self.main_window.repo_combo.get()
             
-            if (team and team != i18n.get('select_team', 'Select Team...') and
-                machine and machine != i18n.get('select_machine', 'Select Machine...') and
-                repo and repo != i18n.get('select_repository', 'Select Repository...')):
+            if (team and not self.main_window._is_placeholder_value(team, 'select_team') and
+                machine and not self.main_window._is_placeholder_value(machine, 'select_machine') and
+                repo and not self.main_window._is_placeholder_value(repo, 'select_repository')):
                 # Connect
                 self.connect_remote()
             else:
-                messagebox.showinfo(i18n.get('info', 'Info'), 
-                                  i18n.get('select_all_resources', 'Please select team, machine and repository first'))
+                messagebox.showinfo(i18n.get('info'), 
+                                  i18n.get('select_all_resources'))
     
     # Remote operations
     def connect_remote(self):
@@ -712,8 +716,8 @@ class DualPaneFileBrowser:
         repo = self.main_window.repo_combo.get()
         
         if not all([team, machine, repo]):
-            messagebox.showerror(i18n.get('error', 'Error'), 
-                               i18n.get('select_team_machine_repo', 'Please select team, machine, and repository first'))
+            messagebox.showerror(i18n.get('error'), 
+                               i18n.get('select_team_machine_repo'))
             return
         
         # Connect button is now in main window
@@ -765,8 +769,8 @@ class DualPaneFileBrowser:
     def on_remote_connect_failed(self, error: str):
         """Handle failed remote connection"""
         self.main_window.update_connection_status(False)
-        messagebox.showerror(i18n.get('connection_failed', 'Connection Failed'), 
-                           i18n.get('failed_connect_remote', f'Failed to connect to remote: {error}'))
+        messagebox.showerror(i18n.get('connection_failed'), 
+                           i18n.get('failed_connect_remote'))
     
     def disconnect_remote(self):
         """Disconnect from remote repository"""
@@ -811,9 +815,9 @@ class DualPaneFileBrowser:
             repo = self.main_window.repo_combo.get()
             
             # Validate selections are not placeholder values
-            if (team and team != i18n.get('select_team', 'Select Team...') and
-                machine and machine != i18n.get('select_machine', 'Select Machine...') and
-                repo and repo != i18n.get('select_repository', 'Select Repository...')):
+            if (team and not self.main_window._is_placeholder_value(team, 'select_team') and
+                machine and not self.main_window._is_placeholder_value(machine, 'select_machine') and
+                repo and not self.main_window._is_placeholder_value(repo, 'select_repository')):
                 self.connect_remote()
     
     def execute_remote_command(self, command: str) -> Tuple[bool, str]:
@@ -866,13 +870,13 @@ class DualPaneFileBrowser:
                     files = parse_ls_output(output)
                     self.parent.after(0, lambda: self.update_remote_tree(files))
                 else:
-                    self.parent.after(0, lambda: messagebox.showerror(i18n.get('error', 'Error'), 
-                                                                     i18n.get('failed_list_remote', f'Failed to list remote directory: {output}')))
+                    self.parent.after(0, lambda: messagebox.showerror(i18n.get('error'), 
+                                                                     i18n.get('failed_list_remote')))
                     
             except Exception as e:
                 self.logger.error(f"Error refreshing remote files: {e}")
-                self.parent.after(0, lambda: messagebox.showerror(i18n.get('error', 'Error'), 
-                                                                 i18n.get('failed_refresh_remote', f'Failed to refresh remote: {str(e)}')))
+                self.parent.after(0, lambda: messagebox.showerror(i18n.get('error'), 
+                                                                 i18n.get('failed_refresh_remote')))
         
         thread = threading.Thread(target=do_refresh, daemon=True)
         thread.start()
@@ -944,9 +948,9 @@ class DualPaneFileBrowser:
         self.remote_path_var.set(self.remote_current_path)
         
         # Update status with filter info
-        status_text = i18n.get('remote_items', 'Remote: {count} items').format(count=len(sorted_files))
+        status_text = i18n.get('remote_items', count=len(sorted_files))
         if self.remote_filter:
-            status_text += f" ({i18n.get('filtered', 'filtered')})"
+            status_text += f" ({i18n.get('filtered')})"
         # Update activity status
         self.main_window.update_activity_status()
     
@@ -1004,7 +1008,7 @@ class DualPaneFileBrowser:
         # Update column headers to show sort indicator
         indicator = ' ▼' if self.remote_sort_reverse else ' ▲'
         for col in ['name', 'size', 'modified', 'type']:
-            header = i18n.get(col, col.capitalize()) if col != 'name' else i18n.get('name', 'Name')
+            header = i18n.get(col) or col.capitalize() if col != 'name' else i18n.get('name')
             if col == column:
                 header += indicator
             
@@ -1133,8 +1137,15 @@ class DualPaneFileBrowser:
                     process = subprocess.Popen(cmd, stdout=subprocess.PIPE, stderr=subprocess.PIPE, 
                                              text=True, bufsize=1)
                     
+                    # Store process reference for cancellation
+                    self.current_transfer_process = process
+                    
                     # Process output for progress
                     for line in process.stdout:
+                        # Check if cancelled
+                        if self.transfer_cancelled:
+                            process.terminate()
+                            break
                         if progress_callback:
                             # Parse progress: "1,234,567  45%  123.45MB/s    0:00:10"
                             # Also handle: "xfr#1, to-chk=0/1"
@@ -1168,7 +1179,14 @@ class DualPaneFileBrowser:
                     # Wait for completion
                     process.wait()
                     
-                    if process.returncode == 0:
+                    # Clear process reference
+                    self.current_transfer_process = None
+                    
+                    # Check if cancelled
+                    if self.transfer_cancelled:
+                        error_messages.append(f"{os.path.basename(local_path)}: Cancelled by user")
+                        break
+                    elif process.returncode == 0:
                         success_count += 1
                     else:
                         stderr = process.stderr.read()
@@ -1266,8 +1284,15 @@ class DualPaneFileBrowser:
             process = subprocess.Popen(rsync_cmd, stdout=subprocess.PIPE, stderr=subprocess.PIPE, 
                                      text=True, bufsize=1)
             
+            # Store process reference for cancellation
+            self.current_transfer_process = process
+            
             # Process output for progress
             for line in process.stdout:
+                # Check if cancelled
+                if self.transfer_cancelled:
+                    process.terminate()
+                    break
                 if progress_callback:
                     if '%' in line:
                         try:
@@ -1287,7 +1312,13 @@ class DualPaneFileBrowser:
             if known_hosts_file and os.path.exists(known_hosts_file):
                 os.unlink(known_hosts_file)
             
-            if process.returncode == 0:
+            # Clear process reference
+            self.current_transfer_process = None
+            
+            # Check if cancelled
+            if self.transfer_cancelled:
+                return False, "Transfer cancelled by user"
+            elif process.returncode == 0:
                 return True, "Folder sync completed successfully"
             else:
                 stderr = process.stderr.read()
@@ -1300,7 +1331,7 @@ class DualPaneFileBrowser:
     def show_sync_preview(self, changes: Dict[str, list], direction: str) -> bool:
         """Show preview of sync changes and get user confirmation"""
         dialog = tk.Toplevel(self.parent)
-        dialog.title(i18n.get('sync_preview', 'Sync Preview'))
+        dialog.title(i18n.get('sync_preview'))
         dialog.transient(self.parent)
         
         # Center dialog
@@ -1312,7 +1343,7 @@ class DualPaneFileBrowser:
         dialog.grab_set()
         
         # Direction label
-        dir_label = tk.Label(dialog, text=f"{i18n.get('sync_direction', 'Sync Direction')}: {direction.upper()}", 
+        dir_label = tk.Label(dialog, text=f"{i18n.get('sync_direction')}: {direction.upper()}", 
                            font=('Arial', 12, 'bold'))
         dir_label.pack(pady=10)
         
@@ -1326,10 +1357,10 @@ class DualPaneFileBrowser:
         
         # Add tabs for each change type
         categories = [
-            ('new_files', i18n.get('new_files', 'New Files'), '#008000'),
-            ('modified_files', i18n.get('modified_files', 'Modified Files'), '#FF8C00'),
-            ('deleted_files', i18n.get('deleted_files', 'Deleted Files'), '#DC143C'),
-            ('new_dirs', i18n.get('new_dirs', 'New Directories'), '#4169E1')
+            ('new_files', i18n.get('new_files'), '#008000'),
+            ('modified_files', i18n.get('modified_files'), '#FF8C00'),
+            ('deleted_files', i18n.get('deleted_files'), '#DC143C'),
+            ('new_dirs', i18n.get('new_dirs'), '#4169E1')
         ]
         
         for key, label, color in categories:
@@ -1349,7 +1380,7 @@ class DualPaneFileBrowser:
         
         # Summary label
         total_changes = sum(len(changes.get(key, [])) for key in ['new_files', 'modified_files', 'deleted_files', 'new_dirs'])
-        summary_label = tk.Label(dialog, text=f"{i18n.get('total_changes', 'Total changes')}: {total_changes}")
+        summary_label = tk.Label(dialog, text=f"{i18n.get('total_changes')}: {total_changes}")
         summary_label.pack(pady=5)
         
         # Result variable
@@ -1366,10 +1397,10 @@ class DualPaneFileBrowser:
         def cancel():
             dialog.destroy()
         
-        confirm_button = ttk.Button(button_frame, text=i18n.get('confirm', 'Confirm'), command=confirm)
+        confirm_button = ttk.Button(button_frame, text=i18n.get('confirm'), command=confirm)
         confirm_button.pack(side='left', padx=5)
         
-        cancel_button = ttk.Button(button_frame, text=i18n.get('cancel', 'Cancel'), command=cancel)
+        cancel_button = ttk.Button(button_frame, text=i18n.get('cancel'), command=cancel)
         cancel_button.pack(side='left', padx=5)
         
         # Wait for dialog
@@ -1418,7 +1449,7 @@ class DualPaneFileBrowser:
     def show_sync_options_dialog(self, folder_name: str, direction: str) -> bool:
         """Show dialog to configure sync options for a folder"""
         dialog = tk.Toplevel(self.parent)
-        dialog.title(i18n.get('sync_folder_options', 'Sync Folder Options'))
+        dialog.title(i18n.get('sync_folder_options'))
         dialog.transient(self.parent)
         
         # Center dialog
@@ -1433,42 +1464,41 @@ class DualPaneFileBrowser:
         info_frame = tk.Frame(dialog)
         info_frame.pack(fill='x', padx=20, pady=10)
         
-        folder_label = tk.Label(info_frame, text=f"{i18n.get('folder', 'Folder')}: {folder_name}", 
+        folder_label = tk.Label(info_frame, text=f"{i18n.get('folder')}: {folder_name}", 
                               font=('Arial', 12, 'bold'))
         folder_label.pack()
         
-        direction_label = tk.Label(info_frame, text=f"{i18n.get('direction', 'Direction')}: {direction.upper()}")
+        direction_label = tk.Label(info_frame, text=f"{i18n.get('direction')}: {direction.upper()}")
         direction_label.pack()
         
         # Sync options frame
-        options_frame = tk.LabelFrame(dialog, text=i18n.get('sync_options', 'Sync Options'))
+        options_frame = tk.LabelFrame(dialog, text=i18n.get('sync_options'))
         options_frame.pack(fill='x', padx=20, pady=10)
         
         # Mirror option
         mirror_var = tk.BooleanVar(value=self.transfer_options.get('mirror', False))
         mirror_check = tk.Checkbutton(options_frame, 
-                                     text=i18n.get('mirror_mode', 'Mirror mode (delete files in destination not present in source)'),
+                                     text=i18n.get('mirror_mode'),
                                      variable=mirror_var)
         mirror_check.pack(anchor='w', padx=10, pady=5)
         
         # Verify option
         verify_var = tk.BooleanVar(value=self.transfer_options.get('verify', False))
         verify_check = tk.Checkbutton(options_frame, 
-                                     text=i18n.get('verify_transfers', 'Verify transfers (use checksums to ensure accuracy)'),
+                                     text=i18n.get('verify_transfers'),
                                      variable=verify_var)
         verify_check.pack(anchor='w', padx=10, pady=5)
         
         # Preview option
         preview_var = tk.BooleanVar(value=self.transfer_options.get('preview_sync', False))
         preview_check = tk.Checkbutton(options_frame, 
-                                      text=i18n.get('preview_sync', 'Preview changes before syncing'),
+                                      text=i18n.get('preview_sync'),
                                       variable=preview_var)
         preview_check.pack(anchor='w', padx=10, pady=5)
         
         # Info text
-        info_text = tk.Label(dialog, text=i18n.get('sync_info_text', 
-                           'Sync uses rsync for efficient folder synchronization.\n'
-                           'Only changed files will be transferred.'),
+        info_text = tk.Label(dialog, text=i18n.get('sync_info_text') + 
+                           'Only changed files will be transferred.',
                            font=('Arial', 9), fg='#666666', justify='left')
         info_text.pack(padx=20, pady=10)
         
@@ -1490,11 +1520,11 @@ class DualPaneFileBrowser:
         def cancel():
             dialog.destroy()
         
-        sync_button = ttk.Button(button_frame, text=i18n.get('start_sync', 'Start Sync'), 
+        sync_button = ttk.Button(button_frame, text=i18n.get('start_sync'), 
                                command=start_sync)
         sync_button.pack(side='left', padx=5)
         
-        cancel_button = ttk.Button(button_frame, text=i18n.get('cancel', 'Cancel'), 
+        cancel_button = ttk.Button(button_frame, text=i18n.get('cancel'), 
                                  command=cancel)
         cancel_button.pack(side='left', padx=5)
         
@@ -1514,8 +1544,8 @@ class DualPaneFileBrowser:
         
         # Confirm operation
         file_list = '\n'.join([f"{'[DIR] ' if is_dir else ''}{Path(p).name}" for p, is_dir in local_paths])
-        if not messagebox.askyesno(i18n.get('confirm_upload', 'Confirm Upload'),
-                                  i18n.get('upload_confirm_message', 'Upload the following to {path}:\n\n{files}').format(path=self.remote_current_path, files=file_list)):
+        if not messagebox.askyesno(i18n.get('confirm_upload'),
+                                  i18n.get('upload_confirm_message', path=self.remote_current_path, files=file_list)):
             return
         
         # Show progress dialog
@@ -1532,8 +1562,8 @@ class DualPaneFileBrowser:
         
         # Confirm operation
         file_list = '\n'.join([f"{'[DIR] ' if is_dir else ''}{Path(p).name}" for p, is_dir in remote_paths])
-        if not messagebox.askyesno(i18n.get('confirm_download', 'Confirm Download'),
-                                  i18n.get('download_confirm_message', f'Download the following to {self.local_current_path}:\n\n{file_list}')):
+        if not messagebox.askyesno(i18n.get('confirm_download'),
+                                  i18n.get('download_confirm_message')):
             return
         
         # Show progress dialog
@@ -1550,9 +1580,9 @@ class DualPaneFileBrowser:
                        self.transfer_options.get('preview_sync', False))
         
         if is_sync_mode:
-            progress_dialog.title(i18n.get('sync_progress', 'Sync Progress'))
+            progress_dialog.title(i18n.get('sync_progress'))
         else:
-            progress_dialog.title(i18n.get('transfer_progress', 'Transfer Progress'))
+            progress_dialog.title(i18n.get('transfer_progress'))
         # Use 0.4 * screen dimensions for progress dialog
         screen_width = progress_dialog.winfo_screenwidth()
         screen_height = progress_dialog.winfo_screenheight()
@@ -1586,27 +1616,27 @@ class DualPaneFileBrowser:
                        self.transfer_options.get('preview_sync', False))
         
         if is_sync_mode:
-            status_text = i18n.get('preparing_sync', 'Preparing folder sync...')
+            status_text = i18n.get('preparing_sync')
             # Add sync mode indicators
             sync_modes = []
             if self.transfer_options.get('mirror', False):
-                sync_modes.append(i18n.get('mirror', 'Mirror'))
+                sync_modes.append(i18n.get('mirror'))
             if self.transfer_options.get('verify', False):
-                sync_modes.append(i18n.get('verify', 'Verify'))
+                sync_modes.append(i18n.get('verify'))
             if sync_modes:
                 status_text += f" ({', '.join(sync_modes)})"
         else:
-            status_text = i18n.get('preparing_transfer', 'Preparing transfer...')
+            status_text = i18n.get('preparing_transfer')
         
         if self.transfer_options.get('dry_run', False):
-            status_text = i18n.get('dry_run_mode', 'DRY RUN MODE - ') + status_text
+            status_text = i18n.get('dry_run_mode') + status_text
         
         status_label = tk.Label(main_container, text=status_text,
                                font=('Arial', 10), fg=COLOR_INFO if self.transfer_options.get('dry_run', False) else 'black')
         status_label.pack(pady=(0, 10))
         
         # Overall progress
-        overall_frame = tk.LabelFrame(main_container, text=i18n.get('overall_progress', 'Overall Progress'))
+        overall_frame = tk.LabelFrame(main_container, text=i18n.get('overall_progress'))
         overall_frame.pack(fill='x', pady=(0, 10))
         
         # Progress bar container for proper resizing
@@ -1620,7 +1650,7 @@ class DualPaneFileBrowser:
         overall_label.pack()
         
         # Current file progress - don't expand vertically
-        file_frame = tk.LabelFrame(main_container, text=i18n.get('current_file', 'Current File'))
+        file_frame = tk.LabelFrame(main_container, text=i18n.get('current_file'))
         file_frame.pack(fill='x', pady=(0, 10))
         
         file_label = tk.Label(file_frame, text='', font=('Arial', 9), wraplength=500)
@@ -1645,7 +1675,7 @@ class DualPaneFileBrowser:
         speed_label.pack(pady=5)
         
         # Details frame for showing transfer log
-        details_frame = tk.LabelFrame(main_container, text=i18n.get('details', 'Details'))
+        details_frame = tk.LabelFrame(main_container, text=i18n.get('details'))
         details_frame.pack(fill='both', expand=True, pady=(0, 10))
         
         # Create scrolled text for details with better initial height
@@ -1666,11 +1696,30 @@ class DualPaneFileBrowser:
         button_frame = tk.Frame(main_container)
         button_frame.pack(fill='x', pady=(0, 5))
         
-        cancel_button = ttk.Button(button_frame, text=i18n.get('cancel', 'Cancel'), 
-                                  state='disabled')  # TODO: Implement cancel
+        # Create cancel handler
+        def cancel_transfer():
+            """Cancel the current transfer"""
+            self.transfer_cancelled = True
+            if self.current_transfer_process:
+                try:
+                    self.current_transfer_process.terminate()
+                    # Wait a bit for graceful termination
+                    try:
+                        self.current_transfer_process.wait(timeout=2)
+                    except subprocess.TimeoutExpired:
+                        # Force kill if needed
+                        self.current_transfer_process.kill()
+                except:
+                    pass
+            
+            status_label.config(text=i18n.get('cancelling'), fg='orange')
+            cancel_button.config(state='disabled')
+        
+        cancel_button = ttk.Button(button_frame, text=i18n.get('cancel'), 
+                                  command=cancel_transfer)
         cancel_button.pack(side='left', padx=5)
         
-        close_button = ttk.Button(button_frame, text=i18n.get('close', 'Close'),
+        close_button = ttk.Button(button_frame, text=i18n.get('close'),
                                  state='disabled', command=progress_dialog.destroy)
         close_button.pack(side='left', padx=5)
         
@@ -1681,6 +1730,7 @@ class DualPaneFileBrowser:
         # Initialize transfer tracking
         self.transfer_start_time = time.time()
         self.bytes_transferred = 0
+        self.transfer_cancelled = False
         
         # Calculate total size
         total_size = 0
@@ -1716,6 +1766,11 @@ class DualPaneFileBrowser:
                 
                 # Process each file
                 for i, (path, is_dir) in enumerate(paths):
+                    # Check if cancelled
+                    if self.transfer_cancelled:
+                        progress_dialog.after(0, lambda: add_log(i18n.get('transfer_cancelled'), 'orange'))
+                        break
+                    
                     filename = os.path.basename(path)
                     progress_dialog.after(0, lambda f=filename: file_label.config(text=f))
                     progress_dialog.after(0, lambda: file_progress.config(value=0))
@@ -1742,20 +1797,24 @@ class DualPaneFileBrowser:
                     overall_percent = ((i + 1) / total) * 100
                     progress_dialog.after(0, lambda p=overall_percent: overall_progress.config(value=p))
                     progress_dialog.after(0, lambda c=completed, t=total: overall_label.config(
-                        text=f'{c} / {t} ' + i18n.get('completed', 'completed')
+                        text=f'{c} / {t} ' + i18n.get('completed')
                     ))
                 
                 # Transfer complete
-                if completed == total:
-                    msg = i18n.get('all_transfers_successful', f'All {total} transfers completed successfully!')
+                if self.transfer_cancelled:
+                    msg = i18n.get('transfer_cancelled_summary')
+                    success = False
+                elif completed == total:
+                    msg = i18n.get('all_transfers_successful')
                     success = True
                 else:
-                    msg = i18n.get('some_transfers_failed', f'{completed}/{total} transfers completed successfully')
+                    msg = i18n.get('some_transfers_failed')
                     success = False
                 
                 progress_dialog.after(0, lambda: status_label.config(
-                    text=msg, fg=COLOR_SUCCESS if success else 'red'
+                    text=msg, fg=COLOR_SUCCESS if success else ('orange' if self.transfer_cancelled else 'red')
                 ))
+                progress_dialog.after(0, lambda: cancel_button.config(state='disabled'))
                 progress_dialog.after(0, lambda: close_button.config(state='normal'))
                 progress_dialog.after(0, lambda: progress_dialog.protocol('WM_DELETE_WINDOW', progress_dialog.destroy))
                 
@@ -1772,7 +1831,7 @@ class DualPaneFileBrowser:
             except Exception as e:
                 self.logger.error(f"Transfer error: {e}")
                 progress_dialog.after(0, lambda: status_label.config(
-                    text=i18n.get('transfer_error', f'Error: {str(e)}'), fg=COLOR_ERROR
+                    text=i18n.get('transfer_error'), fg=COLOR_ERROR
                 ))
                 progress_dialog.after(0, lambda: close_button.config(state='normal'))
                 progress_dialog.after(0, lambda: progress_dialog.protocol('WM_DELETE_WINDOW', progress_dialog.destroy))
@@ -1796,13 +1855,13 @@ class DualPaneFileBrowser:
         
         # Show message
         if success:
-            messagebox.showinfo(i18n.get('transfer_complete', 'Transfer Complete'), message)
+            messagebox.showinfo(i18n.get('transfer_complete'), message)
             # Refresh both panes
             self.refresh_local()
             if self.ssh_connection:
                 self.refresh_remote()
         else:
-            messagebox.showerror(i18n.get('transfer_failed', 'Transfer Failed'), message)
+            messagebox.showerror(i18n.get('transfer_failed'), message)
     
     def show_local_context_menu(self, event):
         """Show context menu for local files"""
@@ -1819,21 +1878,21 @@ class DualPaneFileBrowser:
             is_file = 'file' in item['tags']
             
             if is_file:
-                menu.add_command(label=i18n.get('preview', 'Preview'), 
+                menu.add_command(label=i18n.get('preview'), 
                                command=lambda: self.preview_selected_file('local'))
                 menu.add_separator()
             
-            menu.add_command(label=i18n.get('upload', 'Upload'), command=self.upload_selected,
+            menu.add_command(label=i18n.get('upload'), command=self.upload_selected,
                            state='normal' if self.ssh_connection else 'disabled')
             
             # Add sync option for folders
             if not is_file and len(self.local_tree.selection()) == 1:
                 self.logger.debug(f"Adding sync folder option: is_file={is_file}, selection_count={len(self.local_tree.selection())}, ssh_connection={bool(self.ssh_connection)}")
-                menu.add_command(label=i18n.get('sync_folder', 'Sync Folder...'), 
+                menu.add_command(label=i18n.get('sync_folder'), 
                                command=lambda: self.sync_folder('upload'),
                                state='normal' if self.ssh_connection else 'disabled')
             menu.add_separator()
-            menu.add_command(label=i18n.get('refresh', 'Refresh'), command=self.refresh_local)
+            menu.add_command(label=i18n.get('refresh'), command=self.refresh_local)
             
             try:
                 menu.tk_popup(event.x_root, event.y_root)
@@ -1855,20 +1914,20 @@ class DualPaneFileBrowser:
             is_file = 'file' in item['tags']
             
             if is_file:
-                menu.add_command(label=i18n.get('preview', 'Preview'), 
+                menu.add_command(label=i18n.get('preview'), 
                                command=lambda: self.preview_selected_file('remote'))
                 menu.add_separator()
             
-            menu.add_command(label=i18n.get('download', 'Download'), command=self.download_selected)
+            menu.add_command(label=i18n.get('download'), command=self.download_selected)
             
             # Add sync option for folders
             if not is_file and len(self.remote_tree.selection()) == 1:
                 self.logger.debug(f"Adding sync folder option: is_file={is_file}, selection_count={len(self.remote_tree.selection())}, ssh_connection={bool(self.ssh_connection)}")
-                menu.add_command(label=i18n.get('sync_folder', 'Sync Folder...'), 
+                menu.add_command(label=i18n.get('sync_folder'), 
                                command=lambda: self.sync_folder('download'),
                                state='normal' if self.ssh_connection else 'disabled')
             menu.add_separator()
-            menu.add_command(label=i18n.get('refresh', 'Refresh'), command=self.refresh_remote)
+            menu.add_command(label=i18n.get('refresh'), command=self.refresh_remote)
             
             try:
                 menu.tk_popup(event.x_root, event.y_root)
@@ -1972,8 +2031,8 @@ class DualPaneFileBrowser:
     def handle_drop(self, source: str, target: str):
         """Handle file drop between panes"""
         if not self.ssh_connection:
-            messagebox.showwarning(i18n.get('warning', 'Warning'),
-                                 i18n.get('connect_first', 'Please connect to remote first'))
+            messagebox.showwarning(i18n.get('warning'),
+                                 i18n.get('connect_first'))
             return
         
         # Map source/target to operation and trees
@@ -1996,8 +2055,8 @@ class DualPaneFileBrowser:
             confirm_key = f'confirm_{operation}'
             message_key = f'drag_{operation}_confirm'
             
-            if messagebox.askyesno(i18n.get(confirm_key, f'Confirm {operation.title()}'),
-                                 i18n.get(message_key, f'{operation.title()} these files to {dest_path}?\n\n{file_list}')):
+            if messagebox.askyesno(i18n.get(confirm_key),
+                                 i18n.get(message_key, path=dest_path, files=file_list)):
                 self.show_transfer_progress(operation, paths)
     
     def setup_keyboard_shortcuts(self):
@@ -2037,30 +2096,30 @@ class DualPaneFileBrowser:
     
     def delete_selected(self):
         """Delete selected files (not implemented - would be dangerous)"""
-        messagebox.showinfo(i18n.get('not_implemented', 'Not Implemented'),
-                          i18n.get('delete_not_implemented', 'Delete functionality is not implemented for safety reasons.'))
+        messagebox.showinfo(i18n.get('not_implemented'),
+                          i18n.get('delete_not_implemented'))
     
     def cut_selected(self):
         """Mark selected files for move (not implemented)"""
         self.clipboard_operation = 'cut'
         self.clipboard_files = self.get_current_selection()
         if self.clipboard_files:
-            messagebox.showinfo(i18n.get('cut', 'Cut'),
-                              i18n.get('files_cut', f'{len(self.clipboard_files)} files marked for move'))
+            messagebox.showinfo(i18n.get('cut'),
+                              i18n.get('files_cut'))
     
     def copy_selected(self):
         """Mark selected files for copy (not implemented)"""
         self.clipboard_operation = 'copy'
         self.clipboard_files = self.get_current_selection()
         if self.clipboard_files:
-            messagebox.showinfo(i18n.get('copy', 'Copy'),
-                              i18n.get('files_copied', f'{len(self.clipboard_files)} files marked for copy'))
+            messagebox.showinfo(i18n.get('copy'),
+                              i18n.get('files_copied'))
     
     def paste_files(self):
         """Paste files (not implemented)"""
         if hasattr(self, 'clipboard_files') and self.clipboard_files:
-            messagebox.showinfo(i18n.get('not_implemented', 'Not Implemented'),
-                              i18n.get('paste_not_implemented', 'Paste functionality is not implemented yet.'))
+            messagebox.showinfo(i18n.get('not_implemented'),
+                              i18n.get('paste_not_implemented'))
     
     def get_current_selection(self):
         """Get currently selected files from focused pane"""
@@ -2075,8 +2134,8 @@ class DualPaneFileBrowser:
     
     def rename_selected(self):
         """Rename selected file (not implemented)"""
-        messagebox.showinfo(i18n.get('not_implemented', 'Not Implemented'),
-                          i18n.get('rename_not_implemented', 'Rename functionality is not implemented yet.'))
+        messagebox.showinfo(i18n.get('not_implemented'),
+                          i18n.get('rename_not_implemented'))
     
     def focus_search(self):
         """Focus the search box of the active pane"""
@@ -2122,7 +2181,7 @@ class DualPaneFileBrowser:
             # Add preview container to vertical paned window
             self.vertical_paned.add(self.preview_container, minsize=150, height=preview_height)
             self.preview_visible = True
-            self.preview_toggle_button.config(text=i18n.get('hide_preview', 'Hide Preview'))
+            self.preview_toggle_button.config(text=i18n.get('hide_preview'))
             
             # Adjust the pane to maintain the 35% ratio
             def adjust_preview_pane():
@@ -2145,7 +2204,7 @@ class DualPaneFileBrowser:
             # Remove preview container from vertical paned window
             self.vertical_paned.remove(self.preview_container)
             self.preview_visible = False
-            self.preview_toggle_button.config(text=i18n.get('show_preview', 'Show Preview'))
+            self.preview_toggle_button.config(text=i18n.get('show_preview'))
     
     def preview_selected_file(self, source: str):
         """Preview the selected file"""
@@ -2193,8 +2252,7 @@ class DualPaneFileBrowser:
             # Check file size
             stat_info = file_path.stat()
             if stat_info.st_size > PREVIEW_SIZE_LIMIT:  # 1MB limit
-                self.preview_text.insert(1.0, i18n.get('file_too_large', 
-                    f'File too large for preview ({format_size(stat_info.st_size)})'))
+                self.preview_text.insert(1.0, i18n.get('file_too_large'))
                 self.preview_text.config(state='disabled')
                 return
             
@@ -2212,17 +2270,17 @@ class DualPaneFileBrowser:
                     content = '\n'.join(lines)
                     self.preview_text.insert(1.0, content)
             except Exception as e:
-                self.preview_text.insert(1.0, i18n.get('preview_error', f'Error reading file: {str(e)}'))
+                self.preview_text.insert(1.0, i18n.get('preview_error'))
         
         except Exception as e:
-            self.preview_text.insert(1.0, i18n.get('preview_error', f'Error: {str(e)}'))
+            self.preview_text.insert(1.0, i18n.get('preview_error'))
         
         finally:
             self.preview_text.config(state='disabled')
     
     def preview_remote_file(self, remote_path: str, filename: str):
         """Preview a remote file"""
-        self.preview_text.insert(1.0, i18n.get('loading_preview', 'Loading preview...'))
+        self.preview_text.insert(1.0, i18n.get('loading_preview'))
         self.preview_text.config(state='disabled')
         
         def load_remote():
@@ -2237,7 +2295,7 @@ class DualPaneFileBrowser:
                         file_size = int(size_output.strip())
                         if file_size > PREVIEW_SIZE_LIMIT:  # 1MB limit
                             self.parent.after(0, lambda: self.update_preview_content(
-                                i18n.get('file_too_large', f'File too large for preview ({format_size(file_size)})')
+                                i18n.get('file_too_large')
                             ))
                             return
                     except:
@@ -2253,11 +2311,11 @@ class DualPaneFileBrowser:
                     self.parent.after(0, lambda: self.update_preview_content(output))
                 else:
                     self.parent.after(0, lambda: self.update_preview_content(
-                        i18n.get('preview_error', f'Error loading preview: {output}')))
+                        i18n.get('preview_error')))
             
             except Exception as e:
                 self.parent.after(0, lambda: self.update_preview_content(
-                    i18n.get('preview_error', f'Error: {str(e)}')))
+                    i18n.get('preview_error')))
         
         thread = threading.Thread(target=load_remote, daemon=True)
         thread.start()
@@ -2272,7 +2330,7 @@ class DualPaneFileBrowser:
     def show_transfer_options(self):
         """Show transfer options dialog"""
         dialog = tk.Toplevel(self.parent)
-        dialog.title(i18n.get('transfer_options', 'Transfer Options'))
+        dialog.title(i18n.get('transfer_options'))
         dialog.transient(self.parent)
         
         # Center and make modal
@@ -2319,45 +2377,45 @@ class DualPaneFileBrowser:
         canvas.bind_all("<Button-5>", lambda e: canvas.yview_scroll(1, "units"))  # Linux
         
         # File Handling Options
-        file_frame = tk.LabelFrame(scrollable_frame, text=i18n.get('file_handling', 'File Handling'))
+        file_frame = tk.LabelFrame(scrollable_frame, text=i18n.get('file_handling'))
         file_frame.pack(fill='x', padx=10, pady=10, expand=False)
         
         # Preserve timestamps
         self.preserve_time_var = tk.BooleanVar(value=self.transfer_options['preserve_timestamps'])
         preserve_time_check = tk.Checkbutton(file_frame, 
-                                           text=i18n.get('preserve_timestamps', 'Preserve modification times'),
+                                           text=i18n.get('preserve_timestamps'),
                                            variable=self.preserve_time_var)
         preserve_time_check.pack(anchor='w', padx=10, pady=5)
         
         # Preserve permissions
         self.preserve_perm_var = tk.BooleanVar(value=self.transfer_options['preserve_permissions'])
         preserve_perm_check = tk.Checkbutton(file_frame, 
-                                           text=i18n.get('preserve_permissions', 'Preserve file permissions'),
+                                           text=i18n.get('preserve_permissions'),
                                            variable=self.preserve_perm_var)
         preserve_perm_check.pack(anchor='w', padx=10, pady=5)
         
         # Skip newer files
         self.skip_newer_var = tk.BooleanVar(value=self.transfer_options['skip_newer'])
         skip_newer_check = tk.Checkbutton(file_frame, 
-                                         text=i18n.get('skip_newer', 'Skip files that are newer on receiver'),
+                                         text=i18n.get('skip_newer'),
                                          variable=self.skip_newer_var)
         skip_newer_check.pack(anchor='w', padx=10, pady=5)
         
         # Delete after transfer
         self.delete_after_var = tk.BooleanVar(value=self.transfer_options['delete_after'])
         delete_after_check = tk.Checkbutton(file_frame, 
-                                          text=i18n.get('delete_after', 'Delete source files after successful transfer'),
+                                          text=i18n.get('delete_after'),
                                           variable=self.delete_after_var)
         delete_after_check.pack(anchor='w', padx=10, pady=5)
         
         # Performance Options
-        perf_frame = tk.LabelFrame(scrollable_frame, text=i18n.get('performance', 'Performance'))
+        perf_frame = tk.LabelFrame(scrollable_frame, text=i18n.get('performance'))
         perf_frame.pack(fill='x', padx=10, pady=10, expand=False)
         
         # Compression
         self.compress_var = tk.BooleanVar(value=self.transfer_options['compress'])
         compress_check = tk.Checkbutton(perf_frame, 
-                                      text=i18n.get('compress', 'Compress data during transfer'),
+                                      text=i18n.get('compress'),
                                       variable=self.compress_var)
         compress_check.pack(anchor='w', padx=10, pady=5)
         
@@ -2365,7 +2423,7 @@ class DualPaneFileBrowser:
         bw_frame = tk.Frame(perf_frame)
         bw_frame.pack(fill='x', padx=10, pady=5)
         
-        bw_label = tk.Label(bw_frame, text=i18n.get('bandwidth_limit', 'Bandwidth limit:')).pack(side='left')
+        bw_label = tk.Label(bw_frame, text=i18n.get('bandwidth_limit')).pack(side='left')
         
         self.bw_limit_var = tk.StringVar(value=str(self.transfer_options['bandwidth_limit']))
         
@@ -2375,15 +2433,15 @@ class DualPaneFileBrowser:
                            validate='key', validatecommand=vcmd)
         bw_entry.pack(side='left', padx=10)
         
-        bw_help = tk.Label(bw_frame, text=i18n.get('bw_help', 'KB/s (0 = unlimited)'), font=('Arial', 9))
+        bw_help = tk.Label(bw_frame, text=i18n.get('bw_help'), font=('Arial', 9))
         bw_help.pack(side='left')
         
         # Exclude Patterns
-        exclude_frame = tk.LabelFrame(scrollable_frame, text=i18n.get('exclude_patterns', 'Exclude Patterns'))
+        exclude_frame = tk.LabelFrame(scrollable_frame, text=i18n.get('exclude_patterns'))
         exclude_frame.pack(fill='both', expand=True, padx=10, pady=10)
         
         exclude_info = tk.Label(exclude_frame, 
-                              text=i18n.get('exclude_info', 'Enter patterns to exclude (one per line):'),
+                              text=i18n.get('exclude_info'),
                               font=('Arial', 9))
         exclude_info.pack(anchor='w', padx=10, pady=5)
         
@@ -2406,7 +2464,7 @@ class DualPaneFileBrowser:
         common_frame = tk.Frame(exclude_frame)
         common_frame.pack(fill='x', padx=10, pady=5)
         
-        common_label = tk.Label(common_frame, text=i18n.get('common_excludes', 'Common:'), font=('Arial', 9))
+        common_label = tk.Label(common_frame, text=i18n.get('common_excludes'), font=('Arial', 9))
         common_label.pack(side='left')
         
         common_patterns = ['.git', '*.tmp', '*.log', '__pycache__', 'node_modules']
@@ -2416,42 +2474,42 @@ class DualPaneFileBrowser:
             btn.pack(side='left', padx=2)
         
         # Sync Options
-        sync_frame = tk.LabelFrame(scrollable_frame, text=i18n.get('sync_options', 'Folder Sync Options'))
+        sync_frame = tk.LabelFrame(scrollable_frame, text=i18n.get('sync_options'))
         sync_frame.pack(fill='x', padx=10, pady=10, expand=False)
         
         sync_info = tk.Label(sync_frame, 
-                           text=i18n.get('sync_info', 'Enable these options for efficient folder synchronization'),
+                           text=i18n.get('sync_info'),
                            font=('Arial', 9), fg='#666666')
         sync_info.pack(anchor='w', padx=10, pady=5)
         
         # Mirror mode
         self.mirror_var = tk.BooleanVar(value=self.transfer_options.get('mirror', False))
         mirror_check = tk.Checkbutton(sync_frame, 
-                                     text=i18n.get('mirror_mode', 'Mirror mode (delete files in destination not present in source)'),
+                                     text=i18n.get('mirror_mode'),
                                      variable=self.mirror_var)
         mirror_check.pack(anchor='w', padx=10, pady=5)
         
         # Verify transfers
         self.verify_var = tk.BooleanVar(value=self.transfer_options.get('verify', False))
         verify_check = tk.Checkbutton(sync_frame, 
-                                     text=i18n.get('verify_transfers', 'Verify transfers (use checksums to ensure accuracy)'),
+                                     text=i18n.get('verify_transfers'),
                                      variable=self.verify_var)
         verify_check.pack(anchor='w', padx=10, pady=5)
         
         # Preview changes
         self.preview_sync_var = tk.BooleanVar(value=self.transfer_options.get('preview_sync', False))
         preview_sync_check = tk.Checkbutton(sync_frame, 
-                                          text=i18n.get('preview_sync', 'Preview changes before syncing'),
+                                          text=i18n.get('preview_sync'),
                                           variable=self.preview_sync_var)
         preview_sync_check.pack(anchor='w', padx=10, pady=5)
         
         # Test Mode
-        test_frame = tk.LabelFrame(scrollable_frame, text=i18n.get('test_mode', 'Test Mode'))
+        test_frame = tk.LabelFrame(scrollable_frame, text=i18n.get('test_mode'))
         test_frame.pack(fill='x', padx=10, pady=10, expand=False)
         
         self.dry_run_var = tk.BooleanVar(value=self.transfer_options['dry_run'])
         dry_run_check = tk.Checkbutton(test_frame, 
-                                      text=i18n.get('dry_run', 'Dry run (show what would be transferred without doing it)'),
+                                      text=i18n.get('dry_run'),
                                       variable=self.dry_run_var)
         dry_run_check.pack(anchor='w', padx=10, pady=5)
         
@@ -2459,11 +2517,11 @@ class DualPaneFileBrowser:
         button_frame = tk.Frame(scrollable_frame)
         button_frame.pack(fill='x', pady=20)
         
-        save_button = ttk.Button(button_frame, text=i18n.get('save', 'Save'), 
+        save_button = ttk.Button(button_frame, text=i18n.get('save'), 
                                command=lambda: self.save_transfer_options(dialog))
         save_button.pack(side='left', padx=5)
         
-        cancel_button = ttk.Button(button_frame, text=i18n.get('cancel', 'Cancel'), 
+        cancel_button = ttk.Button(button_frame, text=i18n.get('cancel'), 
                                  command=dialog.destroy)
         cancel_button.pack(side='left', padx=5)
         
@@ -2521,8 +2579,8 @@ class DualPaneFileBrowser:
         self.transfer_options['exclude_patterns'] = [p.strip() for p in patterns if p.strip()]
         
         # Show confirmation
-        messagebox.showinfo(i18n.get('success', 'Success'), 
-                          i18n.get('options_saved', 'Transfer options saved'))
+        messagebox.showinfo(i18n.get('success'), 
+                          i18n.get('options_saved'))
         
         dialog.destroy()
     
@@ -2577,12 +2635,12 @@ class DualPaneFileBrowser:
     def update_texts(self):
         """Update all UI texts for internationalization"""
         # Update frame titles
-        self.local_frame.config(text=i18n.get('local_files', 'Local Files'))
-        self.remote_frame.config(text=i18n.get('remote_files', 'Remote Files'))
+        self.local_frame.config(text=i18n.get('local_files'))
+        self.remote_frame.config(text=i18n.get('remote_files'))
         
         # Update buttons
-        self.upload_button.config(text=i18n.get('upload_arrow', 'Upload →'))
-        self.download_button.config(text=i18n.get('download_arrow', '← Download'))
+        self.upload_button.config(text=i18n.get('upload_arrow'))
+        self.download_button.config(text=i18n.get('download_arrow'))
         
         # Update connection status
         if self.ssh_connection:
@@ -2593,28 +2651,27 @@ class DualPaneFileBrowser:
             pass
         
         # Update column headings
-        self.local_tree.heading('#0', text=i18n.get('name', 'Name'))
-        self.local_tree.heading('size', text=i18n.get('size', 'Size'))
-        self.local_tree.heading('modified', text=i18n.get('modified', 'Modified'))
-        self.local_tree.heading('type', text=i18n.get('type', 'Type'))
+        self.local_tree.heading('#0', text=i18n.get('name'))
+        self.local_tree.heading('size', text=i18n.get('size'))
+        self.local_tree.heading('modified', text=i18n.get('modified'))
+        self.local_tree.heading('type', text=i18n.get('type'))
         
-        self.remote_tree.heading('#0', text=i18n.get('name', 'Name'))
-        self.remote_tree.heading('size', text=i18n.get('size', 'Size'))
-        self.remote_tree.heading('modified', text=i18n.get('modified', 'Modified'))
-        self.remote_tree.heading('type', text=i18n.get('type', 'Type'))
+        self.remote_tree.heading('#0', text=i18n.get('name'))
+        self.remote_tree.heading('size', text=i18n.get('size'))
+        self.remote_tree.heading('modified', text=i18n.get('modified'))
+        self.remote_tree.heading('type', text=i18n.get('type'))
         
         # Update preview pane
         if hasattr(self, 'preview_frame'):
-            self.preview_frame.config(text=i18n.get('file_preview', 'File Preview'))
-            self.preview_toggle_button.config(text=i18n.get('hide_preview' if self.preview_visible else 'show_preview', 
-                                                           'Hide Preview' if self.preview_visible else 'Show Preview'))
+            self.preview_frame.config(text=i18n.get('file_preview'))
+            self.preview_toggle_button.config(text=i18n.get('hide_preview' if self.preview_visible else 'show_preview'))
         
         # Options button removed - using menu instead
         
         # Update search labels and buttons
         if hasattr(self, 'local_search_label'):
-            self.local_search_label.config(text=i18n.get('search', 'Search:'))
-            self.local_clear_button.config(text=i18n.get('clear', 'Clear'))
-            self.remote_search_label.config(text=i18n.get('search', 'Search:'))
-            self.remote_clear_button.config(text=i18n.get('clear', 'Clear'))
+            self.local_search_label.config(text=i18n.get('search'))
+            self.local_clear_button.config(text=i18n.get('clear'))
+            self.remote_search_label.config(text=i18n.get('search'))
+            self.remote_clear_button.config(text=i18n.get('clear'))
     

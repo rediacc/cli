@@ -17,6 +17,7 @@ import os
 import sys
 import signal
 import webbrowser
+import argparse
 from pathlib import Path
 from typing import Callable, Optional, Dict, Any, List, Tuple
 import time
@@ -29,7 +30,8 @@ from core import (
     SubprocessRunner,
     i18n,
     TerminalDetector,
-    get_logger
+    get_logger,
+    setup_logging
 )
 
 # Import core functionality for SSH operations
@@ -45,7 +47,7 @@ from gui_base import BaseWindow, create_tooltip
 from gui_login import LoginWindow
 from gui_file_browser import DualPaneFileBrowser
 from gui_utilities import (
-    check_token_validity,
+    check_token_validity, center_window,
     MAIN_WINDOW_DEFAULT_SIZE, COMBO_WIDTH_SMALL, COMBO_WIDTH_MEDIUM,
     COLUMN_WIDTH_NAME, COLUMN_WIDTH_SIZE, COLUMN_WIDTH_MODIFIED, COLUMN_WIDTH_TYPE,
     COLUMN_WIDTH_PLUGIN, COLUMN_WIDTH_URL, COLUMN_WIDTH_STATUS,
@@ -167,6 +169,45 @@ class MainWindow(BaseWindow):
             self.logger.warning(f"Could not maximize window: {e}")
             self.center_window(MAIN_WINDOW_DEFAULT_SIZE[0], MAIN_WINDOW_DEFAULT_SIZE[1])
     
+    def _is_placeholder_value(self, combo_value: str, placeholder_key: str) -> bool:
+        """Check if a combobox value is a placeholder (empty or translated placeholder text)
+        
+        Args:
+            combo_value: Current value of the combobox
+            placeholder_key: Translation key for the placeholder (e.g., 'select_team')
+            
+        Returns:
+            True if the value is empty or a placeholder value
+        """
+        if not combo_value:
+            return True
+            
+        # Get the current placeholder value
+        current_placeholder = i18n.get(placeholder_key) or ''
+        
+        # Check if it matches the current placeholder
+        if combo_value == current_placeholder:
+            return True
+            
+        # Also check against all known language placeholders by checking translations directly
+        # This handles cases where language was changed but combo still has old placeholder
+        for lang_code in i18n.LANGUAGES:
+            lang_placeholder = i18n.translations.get(lang_code, {}).get(placeholder_key)
+            if lang_placeholder and combo_value == lang_placeholder:
+                return True
+                
+        return False
+    
+    def _update_combo_placeholder(self, combo: ttk.Combobox, placeholder_key: str) -> None:
+        """Update a combobox placeholder if it's currently showing a placeholder value
+        
+        Args:
+            combo: The combobox to update
+            placeholder_key: Translation key for the placeholder
+        """
+        if self._is_placeholder_value(combo.get(), placeholder_key):
+            combo.set(i18n.get(placeholder_key) or '')
+    
     def _get_name(self, item, *fields):
         """Get name from item trying multiple field names"""
         return next((item[field] for field in fields if field in item), '')
@@ -190,27 +231,27 @@ class MainWindow(BaseWindow):
         
         # File Menu
         self.file_menu = tk.Menu(self.menubar, tearoff=0)
-        self.menubar.add_cascade(label=i18n.get('file', 'File'), menu=self.file_menu, underline=0)
+        self.menubar.add_cascade(label=i18n.get('file'), menu=self.file_menu, underline=0)
         
         # Edit Menu
         self.edit_menu = tk.Menu(self.menubar, tearoff=0)
-        self.menubar.add_cascade(label=i18n.get('edit', 'Edit'), menu=self.edit_menu, underline=0)
+        self.menubar.add_cascade(label=i18n.get('edit'), menu=self.edit_menu, underline=0)
         
         # View Menu
         self.view_menu = tk.Menu(self.menubar, tearoff=0)
-        self.menubar.add_cascade(label=i18n.get('view', 'View'), menu=self.view_menu, underline=0)
+        self.menubar.add_cascade(label=i18n.get('view'), menu=self.view_menu, underline=0)
         
         # Tools Menu
         self.tools_menu = tk.Menu(self.menubar, tearoff=0)
-        self.menubar.add_cascade(label=i18n.get('tools', 'Tools'), menu=self.tools_menu, underline=0)
+        self.menubar.add_cascade(label=i18n.get('tools'), menu=self.tools_menu, underline=0)
         
         # Connection Menu
         self.connection_menu = tk.Menu(self.menubar, tearoff=0)
-        self.menubar.add_cascade(label=i18n.get('connection', 'Connection'), menu=self.connection_menu, underline=0)
+        self.menubar.add_cascade(label=i18n.get('connection'), menu=self.connection_menu, underline=0)
         
         # Help Menu
         self.help_menu = tk.Menu(self.menubar, tearoff=0)
-        self.menubar.add_cascade(label=i18n.get('help', 'Help'), menu=self.help_menu, underline=0)
+        self.menubar.add_cascade(label=i18n.get('help'), menu=self.help_menu, underline=0)
         
         # Populate menus
         self.populate_file_menu()
@@ -227,42 +268,42 @@ class MainWindow(BaseWindow):
         
         # New Session
         self.file_menu.add_command(
-            label=i18n.get('new_session', 'New Session'),
+            label=i18n.get('new_session'),
             accelerator='Ctrl+N',
-            command=lambda: messagebox.showinfo(i18n.get('info', 'Info'), i18n.get('not_implemented', 'Not implemented'))
+            command=lambda: messagebox.showinfo(i18n.get('info'), i18n.get('not_implemented'))
         )
         
         self.file_menu.add_separator()
         
         # Preferences
         self.file_menu.add_command(
-            label=i18n.get('preferences', 'Preferences'),
+            label=i18n.get('preferences'),
             accelerator='Ctrl+,',
             command=self.show_preferences
         )
         
         # Language submenu
         self.language_menu = tk.Menu(self.file_menu, tearoff=0)
-        self.file_menu.add_cascade(label=i18n.get('language', 'Language'), menu=self.language_menu)
+        self.file_menu.add_cascade(label=i18n.get('language'), menu=self.language_menu)
         self.populate_language_menu()
         
         self.file_menu.add_separator()
         
         # Logout
         self.file_menu.add_command(
-            label=i18n.get('logout', 'Logout'),
+            label=i18n.get('logout'),
             command=self.logout
         )
         
         # Exit
         self.file_menu.add_command(
-            label=i18n.get('exit', 'Exit'),
+            label=i18n.get('exit'),
             accelerator='Ctrl+Q',
             command=self.on_closing
         )
         
         # Bind accelerators
-        self.root.bind_all('<Control-n>', lambda e: messagebox.showinfo(i18n.get('info', 'Info'), i18n.get('not_implemented', 'Not implemented')))
+        self.root.bind_all('<Control-n>', lambda e: messagebox.showinfo(i18n.get('info'), i18n.get('not_implemented')))
         self.root.bind_all('<Control-comma>', lambda e: self.show_preferences())
         self.root.bind_all('<Control-q>', lambda e: self.on_closing())
     
@@ -289,28 +330,28 @@ class MainWindow(BaseWindow):
         
         # Cut
         self.edit_menu.add_command(
-            label=i18n.get('cut', 'Cut'),
+            label=i18n.get('cut'),
             accelerator='Ctrl+X',
             command=self.cut_selected
         )
         
         # Copy
         self.edit_menu.add_command(
-            label=i18n.get('copy', 'Copy'),
+            label=i18n.get('copy'),
             accelerator='Ctrl+C',
             command=self.copy_selected
         )
         
         # Paste
         self.edit_menu.add_command(
-            label=i18n.get('paste', 'Paste'),
+            label=i18n.get('paste'),
             accelerator='Ctrl+V',
             command=self.paste_files
         )
         
         # Select All
         self.edit_menu.add_command(
-            label=i18n.get('select_all', 'Select All'),
+            label=i18n.get('select_all'),
             accelerator='Ctrl+A',
             command=self.select_all
         )
@@ -319,14 +360,14 @@ class MainWindow(BaseWindow):
         
         # Find
         self.edit_menu.add_command(
-            label=i18n.get('find', 'Find...'),
+            label=i18n.get('find'),
             accelerator='Ctrl+F',
             command=self.focus_search
         )
         
         # Clear Filter
         self.edit_menu.add_command(
-            label=i18n.get('clear_filter', 'Clear Filter'),
+            label=i18n.get('clear_filter'),
             accelerator='Escape',
             command=self.clear_search
         )
@@ -338,7 +379,7 @@ class MainWindow(BaseWindow):
         
         # Show Preview
         self.view_menu.add_checkbutton(
-            label=i18n.get('show_preview', 'Show Preview'),
+            label=i18n.get('show_preview'),
             accelerator='F3',
             variable=self.preview_var,
             command=self.toggle_preview
@@ -350,21 +391,21 @@ class MainWindow(BaseWindow):
         self.view_mode_var = tk.StringVar(value='split')
         
         self.view_menu.add_radiobutton(
-            label=i18n.get('local_files_only', 'Local Files Only'),
+            label=i18n.get('local_files_only'),
             variable=self.view_mode_var,
             value='local',
             command=lambda: self.set_view_mode('local')
         )
         
         self.view_menu.add_radiobutton(
-            label=i18n.get('remote_files_only', 'Remote Files Only'),
+            label=i18n.get('remote_files_only'),
             variable=self.view_mode_var,
             value='remote',
             command=lambda: self.set_view_mode('remote')
         )
         
         self.view_menu.add_radiobutton(
-            label=i18n.get('split_view', 'Split View'),
+            label=i18n.get('split_view'),
             variable=self.view_mode_var,
             value='split',
             command=lambda: self.set_view_mode('split')
@@ -374,19 +415,19 @@ class MainWindow(BaseWindow):
         
         # Refresh commands
         self.view_menu.add_command(
-            label=i18n.get('refresh_local', 'Refresh Local'),
+            label=i18n.get('refresh_local'),
             accelerator='F5',
             command=self.refresh_local
         )
         
         self.view_menu.add_command(
-            label=i18n.get('refresh_remote', 'Refresh Remote'),
+            label=i18n.get('refresh_remote'),
             accelerator='Shift+F5',
             command=self.refresh_remote
         )
         
         self.view_menu.add_command(
-            label=i18n.get('refresh_all', 'Refresh All'),
+            label=i18n.get('refresh_all'),
             accelerator='Ctrl+R',
             command=self.refresh_all
         )
@@ -395,7 +436,7 @@ class MainWindow(BaseWindow):
         
         # Full Screen
         self.view_menu.add_checkbutton(
-            label=i18n.get('full_screen', 'Full Screen'),
+            label=i18n.get('full_screen'),
             accelerator='F11',
             variable=self.fullscreen_var,
             command=self.toggle_fullscreen
@@ -415,50 +456,50 @@ class MainWindow(BaseWindow):
         # Terminal submenu
         terminal_menu = tk.Menu(self.tools_menu, tearoff=0)
         self.tools_menu.add_cascade(
-            label=i18n.get('terminal', 'Terminal'),
+            label=i18n.get('terminal'),
             menu=terminal_menu
         )
         
         terminal_menu.add_command(
-            label=i18n.get('repository_terminal', 'Repository Terminal'),
+            label=i18n.get('repository_terminal'),
             command=self.open_repo_terminal
         )
         
         terminal_menu.add_command(
-            label=i18n.get('machine_terminal', 'Machine Terminal'),
+            label=i18n.get('machine_terminal'),
             command=self.open_machine_terminal
         )
         
         terminal_menu.add_command(
-            label=i18n.get('quick_command', 'Quick Command...'),
+            label=i18n.get('quick_command'),
             command=self.show_quick_command
         )
         
         # File Sync
         self.tools_menu.add_command(
-            label=i18n.get('file_sync', 'File Sync'),
+            label=i18n.get('file_sync'),
             accelerator='Ctrl+S',
-            command=lambda: self.notebook.select(0)  # File Browser tab (will be index 0 after plugin tab removal)
+            command=lambda: None  # No tab switching needed
         )
         
         self.tools_menu.add_separator()
         
         # Transfer Options
         self.tools_menu.add_command(
-            label=i18n.get('transfer_options', 'Transfer Options...'),
+            label=i18n.get('transfer_options'),
             command=self.show_transfer_options_wrapper
         )
         
         # Console
         self.tools_menu.add_command(
-            label=i18n.get('console', 'Console'),
+            label=i18n.get('console'),
             accelerator='F12',
             command=self.show_console
         )
         
         # Bind accelerators
         self.root.bind_all('<Control-t>', lambda e: self.open_repo_terminal())
-        self.root.bind_all('<Control-s>', lambda e: self.notebook.select(0))  # File Browser tab (will be index 0)
+        self.root.bind_all('<Control-s>', lambda e: None)  # No tab switching needed
         self.root.bind_all('<F12>', lambda e: self.show_console())
     
     def populate_plugins_menu(self):
@@ -473,21 +514,21 @@ class MainWindow(BaseWindow):
         repo = self.repo_combo.get()
         
         # Check if all required fields are selected
-        has_selection = (team and team != i18n.get('select_team', 'Select Team...') and
-                        machine and machine != i18n.get('select_machine', 'Select Machine...') and
-                        repo and repo != i18n.get('select_repository', 'Select Repository...'))
+        has_selection = (team and not self._is_placeholder_value(team, 'select_team') and
+                        machine and not self._is_placeholder_value(machine, 'select_machine') and
+                        repo and not self._is_placeholder_value(repo, 'select_repository'))
         
         if not has_selection:
             # Add disabled message when no selection
             self.plugins_menu.add_command(
-                label=i18n.get('select_repository_first', 'Select repository first...'),
+                label=i18n.get('select_repository_first'),
                 state='disabled'
             )
             return
         
         # Add refresh command
         self.plugins_menu.add_command(
-            label=i18n.get('refresh_plugins', 'Refresh Plugins'),
+            label=i18n.get('refresh_plugins'),
             command=self.refresh_plugins_menu
         )
         self.plugins_menu.add_separator()
@@ -504,7 +545,7 @@ class MainWindow(BaseWindow):
                 
                 # Add submenu items
                 plugin_submenu.add_command(
-                    label=i18n.get('connect', 'Connect'),
+                    label=i18n.get('connect'),
                     command=lambda p=plugin: self.connect_plugin_from_menu(p),
                     state='disabled' if is_connected else 'normal'
                 )
@@ -514,27 +555,27 @@ class MainWindow(BaseWindow):
                     conn_info = self.get_plugin_connection_info(plugin)
                     if conn_info:
                         plugin_submenu.add_command(
-                            label=i18n.get('disconnect', 'Disconnect'),
+                            label=i18n.get('disconnect'),
                             command=lambda p=plugin, c=conn_info: self.disconnect_plugin_from_menu(p, c)
                         )
                         plugin_submenu.add_command(
-                            label=i18n.get('copy_url', 'Copy URL'),
+                            label=i18n.get('copy_url'),
                             command=lambda url=conn_info['url']: self.copy_url_to_clipboard(url)
                         )
                         plugin_submenu.add_command(
-                            label=i18n.get('open_in_browser', 'Open in Browser'),
+                            label=i18n.get('open_in_browser'),
                             command=lambda url=conn_info['url']: webbrowser.open(url)
                         )
                     
                 plugin_submenu.add_separator()
                 plugin_submenu.add_command(
-                    label=i18n.get('status', 'Status') + ': ' + (i18n.get('connected', 'Connected') if is_connected else i18n.get('not_connected', 'Not Connected')),
+                    label=i18n.get('status') + ': ' + (i18n.get('connected') if is_connected else i18n.get('not_connected')),
                     state='disabled'
                 )
         else:
             # No plugins available
             self.plugins_menu.add_command(
-                label=i18n.get('no_plugins_available', 'No plugins available'),
+                label=i18n.get('no_plugins_available'),
                 state='disabled'
             )
     
@@ -545,7 +586,7 @@ class MainWindow(BaseWindow):
         
         # Connect
         self.connection_menu.add_command(
-            label=i18n.get('connect', 'Connect'),
+            label=i18n.get('connect'),
             accelerator='Ctrl+Shift+C',
             command=self.connect,
             state='disabled'  # Will be managed by update_menu_states
@@ -553,7 +594,7 @@ class MainWindow(BaseWindow):
         
         # Disconnect
         self.connection_menu.add_command(
-            label=i18n.get('disconnect', 'Disconnect'),
+            label=i18n.get('disconnect'),
             accelerator='Ctrl+Shift+D',
             command=self.disconnect,
             state='disabled'  # Will be managed by update_menu_states
@@ -563,7 +604,7 @@ class MainWindow(BaseWindow):
         
         # Recent Connections label
         self.connection_menu.add_command(
-            label=i18n.get('recent_connections', 'Recent Connections:'),
+            label=i18n.get('recent_connections'),
             state='disabled'
         )
         
@@ -572,23 +613,9 @@ class MainWindow(BaseWindow):
         
         self.connection_menu.add_separator()
         
-        # Manage Bookmarks
-        self.connection_menu.add_command(
-            label=i18n.get('manage_bookmarks', 'Manage Bookmarks...'),
-            command=self.show_bookmarks_dialog
-        )
-        
-        # Bookmark Current
-        self.connection_menu.add_command(
-            label=i18n.get('bookmark_current', 'Bookmark Current'),
-            accelerator='Ctrl+B',
-            command=self.bookmark_current
-        )
-        
         # Bind accelerators
         self.root.bind_all('<Control-Shift-C>', lambda e: self.connect())
         self.root.bind_all('<Control-Shift-D>', lambda e: self.disconnect())
-        self.root.bind_all('<Control-b>', lambda e: self.bookmark_current())
     
     def populate_help_menu(self):
         """Populate the Help menu"""
@@ -597,14 +624,14 @@ class MainWindow(BaseWindow):
         
         # Documentation
         self.help_menu.add_command(
-            label=i18n.get('documentation', 'Documentation'),
+            label=i18n.get('documentation'),
             accelerator='F1',
             command=self.show_documentation
         )
         
         # Keyboard Shortcuts
         self.help_menu.add_command(
-            label=i18n.get('keyboard_shortcuts', 'Keyboard Shortcuts'),
+            label=i18n.get('keyboard_shortcuts'),
             command=self.show_keyboard_shortcuts
         )
         
@@ -612,13 +639,13 @@ class MainWindow(BaseWindow):
         
         # Check for Updates
         self.help_menu.add_command(
-            label=i18n.get('check_updates', 'Check for Updates...'),
+            label=i18n.get('check_updates'),
             command=self.check_for_updates
         )
         
         # About
         self.help_menu.add_command(
-            label=i18n.get('about', 'About Rediacc CLI'),
+            label=i18n.get('about'),
             command=self.show_about
         )
         
@@ -643,15 +670,15 @@ class MainWindow(BaseWindow):
         self.resource_frame.grid_columnconfigure(4, weight=0)  # Status indicator (fixed width)
         
         # Row 1: Labels and Connect button
-        self.team_label = tk.Label(self.resource_frame, text=i18n.get('team', 'Team'), 
+        self.team_label = tk.Label(self.resource_frame, text=i18n.get('team'), 
                                   font=('Arial', 9), fg='#666666')
         self.team_label.grid(row=0, column=0, sticky='w', padx=(5, 5), pady=(0, 2))
         
-        self.machine_label = tk.Label(self.resource_frame, text=i18n.get('machine', 'Machine'), 
+        self.machine_label = tk.Label(self.resource_frame, text=i18n.get('machine'), 
                                      font=('Arial', 9), fg='#666666')
         self.machine_label.grid(row=0, column=1, sticky='w', padx=(5, 5), pady=(0, 2))
         
-        self.repo_label = tk.Label(self.resource_frame, text=i18n.get('repository', 'Repository'), 
+        self.repo_label = tk.Label(self.resource_frame, text=i18n.get('repository'), 
                                   font=('Arial', 9), fg='#666666')
         self.repo_label.grid(row=0, column=2, sticky='w', padx=(5, 5), pady=(0, 2))
         
@@ -661,22 +688,22 @@ class MainWindow(BaseWindow):
         
         # Row 2: Dropdown combos
         self.team_combo = ttk.Combobox(self.resource_frame, state='readonly')
-        self.team_combo.set(i18n.get('select_team', 'Select Team...'))
+        self.team_combo.set(i18n.get('select_team'))
         self.team_combo.grid(row=1, column=0, sticky='ew', padx=(5, 5), pady=(0, 5))
         self.team_combo.bind('<<ComboboxSelected>>', lambda e: self.on_team_changed())
-        create_tooltip(self.team_combo, i18n.get('team_tooltip', 'Select your team'))
+        create_tooltip(self.team_combo, i18n.get('team_tooltip'))
         
         self.machine_combo = ttk.Combobox(self.resource_frame, state='readonly')
-        self.machine_combo.set(i18n.get('select_machine', 'Select Machine...'))
+        self.machine_combo.set(i18n.get('select_machine'))
         self.machine_combo.grid(row=1, column=1, sticky='ew', padx=(5, 5), pady=(0, 5))
         self.machine_combo.bind('<<ComboboxSelected>>', lambda e: self.on_machine_changed())
-        create_tooltip(self.machine_combo, i18n.get('machine_tooltip', 'Select target machine'))
+        create_tooltip(self.machine_combo, i18n.get('machine_tooltip'))
         
         self.repo_combo = ttk.Combobox(self.resource_frame, state='readonly')
-        self.repo_combo.set(i18n.get('select_repository', 'Select Repository...'))
+        self.repo_combo.set(i18n.get('select_repository'))
         self.repo_combo.grid(row=1, column=2, sticky='ew', padx=(5, 5), pady=(0, 5))
         self.repo_combo.bind('<<ComboboxSelected>>', lambda e: self.on_repository_changed())
-        create_tooltip(self.repo_combo, i18n.get('repo_tooltip', 'Select repository to work with'))
+        create_tooltip(self.repo_combo, i18n.get('repo_tooltip'))
         
         # Hidden repo filter label (for backward compatibility)
         self.repo_filter_label = tk.Label(self.resource_frame, text="", font=('Arial', 9), fg='gray')
@@ -684,19 +711,14 @@ class MainWindow(BaseWindow):
         # Plugin toolbar - create BEFORE status bar
         self.create_plugin_toolbar()
         
-        # Enhanced multi-section status bar - create BEFORE tabs
+        # Enhanced multi-section status bar - create BEFORE content
         self.create_status_bar()
         
-        # Create notebook for tabs
-        self.notebook = ttk.Notebook(self.root)
-        self.notebook.pack(fill='both', expand=True, padx=5, pady=5)
+        # Create main content frame (no tabs needed)
+        self.browser_frame = tk.Frame(self.root)
+        self.browser_frame.pack(fill='both', expand=True, padx=5, pady=5)
         
-        # Bind tab change event
-        self.notebook.bind('<<NotebookTabChanged>>', self.on_tab_changed)
-        
-        # File Browser tab (now first and only tab)
-        self.browser_frame = tk.Frame(self.notebook)
-        self.notebook.add(self.browser_frame, text=i18n.get('file_browser', 'File Browser'))
+        # Create file browser directly
         self.create_file_browser_tab()
     
     def create_plugin_toolbar(self):
@@ -710,7 +732,7 @@ class MainWindow(BaseWindow):
         inner_frame.pack(fill='x', padx=5, pady=5)
         
         # Label
-        label = tk.Label(inner_frame, text=i18n.get('plugins', 'Plugins') + ":", 
+        label = tk.Label(inner_frame, text=i18n.get('plugins') + ":", 
                         font=('Arial', 10, 'bold'))
         label.pack(side=tk.LEFT, padx=(0, 10))
         
@@ -729,7 +751,7 @@ class MainWindow(BaseWindow):
         
         # Initial message when no plugins available
         self.no_plugins_label = tk.Label(self.plugin_buttons_frame, 
-                                       text=i18n.get('select_repository_for_plugins', 'Select a repository to see available plugins'),
+                                       text=i18n.get('select_repository_for_plugins'),
                                        font=('Arial', 9), fg='gray')
         self.no_plugins_label.pack(side=tk.LEFT, padx=5)
         
@@ -739,7 +761,7 @@ class MainWindow(BaseWindow):
         
         # Status indicator
         self.plugin_status_label = tk.Label(right_container, 
-                                          text=i18n.get('plugin_status_loading', 'Loading...'),
+                                          text=i18n.get('plugin_status_loading'),
                                           font=('Arial', 9), fg='gray')
         self.plugin_status_label.pack(side=tk.LEFT, padx=(0, 10))
         
@@ -749,11 +771,11 @@ class MainWindow(BaseWindow):
         
         # Refresh plugins button (always visible)
         self.refresh_plugins_button = ttk.Button(right_container, 
-                                               text=i18n.get('refresh', 'Refresh'),
+                                               text=i18n.get('refresh'),
                                                command=self.refresh_plugins_toolbar,
                                                width=10)
         self.refresh_plugins_button.pack(side=tk.LEFT, padx=(5, 0))
-        create_tooltip(self.refresh_plugins_button, i18n.get('refresh_plugins_tooltip', 'Refresh available plugins (Ctrl+0)'))
+        create_tooltip(self.refresh_plugins_button, i18n.get('refresh_plugins_tooltip'))
         
         # Initialize plugin connection count
         self.plugin_connection_count = 0
@@ -771,16 +793,16 @@ class MainWindow(BaseWindow):
         connected_count = len(self.plugin_connections) if hasattr(self, 'plugin_connections') else 0
         
         if total_plugins == 0:
-            status_text = i18n.get('no_plugins_available', 'No plugins available')
+            status_text = i18n.get('no_plugins_available')
             color = 'gray'
         elif connected_count == 0:
-            status_text = i18n.get('plugin_status_none_connected', '{count} available').format(count=total_plugins)
+            status_text = i18n.get('plugin_status_none_connected', count=total_plugins)
             color = '#666666'
         elif connected_count == total_plugins:
-            status_text = i18n.get('plugin_status_all_connected', 'All {count} connected').format(count=total_plugins)
+            status_text = i18n.get('plugin_status_all_connected', count=total_plugins)
             color = '#006400'  # Dark green
         else:
-            status_text = i18n.get('plugin_status_some_connected', '{connected} of {total} connected').format(
+            status_text = i18n.get('plugin_status_some_connected',
                 connected=connected_count, total=total_plugins)
             color = '#FF8C00'  # Dark orange
         
@@ -873,17 +895,6 @@ class MainWindow(BaseWindow):
         # Create instance of DualPaneFileBrowser
         self.file_browser = DualPaneFileBrowser(self.browser_frame, self)
     
-    def on_tab_changed(self, event):
-        """Handle tab change event"""
-        # Update menu states based on current tab
-        self.update_menu_states()
-        
-        # Auto-connect file browser if needed
-        if hasattr(self, 'file_browser'):
-            if self.file_browser.ssh_connection is None:
-                # Only connect if we have team, machine, and repo selected
-                if all([self.team_combo.get(), self.machine_combo.get(), self.repo_combo.get()]):
-                    self.file_browser.connect_remote()
     
     def on_connect_clicked(self):
         """Handle connect button click - redirects to file browser"""
@@ -901,7 +912,7 @@ class MainWindow(BaseWindow):
             
             # Update Connect button in file browser if it exists
             if hasattr(self, 'file_browser') and hasattr(self.file_browser, 'connect_button'):
-                self.file_browser.connect_button.config(text=i18n.get('disconnect', 'Disconnect'))
+                self.file_browser.connect_button.config(text=i18n.get('disconnect'))
             
             if info_dict:
                 team = info_dict.get('team', 'Unknown')
@@ -924,7 +935,7 @@ class MainWindow(BaseWindow):
             
             # Update Connect button in file browser if it exists
             if hasattr(self, 'file_browser') and hasattr(self.file_browser, 'connect_button'):
-                self.file_browser.connect_button.config(text=i18n.get('connect', 'Connect'))
+                self.file_browser.connect_button.config(text=i18n.get('connect'))
             
             # Update status bar
             if self.connection_status_label:
@@ -1067,7 +1078,7 @@ class MainWindow(BaseWindow):
         else:
             messagebox.showinfo("Not Connected", 
                               "No active connection.\n\n"
-                              "Switch to the File Browser tab to connect.")
+                              "Please connect to a repository first.")
     
     def show_transfer_queue(self, event):
         """Show transfer queue/history window"""
@@ -1165,13 +1176,13 @@ class MainWindow(BaseWindow):
             self.team_combo.set(teams[0])
             self.on_team_changed()
         else:
-            self.team_combo.set(i18n.get('select_team', 'Select Team...'))
+            self.team_combo.set(i18n.get('select_team'))
         self.update_activity_status()
     
     def load_machines(self):
         """Load machines for selected team"""
         team = self.team_combo.get()
-        if not team or team == i18n.get('select_team', 'Select Team...'):
+        if not team or self._is_placeholder_value(team, 'select_team'):
             return
         
         self.activity_status_label.config(text=i18n.get('loading_machines', team=team))
@@ -1198,7 +1209,7 @@ class MainWindow(BaseWindow):
             self.load_repositories()
         else:
             # Set placeholder if no machines are available
-            self.machine_combo.set(i18n.get('select_machine', 'Select Machine...'))
+            self.machine_combo.set(i18n.get('select_machine'))
             # Also clear repositories since no machine is selected
             self.update_repositories([])
         self.update_activity_status()
@@ -1207,7 +1218,7 @@ class MainWindow(BaseWindow):
         """Load repositories for selected team/machine"""
         team = self.team_combo.get()
         machine = self.machine_combo.get()
-        if not team or team == i18n.get('select_team', 'Select Team...'):
+        if not team or self._is_placeholder_value(team, 'select_team'):
             return
         
         self.activity_status_label.config(text=i18n.get('loading_repositories', team=team))
@@ -1269,7 +1280,7 @@ class MainWindow(BaseWindow):
             # Trigger repository change event to load plugins
             self.on_repository_changed()
         else:
-            self.repo_combo.set(i18n.get('select_repository', 'Select Repository...'))
+            self.repo_combo.set(i18n.get('select_repository'))
             # Clear the filter label when no repos
             self.repo_filter_label.config(text="")
             # Also trigger change event to clear plugins
@@ -1539,7 +1550,7 @@ class MainWindow(BaseWindow):
             # Show no plugins message if not already shown
             if not hasattr(self, 'no_plugins_label') or not self.no_plugins_label.winfo_exists():
                 self.no_plugins_label = tk.Label(self.plugin_buttons_frame, 
-                                               text=i18n.get('no_plugins_available', 'No plugins available'),
+                                               text=i18n.get('no_plugins_available'),
                                                font=('Arial', 9), fg='gray')
                 self.no_plugins_label.pack(side=tk.LEFT, padx=5)
             return
@@ -1634,7 +1645,7 @@ class MainWindow(BaseWindow):
         if plugin_name in self.active_operations:
             # Operation in progress - disabled state
             btn.config(state='disabled', bg='#CCCCCC', fg='#666666', text=f"⟳ {plugin_name.capitalize()}")
-            self.plugin_tooltips[plugin_name] = create_tooltip(btn, i18n.get('operation_in_progress', 'Operation in progress...'))
+            self.plugin_tooltips[plugin_name] = create_tooltip(btn, i18n.get('operation_in_progress'))
             return
         
         # Enable button
@@ -1649,18 +1660,18 @@ class MainWindow(BaseWindow):
             if conn_info and 'url' in conn_info:
                 # Build detailed tooltip
                 tooltip_parts = [
-                    i18n.get('enabled', 'Enabled'),
+                    i18n.get('enabled'),
                     f"URL: {conn_info['url']}",
                     f"Port: {conn_info.get('url', '').split(':')[-1] if ':' in conn_info.get('url', '') else 'N/A'}",
                     f"ID: {conn_info.get('conn_id', 'N/A')[:8]}",
                     "",
-                    i18n.get('click_for_menu', 'Click for menu')
+                    i18n.get('click_for_menu')
                 ]
                 self.plugin_tooltips[plugin_name] = create_tooltip(btn, '\n'.join(tooltip_parts))
         else:
             # Disconnected state - gray
             btn.config(bg='#F0F0F0', fg='#333333', text=plugin_name.capitalize())
-            self.plugin_tooltips[plugin_name] = create_tooltip(btn, i18n.get('click_for_menu', 'Click for menu'))
+            self.plugin_tooltips[plugin_name] = create_tooltip(btn, i18n.get('click_for_menu'))
     
     def show_plugin_menu(self, event, plugin_name):
         """Show plugin menu on button click"""
@@ -1682,7 +1693,7 @@ class MainWindow(BaseWindow):
             conn_info = self.get_plugin_connection_info(plugin_name)
             if conn_info and 'url' in conn_info:
                 webbrowser.open(conn_info['url'])
-                self.activity_status_label.config(text=i18n.get('opened_in_browser', 'Opened {url} in browser').format(url=conn_info['url']))
+                self.activity_status_label.config(text=i18n.get('opened_in_browser', url=conn_info['url']))
         else:
             self.connect_plugin_from_toolbar(plugin_name)
     
@@ -1728,31 +1739,31 @@ class MainWindow(BaseWindow):
         
         if is_connected:
             conn_info = self.get_plugin_connection_info(plugin_name)
-            menu.add_command(label=i18n.get('open_browser', 'Open in Browser'),
+            menu.add_command(label=i18n.get('open_browser'),
                            command=lambda: webbrowser.open(conn_info['url']) if conn_info and 'url' in conn_info else None)
-            menu.add_command(label=i18n.get('copy_url', 'Copy URL'),
+            menu.add_command(label=i18n.get('copy_url'),
                            command=lambda: self.copy_url_to_clipboard(conn_info['url']) if conn_info and 'url' in conn_info else None)
             menu.add_separator()
-            menu.add_command(label=i18n.get('show_details', 'Show Details...'),
+            menu.add_command(label=i18n.get('show_details'),
                            command=lambda: self.show_plugin_details(plugin_name, conn_info))
-            menu.add_command(label=i18n.get('restart_plugin', 'Restart Plugin'),
+            menu.add_command(label=i18n.get('restart_plugin'),
                            command=lambda: self.restart_plugin(plugin_name))
-            menu.add_command(label=i18n.get('view_logs', 'View Logs...'),
+            menu.add_command(label=i18n.get('view_logs'),
                            command=lambda: self.view_plugin_logs(plugin_name))
             menu.add_separator()
-            menu.add_command(label=i18n.get('disable_plugin', 'Disable Plugin'),
+            menu.add_command(label=i18n.get('disable_plugin'),
                            command=lambda: self.disconnect_plugin_from_toolbar(plugin_name))
         else:
-            menu.add_command(label=i18n.get('enable_plugin', 'Enable Plugin'),
+            menu.add_command(label=i18n.get('enable_plugin'),
                            command=lambda: self.connect_plugin_from_toolbar(plugin_name))
             menu.add_separator()
-            menu.add_command(label=i18n.get('show_details', 'Show Details...'),
+            menu.add_command(label=i18n.get('show_details'),
                            command=lambda: self.show_plugin_details(plugin_name, None))
         
         menu.add_separator()
-        menu.add_command(label=i18n.get('refresh', 'Refresh'),
+        menu.add_command(label=i18n.get('refresh'),
                        command=self.refresh_plugins_toolbar)
-        menu.add_command(label=i18n.get('refresh_all', 'Refresh All Plugins') + ' (Ctrl+0)',
+        menu.add_command(label=i18n.get('refresh_all') + ' (Ctrl+0)',
                        command=self.refresh_all_plugins)
         
         # Show menu at cursor position
@@ -1832,7 +1843,7 @@ class MainWindow(BaseWindow):
                 self.unlock_plugin_operation(plugin_name)
             return
         
-        self.activity_status_label.config(text=i18n.get('enabling_plugin', 'Enabling {plugin}...').format(plugin=plugin_name))
+        self.activity_status_label.config(text=i18n.get('enabling_plugin', plugin=plugin_name))
         
         def connect():
             # Build command
@@ -1875,7 +1886,7 @@ class MainWindow(BaseWindow):
                         pass
                 
                 safe_ui_update(lambda: self.activity_status_label.config(
-                    text=i18n.get('plugin_enabled', '{plugin} enabled').format(plugin=plugin_name)))
+                    text=i18n.get('plugin_enabled', plugin=plugin_name)))
                 # Plugin menu removed - toolbar updates automatically
                 
                 # Update toolbar button if it exists
@@ -1909,7 +1920,7 @@ class MainWindow(BaseWindow):
     
     def disconnect_plugin_from_menu(self, plugin_name, conn_info):
         """Disconnect a plugin from the menu"""
-        self.activity_status_label.config(text=i18n.get('disabling_plugin', 'Disabling {plugin}...').format(plugin=plugin_name))
+        self.activity_status_label.config(text=i18n.get('disabling_plugin', plugin=plugin_name))
         
         def disconnect():
             # Use connection ID if available
@@ -1936,7 +1947,7 @@ class MainWindow(BaseWindow):
             if result['success']:
                 self.plugin_connections.pop(plugin_name, None)
                 safe_ui_update(lambda: self.activity_status_label.config(
-                    text=i18n.get('plugin_disabled', '{plugin} disabled').format(plugin=plugin_name)))
+                    text=i18n.get('plugin_disabled', plugin=plugin_name)))
                 # Plugin menu removed - toolbar updates automatically
                 
                 # Update toolbar button if it exists
@@ -2017,7 +2028,7 @@ class MainWindow(BaseWindow):
         try:
             self.root.clipboard_clear()
             self.root.clipboard_append(url)
-            self.activity_status_label.config(text=i18n.get('url_copied', 'URL copied to clipboard'), fg='green')
+            self.activity_status_label.config(text=i18n.get('url_copied'), fg='green')
             
             # Safe delayed update
             def reset_color():
@@ -2034,7 +2045,7 @@ class MainWindow(BaseWindow):
     def show_plugin_details(self, plugin_name, conn_info):
         """Show detailed information about a plugin"""
         dialog = tk.Toplevel(self.root)
-        dialog.title(i18n.get('plugin_details', 'Plugin Details: {plugin}').format(plugin=plugin_name))
+        dialog.title(i18n.get('plugin_details', plugin=plugin_name))
         dialog.geometry('400x300')
         dialog.transient(self.root)
         dialog.grab_set()
@@ -2050,15 +2061,15 @@ class MainWindow(BaseWindow):
         info_frame.pack(fill='both', expand=True)
         
         # Plugin name
-        tk.Label(info_frame, text=i18n.get('plugin_name', 'Plugin Name:'), 
+        tk.Label(info_frame, text=i18n.get('plugin_name'), 
                 font=('Arial', 10, 'bold')).grid(row=0, column=0, sticky='w', pady=5)
         tk.Label(info_frame, text=plugin_name.capitalize()).grid(row=0, column=1, sticky='w', pady=5)
         
         # Status
         is_connected = conn_info is not None
-        status_text = i18n.get('connected', 'Connected') if is_connected else i18n.get('disconnected', 'Disconnected')
+        status_text = i18n.get('connected') if is_connected else i18n.get('disconnected')
         status_color = 'green' if is_connected else 'red'
-        tk.Label(info_frame, text=i18n.get('status', 'Status:'), 
+        tk.Label(info_frame, text=i18n.get('status'), 
                 font=('Arial', 10, 'bold')).grid(row=1, column=0, sticky='w', pady=5)
         tk.Label(info_frame, text=status_text, fg=status_color).grid(row=1, column=1, sticky='w', pady=5)
         
@@ -2070,32 +2081,32 @@ class MainWindow(BaseWindow):
             
             # Port
             port = conn_info.get('url', '').split(':')[-1] if ':' in conn_info.get('url', '') else 'N/A'
-            tk.Label(info_frame, text=i18n.get('port', 'Port:'), 
+            tk.Label(info_frame, text=i18n.get('port'), 
                     font=('Arial', 10, 'bold')).grid(row=3, column=0, sticky='w', pady=5)
             tk.Label(info_frame, text=port).grid(row=3, column=1, sticky='w', pady=5)
             
             # Connection ID
-            tk.Label(info_frame, text=i18n.get('connection_id', 'Connection ID:'), 
+            tk.Label(info_frame, text=i18n.get('connection_id'), 
                     font=('Arial', 10, 'bold')).grid(row=4, column=0, sticky='w', pady=5)
             tk.Label(info_frame, text=conn_info.get('conn_id', 'N/A')).grid(row=4, column=1, sticky='w', pady=5)
         
         # Repository info
-        tk.Label(info_frame, text=i18n.get('repository', 'Repository:'), 
+        tk.Label(info_frame, text=i18n.get('repository'), 
                 font=('Arial', 10, 'bold')).grid(row=5, column=0, sticky='w', pady=5)
         tk.Label(info_frame, text=self.repo_combo.get()).grid(row=5, column=1, sticky='w', pady=5)
         
         # Machine
-        tk.Label(info_frame, text=i18n.get('machine', 'Machine:'), 
+        tk.Label(info_frame, text=i18n.get('machine'), 
                 font=('Arial', 10, 'bold')).grid(row=6, column=0, sticky='w', pady=5)
         tk.Label(info_frame, text=self.machine_combo.get()).grid(row=6, column=1, sticky='w', pady=5)
         
         # Close button
-        tk.Button(dialog, text=i18n.get('close', 'Close'), 
+        tk.Button(dialog, text=i18n.get('close'), 
                  command=dialog.destroy).pack(pady=10)
     
     def restart_plugin(self, plugin_name):
         """Restart a plugin by disconnecting and reconnecting"""
-        self.activity_status_label.config(text=i18n.get('restarting_plugin', 'Restarting {plugin}...').format(plugin=plugin_name))
+        self.activity_status_label.config(text=i18n.get('restarting_plugin', plugin=plugin_name))
         
         # Lock the plugin operation
         self.lock_plugin_operation(plugin_name)
@@ -2150,8 +2161,8 @@ class MainWindow(BaseWindow):
     
     def view_plugin_logs(self, plugin_name):
         """View plugin container logs"""
-        messagebox.showinfo(i18n.get('feature_not_available', 'Feature Not Available'), 
-                           i18n.get('plugin_logs_not_implemented', 'Plugin logs viewing is not yet implemented.'))
+        messagebox.showinfo(i18n.get('feature_not_available'), 
+                           i18n.get('plugin_logs_not_implemented'))
     
     def refresh_all_plugins(self):
         """Refresh all plugins and connections"""
@@ -2211,12 +2222,12 @@ class MainWindow(BaseWindow):
         """Toggle file preview pane"""
         # TODO: Implement preview functionality
         self.preview_var.set(not self.preview_var.get())
-        messagebox.showinfo(i18n.get('info', 'Info'), i18n.get('not_implemented', 'Not implemented'))
+        messagebox.showinfo(i18n.get('info'), i18n.get('not_implemented'))
     
     def set_view_mode(self, mode):
         """Set view mode (local, remote, split)"""
         # TODO: Implement view mode switching
-        messagebox.showinfo(i18n.get('info', 'Info'), f"View mode: {mode} - {i18n.get('not_implemented', 'Not implemented')}")
+        messagebox.showinfo(i18n.get('info'), f"View mode: {mode} - {i18n.get('not_implemented')}")
     
     def refresh_local(self):
         """Refresh local file list"""
@@ -2241,7 +2252,7 @@ class MainWindow(BaseWindow):
     
     def show_quick_command(self):
         """Show quick command dialog"""
-        messagebox.showinfo(i18n.get('info', 'Info'), i18n.get('not_implemented', 'Not implemented'))
+        messagebox.showinfo(i18n.get('info'), i18n.get('not_implemented'))
     
     def switch_to_plugin_tab(self):
         """Switch to Plugin Manager tab - deprecated, now using menu"""
@@ -2256,8 +2267,8 @@ class MainWindow(BaseWindow):
     def show_console(self):
         """Show debug console window"""
         console_window = tk.Toplevel(self.root)
-        console_window.title(i18n.get('console', 'Console'))
-        console_window.geometry('800x600')
+        console_window.title(i18n.get('console'))
+        center_window(console_window, 800, 600)
         
         # Add a text widget for future console implementation
         text = tk.Text(console_window, bg='black', fg='white', font=('Consolas', 10))
@@ -2266,35 +2277,12 @@ class MainWindow(BaseWindow):
     
     def connect(self):
         """Connect action (placeholder)"""
-        messagebox.showinfo(i18n.get('info', 'Info'), i18n.get('not_implemented', 'Not implemented'))
+        messagebox.showinfo(i18n.get('info'), i18n.get('not_implemented'))
     
     def disconnect(self):
         """Disconnect action (placeholder)"""
-        messagebox.showinfo(i18n.get('info', 'Info'), i18n.get('not_implemented', 'Not implemented'))
+        messagebox.showinfo(i18n.get('info'), i18n.get('not_implemented'))
     
-    def show_bookmarks_dialog(self):
-        """Show bookmarks management dialog"""
-        dialog = tk.Toplevel(self.root)
-        dialog.title(i18n.get('manage_bookmarks', 'Manage Bookmarks'))
-        dialog.geometry('500x400')
-        dialog.transient(self.root)
-        
-        label = tk.Label(dialog, text=i18n.get('not_implemented', 'Not implemented'))
-        label.pack(pady=20)
-    
-    def bookmark_current(self):
-        """Bookmark current connection"""
-        team = self.team_combo.get()
-        machine = self.machine_combo.get()
-        repo = self.repo_combo.get()
-        
-        if not all([team, machine, repo]):
-            messagebox.showerror(i18n.get('error'), i18n.get('select_team_machine_repo'))
-            return
-        
-        # TODO: Implement bookmark saving
-        messagebox.showinfo(i18n.get('info', 'Info'), 
-                           f"Bookmarked: {team}/{machine}/{repo} - {i18n.get('not_implemented', 'Not implemented')}")
     
     def show_documentation(self):
         """Open documentation in web browser"""
@@ -2303,9 +2291,9 @@ class MainWindow(BaseWindow):
     def show_keyboard_shortcuts(self):
         """Show keyboard shortcuts dialog"""
         dialog = tk.Toplevel(self.root)
-        dialog.title(i18n.get('keyboard_shortcuts', 'Keyboard Shortcuts'))
-        dialog.geometry('600x500')
+        dialog.title(i18n.get('keyboard_shortcuts'))
         dialog.transient(self.root)
+        center_window(dialog, 600, 500)
         
         # Create scrollable frame
         scroll_frame = tk.Frame(dialog)
@@ -2348,7 +2336,6 @@ class MainWindow(BaseWindow):
             ('Connection Menu:', ''),
             ('Ctrl+Shift+C', 'Connect'),
             ('Ctrl+Shift+D', 'Disconnect'),
-            ('Ctrl+B', 'Bookmark Current'),
             ('', ''),
             ('Help Menu:', ''),
             ('F1', 'Documentation')
@@ -2364,8 +2351,8 @@ class MainWindow(BaseWindow):
     
     def check_for_updates(self):
         """Check for application updates"""
-        messagebox.showinfo(i18n.get('check_updates', 'Check for Updates'), 
-                           i18n.get('no_updates', 'You are running the latest version.'))
+        messagebox.showinfo(i18n.get('check_updates'), 
+                           i18n.get('no_updates'))
     
     def show_about(self):
         """Show about dialog"""
@@ -2375,9 +2362,9 @@ Version: 1.0.0
 
 © 2024 Rediacc
 
-{i18n.get('about_description', 'A powerful file management and synchronization tool.')}"""
+{i18n.get('about_description')}"""
         
-        messagebox.showinfo(i18n.get('about', 'About Rediacc CLI'), about_text)
+        messagebox.showinfo(i18n.get('about'), about_text)
     
     def logout(self):
         """Logout and return to login screen"""
@@ -2404,35 +2391,29 @@ Version: 1.0.0
         
         # Update user status in status bar
         auth_info = TokenManager.get_auth_info()
-        self.user_status_label.config(text=f"{i18n.get('user', 'User')}: {auth_info.get('email', 'Unknown')}")
+        self.user_status_label.config(text=f"{i18n.get('user')}: {auth_info.get('email', 'Unknown')}")
         
         # Update menu bar
         self.populate_language_menu()  # Update language submenu checkmarks
         self.update_menu_texts()
         
         # Update resource selection placeholders
-        if not self.team_combo.get() or self.team_combo.get() in ['Select Team...', 'حدد الفريق...', 'Team auswählen...']:
-            self.team_combo.set(i18n.get('select_team', 'Select Team...'))
-        if not self.machine_combo.get() or self.machine_combo.get() in ['Select Machine...', 'حدد الجهاز...', 'Maschine auswählen...']:
-            self.machine_combo.set(i18n.get('select_machine', 'Select Machine...'))
-        if not self.repo_combo.get() or self.repo_combo.get() in ['Select Repository...', 'حدد المستودع...', 'Repository auswählen...']:
-            self.repo_combo.set(i18n.get('select_repository', 'Select Repository...'))
+        self._update_combo_placeholder(self.team_combo, 'select_team')
+        self._update_combo_placeholder(self.machine_combo, 'select_machine')
+        self._update_combo_placeholder(self.repo_combo, 'select_repository')
         
         # Update labels
-        self.team_label.config(text=i18n.get('team', 'Team'))
-        self.machine_label.config(text=i18n.get('machine', 'Machine'))
-        self.repo_label.config(text=i18n.get('repository', 'Repository'))
+        self.team_label.config(text=i18n.get('team'))
+        self.machine_label.config(text=i18n.get('machine'))
+        self.repo_label.config(text=i18n.get('repository'))
         
         # Update Connect button text in file browser
         if hasattr(self, 'file_browser') and hasattr(self.file_browser, 'connect_button'):
             if self.file_browser.ssh_connection:
-                self.file_browser.connect_button.config(text=i18n.get('disconnect', 'Disconnect'))
+                self.file_browser.connect_button.config(text=i18n.get('disconnect'))
             else:
-                self.file_browser.connect_button.config(text=i18n.get('connect', 'Connect'))
+                self.file_browser.connect_button.config(text=i18n.get('connect'))
         
-        # Update notebook tabs
-        self.notebook.tab(0, text=i18n.get('plugin_manager'))
-        self.notebook.tab(1, text=i18n.get('file_browser', 'File Browser'))
         
         # Update status bar
         current_text = self.activity_status_label.cget('text')
@@ -2509,7 +2490,6 @@ Version: 1.0.0
         # TODO: Implement connection state tracking
         self.connection_menu.entryconfig(0, state='disabled')  # Connect - will be enabled when disconnected
         self.connection_menu.entryconfig(1, state='disabled')  # Disconnect - will be enabled when connected
-        self.connection_menu.entryconfig(6, state='normal' if has_full_selection else 'disabled')  # Bookmark Current
         
         # Update recent connections
         self.update_recent_connections()
@@ -2521,8 +2501,8 @@ Version: 1.0.0
         # Remove old recent connection items
         try:
             menu_length = self.connection_menu.index(tk.END)
-            # Delete items between the separator and "Manage Bookmarks"
-            for i in range(self.recent_connections_start_index, menu_length - 2):
+            # Delete items after the separator
+            for i in range(self.recent_connections_start_index, menu_length):
                 try:
                     self.connection_menu.delete(self.recent_connections_start_index)
                 except:
@@ -2547,7 +2527,7 @@ Version: 1.0.0
             self.connection_menu.insert(
                 self.recent_connections_start_index,
                 'command',
-                label=i18n.get('no_recent_connections', 'No recent connections'),
+                label=i18n.get('no_recent_connections'),
                 state='disabled'
             )
     
@@ -2592,13 +2572,13 @@ Version: 1.0.0
             if len(active_list) > 5:
                 active_connections_str += f"\n... and {len(active_list) - 5} more"
             
-            message = i18n.get('active_plugins_warning', 
-                             f'There are {len(self.plugin_connections)} active plugin connections:\n\n'
-                             f'{active_connections_str}\n\n'
-                             'Do you want to disconnect all plugins and exit?')
+            message = i18n.get('active_plugins_warning',
+                                 count=len(self.plugin_connections),
+                                 connections=active_connections_str
+                             )
             
             response = messagebox.askyesnocancel(
-                i18n.get('confirm_exit', 'Confirm Exit'),
+                i18n.get('confirm_exit'),
                 message,
                 icon='warning'
             )
@@ -2608,7 +2588,7 @@ Version: 1.0.0
             elif response:  # Yes - disconnect and exit
                 # Show progress dialog
                 progress_window = tk.Toplevel(self.root)
-                progress_window.title(i18n.get('closing', 'Closing...'))
+                progress_window.title(i18n.get('closing'))
                 progress_window.geometry('300x100')
                 progress_window.transient(self.root)
                 progress_window.grab_set()
@@ -2620,7 +2600,7 @@ Version: 1.0.0
                 progress_window.geometry(f'300x100+{x}+{y}')
                 
                 ttk.Label(progress_window, 
-                         text=i18n.get('disconnecting_plugins', 'Disconnecting plugins...'),
+                         text=i18n.get('disconnecting_plugins'),
                          font=('TkDefaultFont', 10)).pack(pady=20)
                 progress_bar = ttk.Progressbar(progress_window, mode='indeterminate')
                 progress_bar.pack(pady=10, padx=20, fill='x')
@@ -2652,8 +2632,22 @@ Version: 1.0.0
 
 def launch_gui():
     """Launch the simplified GUI application"""
+    # Parse command-line arguments
+    parser = argparse.ArgumentParser(description='Rediacc CLI GUI Application')
+    parser.add_argument('-v', '--verbose', action='store_true',
+                        help='Enable verbose logging')
+    args = parser.parse_args()
+    
+    # Check for verbose flag from either command line or environment
+    verbose = args.verbose or os.environ.get('REDIACC_VERBOSE', '').lower() in ('1', 'true', 'yes')
+    
+    # Set up logging before creating any logger instances
+    setup_logging(verbose=verbose)
+    
+    # Now create logger after logging is configured
     logger = get_logger(__name__)
     logger.info("Starting Rediacc CLI GUI...")
+    logger.debug(f"Verbose logging enabled: {verbose}")
     
     try:
         # Load saved language preference
