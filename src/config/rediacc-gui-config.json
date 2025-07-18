@@ -1,0 +1,134 @@
+{
+  "window_dimensions": {
+    "login_window": [450, 500],
+    "main_window_default": [1024, 768],
+    "progress_dialog": [700, 600],
+    "progress_dialog_small": [600, 500],
+    "transfer_options_dialog": [700, 700],
+    "center_window_default": [800, 600]
+  },
+  "minimum_sizes": {
+    "progress_dialog": [500, 400],
+    "progress_dialog_small": [400, 350],
+    "transfer_options": [500, 400]
+  },
+  "widget_dimensions": {
+    "combo_width": {
+      "small": 15,
+      "medium": 20,
+      "large": 40
+    },
+    "entry_width": {
+      "small": 10,
+      "default": 40
+    },
+    "button_width": {
+      "tiny": 3,
+      "small": 12,
+      "medium": 15
+    },
+    "label_width": {
+      "default": 12
+    },
+    "text_height": {
+      "small": 6,
+      "medium": 8,
+      "large": 10,
+      "xlarge": 15
+    }
+  },
+  "column_widths": {
+    "name": 250,
+    "size": 80,
+    "modified": 150,
+    "type": 80,
+    "plugin": 120,
+    "url": 200,
+    "status": 80
+  },
+  "layout_constraints": {
+    "paned_min_size": {
+      "tiny": 120,
+      "small": 140,
+      "medium": 150,
+      "large": 200,
+      "xlarge": 300,
+      "xxlarge": 400
+    },
+    "preview_height": {
+      "default": 200,
+      "min": 150,
+      "max": 300
+    },
+    "transfer_frame_width": {
+      "default": 140,
+      "max": 180
+    }
+  },
+  "padding": {
+    "tiny": 5,
+    "small": 10,
+    "medium": 15,
+    "large": 20
+  },
+  "border_width": {
+    "thin": 1,
+    "thick": 2
+  },
+  "time_intervals": {
+    "status_message_short": 2000,
+    "status_message_normal": 3000,
+    "auto_refresh_interval": 5000,
+    "login_check_interval": 100,
+    "immediate_action": 0
+  },
+  "fonts": {
+    "family": {
+      "default": "Arial",
+      "mono": "Consolas"
+    },
+    "size": {
+      "tiny": 8,
+      "small": 9,
+      "medium": 10,
+      "large": 11,
+      "xlarge": 16
+    },
+    "style": {
+      "normal": "normal",
+      "bold": "bold"
+    }
+  },
+  "colors": {
+    "tooltip_bg": "#ffffe0",
+    "transfer_bg": "#f0f0f0",
+    "separator": "#d0d0d0",
+    "error": "red",
+    "error_alt": "#FF6B35",
+    "success": "green",
+    "info": "blue",
+    "info_gray": "gray",
+    "info_light": "#666666",
+    "default": "black"
+  },
+  "file_operations": {
+    "preview_size_limit": 1048576,
+    "preview_line_limit": 1000,
+    "file_size_unit_threshold": 1024.0,
+    "status_label_wrap_length": 400,
+    "file_label_wrap_length": 500
+  },
+  "network": {
+    "default_port": 7111,
+    "port_min": 1,
+    "port_max": 65535,
+    "port_user_min": 1024
+  },
+  "parsing": {
+    "ls_output_split_parts": 8,
+    "ssh_user_dir_index": 2
+  },
+  "ui_text": {
+    "file_path_truncate_length": 80
+  }
+}

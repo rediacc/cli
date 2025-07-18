@@ -21,37 +21,6 @@ import shutil
 import tempfile
 import re
 
-# Tooltip helper class
-class ToolTip:
-    def __init__(self, widget, text):
-        self.widget = widget
-        self.text = text
-        self.tooltip = None
-        widget.bind("<Enter>", self.on_enter)
-        widget.bind("<Leave>", self.on_leave)
-    
-    def on_enter(self, event=None):
-        x, y, *_ = self.widget.bbox("insert")
-        x += self.widget.winfo_rootx() + 25
-        y += self.widget.winfo_rooty() + 25
-        
-        self.tooltip = tk.Toplevel(self.widget)
-        self.tooltip.wm_overrideredirect(True)
-        self.tooltip.wm_geometry(f"+{x}+{y}")
-        
-        label = tk.Label(self.tooltip, text=self.text, justify='left',
-                        background="#ffffe0", relief='solid', borderwidth=1,
-                        font=("Arial", "9", "normal"))
-        label.pack()
-    
-    def on_leave(self, event=None):
-        if self.tooltip:
-            self.tooltip.destroy()
-            self.tooltip = None
-
-def create_tooltip(widget, text):
-    return ToolTip(widget, text)
-
 # Import from consolidated core module
 from core import (
     TokenManager,
@@ -70,6 +39,328 @@ from rediacc_cli_core import (
 )
 
 
+# ===== NON-GUI UTILITIES =====
+
+# File/data formatting utilities
+def format_size(size: int) -> str:
+    """Format file size for display"""
+    for unit in ['B', 'KB', 'MB', 'GB', 'TB']:
+        if size < 1024.0:
+            return f"{size:.1f} {unit}"
+        size /= 1024.0
+    return f"{size:.1f} PB"
+
+def format_time(timestamp: float) -> str:
+    """Format timestamp for display"""
+    return datetime.fromtimestamp(timestamp).strftime('%Y-%m-%d %H:%M')
+
+# Command output parsing utilities
+def parse_ls_output(output: str) -> List[Dict[str, Any]]:
+    """Parse ls -la output into file information"""
+    files = []
+    lines = output.strip().split('\n')
+    
+    for line in lines:
+        if not line or line.startswith('total'):
+            continue
+        
+        # Parse ls -la output format
+        # Example: drwxr-xr-x 2 user group 4096 Dec 15 10:30 dirname
+        parts = line.split(None, 8)
+        if len(parts) < 9:
+            continue
+        
+        perms = parts[0]
+        size = int(parts[4]) if parts[4].isdigit() else 0
+        name = parts[8]
+        
+        # Handle symbolic links
+        if perms.startswith('l') and ' -> ' in name:
+            # Extract link name (before ->)
+            name = name.split(' -> ')[0]
+        
+        # Skip . and ..
+        if name in ['.', '..']:
+            continue
+        
+        # Determine if directory or link to directory
+        is_dir = perms[0] in 'dl'
+        
+        # Parse modification time
+        try:
+            # Try to parse the date
+            month = parts[5]
+            day = parts[6]
+            time_or_year = parts[7]
+            
+            # For now, use current time as approximation
+            # TODO: Proper date parsing
+            modified = time.time()
+        except:
+            modified = time.time()
+        
+        files.append({
+            'name': name,
+            'is_dir': is_dir,
+            'size': size,
+            'modified': modified,
+            'type': i18n.get('folder', 'Folder') if is_dir else i18n.get('file', 'File'),
+            'perms': perms
+        })
+    
+    return files
+
+# Authentication utilities
+def check_token_validity() -> bool:
+    """Check if authentication token is valid"""
+    logger = get_logger(__name__)
+    try:
+        if not TokenManager.is_authenticated():
+            logger.debug("Not authenticated")
+            return False
+        
+        logger.debug("Testing token validity with API call...")
+        runner = SubprocessRunner()
+        result = runner.run_cli_command(['--output', 'json', 'list', 'teams'])
+        token_valid = result.get('success', False)
+        
+        if not token_valid:
+            logger.debug(f"Token validation failed: {result.get('error', 'Unknown error')}")
+            TokenManager.clear_token()
+        
+        return token_valid
+    except Exception as e:
+        logger.error(f"Error checking authentication: {e}")
+        import traceback
+        traceback.print_exc()
+        return False
+
+
+# ===== CONFIGURATION =====
+
+class GUIConfig:
+    """Configuration loader for GUI settings"""
+    _instance = None
+    _config = None
+    
+    def __new__(cls):
+        if cls._instance is None:
+            cls._instance = super().__new__(cls)
+        return cls._instance
+    
+    def __init__(self):
+        if self._config is None:
+            self.load_config()
+    
+    def load_config(self):
+        """Load configuration from JSON file"""
+        config_path = Path(__file__).parent.parent / 'config' / 'rediacc-gui-config.json'
+        
+        try:
+            with open(config_path, 'r') as f:
+                self._config = json.load(f)
+        except FileNotFoundError:
+            # Fallback to default values if config file not found
+            self._config = self._get_default_config()
+        except json.JSONDecodeError as e:
+            print(f"Error parsing config file: {e}")
+            self._config = self._get_default_config()
+    
+    def _get_default_config(self):
+        """Return default configuration as fallback"""
+        return {
+            "window_dimensions": {
+                "login_window": [450, 500],
+                "main_window_default": [1024, 768],
+                "progress_dialog": [700, 600],
+                "progress_dialog_small": [600, 500],
+                "transfer_options_dialog": [700, 700],
+                "center_window_default": [800, 600]
+            },
+            "widget_dimensions": {
+                "combo_width": {"small": 15, "medium": 20, "large": 40},
+                "entry_width": {"small": 10, "default": 40},
+                "button_width": {"tiny": 3, "small": 12, "medium": 15},
+                "label_width": {"default": 12},
+                "text_height": {"small": 6, "medium": 8, "large": 10, "xlarge": 15}
+            },
+            "column_widths": {
+                "name": 250, "size": 80, "modified": 150, "type": 80,
+                "plugin": 120, "url": 200, "status": 80
+            },
+            "colors": {
+                "tooltip_bg": "#ffffe0", "error": "red", "success": "green",
+                "info": "blue", "default": "black"
+            },
+            "time_intervals": {
+                "auto_refresh_interval": 5000,
+                "status_message_short": 2000,
+                "status_message_normal": 3000
+            },
+            "file_operations": {
+                "preview_size_limit": 1048576,
+                "preview_line_limit": 1000
+            }
+        }
+    
+    def get(self, *keys, default=None):
+        """Get a configuration value by key path"""
+        result = self._config
+        for key in keys:
+            if isinstance(result, dict) and key in result:
+                result = result[key]
+            else:
+                return default
+        return result
+
+# Create global config instance
+config = GUIConfig()
+
+# Create convenience accessors for backwards compatibility
+LOGIN_WINDOW_SIZE = tuple(config.get('window_dimensions', 'login_window', default=[450, 500]))
+MAIN_WINDOW_DEFAULT_SIZE = tuple(config.get('window_dimensions', 'main_window_default', default=[1024, 768]))
+PROGRESS_DIALOG_SIZE = tuple(config.get('window_dimensions', 'progress_dialog', default=[700, 600]))
+PROGRESS_DIALOG_SIZE_SMALL = tuple(config.get('window_dimensions', 'progress_dialog_small', default=[600, 500]))
+TRANSFER_OPTIONS_DIALOG_SIZE = tuple(config.get('window_dimensions', 'transfer_options_dialog', default=[700, 700]))
+CENTER_WINDOW_DEFAULT_SIZE = tuple(config.get('window_dimensions', 'center_window_default', default=[800, 600]))
+
+# Minimum window sizes
+PROGRESS_DIALOG_MIN_SIZE = tuple(config.get('minimum_sizes', 'progress_dialog', default=[500, 400]))
+PROGRESS_DIALOG_MIN_SIZE_SMALL = tuple(config.get('minimum_sizes', 'progress_dialog_small', default=[400, 350]))
+TRANSFER_OPTIONS_MIN_SIZE = tuple(config.get('minimum_sizes', 'transfer_options', default=[500, 400]))
+
+# Widget dimensions
+COMBO_WIDTH_SMALL = config.get('widget_dimensions', 'combo_width', 'small', default=15)
+COMBO_WIDTH_MEDIUM = config.get('widget_dimensions', 'combo_width', 'medium', default=20)
+COMBO_WIDTH_LARGE = config.get('widget_dimensions', 'combo_width', 'large', default=40)
+ENTRY_WIDTH_SMALL = config.get('widget_dimensions', 'entry_width', 'small', default=10)
+ENTRY_WIDTH_DEFAULT = config.get('widget_dimensions', 'entry_width', 'default', default=40)
+BUTTON_WIDTH_TINY = config.get('widget_dimensions', 'button_width', 'tiny', default=3)
+BUTTON_WIDTH_SMALL = config.get('widget_dimensions', 'button_width', 'small', default=12)
+BUTTON_WIDTH_MEDIUM = config.get('widget_dimensions', 'button_width', 'medium', default=15)
+LABEL_WIDTH_DEFAULT = config.get('widget_dimensions', 'label_width', 'default', default=12)
+TEXT_HEIGHT_SMALL = config.get('widget_dimensions', 'text_height', 'small', default=6)
+TEXT_HEIGHT_MEDIUM = config.get('widget_dimensions', 'text_height', 'medium', default=8)
+TEXT_HEIGHT_LARGE = config.get('widget_dimensions', 'text_height', 'large', default=10)
+TEXT_HEIGHT_XLARGE = config.get('widget_dimensions', 'text_height', 'xlarge', default=15)
+
+# Treeview column widths
+COLUMN_WIDTH_NAME = config.get('column_widths', 'name', default=250)
+COLUMN_WIDTH_SIZE = config.get('column_widths', 'size', default=80)
+COLUMN_WIDTH_MODIFIED = config.get('column_widths', 'modified', default=150)
+COLUMN_WIDTH_TYPE = config.get('column_widths', 'type', default=80)
+COLUMN_WIDTH_PLUGIN = config.get('column_widths', 'plugin', default=120)
+COLUMN_WIDTH_URL = config.get('column_widths', 'url', default=200)
+COLUMN_WIDTH_STATUS = config.get('column_widths', 'status', default=80)
+
+# Layout constraints
+PANED_MIN_SIZE_TINY = config.get('layout_constraints', 'paned_min_size', 'tiny', default=120)
+PANED_MIN_SIZE_SMALL = config.get('layout_constraints', 'paned_min_size', 'small', default=140)
+PANED_MIN_SIZE_MEDIUM = config.get('layout_constraints', 'paned_min_size', 'medium', default=150)
+PANED_MIN_SIZE_LARGE = config.get('layout_constraints', 'paned_min_size', 'large', default=200)
+PANED_MIN_SIZE_XLARGE = config.get('layout_constraints', 'paned_min_size', 'xlarge', default=300)
+PANED_MIN_SIZE_XXLARGE = config.get('layout_constraints', 'paned_min_size', 'xxlarge', default=400)
+PREVIEW_HEIGHT_DEFAULT = config.get('layout_constraints', 'preview_height', 'default', default=200)
+PREVIEW_HEIGHT_MIN = config.get('layout_constraints', 'preview_height', 'min', default=150)
+PREVIEW_HEIGHT_MAX = config.get('layout_constraints', 'preview_height', 'max', default=300)
+TRANSFER_FRAME_WIDTH = config.get('layout_constraints', 'transfer_frame_width', 'default', default=140)
+TRANSFER_FRAME_WIDTH_MAX = config.get('layout_constraints', 'transfer_frame_width', 'max', default=180)
+
+# Padding values
+PADDING_TINY = config.get('padding', 'tiny', default=5)
+PADDING_SMALL = config.get('padding', 'small', default=10)
+PADDING_MEDIUM = config.get('padding', 'medium', default=15)
+PADDING_LARGE = config.get('padding', 'large', default=20)
+
+# Border widths
+BORDER_WIDTH_THIN = config.get('border_width', 'thin', default=1)
+BORDER_WIDTH_THICK = config.get('border_width', 'thick', default=2)
+
+# Time intervals (milliseconds)
+STATUS_MESSAGE_SHORT = config.get('time_intervals', 'status_message_short', default=2000)
+STATUS_MESSAGE_NORMAL = config.get('time_intervals', 'status_message_normal', default=3000)
+AUTO_REFRESH_INTERVAL = config.get('time_intervals', 'auto_refresh_interval', default=5000)
+LOGIN_CHECK_INTERVAL = config.get('time_intervals', 'login_check_interval', default=100)
+IMMEDIATE_ACTION = config.get('time_intervals', 'immediate_action', default=0)
+
+# Font configurations
+FONT_FAMILY_DEFAULT = config.get('fonts', 'family', 'default', default='Arial')
+FONT_FAMILY_MONO = config.get('fonts', 'family', 'mono', default='Consolas')
+FONT_SIZE_TINY = config.get('fonts', 'size', 'tiny', default=8)
+FONT_SIZE_SMALL = config.get('fonts', 'size', 'small', default=9)
+FONT_SIZE_MEDIUM = config.get('fonts', 'size', 'medium', default=10)
+FONT_SIZE_LARGE = config.get('fonts', 'size', 'large', default=11)
+FONT_SIZE_XLARGE = config.get('fonts', 'size', 'xlarge', default=16)
+FONT_STYLE_NORMAL = config.get('fonts', 'style', 'normal', default='normal')
+FONT_STYLE_BOLD = config.get('fonts', 'style', 'bold', default='bold')
+
+# Colors
+COLOR_TOOLTIP_BG = config.get('colors', 'tooltip_bg', default='#ffffe0')
+COLOR_TRANSFER_BG = config.get('colors', 'transfer_bg', default='#f0f0f0')
+COLOR_SEPARATOR = config.get('colors', 'separator', default='#d0d0d0')
+COLOR_ERROR = config.get('colors', 'error', default='red')
+COLOR_ERROR_ALT = config.get('colors', 'error_alt', default='#FF6B35')
+COLOR_SUCCESS = config.get('colors', 'success', default='green')
+COLOR_INFO = config.get('colors', 'info', default='blue')
+COLOR_INFO_GRAY = config.get('colors', 'info_gray', default='gray')
+COLOR_INFO_LIGHT = config.get('colors', 'info_light', default='#666666')
+COLOR_DEFAULT = config.get('colors', 'default', default='black')
+
+# File operation limits
+PREVIEW_SIZE_LIMIT = config.get('file_operations', 'preview_size_limit', default=1048576)
+PREVIEW_LINE_LIMIT = config.get('file_operations', 'preview_line_limit', default=1000)
+FILE_SIZE_UNIT_THRESHOLD = config.get('file_operations', 'file_size_unit_threshold', default=1024.0)
+STATUS_LABEL_WRAP_LENGTH = config.get('file_operations', 'status_label_wrap_length', default=400)
+FILE_LABEL_WRAP_LENGTH = config.get('file_operations', 'file_label_wrap_length', default=500)
+
+# Network/Port constraints
+DEFAULT_PORT = config.get('network', 'default_port', default=7111)
+PORT_MIN = config.get('network', 'port_min', default=1)
+PORT_MAX = config.get('network', 'port_max', default=65535)
+PORT_USER_MIN = config.get('network', 'port_user_min', default=1024)
+
+# Parsing constants
+LS_OUTPUT_SPLIT_PARTS = config.get('parsing', 'ls_output_split_parts', default=8)
+SSH_USER_DIR_INDEX = config.get('parsing', 'ssh_user_dir_index', default=2)
+
+# UI text constraints
+FILE_PATH_TRUNCATE_LENGTH = config.get('ui_text', 'file_path_truncate_length', default=80)
+
+
+# ===== GUI HELPER CLASSES =====
+
+class ToolTip:
+    def __init__(self, widget, text):
+        self.widget = widget
+        self.text = text
+        self.tooltip = None
+        widget.bind("<Enter>", self.on_enter)
+        widget.bind("<Leave>", self.on_leave)
+    
+    def on_enter(self, event=None):
+        x, y, *_ = self.widget.bbox("insert")
+        x += self.widget.winfo_rootx() + 25
+        y += self.widget.winfo_rooty() + 25
+        
+        self.tooltip = tk.Toplevel(self.widget)
+        self.tooltip.wm_overrideredirect(True)
+        self.tooltip.wm_geometry(f"+{x}+{y}")
+        
+        label = tk.Label(self.tooltip, text=self.text, justify='left',
+                        background=COLOR_TOOLTIP_BG, relief='solid', borderwidth=BORDER_WIDTH_THIN,
+                        font=(FONT_FAMILY_DEFAULT, str(FONT_SIZE_SMALL), FONT_STYLE_NORMAL))
+        label.pack()
+    
+    def on_leave(self, event=None):
+        if self.tooltip:
+            self.tooltip.destroy()
+            self.tooltip = None
+
+def create_tooltip(widget, text):
+    return ToolTip(widget, text)
+
+
+# ===== MAIN GUI CLASSES =====
 
 class BaseWindow:
     """Base class for all GUI windows"""
@@ -107,7 +398,7 @@ class LoginWindow(BaseWindow):
     def __init__(self, on_login_success: Callable):
         super().__init__(tk.Tk(), i18n.get('login_title'))
         self.on_login_success = on_login_success
-        self.center_window(450, 500)  # Increased size for 2FA field
+        self.center_window(LOGIN_WINDOW_SIZE[0], LOGIN_WINDOW_SIZE[1])  # Increased size for 2FA field
         
         # Register for language changes
         i18n.register_observer(self.update_texts)
@@ -127,7 +418,7 @@ class LoginWindow(BaseWindow):
         self.lang_label = tk.Label(lang_frame, text=i18n.get('language') + ':')
         self.lang_label.pack(side='left', padx=5)
         
-        self.lang_combo = ttk.Combobox(lang_frame, state='readonly', width=15)
+        self.lang_combo = ttk.Combobox(lang_frame, state='readonly', width=COMBO_WIDTH_SMALL)
         self.lang_combo['values'] = [i18n.get_language_name(code) for code in i18n.get_language_codes()]
         self.lang_combo.set(i18n.get_language_name(i18n.current_language))
         self.lang_combo.pack(side='left')
@@ -141,26 +432,26 @@ class LoginWindow(BaseWindow):
         # Email field
         self.email_label = tk.Label(main_frame, text=i18n.get('email'))
         self.email_label.pack(anchor='w', pady=(5, 0))
-        self.email_entry = ttk.Entry(main_frame, width=40)
+        self.email_entry = ttk.Entry(main_frame, width=ENTRY_WIDTH_DEFAULT)
         self.email_entry.pack(fill='x', pady=(2, 8))
         
         # Password field
         self.password_label = tk.Label(main_frame, text=i18n.get('password'))
         self.password_label.pack(anchor='w', pady=(5, 0))
-        self.password_entry = ttk.Entry(main_frame, width=40, show='*')
+        self.password_entry = ttk.Entry(main_frame, width=ENTRY_WIDTH_DEFAULT, show='*')
         self.password_entry.pack(fill='x', pady=(2, 8))
         
         # Master password field
         self.master_password_label = tk.Label(main_frame, text=i18n.get('master_password'))
         self.master_password_label.pack(anchor='w', pady=(5, 0))
-        self.master_password_entry = ttk.Entry(main_frame, width=40, show='*')
+        self.master_password_entry = ttk.Entry(main_frame, width=ENTRY_WIDTH_DEFAULT, show='*')
         self.master_password_entry.pack(fill='x', pady=(2, 8))
         
         # 2FA code field (initially hidden)
         self.tfa_frame = tk.Frame(main_frame)
         self.tfa_label = tk.Label(self.tfa_frame, text=i18n.get('tfa_code'), font=('Arial', 10, 'bold'))
         self.tfa_label.pack(anchor='w', pady=(5, 0))
-        self.tfa_entry = ttk.Entry(self.tfa_frame, width=40, font=('Arial', 11))
+        self.tfa_entry = ttk.Entry(self.tfa_frame, width=ENTRY_WIDTH_DEFAULT, font=('Arial', 11))
         self.tfa_entry.pack(fill='x', pady=(2, 2))
         self.tfa_help = tk.Label(self.tfa_frame, text=i18n.get('tfa_help'), 
                                 font=('Arial', 9), fg='gray')
@@ -224,7 +515,7 @@ class LoginWindow(BaseWindow):
     
     def login_success(self):
         """Handle successful login"""
-        self.status_label.config(text=i18n.get('login_successful'), fg='green')
+        self.status_label.config(text=i18n.get('login_successful'), fg=COLOR_SUCCESS)
         # Unregister observer before closing
         i18n.unregister_observer(self.update_texts)
         self.root.withdraw()
@@ -233,7 +524,7 @@ class LoginWindow(BaseWindow):
     def login_error(self, error: str):
         """Handle login error"""
         self.login_button.config(state='normal')
-        self.status_label.config(text=f"{i18n.get('error')}: {error}", fg='red')
+        self.status_label.config(text=f"{i18n.get('error')}: {error}", fg=COLOR_ERROR)
     
     def show_2fa_field(self):
         """Show 2FA field when required"""
@@ -340,7 +631,7 @@ class MainWindow(BaseWindow):
                     self.root.geometry(f'{width}x{height}+0+0')
         except Exception as e:
             self.logger.warning(f"Could not maximize window: {e}")
-            self.center_window(1024, 768)
+            self.center_window(MAIN_WINDOW_DEFAULT_SIZE[0], MAIN_WINDOW_DEFAULT_SIZE[1])
     
     def _get_name(self, item, *fields):
         """Get name from item trying multiple field names"""
@@ -350,7 +641,7 @@ class MainWindow(BaseWindow):
         """Handle API errors, especially authentication errors"""
         auth_errors = ['401', 'Not authenticated', 'Invalid request credential']
         if any(error in str(error_msg) for error in auth_errors):
-            self.status_bar.config(text=i18n.get('authentication_expired'), fg='red')
+            self.status_bar.config(text=i18n.get('authentication_expired'), fg=COLOR_ERROR)
             messagebox.showerror(i18n.get('error'), i18n.get('session_expired'))
             TokenManager.clear_token()
             self.root.destroy()
@@ -375,7 +666,7 @@ class MainWindow(BaseWindow):
         self.logout_button.pack(side='right', padx=10)
         
         # Language selector
-        self.lang_combo = ttk.Combobox(top_frame, state='readonly', width=15)
+        self.lang_combo = ttk.Combobox(top_frame, state='readonly', width=COMBO_WIDTH_SMALL)
         self.lang_combo['values'] = [i18n.get_language_name(code) for code in i18n.get_language_codes()]
         self.lang_combo.set(i18n.get_language_name(i18n.current_language))
         self.lang_combo.pack(side='right', padx=5)
@@ -393,7 +684,7 @@ class MainWindow(BaseWindow):
         team_frame.pack(fill='x', padx=10, pady=5)
         self.team_label = tk.Label(team_frame, text=i18n.get('team'), width=12, anchor='w')
         self.team_label.pack(side='left', padx=5)
-        self.team_combo = ttk.Combobox(team_frame, width=40, state='readonly')
+        self.team_combo = ttk.Combobox(team_frame, width=ENTRY_WIDTH_DEFAULT, state='readonly')
         self.team_combo.pack(side='left', padx=5, fill='x', expand=True)
         self.team_combo.bind('<<ComboboxSelected>>', lambda e: self.on_team_changed())
         
@@ -402,7 +693,7 @@ class MainWindow(BaseWindow):
         machine_frame.pack(fill='x', padx=10, pady=5)
         self.machine_label = tk.Label(machine_frame, text=i18n.get('machine'), width=12, anchor='w')
         self.machine_label.pack(side='left', padx=5)
-        self.machine_combo = ttk.Combobox(machine_frame, width=40, state='readonly')
+        self.machine_combo = ttk.Combobox(machine_frame, width=ENTRY_WIDTH_DEFAULT, state='readonly')
         self.machine_combo.pack(side='left', padx=5, fill='x', expand=True)
         self.machine_combo.bind('<<ComboboxSelected>>', lambda e: self.on_machine_changed())
         
@@ -411,7 +702,7 @@ class MainWindow(BaseWindow):
         repo_frame.pack(fill='x', padx=10, pady=5)
         self.repo_label = tk.Label(repo_frame, text=i18n.get('repository'), width=12, anchor='w')
         self.repo_label.pack(side='left', padx=5)
-        self.repo_combo = ttk.Combobox(repo_frame, width=40, state='readonly')
+        self.repo_combo = ttk.Combobox(repo_frame, width=ENTRY_WIDTH_DEFAULT, state='readonly')
         self.repo_combo.pack(side='left', padx=5, fill='x', expand=True)
         self.repo_combo.bind('<<ComboboxSelected>>', lambda e: self.on_repository_changed())
         # Add a filter indicator label
@@ -615,7 +906,7 @@ class MainWindow(BaseWindow):
         
         self.plugin_select_label = tk.Label(plugin_select_frame, text=i18n.get('plugin'), width=12, anchor='w')
         self.plugin_select_label.pack(side='left')
-        self.plugin_combo = ttk.Combobox(plugin_select_frame, width=20, state='readonly')
+        self.plugin_combo = ttk.Combobox(plugin_select_frame, width=COMBO_WIDTH_MEDIUM, state='readonly')
         self.plugin_combo.pack(side='left', fill='x', expand=True)
         
         # Port selection frame
@@ -673,10 +964,10 @@ class MainWindow(BaseWindow):
         self.connections_tree.heading('Status', text='Status')
         
         # Column widths
-        self.connections_tree.column('#0', width=80)
-        self.connections_tree.column('Plugin', width=120)
-        self.connections_tree.column('URL', width=200)
-        self.connections_tree.column('Status', width=80)
+        self.connections_tree.column('#0', width=COLUMN_WIDTH_SIZE)
+        self.connections_tree.column('Plugin', width=COLUMN_WIDTH_PLUGIN)
+        self.connections_tree.column('URL', width=COLUMN_WIDTH_URL)
+        self.connections_tree.column('Status', width=COLUMN_WIDTH_STATUS)
         
         # Scrollbar for treeview
         tree_scroll = tk.Scrollbar(tree_frame)
@@ -757,7 +1048,7 @@ class MainWindow(BaseWindow):
         else:
             error_msg = result.get('error', i18n.get('failed_to_load_teams'))
             if not self._handle_api_error(error_msg):
-                self.status_bar.config(text=f"{i18n.get('error')}: {error_msg}", fg='red')
+                self.status_bar.config(text=f"{i18n.get('error')}: {error_msg}", fg=COLOR_ERROR)
     
     def on_team_changed(self):
         """Handle team selection change"""
@@ -843,7 +1134,7 @@ class MainWindow(BaseWindow):
             self.machines_data = {}
             error_msg = result.get('error', i18n.get('failed_to_load_machines'))
             if not self._handle_api_error(error_msg):
-                self.status_bar.config(text=f"{i18n.get('error')}: {error_msg}", fg='red')
+                self.status_bar.config(text=f"{i18n.get('error')}: {error_msg}", fg=COLOR_ERROR)
     
     def update_machines(self, machines: list):
         """Update machine dropdown"""
@@ -898,9 +1189,9 @@ class MainWindow(BaseWindow):
                                 repos = [self._get_name(r, 'repositoryName', 'name', 'repoName') for r in filtered_repos]
                                 self.update_repositories(repos)
                                 # Update status to show filtering is active
-                                self.repo_filter_label.config(text="(machine-specific)", fg='green')
+                                self.repo_filter_label.config(text="(machine-specific)", fg=COLOR_SUCCESS)
                                 status_text = f"Showing {len(repos)} repositories for machine '{machine}'"
-                                self.status_bar.config(text=status_text, fg='green')
+                                self.status_bar.config(text=status_text, fg=COLOR_SUCCESS)
                                 self.root.after(3000, lambda: self.status_bar.config(text=i18n.get('ready'), fg='black'))
                                 return
                     except (json.JSONDecodeError, KeyError, TypeError) as e:
@@ -914,7 +1205,7 @@ class MainWindow(BaseWindow):
         else:
             error_msg = result.get('error', i18n.get('failed_to_load_repositories'))
             if not self._handle_api_error(error_msg):
-                self.status_bar.config(text=f"{i18n.get('error')}: {error_msg}", fg='red')
+                self.status_bar.config(text=f"{i18n.get('error')}: {error_msg}", fg=COLOR_ERROR)
     
     def update_repositories(self, repos: list):
         """Update repository dropdown"""
@@ -1072,7 +1363,7 @@ class MainWindow(BaseWindow):
         # Create progress dialog
         progress_dialog = tk.Toplevel(self.root)
         progress_dialog.title(i18n.get('sync_progress', 'Sync Progress'))
-        progress_dialog.geometry('700x600')
+        progress_dialog.geometry(f'{PROGRESS_DIALOG_SIZE[0]}x{PROGRESS_DIALOG_SIZE[1]}')
         progress_dialog.transient(self.root)
         
         # Center the dialog
@@ -1099,7 +1390,7 @@ class MainWindow(BaseWindow):
         if self.confirm_var.get():
             status_text = i18n.get('preview_mode', 'PREVIEW MODE - ') + status_text
         status_label = tk.Label(main_container, text=status_text,
-                               font=('Arial', 10), fg='blue' if self.confirm_var.get() else 'black')
+                               font=('Arial', 10), fg=COLOR_INFO if self.confirm_var.get() else 'black')
         status_label.pack(pady=(0, 10))
         
         # Sync details frame
@@ -1205,7 +1496,7 @@ class MainWindow(BaseWindow):
             except Exception as e:
                 msg = i18n.get('sync_error', f'Error: {str(e)}')
                 progress_dialog.after(0, lambda: update_output(f"\n{msg}\n"))
-                progress_dialog.after(0, lambda: status_label.config(text=msg, fg='red'))
+                progress_dialog.after(0, lambda: status_label.config(text=msg, fg=COLOR_ERROR))
                 progress_dialog.after(0, lambda: close_button.config(state='normal'))
                 progress_dialog.after(0, lambda: progress_dialog.protocol('WM_DELETE_WINDOW', progress_dialog.destroy))
                 progress_dialog.after(0, progress_bar.stop)
@@ -1490,7 +1781,7 @@ class MainWindow(BaseWindow):
         self.root.clipboard_append(url)
         self.root.update()  # Required on Windows
         
-        self.status_bar.config(text=i18n.get('copied_to_clipboard', url=url), fg='green')
+        self.status_bar.config(text=i18n.get('copied_to_clipboard', url=url), fg=COLOR_SUCCESS)
         self.root.after(2000, lambda: self.status_bar.config(fg='black'))
     
     def auto_refresh_connections(self):
@@ -1500,7 +1791,7 @@ class MainWindow(BaseWindow):
             self.refresh_connections()
         
         # Schedule next refresh
-        self.root.after(5000, self.auto_refresh_connections)
+        self.root.after(AUTO_REFRESH_INTERVAL, self.auto_refresh_connections)
     
     def logout(self):
         """Logout and return to login screen"""
@@ -1828,10 +2119,10 @@ class DualPaneFileBrowser:
         self.local_tree.heading('type', text='Type', command=lambda: self.sort_local('type'))
         
         # Column widths
-        self.local_tree.column('#0', width=250)
-        self.local_tree.column('size', width=80)
-        self.local_tree.column('modified', width=150)
-        self.local_tree.column('type', width=80)
+        self.local_tree.column('#0', width=COLUMN_WIDTH_NAME)
+        self.local_tree.column('size', width=COLUMN_WIDTH_SIZE)
+        self.local_tree.column('modified', width=COLUMN_WIDTH_MODIFIED)
+        self.local_tree.column('type', width=COLUMN_WIDTH_TYPE)
         
         # Scrollbars
         vsb = ttk.Scrollbar(list_frame, orient='vertical', command=self.local_tree.yview)
@@ -1874,21 +2165,21 @@ class DualPaneFileBrowser:
         # Upload button
         self.upload_button = ttk.Button(button_container, text=i18n.get('upload_arrow', 'Upload →'), 
                                        command=self.upload_selected, state='disabled',
-                                       width=15)
+                                       width=COMBO_WIDTH_SMALL)
         self.upload_button.pack(pady=10)
         create_tooltip(self.upload_button, i18n.get('upload_tooltip', 'Upload selected files to remote'))
         
         # Download button
         self.download_button = ttk.Button(button_container, text=i18n.get('download_arrow', '← Download'), 
                                          command=self.download_selected, state='disabled',
-                                         width=15)
+                                         width=COMBO_WIDTH_SMALL)
         self.download_button.pack(pady=10)
         create_tooltip(self.download_button, i18n.get('download_tooltip', 'Download selected files from remote'))
         
         # Options button
         self.options_button = ttk.Button(button_container, text=i18n.get('options', 'Options'), 
                                        command=self.show_transfer_options,
-                                       width=15)
+                                       width=COMBO_WIDTH_SMALL)
         self.options_button.pack(pady=10)
         create_tooltip(self.options_button, i18n.get('options_tooltip', 'Configure transfer options'))
         
@@ -1915,7 +2206,7 @@ class DualPaneFileBrowser:
         conn_frame = tk.Frame(self.remote_frame)
         conn_frame.pack(fill='x', padx=5, pady=5)
         
-        self.conn_status_label = tk.Label(conn_frame, text=i18n.get('not_connected', 'Not connected'), fg='red')
+        self.conn_status_label = tk.Label(conn_frame, text=i18n.get('not_connected', 'Not connected'), fg=COLOR_ERROR)
         self.conn_status_label.pack(side='left')
         
         self.connect_button = ttk.Button(conn_frame, text=i18n.get('connect', 'Connect'), command=self.connect_remote)
@@ -1978,10 +2269,10 @@ class DualPaneFileBrowser:
         self.remote_tree.heading('type', text='Type', command=lambda: self.sort_remote('type'))
         
         # Column widths
-        self.remote_tree.column('#0', width=250)
-        self.remote_tree.column('size', width=80)
-        self.remote_tree.column('modified', width=150)
-        self.remote_tree.column('type', width=80)
+        self.remote_tree.column('#0', width=COLUMN_WIDTH_NAME)
+        self.remote_tree.column('size', width=COLUMN_WIDTH_SIZE)
+        self.remote_tree.column('modified', width=COLUMN_WIDTH_MODIFIED)
+        self.remote_tree.column('type', width=COLUMN_WIDTH_TYPE)
         
         # Scrollbars
         vsb = ttk.Scrollbar(list_frame, orient='vertical', command=self.remote_tree.yview)
@@ -2005,17 +2296,6 @@ class DualPaneFileBrowser:
         # Configure for multi-select
         self.remote_tree.configure(selectmode='extended')
     
-    def format_size(self, size: int) -> str:
-        """Format file size for display"""
-        for unit in ['B', 'KB', 'MB', 'GB', 'TB']:
-            if size < 1024.0:
-                return f"{size:.1f} {unit}"
-            size /= 1024.0
-        return f"{size:.1f} PB"
-    
-    def format_time(self, timestamp: float) -> str:
-        """Format timestamp for display"""
-        return datetime.fromtimestamp(timestamp).strftime('%Y-%m-%d %H:%M')
     
     def refresh_local(self):
         """Refresh local file list"""
@@ -2090,8 +2370,8 @@ class DualPaneFileBrowser:
         
         # Add items to tree
         for item in sorted_files:
-            size_text = '' if item['is_dir'] else self.format_size(item['size'])
-            modified_text = self.format_time(item['modified'])
+            size_text = '' if item['is_dir'] else format_size(item['size'])
+            modified_text = format_time(item['modified'])
             
             # Insert with folder/file icon
             icon = '📁 ' if item['is_dir'] else '📄 '
@@ -2215,7 +2495,7 @@ class DualPaneFileBrowser:
     
     def on_remote_connected(self):
         """Handle successful remote connection"""
-        self.conn_status_label.config(text=i18n.get('connected', 'Connected'), fg='green')
+        self.conn_status_label.config(text=i18n.get('connected', 'Connected'), fg=COLOR_SUCCESS)
         self.connect_button.config(text=i18n.get('disconnect', 'Disconnect'), state='normal')
         self.connect_button.config(command=self.disconnect_remote)
         
@@ -2232,7 +2512,7 @@ class DualPaneFileBrowser:
     
     def on_remote_connect_failed(self, error: str):
         """Handle failed remote connection"""
-        self.conn_status_label.config(text=i18n.get('not_connected', 'Not connected'), fg='red')
+        self.conn_status_label.config(text=i18n.get('not_connected', 'Not connected'), fg=COLOR_ERROR)
         self.connect_button.config(state='normal')
         messagebox.showerror(i18n.get('connection_failed', 'Connection Failed'), 
                            i18n.get('failed_connect_remote', f'Failed to connect to remote: {error}'))
@@ -2250,7 +2530,7 @@ class DualPaneFileBrowser:
             self.remote_tree.delete(item)
         
         # Update UI
-        self.conn_status_label.config(text=i18n.get('not_connected', 'Not connected'), fg='red')
+        self.conn_status_label.config(text=i18n.get('not_connected', 'Not connected'), fg=COLOR_ERROR)
         self.connect_button.config(text=i18n.get('connect', 'Connect'), command=self.connect_remote)
         
         # Disable remote controls
@@ -2302,60 +2582,6 @@ class DualPaneFileBrowser:
         except Exception as e:
             return False, str(e)
     
-    def parse_ls_output(self, output: str) -> List[Dict[str, Any]]:
-        """Parse ls -la output into file information"""
-        files = []
-        lines = output.strip().split('\n')
-        
-        for line in lines:
-            if not line or line.startswith('total'):
-                continue
-            
-            # Parse ls -la output format
-            # Example: drwxr-xr-x 2 user group 4096 Dec 15 10:30 dirname
-            parts = line.split(None, 8)
-            if len(parts) < 9:
-                continue
-            
-            perms = parts[0]
-            size = int(parts[4]) if parts[4].isdigit() else 0
-            name = parts[8]
-            
-            # Handle symbolic links
-            if perms.startswith('l') and ' -> ' in name:
-                # Extract link name (before ->)
-                name = name.split(' -> ')[0]
-            
-            # Skip . and ..
-            if name in ['.', '..']:
-                continue
-            
-            # Determine if directory or link to directory
-            is_dir = perms[0] in 'dl'
-            
-            # Parse modification time
-            try:
-                # Try to parse the date
-                month = parts[5]
-                day = parts[6]
-                time_or_year = parts[7]
-                
-                # For now, use current time as approximation
-                # TODO: Proper date parsing
-                modified = time.time()
-            except:
-                modified = time.time()
-            
-            files.append({
-                'name': name,
-                'is_dir': is_dir,
-                'size': size,
-                'modified': modified,
-                'type': i18n.get('folder', 'Folder') if is_dir else i18n.get('file', 'File'),
-                'perms': perms
-            })
-        
-        return files
     
     def refresh_remote(self):
         """Refresh remote file list"""
@@ -2370,7 +2596,7 @@ class DualPaneFileBrowser:
                 success, output = self.execute_remote_command(f'ls -la "{self.remote_current_path}"')
                 
                 if success:
-                    files = self.parse_ls_output(output)
+                    files = parse_ls_output(output)
                     self.parent.after(0, lambda: self.update_remote_tree(files))
                 else:
                     self.parent.after(0, lambda: messagebox.showerror(i18n.get('error', 'Error'), 
@@ -2433,8 +2659,8 @@ class DualPaneFileBrowser:
         
         # Add items to tree
         for item in sorted_files:
-            size_text = '' if item['is_dir'] else self.format_size(item['size'])
-            modified_text = self.format_time(item['modified'])
+            size_text = '' if item['is_dir'] else format_size(item['size'])
+            modified_text = format_time(item['modified'])
             
             # Insert with folder/file icon
             icon = '📁 ' if item['is_dir'] else '📄 '
@@ -2721,7 +2947,7 @@ class DualPaneFileBrowser:
         if self.transfer_options.get('dry_run', False):
             status_text = i18n.get('dry_run_mode', 'DRY RUN MODE - ') + status_text
         status_label = tk.Label(main_container, text=status_text,
-                               font=('Arial', 10), fg='blue' if self.transfer_options.get('dry_run', False) else 'black')
+                               font=('Arial', 10), fg=COLOR_INFO if self.transfer_options.get('dry_run', False) else 'black')
         status_label.pack(pady=(0, 10))
         
         # Overall progress
@@ -2852,7 +3078,7 @@ class DualPaneFileBrowser:
                     success = False
                 
                 progress_dialog.after(0, lambda: status_label.config(
-                    text=msg, fg='green' if success else 'red'
+                    text=msg, fg=COLOR_SUCCESS if success else 'red'
                 ))
                 progress_dialog.after(0, lambda: close_button.config(state='normal'))
                 progress_dialog.after(0, lambda: progress_dialog.protocol('WM_DELETE_WINDOW', progress_dialog.destroy))
@@ -2870,7 +3096,7 @@ class DualPaneFileBrowser:
             except Exception as e:
                 self.logger.error(f"Transfer error: {e}")
                 progress_dialog.after(0, lambda: status_label.config(
-                    text=i18n.get('transfer_error', f'Error: {str(e)}'), fg='red'
+                    text=i18n.get('transfer_error', f'Error: {str(e)}'), fg=COLOR_ERROR
                 ))
                 progress_dialog.after(0, lambda: close_button.config(state='normal'))
                 progress_dialog.after(0, lambda: progress_dialog.protocol('WM_DELETE_WINDOW', progress_dialog.destroy))
@@ -3327,9 +3553,9 @@ class DualPaneFileBrowser:
         try:
             # Check file size
             stat_info = file_path.stat()
-            if stat_info.st_size > 1024 * 1024:  # 1MB limit
+            if stat_info.st_size > PREVIEW_SIZE_LIMIT:  # 1MB limit
                 self.preview_text.insert(1.0, i18n.get('file_too_large', 
-                    f'File too large for preview ({self.format_size(stat_info.st_size)})'))
+                    f'File too large for preview ({format_size(stat_info.st_size)})'))
                 self.preview_text.config(state='disabled')
                 return
             
@@ -3370,9 +3596,9 @@ class DualPaneFileBrowser:
                 if success:
                     try:
                         file_size = int(size_output.strip())
-                        if file_size > 1024 * 1024:  # 1MB limit
+                        if file_size > PREVIEW_SIZE_LIMIT:  # 1MB limit
                             self.parent.after(0, lambda: self.update_preview_content(
-                                i18n.get('file_too_large', f'File too large for preview ({self.format_size(file_size)})')
+                                i18n.get('file_too_large', f'File too large for preview ({format_size(file_size)})')
                             ))
                             return
                     except:
@@ -3675,6 +3901,8 @@ class DualPaneFileBrowser:
         return rsync_cmd
 
 
+# ===== MAIN EXECUTION =====
+
 def launch_gui():
     """Launch the simplified GUI application"""
     logger = get_logger(__name__)
@@ -3711,29 +3939,6 @@ def launch_gui():
     signal.signal(signal.SIGINT, signal_handler)
     
     # Check if already authenticated and token is valid
-    def check_token_validity():
-        """Check if authentication token is valid"""
-        try:
-            if not TokenManager.is_authenticated():
-                logger.debug("Not authenticated")
-                return False
-            
-            logger.debug("Testing token validity with API call...")
-            runner = SubprocessRunner()
-            result = runner.run_cli_command(['--output', 'json', 'list', 'teams'])
-            token_valid = result.get('success', False)
-            
-            if not token_valid:
-                logger.debug(f"Token validation failed: {result.get('error', 'Unknown error')}")
-                TokenManager.clear_token()
-            
-            return token_valid
-        except Exception as e:
-            logger.error(f"Error checking authentication: {e}")
-            import traceback
-            traceback.print_exc()
-            return False
-    
     token_valid = check_token_validity()
     
     try:
