@@ -42,13 +42,29 @@ BLUE='\033[0;34m'
 YELLOW='\033[0;33m'
 NC='\033[0m' # No Color
 
+# Error tracking
+CRITICAL_ERRORS=0
+TOTAL_ERRORS=0
+CONTINUE_ON_ERROR=${CONTINUE_ON_ERROR:-false}
+
 # Helper function to print colored output
 print_status() {
     echo -e "${GREEN}✓${NC} $1"
 }
 
 print_error() {
-    echo -e "${RED}✗${NC} $1"
+    echo -e "${RED}✗${NC} $1" >&2
+    ((TOTAL_ERRORS++)) || true
+}
+
+print_critical_error() {
+    echo -e "${RED}✗ CRITICAL:${NC} $1" >&2
+    ((CRITICAL_ERRORS++)) || true
+    ((TOTAL_ERRORS++)) || true
+    if [ "$CONTINUE_ON_ERROR" != "true" ]; then
+        echo -e "${RED}Stopping due to critical error. Set CONTINUE_ON_ERROR=true to continue.${NC}" >&2
+        exit 1
+    fi
 }
 
 print_section() {
@@ -59,25 +75,17 @@ print_warning() {
     echo -e "${YELLOW}⚠${NC} $1"
 }
 
-# Create test vault files
-create_test_vault_files() {
-    echo '{"test_key": "test_value", "version": 1}' > test_vault.json
-    echo '{"updated_key": "updated_value", "version": 2}' > test_vault_updated.json
-    echo '{"company_config": {"tier": "enterprise", "features": ["backup", "restore"], "max_users": 100}}' > test_company_vault.json
-}
-
-# Cleanup test vault files
-cleanup_test_vault_files() {
-    rm -f test_vault.json test_vault_updated.json test_company_vault.json
-}
+# Define vault data as variables instead of files
+TEST_VAULT_DATA='{"test_key": "test_value", "version": 1}'
+TEST_VAULT_UPDATED_DATA='{"updated_key": "updated_value", "version": 2}'
+TEST_COMPANY_VAULT_DATA='{"company_config": {"tier": "enterprise", "features": ["backup", "restore"], "max_users": 100}}'
 
 # Start testing
 echo "CLI Test Script"
 echo "Started: $(date)"
 echo "----------------------------------------"
 
-# Create test vault files
-create_test_vault_files
+# Vault data is now stored in variables, no files to create
 
 # Get token from parameter or environment
 TOKEN="${1:-$REDIACC_TOKEN}"
@@ -91,13 +99,13 @@ if [ -z "$TOKEN" ] && [ -f "$CONFIG_FILE" ]; then
     TOKEN=$(python3 -c "
 import json
 try:
-    with open('$1', 'r') as f:
+    with open('$CONFIG_FILE', 'r') as f:
         config = json.load(f)
         if 'token' in config and config['token']:
             print(config['token'])
 except:
     pass
-" "$CONFIG_FILE" 2>/dev/null || echo "")
+" 2>/dev/null || echo "")
 fi
 
 if [ -z "$TOKEN" ]; then
@@ -114,24 +122,22 @@ if [ -z "$TOKEN" ]; then
         TOKEN=$(python3 -c "
 import json
 try:
-    with open('$1', 'r') as f:
+    with open('$CONFIG_FILE', 'r') as f:
         config = json.load(f)
         if 'token' in config and config['token']:
             print(config['token'])
 except:
     pass
-" "$CONFIG_FILE" 2>/dev/null || echo "")
+" 2>/dev/null || echo "")
         
         if [ -z "$TOKEN" ]; then
             print_error "Failed to retrieve token after login"
-            cleanup_test_vault_files
             exit 1
         fi
     else
         print_error "Failed to login: $LOGIN_OUTPUT"
         echo "Usage: $0 <TOKEN>"
         echo "Or set REDIACC_TOKEN environment variable"
-        cleanup_test_vault_files
         exit 1
     fi
 fi
@@ -160,14 +166,14 @@ else
 fi
 
 # 3. Create entities with vault files
-print_section "Creating Entities with Vault Files"
+print_section "Creating Entities with Vault Data"
 
-# Create Team with vault file
-echo "Creating team with vault file: ${TEAM_NAME}"
-if ${CLI} create team "${TEAM_NAME}" --vault-file test_vault.json; then
-    print_status "Created team with vault file: ${TEAM_NAME}"
+# Create Team with vault data
+echo "Creating team with vault data: ${TEAM_NAME}"
+if ${CLI} create team "${TEAM_NAME}" --vault "${TEST_VAULT_DATA}"; then
+    print_status "Created team with vault data: ${TEAM_NAME}"
 else
-    print_error "Failed to create team with vault file"
+    print_critical_error "Failed to create team with vault data: ${TEAM_NAME}"
 fi
 
 # Create Region with inline vault
@@ -175,8 +181,7 @@ echo "Creating region: ${REGION_NAME}"
 if ${CLI} create region "${REGION_NAME}" --vault '{"region_config": "test"}' 2>&1; then
     print_status "Created region: ${REGION_NAME}"
 else
-    print_error "Failed to create region"
-    print_warning "Region creation may require special permissions"
+    print_critical_error "Failed to create region: ${REGION_NAME}"
 fi
 
 # Create Bridge in Region
@@ -184,17 +189,15 @@ echo "Creating bridge: ${BRIDGE_NAME}"
 if ${CLI} create bridge "${REGION_NAME}" "${BRIDGE_NAME}" --vault '{}' 2>&1; then
     print_status "Created bridge: ${BRIDGE_NAME} in region ${REGION_NAME}"
 else
-    print_error "Failed to create bridge"
-    print_warning "Bridge creation requires region to exist"
+    print_critical_error "Failed to create bridge: ${BRIDGE_NAME} in region ${REGION_NAME}"
 fi
 
 # Create Machine for Team using Bridge
 echo "Creating machine: ${MACHINE_NAME}"
-if ${CLI} create machine "${TEAM_NAME}" "${BRIDGE_NAME}" "${MACHINE_NAME}" --vault-file test_vault.json 2>&1; then
+if ${CLI} create machine "${TEAM_NAME}" "${BRIDGE_NAME}" "${MACHINE_NAME}" --vault "${TEST_VAULT_DATA}" 2>&1; then
     print_status "Created machine: ${MACHINE_NAME} for team ${TEAM_NAME}"
 else
-    print_error "Failed to create machine"
-    print_warning "Machine creation requires bridge to exist and be operational"
+    print_critical_error "Failed to create machine: ${MACHINE_NAME} for team ${TEAM_NAME}"
 fi
 
 # Create Repository for Team
@@ -227,7 +230,7 @@ print_section "Vault Operations Tests"
 
 # Test vault set commands
 echo "Testing vault set for team..."
-if ${CLI} vault set team "${TEAM_NAME}" test_vault_updated.json --vault-version 2; then
+if ${CLI} vault set team "${TEAM_NAME}" - --vault-version 2 <<< "${TEST_VAULT_UPDATED_DATA}"; then
     print_status "Successfully updated team vault"
 else
     print_error "Failed to set team vault"
@@ -245,7 +248,7 @@ fi
 echo "Testing vault set for company..."
 # First, we need to get the current company name
 # Assuming we're in a company context based on admin login
-if ${CLI} vault set company "${COMPANY_NAME}" test_company_vault.json --vault-version 2; then
+if ${CLI} vault set company "${COMPANY_NAME}" - --vault-version 2 <<< "${TEST_COMPANY_VAULT_DATA}"; then
     print_status "Successfully updated company vault from file"
 else
     print_error "Failed to set company vault from file"
@@ -261,7 +264,7 @@ fi
 # Test vault set with different company name
 # Note: The server ignores the company name and updates the authenticated user's company
 echo "Testing vault set with different company name..."
-DIFFERENT_OUTPUT=$(${CLI} vault set company "DifferentCompany_${TIMESTAMP}" test_company_vault.json --vault-version 1 2>&1)
+DIFFERENT_OUTPUT=$(${CLI} vault set company "DifferentCompany_${TIMESTAMP}" - --vault-version 1 2>&1 <<< "${TEST_COMPANY_VAULT_DATA}")
 if echo "${DIFFERENT_OUTPUT}" | grep -q -i "Note:.*ignored"; then
     print_status "CLI properly warns that company name is ignored"
 elif echo "${DIFFERENT_OUTPUT}" | grep -q -i "successfully"; then
@@ -317,7 +320,7 @@ else
 fi
 
 echo "Testing machine vault update..."
-if ${CLI} update machine "${TEAM_NAME}" "${MACHINE_NAME}" --vault-file test_vault_updated.json --vault-version 3; then
+if ${CLI} update machine "${TEAM_NAME}" "${MACHINE_NAME}" --vault "${TEST_VAULT_UPDATED_DATA}" --vault-version 3; then
     print_status "Successfully updated machine vault"
 else
     print_error "Failed to update machine vault"
@@ -1514,7 +1517,7 @@ done
 echo "Testing vault error handling..."
 
 # Test vault set with invalid resource
-if ${CLI} vault set team "NonExistentTeam_${TIMESTAMP}" test_vault.json 2>&1 | grep -q -i "error\|not found"; then
+if ${CLI} vault set team "NonExistentTeam_${TIMESTAMP}" - 2>&1 <<< "${TEST_VAULT_DATA}" | grep -q -i "error\|not found"; then
     print_status "Properly handled vault set for non-existent resource"
 else
     print_error "Did not properly handle vault set for non-existent resource"
@@ -1548,13 +1551,11 @@ fi
 
 # Test invalid JSON vault data
 echo "Testing invalid JSON vault data..."
-echo "invalid json data" > invalid_vault.json
-if ${CLI} vault set team "${TEAM_NAME}" invalid_vault.json 2>&1 | grep -q -i "error\|invalid"; then
+# Test invalid JSON vault data
+if ${CLI} vault set team "${TEAM_NAME}" - 2>&1 <<< "invalid json data" | grep -q -i "error\|invalid"; then
     print_status "Properly handled invalid JSON vault data"
-    rm -f invalid_vault.json
 else
     print_error "Did not properly handle invalid JSON vault data"
-    rm -f invalid_vault.json
 fi
 
 # Test permission errors
@@ -1769,14 +1770,24 @@ print_warning "Logout test skipped (would invalidate token)"
 #     print_error "Did not properly reject operation after logout"
 # fi
 
-# Cleanup test files
-cleanup_test_vault_files
+# No test files to cleanup - using in-memory approach
 
 # Summary
 print_section "Test Summary"
-echo "Test completed successfully!"
+
+if [ $TOTAL_ERRORS -eq 0 ]; then
+    echo -e "${GREEN}All tests passed successfully!${NC}"
+    EXIT_CODE=0
+else
+    echo -e "${RED}Total errors: $TOTAL_ERRORS${NC}"
+    if [ $CRITICAL_ERRORS -gt 0 ]; then
+        echo -e "${RED}Critical errors: $CRITICAL_ERRORS${NC}"
+    fi
+    EXIT_CODE=1
+fi
+
 echo "Finished: $(date)"
 echo "----------------------------------------"
 
-# Exit with success
-exit 0
+# Exit with appropriate code
+exit $EXIT_CODE
