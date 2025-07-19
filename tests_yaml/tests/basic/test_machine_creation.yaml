@@ -1,0 +1,82 @@
+# Test machine creation with dependencies
+name: "Machine Creation with Dependencies"
+description: "Test creating a machine with required team and bridge dependencies"
+tags: [machine, dependencies, basic]
+
+dependencies:
+  company: "TestCompany"
+
+setup:
+  - create_random_team_name: team_name
+  - create_random_region_name: region_name
+  - create_random_bridge_name: bridge_name
+  - create_random_machine_name: machine_name
+
+steps:
+  # Create team
+  - action: create
+    entity: team
+    params:
+      name: "{{ team_name }}"
+      vault:
+        SSH_PRIVATE_KEY: |
+          -----BEGIN RSA PRIVATE KEY-----
+          test-key-content
+          -----END RSA PRIVATE KEY-----
+
+  # Create region
+  - action: create
+    entity: region
+    params:
+      name: "{{ region_name }}"
+
+  # Create bridge
+  - action: create
+    entity: bridge
+    params:
+      name: "{{ bridge_name }}"
+      region: "{{ region_name }}"
+
+  # Create machine
+  - action: create
+    entity: machine
+    params:
+      name: "{{ machine_name }}"
+      team: "{{ team_name }}"
+      bridge: "{{ bridge_name }}"
+      vault:
+        ip: "10.0.0.100"
+        user: "ubuntu"
+        datastore: "/mnt/datastore"
+    expect:
+      success: true
+    capture:
+      machine_id: "$.id"
+
+  # Verify machine
+  - action: verify
+    entity: machine
+    params:
+      name: "{{ machine_name }}"
+      team: "{{ team_name }}"
+    expect:
+      teamName: "{{ team_name }}"
+      bridgeName: "{{ bridge_name }}"
+
+cleanup:
+  - action: delete
+    entity: machine
+    params:
+      name: "{{ machine_name }}"
+  - action: delete
+    entity: bridge
+    params:
+      name: "{{ bridge_name }}"
+  - action: delete
+    entity: region
+    params:
+      name: "{{ region_name }}"
+  - action: delete
+    entity: team
+    params:
+      name: "{{ team_name }}"

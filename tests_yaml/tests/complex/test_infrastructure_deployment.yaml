@@ -1,0 +1,177 @@
+# Complex workflow: Complete infrastructure deployment with queue job
+name: "Complete Infrastructure Deployment"
+description: "Test the scenario of creating infrastructure, deploying a repository, and running a queue job"
+tags: [complex, infrastructure, queue, integration]
+
+dependencies:
+  company: "TestCompany"
+
+setup:
+  - create_random_team_name: team_name
+  - create_random_region_name: region_name
+  - create_random_bridge_name: bridge_name
+  - create_random_machine_name: machine_name
+  - create_random_repository_name: repo_name
+
+steps:
+  # Step 1: Create company (if needed) - handled by dependencies
+
+  # Step 2: Create team with custom vault data
+  - action: create
+    entity: team
+    params:
+      name: "{{ team_name }}"
+      company: "{{ company }}"
+      vault:
+        SSH_PRIVATE_KEY: |
+          -----BEGIN RSA PRIVATE KEY-----
+          MIIEpAIBAAKCAQEA1234567890abcdef...
+          -----END RSA PRIVATE KEY-----
+        DEPLOY_KEY: "secret-deploy-key-123"
+        CUSTOM_CONFIG: |
+          {
+            "environment": "test",
+            "features": ["backup", "monitoring"]
+          }
+    expect:
+      success: true
+    capture:
+      team_id: "$.id"
+
+  # Step 3a: Create region (can be parallel with team)
+  - action: create
+    entity: region
+    params:
+      name: "{{ region_name }}"
+      company: "{{ company }}"
+      location: "us-west-2"
+    parallel: true
+
+  # Step 3b: Create bridge (depends on region)
+  - action: create
+    entity: bridge
+    params:
+      name: "{{ bridge_name }}"
+      region: "{{ region_name }}"
+      api_url: "https://bridge.test.local"
+    expect:
+      success: true
+    capture:
+      bridge_id: "$.id"
+
+  # Step 4: Create machine (needs both team and bridge)
+  - action: create
+    entity: machine
+    params:
+      name: "{{ machine_name }}"
+      team: "{{ team_name }}"
+      bridge: "{{ bridge_name }}"
+      vault:
+        ip: "192.168.1.100"
+        user: "deploy"
+        datastore: "/mnt/repositories"
+        port: 2222
+    expect:
+      success: true
+    capture:
+      machine_id: "$.id"
+
+  # Step 5: Create repository
+  - action: create
+    entity: repository
+    params:
+      name: "{{ repo_name }}"
+      team: "{{ team_name }}"
+      machine: "{{ machine_name }}"
+      repo_type: "git"
+      url: "git@github.com:example/test-app.git"
+    expect:
+      success: true
+    capture:
+      repo_id: "$.id"
+
+  # Step 6: Submit queue job to create repository on machine
+  - action: create
+    entity: queue_item
+    params:
+      team: "{{ team_name }}"
+      machine: "{{ machine_name }}"
+      bridge: "{{ bridge_name }}"
+      function: "create_repository"
+      priority: 1
+      vault:
+        repository: "{{ repo_name }}"
+        clone_url: "git@github.com:example/test-app.git"
+        branch: "main"
+        setup_hooks: true
+    expect:
+      success: true
+    capture:
+      task_id: "$.taskId"
+
+  # Step 7: Wait for job to be picked up
+  - action: wait
+    params:
+      seconds: 5
+
+  # Step 7: Verify job status (initial check)
+  - action: verify
+    entity: queue_item
+    params:
+      task_id: "{{ task_id }}"
+    expect:
+      status_in: ["PENDING", "ASSIGNED", "PROCESSING"]
+    retry: 3
+    timeout: 10
+
+  # Wait longer for completion
+  - action: wait
+    params:
+      seconds: 30
+
+  # Step 7: Verify job completes successfully
+  - action: verify
+    entity: queue_item
+    params:
+      task_id: "{{ task_id }}"
+    expect:
+      status: "COMPLETED"
+    retry: 10
+    timeout: 60
+
+# Step 8: Clean up everything in reverse order
+cleanup:
+  # Note: Queue items are transient and don't need cleanup
+  
+  # Delete repository
+  - action: delete
+    entity: repository
+    params:
+      name: "{{ repo_name }}"
+
+  # Delete machine
+  - action: delete
+    entity: machine
+    params:
+      name: "{{ machine_name }}"
+
+  # Delete bridge and team (can be parallel)
+  - action: delete
+    entity: bridge
+    params:
+      name: "{{ bridge_name }}"
+    parallel: true
+
+  - action: delete
+    entity: team
+    params:
+      name: "{{ team_name }}"
+    parallel: true
+
+  # Delete region
+  - action: delete
+    entity: region
+    params:
+      name: "{{ region_name }}"
+
+  # Company cleanup handled by framework if needed
