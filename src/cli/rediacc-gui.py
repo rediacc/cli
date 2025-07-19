@@ -1263,26 +1263,46 @@ class MainWindow(BaseWindow):
                             result_data = json.loads(vault_status['result'])
                             if result_data.get('repositories'):
                                 # Get repository GUIDs from vaultStatus
-                                machine_repo_guids = [repo.get('name', '') for repo in result_data['repositories']]
+                                # In machine vaultStatus, the repository GUID is stored in the 'name' field
+                                machine_repo_guids = []
+                                for repo in result_data['repositories']:
+                                    guid = repo.get('name')
+                                    if guid:
+                                        machine_repo_guids.append(guid)
+                                        self.logger.debug(f"Found repository GUID in machine {machine}: {guid}")
                                 
                                 # Filter repositories to only those on this machine
                                 filtered_repos = []
+                                self.logger.debug(f"Filtering repositories for machine {machine}")
+                                self.logger.debug(f"Machine repository GUIDs: {machine_repo_guids}")
+                                
                                 for repo in all_repos:
-                                    if repo.get('repoGuid') in machine_repo_guids:
+                                    repo_guid = repo.get('repoGuid') or repo.get('grandGuid')
+                                    repo_name = self._get_name(repo, 'repositoryName', 'name', 'repoName')
+                                    self.logger.debug(f"Checking repository '{repo_name}' with GUID: {repo_guid}")
+                                    
+                                    if repo_guid and repo_guid in machine_repo_guids:
                                         filtered_repos.append(repo)
+                                        self.logger.debug(f"  -> Matched! Repository '{repo_name}' is on machine {machine}")
                                 
                                 # Use filtered list
-                                repos = [self._get_name(r, 'repositoryName', 'name', 'repoName') for r in filtered_repos]
-                                self.update_repositories(repos)
-                                # Update status to show filtering is active
-                                self.repo_filter_label.config(text="(machine-specific)", fg=COLOR_SUCCESS)
-                                status_text = f"Showing {len(repos)} repositories for machine '{machine}'"
-                                self.activity_status_label.config(text=status_text, fg=COLOR_SUCCESS)
-                                self.root.after(3000, lambda: self.update_activity_status())
-                                return
+                                if filtered_repos:
+                                    repos = [self._get_name(r, 'repositoryName', 'name', 'repoName') for r in filtered_repos]
+                                    self.update_repositories(repos)
+                                    # Update status to show filtering is active
+                                    self.repo_filter_label.config(text="(machine-specific)", fg=COLOR_SUCCESS)
+                                    status_text = f"Showing {len(repos)} repositories for machine '{machine}'"
+                                    self.activity_status_label.config(text=status_text, fg=COLOR_SUCCESS)
+                                    self.root.after(3000, lambda: self.update_activity_status())
+                                    return
+                                else:
+                                    self.logger.debug(f"No repositories matched for machine {machine}")
+                                    # Fall through to show all repositories
                     except (json.JSONDecodeError, KeyError, TypeError) as e:
                         # If parsing fails, fall back to showing all repos
                         self.logger.error(f"Failed to parse vaultStatus for machine {machine}: {e}")
+                else:
+                    self.logger.debug(f"Machine {machine} has no vaultStatus - showing all team repositories")
             
             # Fall back to showing all team repositories
             repos = [self._get_name(r, 'repositoryName', 'name', 'repoName') for r in all_repos]

@@ -1150,7 +1150,7 @@ switch ($Command) {
     }
     
     'gui' {
-        Invoke-RediaccCLI -Tool "rediacc-cli" -Arguments @('--gui')
+        Invoke-RediaccCLI -Tool "rediacc-gui" -Arguments $Arguments
     }
     
     'help' {
