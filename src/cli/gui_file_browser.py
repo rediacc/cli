@@ -722,7 +722,10 @@ class DualPaneFileBrowser:
                 self.ssh_connection.connect()
                 
                 # Get repository mount path
-                self.remote_current_path = self.ssh_connection.repo_paths['mount_path']
+                if self.ssh_connection and hasattr(self.ssh_connection, 'repo_paths') and self.ssh_connection.repo_paths:
+                    self.remote_current_path = self.ssh_connection.repo_paths['mount_path']
+                else:
+                    raise Exception("Failed to get repository paths")
                 
                 # Update UI
                 self.parent.after(0, self.on_remote_connected)
@@ -760,8 +763,18 @@ class DualPaneFileBrowser:
     def on_remote_connect_failed(self, error: str):
         """Handle failed remote connection"""
         self.main_window.update_connection_status(False)
+        # Provide more specific error messages using translations
+        if "repo_paths" in error:
+            detailed_error = i18n.get('failed_retrieve_repo_info')
+        elif "SSH" in error or "ssh" in error:
+            detailed_error = i18n.get('failed_ssh_connection')
+        elif "Machine IP or user not found" in error:
+            detailed_error = i18n.get('failed_machine_connection_details')
+        else:
+            detailed_error = error
+        
         messagebox.showerror(i18n.get('connection_failed'), 
-                           i18n.get('failed_connect_remote').format(error='Connection timeout or refused'))
+                           i18n.get('failed_connect_remote').format(error=detailed_error))
     
     def disconnect_remote(self):
         """Disconnect from remote repository"""
@@ -861,8 +874,9 @@ class DualPaneFileBrowser:
                     files = parse_ls_output(output)
                     self.parent.after(0, lambda: self.update_remote_tree(files))
                 else:
+                    error_msg = output if output else "Failed to list directory"
                     self.parent.after(0, lambda: messagebox.showerror(i18n.get('error'), 
-                                                                     i18n.get('failed_list_remote').format(error=str(e))))
+                                                                     i18n.get('failed_list_remote').format(error=error_msg)))
                     
             except Exception as e:
                 self.logger.error(f"Error refreshing remote files: {e}")
@@ -957,7 +971,7 @@ class DualPaneFileBrowser:
     
     def navigate_remote_home(self):
         """Navigate to repository root in remote pane"""
-        if self.ssh_connection:
+        if self.ssh_connection and hasattr(self.ssh_connection, 'repo_paths') and self.ssh_connection.repo_paths:
             self.remote_current_path = self.ssh_connection.repo_paths['mount_path']
             self.refresh_remote()
     

@@ -402,9 +402,6 @@ def format_table(headers, rows):
     
     return '\n'.join([header_line, separator] + formatted_rows)
 
-def table_to_dict(headers, rows):
-    return [{header: row[i] for i, header in enumerate(headers) if i < len(row)} for row in rows]
-
 def format_dynamic_tables(response, output_format='text', skip_fields=None):
     if not response or 'tables' not in response:
         return format_output("No data available", output_format)

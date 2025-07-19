@@ -1083,18 +1083,9 @@ class SubprocessRunner:
         self.logger.debug("Finding Python command...")
         self.logger.debug(f"MSYS2 path: {self.msys2_path}")
         
-        # On Windows with MSYS2, prefer MSYS2 python3
-        if self.msys2_path:
-            msys2_python = os.path.join(self.msys2_path, 'usr', 'bin', 'python3.exe')
-            self.logger.debug(f"Checking MSYS2 Python: {msys2_python}")
-            if os.path.exists(msys2_python):
-                self.logger.debug(f"Using MSYS2 Python: {msys2_python}")
-                self.use_msys2_python = True
-                return msys2_python
-            self.logger.debug("MSYS2 Python not found")
-        
         # Try different Python commands in order of preference
-        python_commands = ['python3', 'python', 'py']
+        # On Windows, try 'python' first since 'python3' usually doesn't exist
+        python_commands = ['python', 'python3', 'py'] if platform.system().lower() == 'windows' else ['python3', 'python', 'py']
         self.logger.debug(f"Trying Python commands: {python_commands}")
         
         for cmd in python_commands:
@@ -1114,9 +1105,10 @@ class SubprocessRunner:
             except Exception as e:
                 self.logger.debug(f"Error testing {cmd}: {e}")
         
-        # Fallback to python3 if nothing found (will fail gracefully)
-        self.logger.debug("No suitable Python found, falling back to 'python3'")
-        return 'python3'
+        # Fallback to python3 on Unix, python on Windows if nothing found (will fail gracefully)
+        fallback = 'python' if platform.system().lower() == 'windows' else 'python3'
+        self.logger.debug(f"No suitable Python found, falling back to '{fallback}'")
+        return fallback
     
     def run_command(self, args: List[str], timeout: Optional[int] = None) -> Dict[str, Any]:
         """Run a command and return output"""

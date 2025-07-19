@@ -17,10 +17,12 @@ CLI_TOOL = os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__
 
 def get_cli_command() -> list:
     if not is_windows(): return [CLI_TOOL]
-    for cmd in ['python3', 'python', 'py']:
+    # On Windows, try 'python' first since 'python3' usually doesn't exist
+    for cmd in ['python', 'python3', 'py']:
         try:
             result = subprocess.run([cmd, '--version'], capture_output=True, text=True, timeout=5)
-            if result.returncode == 0 and 'Python 3' in result.stdout: return [cmd, CLI_TOOL]
+            if result.returncode == 0 and 'Python 3' in result.stdout: 
+                return [cmd, CLI_TOOL]
         except: continue
     return ['python', CLI_TOOL]
 
