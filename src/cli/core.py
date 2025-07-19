@@ -578,52 +578,70 @@ class TokenManager:
     
     @classmethod
     def _load_from_config(cls) -> Dict[str, Any]:
-        with cls._lock:
-            if not cls._config_file.exists():
-                return {}
-            
-            try:
-                with open(cls._config_file, 'r') as f:
-                    return json.load(f)
-            except (json.JSONDecodeError, IOError) as e:
-                logger.error(f"Failed to load config: {e}")
-                return {}
+        # Create a file lock for config operations
+        config_lock_file = cls._config_dir / '.config.lock'
+        config_mutex = APIMutex(lock_file=config_lock_file) if HAS_FCNTL else APIMutexWindows(lock_file=config_lock_file) if HAS_MSVCRT else APIMutexNoOp()
+        
+        try:
+            with config_mutex.acquire(timeout=10.0):
+                with cls._lock:  # Keep threading lock for backward compatibility
+                    if not cls._config_file.exists():
+                        return {}
+                    
+                    try:
+                        with open(cls._config_file, 'r') as f:
+                            return json.load(f)
+                    except (json.JSONDecodeError, IOError) as e:
+                        logger.error(f"Failed to load config: {e}")
+                        return {}
+        except TimeoutError:
+            logger.error("Timeout acquiring config lock for read - another process may be updating the config")
+            return {}
     
     @classmethod
     def _save_config(cls, config: Dict[str, Any]):
         import platform
         import shutil
         
-        with cls._lock:
-            cls._config_dir.mkdir(mode=0o700, exist_ok=True)
-            
-            is_windows = platform.system() == 'Windows' or 'MSYSTEM' in os.environ
-            max_retries = 3 if is_windows else 1
-            
-            for attempt in range(max_retries):
-                temp_file = cls._config_file.with_suffix(f'.tmp.{attempt}.{int(time.time())}')
-                try:
-                    with open(temp_file, 'w') as f: json.dump(config, f, indent=2)
-                    if not is_windows: temp_file.chmod(0o600)
+        # Create a file lock for config operations
+        config_lock_file = cls._config_dir / '.config.lock'
+        config_mutex = APIMutex(lock_file=config_lock_file) if HAS_FCNTL else APIMutexWindows(lock_file=config_lock_file) if HAS_MSVCRT else APIMutexNoOp()
+        
+        try:
+            with config_mutex.acquire(timeout=10.0):
+                with cls._lock:  # Keep threading lock for backward compatibility
+                    cls._config_dir.mkdir(mode=0o700, exist_ok=True)
                     
-                    if is_windows and cls._config_file.exists():
-                        with contextlib.suppress(OSError): cls._config_file.unlink()
+                    is_windows = platform.system() == 'Windows' or 'MSYSTEM' in os.environ
+                    max_retries = 3 if is_windows else 1
                     
-                    shutil.move(str(temp_file), str(cls._config_file)) if is_windows else temp_file.replace(cls._config_file)
-                    if not is_windows: cls._config_file.chmod(0o600)
-                    return
-                    
-                except OSError as e:
-                    logger.warning(f"Config save attempt {attempt + 1} failed: {e}")
-                    if temp_file.exists():
-                        with contextlib.suppress(OSError): temp_file.unlink()
-                    if attempt < max_retries - 1: time.sleep(0.1 * (attempt + 1))
-                    else: logger.error(f"Failed to save config after {max_retries} attempts: {e}"); raise
-                except Exception as e:
-                    logger.error(f"Failed to save config: {e}")
-                    if temp_file.exists():
-                        with contextlib.suppress(OSError): temp_file.unlink()
-                    raise
+                    for attempt in range(max_retries):
+                        temp_file = cls._config_file.with_suffix(f'.tmp.{attempt}.{int(time.time())}')
+                        try:
+                            with open(temp_file, 'w') as f: json.dump(config, f, indent=2)
+                            if not is_windows: temp_file.chmod(0o600)
+                            
+                            if is_windows and cls._config_file.exists():
+                                with contextlib.suppress(OSError): cls._config_file.unlink()
+                            
+                            shutil.move(str(temp_file), str(cls._config_file)) if is_windows else temp_file.replace(cls._config_file)
+                            if not is_windows: cls._config_file.chmod(0o600)
+                            return
+                            
+                        except OSError as e:
+                            logger.warning(f"Config save attempt {attempt + 1} failed: {e}")
+                            if temp_file.exists():
+                                with contextlib.suppress(OSError): temp_file.unlink()
+                            if attempt < max_retries - 1: time.sleep(0.1 * (attempt + 1))
+                            else: logger.error(f"Failed to save config after {max_retries} attempts: {e}"); raise
+                        except Exception as e:
+                            logger.error(f"Failed to save config: {e}")
+                            if temp_file.exists():
+                                with contextlib.suppress(OSError): temp_file.unlink()
+                            raise
+        except TimeoutError:
+            logger.error("Timeout acquiring config lock - another process may be updating the config")
+            raise
     
     @classmethod
     def get_token(cls, override_token: Optional[str] = None) -> Optional[str]:

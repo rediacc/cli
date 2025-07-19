@@ -892,6 +892,71 @@ class CommandHandler:
         
         return 0
     
+    def generate_dynamic_help(self, cmd_type, resource_type=None):
+        """Generate help text dynamically from configuration"""
+        if not resource_type:
+            # List all resources for command type
+            if cmd_type not in CMD_CONFIG:
+                return f"\nNo resources available for command '{cmd_type}'\n"
+            
+            resources = CMD_CONFIG.get(cmd_type, {})
+            help_text = f"\nAvailable resources for '{colorize(cmd_type, 'BLUE')}':\n\n"
+            
+            # Calculate max width for alignment
+            max_width = max(len(r) for r in resources.keys()) if resources else 0
+            
+            for resource, config in resources.items():
+                help_info = config.get('help', {})
+                desc = help_info.get('description', 'No description available')
+                help_text += f"  {colorize(resource, 'GREEN'):<{max_width + 10}} {desc}\n"
+            
+            help_text += f"\nUse '{colorize(f'rediacc-cli {cmd_type} <resource> --help', 'YELLOW')}' for more details on a specific resource.\n"
+            return help_text
+        
+        # Generate help for specific command
+        if cmd_type not in CMD_CONFIG or resource_type not in CMD_CONFIG[cmd_type]:
+            return f"\nNo help available for: {cmd_type} {resource_type}\n"
+        
+        config = CMD_CONFIG[cmd_type][resource_type]
+        help_info = config.get('help', {})
+        
+        # Start with command description
+        help_text = f"\n{colorize(help_info.get('description', 'No description available'), 'BOLD')}\n"
+        
+        # Add detailed description
+        if details := help_info.get('details'):
+            help_text += f"\n{details}\n"
+        
+        # Add parameters section
+        if params := help_info.get('parameters'):
+            help_text += f"\n{colorize('Parameters:', 'BLUE')}\n"
+            for param_name, param_info in params.items():
+                req_text = colorize(" (required)", 'YELLOW') if param_info.get('required') else " (optional)"
+                help_text += f"  {colorize(param_name, 'GREEN')}{req_text}: {param_info['description']}\n"
+                
+                if default := param_info.get('default'):
+                    help_text += f"    Default: {default}\n"
+                    
+                if example := param_info.get('example'):
+                    help_text += f"    Example: {example}\n"
+        
+        # Add examples section
+        if examples := help_info.get('examples'):
+            help_text += f"\n{colorize('Examples:', 'BLUE')}\n"
+            for ex in examples:
+                help_text += f"  $ {colorize(ex['command'], 'GREEN')}\n"
+                help_text += f"    {ex['description']}\n\n"
+        
+        # Add notes section
+        if notes := help_info.get('notes'):
+            help_text += f"{colorize('Notes:', 'BLUE')} {notes}\n"
+        
+        # Add success message info if available
+        if success_msg := config.get('success_msg'):
+            help_text += f"\n{colorize('Success message:', 'BLUE')} {success_msg}\n"
+        
+        return help_text
+    
     def generic_command(self, cmd_type, resource_type, args):
         special_handlers = {
             ('queue', 'add'): self.queue_add,
@@ -1647,7 +1712,72 @@ def setup_parser():
     
     return parser
 
+def reorder_args(argv):
+    """Move global options after the command to handle argparse limitations"""
+    if len(argv) < 2:
+        return argv
+    
+    # Global options that should be moved
+    global_opts = {'--output', '-o', '--token', '-t', '--verbose', '-v'}
+    
+    # Commands that have subcommands
+    subcommand_cmds = {'create', 'list', 'update', 'rm', 'vault', 'permission', 'user', 
+                       'team-member', 'bridge', 'queue', 'company', 'audit', 'inspect', 
+                       'distributed-storage', 'auth'}
+    
+    # Separate script name, global options, and command/args
+    script_name = argv[0]
+    global_args = []
+    command = None
+    command_args = []
+    
+    i = 1
+    skip_next = False
+    
+    while i < len(argv):
+        if skip_next:
+            skip_next = False
+            i += 1
+            continue
+            
+        arg = argv[i]
+        
+        # Check if this is a global option
+        if arg in global_opts:
+            global_args.append(arg)
+            # Check if the option has a value
+            if i + 1 < len(argv) and not argv[i + 1].startswith('-'):
+                if arg not in ['--verbose', '-v']:  # verbose is a flag, no value
+                    global_args.append(argv[i + 1])
+                    skip_next = True
+        elif not arg.startswith('-') and command is None:
+            # This is the command
+            command = arg
+        elif command is not None:
+            # Everything after the command goes to command_args
+            command_args.append(arg)
+        
+        i += 1
+    
+    # Reconstruct the arguments in the correct order
+    result = [script_name]
+    
+    # Add global options first (they go at the root level)
+    result.extend(global_args)
+    
+    # Then add command
+    if command:
+        result.append(command)
+    
+    # Then all command args
+    result.extend(command_args)
+    
+    return result
+
 def main():
+    # Reorder arguments to handle global options before command
+    sys.argv = reorder_args(sys.argv)
+    
     parser = setup_parser()
     args = parser.parse_args()
     
@@ -1679,6 +1809,14 @@ def main():
     
     handler = CommandHandler(config_manager, output_format)
     
+    # Check if user is requesting help for a generic command
+    if hasattr(args, 'help') and args.help and args.command in CMD_CONFIG:
+        # Show help for command or resource
+        resource = getattr(args, 'resource', None)
+        help_text = handler.generate_dynamic_help(args.command, resource)
+        print(help_text)
+        return 0
+    
     if args.command == 'login':
         return handler.login(args)
     elif args.command == 'logout':
@@ -1702,10 +1840,16 @@ def main():
             return 1
     
     if not hasattr(args, 'resource') or not args.resource:
-        error = f"No resource specified for command: {args.command}"
-        output = format_output(None, output_format, None, error)
-        print(output)
-        return 1
+        # Show available resources for the command if no resource specified
+        if args.command in CMD_CONFIG:
+            help_text = handler.generate_dynamic_help(args.command)
+            print(help_text)
+            return 0
+        else:
+            error = f"No resource specified for command: {args.command}"
+            output = format_output(None, output_format, None, error)
+            print(output)
+            return 1
     
     if args.command == 'update':
         return handler.update_resource(args.resource, args)

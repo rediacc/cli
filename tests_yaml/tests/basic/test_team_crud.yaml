@@ -1,0 +1,55 @@
+# Basic CRUD test for teams
+name: "Team CRUD Operations"
+description: "Test create, read, update, delete operations for teams"
+tags: [team, crud, basic]
+
+dependencies:
+  company: "TestCompany"
+
+setup:
+  - create_random_team_name: team_name
+
+steps:
+  # Create team
+  - action: create
+    entity: team
+    params:
+      name: "{{ team_name }}"
+    expect:
+      success: true
+    capture:
+      team_id: "$.id"
+
+  # Verify team exists
+  - action: verify
+    entity: team
+    params:
+      name: "{{ team_name }}"
+    expect:
+      teamName: "{{ team_name }}"
+      companyName: "{{ company }}"
+
+  # Update team (add vault data)
+  - action: update
+    entity: team
+    params:
+      name: "{{ team_name }}"
+      vault:
+        custom_key: "updated_value"
+        another_key: "test_data"
+    expect:
+      success: true
+
+  # Verify update
+  - action: verify
+    entity: team
+    params:
+      name: "{{ team_name }}"
+    expect:
+      teamName: "{{ team_name }}"
+
+cleanup:
+  - action: delete
+    entity: team
+    params:
+      name: "{{ team_name }}"
