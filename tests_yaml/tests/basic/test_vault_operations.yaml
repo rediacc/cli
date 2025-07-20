@@ -1,0 +1,231 @@
+# Vault operations test for all entity types
+name: "Vault Operations"
+description: "Test vault get/set operations for all entity types"
+tags: [vault, basic]
+
+dependencies:
+  company: "TestCompany"
+
+setup:
+  - create_random_name: team_name
+  - create_random_name: region_name
+  - create_random_name: bridge_name
+  - create_random_name: machine_name
+  - create_random_name: repo_name
+  - create_random_name: storage_name
+  - create_random_name: schedule_name
+
+steps:
+  # Create entities first
+  - action: create
+    entity: team
+    params:
+      name: "{{ team_name }}"
+      vault:
+        initial_key: "initial_value"
+        version: 1
+    expect:
+      success: true
+
+  - action: create
+    entity: region
+    params:
+      name: "{{ region_name }}"
+      vault:
+        region_config: "test"
+    expect:
+      success: true
+
+  - action: create
+    entity: bridge
+    params:
+      region: "{{ region_name }}"
+      name: "{{ bridge_name }}"
+      vault: {}
+    expect:
+      success: true
+
+  - action: create
+    entity: machine
+    params:
+      team: "{{ team_name }}"
+      bridge: "{{ bridge_name }}"
+      name: "{{ machine_name }}"
+      vault:
+        ip: "10.0.0.1"
+        user: "test"
+    expect:
+      success: true
+
+  - action: create
+    entity: repository
+    params:
+      team: "{{ team_name }}"
+      name: "{{ repo_name }}"
+      vault: {}
+    expect:
+      success: true
+
+  - action: create
+    entity: storage
+    params:
+      team: "{{ team_name }}"
+      name: "{{ storage_name }}"
+      vault: {}
+    expect:
+      success: true
+
+  - action: create
+    entity: schedule
+    params:
+      team: "{{ team_name }}"
+      name: "{{ schedule_name }}"
+      vault: {}
+    expect:
+      success: true
+
+  # Test vault operations for team
+  - action: execute_raw
+    params:
+      args: ["vault", "get", "team", "{{ team_name }}"]
+    expect:
+      success: true
+    capture:
+      team_vault: "$.data"
+
+  - action: execute_raw
+    params:
+      args: ["vault", "set", "team", "{{ team_name }}", "-", "--vault-version", "2"]
+      stdin: '{"updated_key": "updated_value", "version": 2}'
+    expect:
+      success: true
+
+  - action: execute_raw
+    params:
+      args: ["vault", "get", "team", "{{ team_name }}"]
+    expect:
+      success: true
+      data.updated_key: "updated_value"
+      data.version: 2
+
+  # Test vault operations for machine
+  - action: execute_raw
+    params:
+      args: ["vault", "set", "machine", "{{ machine_name }}", "-", "--team", "{{ team_name }}", "--vault-version", "2"]
+      stdin: '{"machine_data": "updated_from_stdin", "config": {"ram": "16GB"}}'
+    expect:
+      success: true
+
+  - action: execute_raw
+    params:
+      args: ["vault", "get", "machine", "{{ machine_name }}", "--team", "{{ team_name }}"]
+    expect:
+      success: true
+      data.machine_data: "updated_from_stdin"
+
+  # Test vault operations for region
+  - action: execute_raw
+    params:
+      args: ["vault", "set", "region", "{{ region_name }}", "-", "--vault-version", "3"]
+      stdin: '{"region_settings": {"zone": "us-east-1", "capacity": 100}}'
+    expect:
+      success: true
+
+  # Test vault operations for bridge
+  - action: execute_raw
+    params:
+      args: ["vault", "set", "bridge", "{{ bridge_name }}", "-", "--region", "{{ region_name }}", "--vault-version", "2"]
+      stdin: '{"bridge_config": "updated", "status": "active"}'
+    expect:
+      success: true
+
+  # Test vault operations for repository
+  - action: execute_raw
+    params:
+      args: ["vault", "set", "repository", "{{ repo_name }}", "-", "--team", "{{ team_name }}", "--vault-version", "2"]
+      stdin: '{"repo_config": {"plugins": ["browser", "terminal"], "size": "10G"}}'
+    expect:
+      success: true
+
+  # Test vault operations for storage
+  - action: execute_raw
+    params:
+      args: ["vault", "set", "storage", "{{ storage_name }}", "-", "--team", "{{ team_name }}", "--vault-version", "2"]
+      stdin: '{"storage_config": {"type": "s3", "bucket": "test-bucket", "region": "us-east-1"}}'
+    expect:
+      success: true
+
+  # Test vault operations for schedule
+  - action: execute_raw
+    params:
+      args: ["vault", "set", "schedule", "{{ schedule_name }}", "-", "--team", "{{ team_name }}", "--vault-version", "2"]
+      stdin: '{"schedule_config": {"cron": "0 0 * * *", "enabled": true, "timezone": "UTC"}}'
+    expect:
+      success: true
+
+  # Test error handling - invalid JSON
+  - action: execute_raw
+    params:
+      args: ["vault", "set", "team", "{{ team_name }}", "-"]
+      stdin: 'invalid json data'
+    expect:
+      success: false
+      error: "*invalid*"
+
+  # Test error handling - non-existent resource
+  - action: execute_raw
+    params:
+      args: ["vault", "get", "team", "NonExistentTeam_{{ team_name }}"]
+    expect:
+      success: false
+
+  # Test company vault operations (if permissions allow)
+  - action: execute_raw
+    params:
+      args: ["vault", "set", "company", "{{ company }}", "-", "--vault-version", "1"]
+      stdin: '{"company_settings": {"feature_flags": ["test_feature"], "metadata": {"updated": "true"}}}'
+    expect:
+      success: true
+    continue_on_error: true  # May fail due to permissions
+
+cleanup:
+  # Delete entities in reverse order
+  - action: delete
+    entity: schedule
+    params:
+      team: "{{ team_name }}"
+      name: "{{ schedule_name }}"
+
+  - action: delete
+    entity: storage
+    params:
+      team: "{{ team_name }}"
+      name: "{{ storage_name }}"
+
+  - action: delete
+    entity: repository
+    params:
+      team: "{{ team_name }}"
+      name: "{{ repo_name }}"
+
+  - action: delete
+    entity: machine
+    params:
+      team: "{{ team_name }}"
+      name: "{{ machine_name }}"
+
+  - action: delete
+    entity: bridge
+    params:
+      region: "{{ region_name }}"
+      name: "{{ bridge_name }}"
+
+  - action: delete
+    entity: region
+    params:
+      name: "{{ region_name }}"
+
+  - action: delete
+    entity: team
+    params:
+      name: "{{ team_name }}"

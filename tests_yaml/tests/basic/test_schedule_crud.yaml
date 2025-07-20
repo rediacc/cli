@@ -1,0 +1,98 @@
+# Basic CRUD test for schedules
+name: "Schedule CRUD Operations"
+description: "Test create, read, update, delete operations for schedules"
+tags: [schedule, crud, basic]
+
+dependencies:
+  company: "TestCompany"
+  team: "auto"  # Will create a team automatically
+
+setup:
+  - create_random_team_name: team_name
+  - create_random_schedule_name: schedule_name
+
+steps:
+  # Create team first (schedule requires team)
+  - action: create
+    entity: team
+    params:
+      name: "{{ team_name }}"
+    expect:
+      success: true
+
+  # Create schedule
+  - action: create
+    entity: schedule
+    params:
+      team: "{{ team_name }}"
+      name: "{{ schedule_name }}"
+      vault: {}
+    expect:
+      success: true
+    capture:
+      schedule_id: "$.id"
+
+  # List schedules for team
+  # Note: The framework doesn't support the 'list' action yet
+  # We'll skip this step and use verify instead
+
+  # Verify schedule exists
+  - action: verify
+    entity: schedule
+    params:
+      team: "{{ team_name }}"
+      name: "{{ schedule_name }}"
+    expect:
+      scheduleName: "{{ schedule_name }}"
+      teamName: "{{ team_name }}"
+
+  # Update schedule name
+  - action: update
+    entity: schedule
+    params:
+      team: "{{ team_name }}"
+      name: "{{ schedule_name }}"
+      new_name: "{{ schedule_name }}_updated"
+    expect:
+      success: true
+
+  # Update schedule name in context for subsequent operations
+  # Note: The framework doesn't support set_variable action in steps
+  # We'll use the updated name directly in following steps
+
+  # Update schedule vault with cron configuration - using the updated name
+  - action: update
+    entity: schedule
+    params:
+      team: "{{ team_name }}"
+      name: "{{ schedule_name }}_updated"
+      vault:
+        schedule_config:
+          cron: "0 0 * * *"  # Daily at midnight
+          enabled: true
+          timezone: "UTC"
+          description: "Daily backup schedule"
+      vault_version: 2
+    expect:
+      success: true
+
+  # Verify schedule still exists after update
+  - action: verify
+    entity: schedule
+    params:
+      team: "{{ team_name }}"
+      name: "{{ schedule_name }}_updated"
+    expect:
+      scheduleName: "{{ schedule_name }}_updated"
+      teamName: "{{ team_name }}"
+
+cleanup:
+  - action: delete
+    entity: schedule
+    params:
+      team: "{{ team_name }}"
+      name: "{{ schedule_name }}_updated"
+  - action: delete
+    entity: team
+    params:
+      name: "{{ team_name }}"

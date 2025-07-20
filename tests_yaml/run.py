@@ -260,8 +260,6 @@ async def main():
     parser.add_argument('--output', help='Output file for report')
     
     # Special modes
-    parser.add_argument('--mock', action='store_true',
-                       help='Run in mock mode without real API calls')
     parser.add_argument('--list-tests', action='store_true',
                        help='List available tests without running')
     
@@ -285,13 +283,9 @@ async def main():
     if args.password:
         config['auth']['password'] = args.password
     
-    # Use environment variables if available
-    if not args.username and os.environ.get('REDIACC_TEST_USERNAME'):
-        config['auth']['username'] = os.environ['REDIACC_TEST_USERNAME']
-    if not args.password and os.environ.get('REDIACC_TEST_PASSWORD'):
-        config['auth']['password'] = os.environ['REDIACC_TEST_PASSWORD']
-    if not args.api_url and os.environ.get('REDIACC_API_URL'):
-        config['api_url'] = os.environ['REDIACC_API_URL']
+    # Use API URL from command line if provided
+    if args.api_url:
+        config['api_url'] = args.api_url
     
     # Create test context
     context = TestContext(config)
@@ -327,7 +321,7 @@ async def main():
     print(f"Company: {unique_company}")
     
     # Create CLI wrapper
-    cli = CLIWrapper(mock_mode=args.mock, verbose=False)
+    cli = CLIWrapper(verbose=False)
     
     if args.master_password:
         cli.set_master_password(args.master_password)
@@ -335,129 +329,128 @@ async def main():
     # Store test credentials for final output
     test_credentials = None
     
-    # Authenticate unless in mock mode
-    if not args.mock:
-        # Check if we have credentials provided (must be non-None and non-empty)
-        if config['auth'].get('username') is not None and config['auth'].get('password') is not None:
-            # Use provided credentials
-            print(f"\nUsing provided credentials: {config['auth']['username']}")
-            
-            # Login with provided credentials
-            auth_result = cli.login(
-                config['auth']['username'],
-                config['auth']['password']
-            )
-            
-            if not auth_result.get('success'):
-                print(f"Authentication failed: {auth_result.get('error')}")
-                print("\nTIP: Use --mock flag to run tests without real API")
+    # Authenticate (always required now)
+    # Check if we have credentials provided (must be non-None and non-empty)
+    if config['auth'].get('username') is not None and config['auth'].get('password') is not None:
+        # Use provided credentials
+        print(f"\nUsing provided credentials: {config['auth']['username']}")
+        
+        # Login with provided credentials
+        auth_result = cli.login(
+            config['auth']['username'],
+            config['auth']['password']
+        )
+        
+        if not auth_result.get('success'):
+            print(f"Authentication failed: {auth_result.get('error')}")
+            print("\nTIP: Provide valid credentials or create a test company")
+            return 1
+        
+        print("Authentication successful")
+        
+        # Get the actual company name from the API
+        print("Fetching company information...")
+        dashboard_result = cli.execute_raw(["list", "resource-limits"])
+        
+        actual_company_name = unique_company  # Default to generated name
+        if dashboard_result.get('success'):
+            try:
+                # Parse the GetCompanyDashboardJson response
+                if 'tables' in dashboard_result:
+                    for table in dashboard_result['tables']:
+                        if 'data' in table and len(table['data']) > 0:
+                            for row in table['data']:
+                                if 'subscriptionAndResourcesJson' in row:
+                                    import json as json_lib
+                                    sub_data = json_lib.loads(row['subscriptionAndResourcesJson'])
+                                    company_info = json_lib.loads(sub_data['companyInfo'])
+                                    actual_company_name = company_info['CompanyName']
+                                    print(f"Using existing company: {actual_company_name}")
+                                    break
+            except Exception as e:
+                print(f"Warning: Could not parse company name: {e}")
+                print("Using generated company name for tests")
+        
+        # Update context with actual company name
+        context.set_var('company', actual_company_name)
+        
+        # Store the provided credentials for display
+        test_credentials = {
+            'email': config['auth']['username'],
+            'password': config['auth']['password'],
+            'company': actual_company_name,
+            'provided': True  # Flag to indicate these were provided
+        }
+    else:
+        # No credentials provided - try to create a new company
+        print("\nNo credentials provided. Creating a new test company...")
+        
+        # Generate unique credentials using test_run_id
+        unique_email = f"test_{test_run_id}@example.com"
+        unique_password = f"TestPass{test_run_id}!"
+        activation_code = os.environ.get('REDIACC_TEST_ACTIVATION_CODE', '111111')
+        
+        # Create company
+        print(f"Creating company: {unique_company}")
+        print(f"Admin email: {unique_email}")
+        
+        create_result = cli.execute_raw([
+            "create", "company",
+            unique_company,
+            "--email", unique_email,
+            "--password", unique_password,
+            "--activation-code", activation_code,
+            "--plan", "ELITE"
+        ])
+        
+        if not create_result.get('success'):
+            error_msg = create_result.get('error', '')
+            if "403" in error_msg or "Access denied" in error_msg:
+                print("\nERROR: Cannot create company - admin privileges required")
+                print("Please either:")
+                print("  1. Provide existing credentials with --username and --password")
+                print("  2. Provide existing credentials with --username and --password")
+                print("  3. Run setup_test_company.py with admin privileges first")
                 return 1
-            
-            print("Authentication successful")
-            
-            # Get the actual company name from the API
-            print("Fetching company information...")
-            dashboard_result = cli.execute_raw(["list", "resource-limits"])
-            
-            actual_company_name = unique_company  # Default to generated name
-            if dashboard_result.get('success'):
-                try:
-                    # Parse the GetCompanyDashboardJson response
-                    if 'tables' in dashboard_result:
-                        for table in dashboard_result['tables']:
-                            if 'data' in table and len(table['data']) > 0:
-                                for row in table['data']:
-                                    if 'subscriptionAndResourcesJson' in row:
-                                        import json as json_lib
-                                        sub_data = json_lib.loads(row['subscriptionAndResourcesJson'])
-                                        company_info = json_lib.loads(sub_data['companyInfo'])
-                                        actual_company_name = company_info['CompanyName']
-                                        print(f"Using existing company: {actual_company_name}")
-                                        break
-                except Exception as e:
-                    print(f"Warning: Could not parse company name: {e}")
-                    print("Using generated company name for tests")
-            
-            # Update context with actual company name
-            context.set_var('company', actual_company_name)
-            
-            # Store the provided credentials for display
-            test_credentials = {
-                'email': config['auth']['username'],
-                'password': config['auth']['password'],
-                'company': actual_company_name,
-                'provided': True  # Flag to indicate these were provided
-            }
-        else:
-            # No credentials provided - try to create a new company
-            print("\nNo credentials provided. Creating a new test company...")
-            
-            # Generate unique credentials using test_run_id
-            unique_email = f"test_{test_run_id}@example.com"
-            unique_password = f"TestPass{test_run_id}!"
-            activation_code = os.environ.get('REDIACC_TEST_ACTIVATION_CODE', '111111')
-            
-            # Create company
-            print(f"Creating company: {unique_company}")
-            print(f"Admin email: {unique_email}")
-            
-            create_result = cli.execute_raw([
-                "create", "company",
-                unique_company,
-                "--email", unique_email,
-                "--password", unique_password,
-                "--activation-code", activation_code,
-                "--plan", "ELITE"
-            ])
-            
-            if not create_result.get('success'):
-                error_msg = create_result.get('error', '')
-                if "403" in error_msg or "Access denied" in error_msg:
-                    print("\nERROR: Cannot create company - admin privileges required")
-                    print("Please either:")
-                    print("  1. Use --mock flag for mock testing")
-                    print("  2. Provide existing credentials with --username and --password")
-                    print("  3. Run setup_test_company.py with admin privileges first")
-                    return 1
-                else:
-                    print(f"Failed to create company: {error_msg}")
-                    return 1
-            
-            print("Company created successfully!")
-            
-            # Activate the user account
-            print(f"Activating user account with code: {activation_code}")
-            activate_result = cli.execute_raw([
-                "user", "activate",
-                unique_email,
-                "--code", activation_code,
-                "--password", unique_password
-            ])
-            
-            if not activate_result.get('success'):
-                print(f"Failed to activate user: {activate_result.get('error')}")
+            else:
+                print(f"Failed to create company: {error_msg}")
                 return 1
-            
-            print("User activated successfully!")
-            
-            # Now login with the new credentials
-            config['auth']['username'] = unique_email
-            config['auth']['password'] = unique_password
-            
-            auth_result = cli.login(unique_email, unique_password)
-            
-            if not auth_result.get('success'):
-                print(f"Authentication failed: {auth_result.get('error')}")
-                return 1
-            
-            print("Authentication successful")
-            
-            test_credentials = {
-                'email': unique_email,
-                'password': unique_password,
-                'company': unique_company,
-                'created': True  # Flag to indicate we created these
-            }
+        
+        print("Company created successfully!")
+        
+        # Activate the user account
+        print(f"Activating user account with code: {activation_code}")
+        activate_result = cli.execute_raw([
+            "user", "activate",
+            unique_email,
+            "--code", activation_code,
+            "--password", unique_password
+        ])
+        
+        if not activate_result.get('success'):
+            print(f"Failed to activate user: {activate_result.get('error')}")
+            return 1
+        
+        print("User activated successfully!")
+        
+        # Now login with the new credentials
+        config['auth']['username'] = unique_email
+        config['auth']['password'] = unique_password
+        
+        auth_result = cli.login(unique_email, unique_password)
+        
+        if not auth_result.get('success'):
+            print(f"Authentication failed: {auth_result.get('error')}")
+            return 1
+        
+        print("Authentication successful")
+        
+        test_credentials = {
+            'email': unique_email,
+            'password': unique_password,
+            'company': unique_company,
+            'created': True  # Flag to indicate we created these
+        }
     
     # Load tests
     loader = TestLoader([Path(args.test_dir)])
@@ -550,11 +543,6 @@ async def main():
         if test_credentials.get('created'):
             print("\nTo run tests again with these credentials:")
             print(f"python3 -m tests_yaml.run --username '{test_credentials['email']}' --password '{test_credentials['password']}'")
-    elif args.mock:
-        print("\n" + "=" * 60)
-        print("MOCK MODE - No real credentials used")
-        print(f"Mock Company: {unique_company}")
-        print("=" * 60)
     
     return 0 if success else 1
 

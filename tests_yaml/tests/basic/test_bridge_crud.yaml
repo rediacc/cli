@@ -1,0 +1,111 @@
+# Basic CRUD test for bridges
+name: "Bridge CRUD Operations"
+description: "Test create, read, update, delete operations for bridges"
+tags: [bridge, crud, basic, dependencies]
+
+dependencies:
+  company: "TestCompany"
+
+setup:
+  - create_random_region_name: region_name
+  - create_random_bridge_name: bridge_name
+  - create_random_bridge_name: updated_bridge_name
+  - create_random_bridge_name: second_bridge_name
+
+steps:
+  # First create a region (prerequisite for bridge)
+  - action: create
+    entity: region
+    params:
+      name: "{{ region_name }}"
+      vault:
+        region_config: "test"
+    expect:
+      success: true
+
+  # Create bridge in region
+  - action: create
+    entity: bridge
+    params:
+      name: "{{ bridge_name }}"
+      region: "{{ region_name }}"
+      vault:
+        bridge_config: "initial_config"
+        api_endpoint: "https://bridge.example.com"
+    expect:
+      success: true
+    capture:
+      bridge_id: "$.id"
+
+  # Verify bridge exists
+  - action: verify
+    entity: bridge
+    params:
+      name: "{{ bridge_name }}"
+      region: "{{ region_name }}"
+    expect:
+      bridgeName: "{{ bridge_name }}"
+      regionName: "{{ region_name }}"
+
+
+  # Create second bridge for testing multiple bridges
+  - action: create
+    entity: bridge
+    params:
+      name: "{{ second_bridge_name }}"
+      region: "{{ region_name }}"
+      vault: {}
+    expect:
+      success: true
+
+  # Update bridge - rename
+  - action: update
+    entity: bridge
+    params:
+      name: "{{ bridge_name }}"
+      region: "{{ region_name }}"
+      new_name: "{{ updated_bridge_name }}"
+    expect:
+      success: true
+
+  # Verify rename worked
+  - action: verify
+    entity: bridge
+    params:
+      name: "{{ updated_bridge_name }}"
+      region: "{{ region_name }}"
+    expect:
+      bridgeName: "{{ updated_bridge_name }}"
+
+  # Update bridge vault
+  - action: update
+    entity: bridge
+    params:
+      name: "{{ updated_bridge_name }}"
+      region: "{{ region_name }}"
+      vault:
+        bridge_config: "updated_config"
+        api_endpoint: "https://bridge-updated.example.com"
+        status: "active"
+      vault_version: 2
+    expect:
+      success: true
+
+
+cleanup:
+  # Delete bridges first (before region)
+  - action: delete
+    entity: bridge
+    params:
+      name: "{{ updated_bridge_name }}"
+      region: "{{ region_name }}"
+  - action: delete
+    entity: bridge
+    params:
+      name: "{{ second_bridge_name }}"
+      region: "{{ region_name }}"
+  # Then delete region
+  - action: delete
+    entity: region
+    params:
+      name: "{{ region_name }}"

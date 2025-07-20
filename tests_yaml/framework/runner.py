@@ -17,6 +17,56 @@ from .entities import EntityType, EntityDependencies
 from .cli_wrapper import CLIWrapper
 
 
+# Entity verification configuration
+ENTITY_VERIFICATION_CONFIG = {
+    "team": {
+        "method": "list",
+        "list_command": "teams",
+        "name_field": "teamName",
+        "required_params": []
+    },
+    "region": {
+        "method": "list",
+        "list_command": "regions", 
+        "name_field": "regionName",
+        "required_params": []
+    },
+    "bridge": {
+        "method": "list",
+        "list_command": "bridges",
+        "name_field": "bridgeName",
+        "required_params": ["region"],
+        "list_params": {"region": "region"}
+    },
+    "schedule": {
+        "method": "list",
+        "list_command": "team-schedules",
+        "name_field": "scheduleName",
+        "required_params": ["team"],
+        "list_params": {"team": "team"}
+    },
+    "storage": {
+        "method": "list",
+        "list_command": "team-storages",
+        "name_field": "storageName",
+        "required_params": ["team"],
+        "list_params": {"team": "team"}
+    },
+    "machine": {
+        "method": "mixed",  # Can use both inspect and list
+        "list_command": "team-machines",
+        "name_field": "machineName",
+        "alternate_name_fields": ["name"],
+        "required_params": ["team"],
+        "list_params": {"team": "team"}
+    },
+    "repository": {
+        "method": "inspect",
+        "required_params": ["team"]
+    }
+}
+
+
 class DependencyGraph:
     """
     Manages test dependencies and determines execution order.
@@ -307,6 +357,9 @@ class TestRunner:
             await asyncio.sleep(params.get("seconds", 1))
             return {"success": True}
         
+        elif step.action == "execute_raw":
+            return await self._execute_raw(params)
+        
         else:
             raise ValueError(f"Unknown action: {step.action}")
     
@@ -326,81 +379,103 @@ class TestRunner:
         
         return result
     
-    async def _execute_verify(self, entity_type: str, params: Dict[str, Any], 
-                             expect: Dict[str, Any]) -> Dict[str, Any]:
-        """Execute verify action"""
+    async def _verify_via_list(self, entity_type: str, name: str, params: Dict[str, Any], 
+                              config: Dict[str, Any]) -> Dict[str, Any]:
+        """Verify entity existence using list operation"""
         loop = asyncio.get_event_loop()
         
-        # Get entity
+        # Build list parameters
+        list_kwargs = {}
+        if "list_params" in config:
+            for param_key, param_name in config["list_params"].items():
+                if param_key in params:
+                    list_kwargs[param_name] = params[param_key]
+        
+        # Execute list command
+        list_func = lambda: self.cli.list(config["list_command"], **list_kwargs)
+        result = await loop.run_in_executor(None, list_func)
+        
+        if not result.get("success"):
+            raise AssertionError(f"Failed to list {config['list_command']}")
+        
+        # Find the specific entity in the list
+        items = result.get("data", [])
+        found_item = None
+        name_field = config.get("name_field")
+        alternate_fields = config.get("alternate_name_fields", [])
+        
+        for item in items:
+            # Check primary name field
+            if name_field and item.get(name_field) == name:
+                found_item = item
+                break
+            # Check alternate name fields
+            for alt_field in alternate_fields:
+                if item.get(alt_field) == name:
+                    found_item = item
+                    break
+            if found_item:
+                break
+        
+        if not found_item:
+            # Build helpful error message
+            existing_names = []
+            if name_field:
+                existing_names = [item.get(name_field) for item in items if item.get(name_field)]
+            raise AssertionError(f"{entity_type.capitalize()} {name} not found. Available: {existing_names}")
+        
+        return {"success": True, **found_item}
+    
+    async def _verify_via_inspect(self, entity_type: str, name: str, params: Dict[str, Any], 
+                                 config: Dict[str, Any]) -> Dict[str, Any]:
+        """Verify entity existence using inspect/get operation"""
+        loop = asyncio.get_event_loop()
+        
+        # Build get parameters
+        get_kwargs = {}
+        for param in config.get("required_params", []):
+            if param in params:
+                get_kwargs[param] = params[param]
+        
+        # Execute get command
+        get_func = lambda: self.cli.get(entity_type, name, **get_kwargs)
+        result = await loop.run_in_executor(None, get_func)
+        
+        if not result.get("success"):
+            raise AssertionError(f"Failed to get {entity_type} {name}")
+        
+        # Handle cases where data is returned as an array
+        if isinstance(result.get("data"), list) and len(result["data"]) > 0:
+            result.update(result["data"][0])
+        
+        return result
+    
+    async def _execute_verify(self, entity_type: str, params: Dict[str, Any], 
+                             expect: Dict[str, Any]) -> Dict[str, Any]:
+        """Execute verify action using configuration-based approach"""
+        # Get entity name
         name = params.get("name")
         if not name:
             raise ValueError("Name required for verify action")
         
-        # For teams and optionally machines, use list instead of get
-        if entity_type == "team":
-            list_func = lambda: self.cli.list("teams")
-            result = await loop.run_in_executor(None, list_func)
-            
-            if not result.get("success"):
-                raise AssertionError(f"Failed to list teams")
-            
-            # Find the specific team in the list
-            teams = result.get("data", [])
-            found_team = None
-            self.logger.debug(f"Looking for team {name} in list of {len(teams)} teams")
-            for team in teams:
-                team_name = team.get("teamName")
-                self.logger.debug(f"  - Found team: {team_name}")
-                if team_name == name:
-                    found_team = team
-                    break
-            
-            if not found_team:
-                self.logger.error(f"Team {name} not found in teams: {[t.get('teamName') for t in teams]}")
-                raise AssertionError(f"Team {name} not found")
-            
-            # For teams, we'll check against the list result
-            result = {"success": True, **found_team}
-        elif entity_type == "machine" and params.get("use_list", False):
-            # Use list machines for verification
-            team = params.get("team")
-            if not team:
-                raise ValueError("Team required for machine list")
-            
-            list_func = lambda: self.cli.list("team-machines", team=team)
-            result = await loop.run_in_executor(None, list_func)
-            
-            if not result.get("success"):
-                raise AssertionError(f"Failed to list machines for team {team}")
-            
-            # Find the specific machine in the list
-            machines = result.get("data", [])
-            found_machine = None
-            for machine in machines:
-                if machine.get("name") == name or machine.get("machineName") == name:
-                    found_machine = machine
-                    break
-            
-            if not found_machine:
-                raise AssertionError(f"Machine {name} not found in team {team}")
-            
-            # For machines, we'll check against the list result
-            result = {"success": True, **found_machine}
+        # Get entity configuration
+        config = ENTITY_VERIFICATION_CONFIG.get(entity_type)
+        if not config:
+            raise ValueError(f"Unknown entity type for verification: {entity_type}")
+        
+        # Validate required parameters
+        for param in config.get("required_params", []):
+            if param not in params:
+                raise ValueError(f"{param} required for {entity_type} verification")
+        
+        # Determine verification method
+        method = config.get("method", "inspect")
+        
+        # Use list method for certain entities or when explicitly requested
+        if method == "list" or (method == "mixed" and params.get("use_list", False)):
+            result = await self._verify_via_list(entity_type, name, params, config)
         else:
-            # For machines, pass the team parameter if available
-            if entity_type == "machine" and "team" in params:
-                get_func = lambda: self.cli.get(entity_type, name, team=params["team"])
-            else:
-                get_func = lambda: self.cli.get(entity_type, name)
-            result = await loop.run_in_executor(None, get_func)
-            
-            if not result.get("success"):
-                raise AssertionError(f"Failed to get {entity_type} {name}")
-            
-            # Handle cases where data is returned as an array (like machine inspect)
-            if isinstance(result.get("data"), list) and len(result["data"]) > 0:
-                # Merge the first item's data into the result
-                result.update(result["data"][0])
+            result = await self._verify_via_inspect(entity_type, name, params, config)
         
         # Verify expectations (interpolate expected values)
         interpolated_expect = self.context.interpolate_dict(expect)
@@ -433,6 +508,23 @@ class TestRunner:
         
         delete_func = lambda: self.cli.delete(entity_type, name)
         return await loop.run_in_executor(None, delete_func)
+    
+    async def _execute_raw(self, params: Dict[str, Any]) -> Dict[str, Any]:
+        """Execute raw CLI command"""
+        args = params.get('args', [])
+        stdin = params.get('stdin')
+        output_json = params.get('output_json', True)
+        
+        loop = asyncio.get_event_loop()
+        raw_func = lambda: self.cli.execute_raw(args, output_json=output_json, stdin=stdin)
+        result = await loop.run_in_executor(None, raw_func)
+        
+        if result.get('success'):
+            self.logger.info(f"Executed raw command: {' '.join(args)}")
+        else:
+            self.logger.error(f"Raw command failed: {' '.join(args)}")
+        
+        return result
     
     def _extract_json_path(self, data: Dict[str, Any], path: str) -> Any:
         """Extract value from JSON using simple path (e.g., $.id or $.data.name)"""
@@ -484,7 +576,15 @@ class TestRunner:
             # Run test's cleanup steps
             for cleanup_step in test.cleanup:
                 try:
-                    await self._execute_step(cleanup_step, test)
+                    # Check if the step can be executed (all variables exist)
+                    # Try to interpolate params to see if variables exist
+                    try:
+                        self.context.interpolate_dict(cleanup_step.params)
+                        # If interpolation succeeded, execute the step
+                        await self._execute_step(cleanup_step, test)
+                    except ValueError as ve:
+                        # Variable not found - skip this cleanup step
+                        self.logger.debug(f"Skipping cleanup step for {test.name}: {ve}")
                 except Exception as e:
                     self.logger.error(f"Cleanup failed for {test.name}: {e}")
             

@@ -13,10 +13,7 @@ from pathlib import Path
 import tempfile
 import shlex
 
-try:
-    from .mock_handler import MockHandler
-except ImportError:
-    from mock_handler import MockHandler
+# Mock support has been removed
 
 
 class CLIWrapper:
@@ -28,7 +25,6 @@ class CLIWrapper:
     def __init__(self, 
                  cli_path: Optional[str] = None,
                  config_dir: Optional[str] = None,
-                 mock_mode: bool = False,
                  verbose: bool = False):
         
         # Find CLI path
@@ -39,7 +35,7 @@ class CLIWrapper:
             base_dir = Path(__file__).parent.parent.parent
             self.cli_path = base_dir / "src" / "cli" / "rediacc-cli.py"
         
-        if not self.cli_path.exists() and not mock_mode:
+        if not self.cli_path.exists():
             raise FileNotFoundError(f"CLI not found at {self.cli_path}")
         
         # Setup config directory
@@ -51,15 +47,8 @@ class CLIWrapper:
         self.config_dir.mkdir(exist_ok=True)
         self.config_file = self.config_dir / "config.json"
         
-        self.mock_mode = mock_mode
         self.verbose = verbose
         self.logger = logging.getLogger(self.__class__.__name__)
-        
-        # Initialize mock handler if in mock mode
-        if mock_mode:
-            self.mock_handler = MockHandler()
-        else:
-            self.mock_handler = None
         
         # Authentication state
         self.auth_token: Optional[str] = None
@@ -98,8 +87,6 @@ class CLIWrapper:
     
     def _execute(self, cmd: List[str]) -> Tuple[int, str, str]:
         """Execute a command and return (returncode, stdout, stderr)"""
-        if self.mock_mode:
-            return self._execute_mock(cmd)
         
         self.logger.debug(f"Executing: {' '.join(cmd)}")
         
@@ -125,24 +112,34 @@ class CLIWrapper:
             self.logger.error(f"Command failed: {e}")
             return 1, "", str(e)
     
-    def _execute_mock(self, cmd: List[str]) -> Tuple[int, str, str]:
-        """Execute in mock mode for unit testing"""
-        self.logger.debug(f"Mock executing: {' '.join(cmd)}")
+    def _execute_with_stdin(self, cmd: List[str], stdin_data: str) -> Tuple[int, str, str]:
+        """Execute a command with stdin and return (returncode, stdout, stderr)"""
+        
+        self.logger.debug(f"Executing with stdin: {' '.join(cmd)}")
+        
+        env = os.environ.copy()
+        # Ensure HOME is set for config directory
+        env['HOME'] = str(Path.home())
         
         try:
-            # Parse command
-            parsed_cmd = self.mock_handler.parse_command(cmd)
+            result = subprocess.run(
+                cmd,
+                input=stdin_data,
+                capture_output=True,
+                text=True,
+                env=env,
+                timeout=60
+            )
             
-            # Generate response
-            response_data = self.mock_handler.generate_response(parsed_cmd)
+            return result.returncode, result.stdout, result.stderr
             
-            # Return as JSON
-            return 0, json.dumps(response_data), ""
-            
+        except subprocess.TimeoutExpired:
+            self.logger.error("Command timed out")
+            return 1, "", "Command timed out"
         except Exception as e:
-            self.logger.error(f"Mock execution failed: {e}")
-            error_response = {"success": False, "error": str(e)}
-            return 1, json.dumps(error_response), str(e)
+            self.logger.error(f"Command failed: {e}")
+            return 1, "", str(e)
+    
     
     def _handle_command_result(self, returncode: int, stdout: str, stderr: str, entity_type: str = None, operation: str = None) -> Dict[str, Any]:
         """Handle command execution result with proper error extraction"""
@@ -161,25 +158,62 @@ class CLIWrapper:
         return self._parse_json_output(stdout)
     
     def _parse_json_output(self, stdout: str) -> Dict[str, Any]:
-        """Parse JSON output from CLI"""
+        """Parse JSON output from CLI - handles single or multiple JSON objects"""
         if not stdout.strip():
             return {}
         
+        # Try single JSON first
         try:
-            # First try to parse the entire output as JSON
-            # This handles multi-line JSON responses
             return json.loads(stdout.strip())
-            
-        except json.JSONDecodeError as e:
-            self.logger.error(f"Failed to parse JSON: {e}")
-            self.logger.error(f"Output was: {stdout}")
-            return {"error": "Failed to parse JSON output", "raw": stdout}
+        except json.JSONDecodeError:
+            pass
+        
+        # Parse multiple JSON objects using raw_decode
+        decoder = json.JSONDecoder()
+        json_objects = []
+        idx = 0
+        
+        while idx < len(stdout):
+            stdout_remainder = stdout[idx:].lstrip()
+            if not stdout_remainder:
+                break
+            try:
+                obj, end_idx = decoder.raw_decode(stdout_remainder)
+                json_objects.append(obj)
+                idx += len(stdout[idx:]) - len(stdout_remainder) + end_idx
+            except json.JSONDecodeError:
+                idx += 1
+        
+        if not json_objects:
+            self.logger.error(f"Failed to parse JSON output: {stdout}")
+            return {"error": "Failed to parse JSON output"}
+        
+        # Single object - return as is
+        if len(json_objects) == 1:
+            return json_objects[0]
+        
+        # Multiple objects - merge intelligently
+        # Handle case where last object might not be a dict
+        if isinstance(json_objects[-1], dict):
+            result = json_objects[-1].copy()
+        else:
+            # If it's not a dict, wrap it
+            result = {"data": json_objects[-1]}
+        
+        messages = [o.get("message") for o in json_objects if isinstance(o, dict) and o.get("message")]
+        
+        if len(messages) > 1:
+            result["messages"] = messages
+        elif messages and messages[0] != result.get("message"):
+            result["message"] = messages[0]
+        
+        # Merge all data fields
+        for obj in json_objects[:-1]:
+            if isinstance(obj, dict) and "data" in obj and isinstance(obj["data"], dict):
+                result.setdefault("data", {}).update(obj["data"])
+        
+        return result
     
-    def add_mock_response(self, entity_type: str, entity_name: str, data: Dict[str, Any]):
-        """Add a pre-configured entity to mock handler"""
-        if self.mock_handler:
-            entity_key = f"{entity_type}:{entity_name}"
-            self.mock_handler.entities[entity_key] = data
     
     def login(self, username: str, password: str) -> Dict[str, Any]:
         """Authenticate with the API"""
@@ -286,10 +320,13 @@ class CLIWrapper:
         """List entities"""
         cmd = self._build_command("list", entity_type)
         
-        # Handle special cases where team is a positional argument
+        # Handle special cases where team/region is a positional argument
         if entity_type in ["team-machines", "team-members", "team-repositories", "team-schedules", "team-storages"] and "team" in params:
             team = params.pop("team")
             cmd.append(team)
+        elif entity_type == "bridges" and "region" in params:
+            region = params.pop("region")
+            cmd.append(region)
         
         # Add remaining parameters as flags
         for key, value in params.items():
@@ -308,6 +345,15 @@ class CLIWrapper:
                 # Try to get team from context if not provided
                 return {"success": False, "error": "Team name required for machine inspect"}
             cmd = self._build_command("inspect", entity_type, team, name)
+        elif entity_type == "bridge":
+            # Bridges don't have inspect command, return error
+            return {"success": False, "error": "Bridge entities do not support inspect command. Use list bridges instead."}
+        elif entity_type in ["repository", "storage", "schedule"]:
+            # These entities require team name
+            team = params.get("team")
+            if not team:
+                return {"success": False, "error": f"Team name required for {entity_type} inspect"}
+            cmd = self._build_command("inspect", entity_type, team, name)
         else:
             cmd = self._build_command("inspect", entity_type, name)
         
@@ -316,9 +362,46 @@ class CLIWrapper:
     
     def update(self, entity_type: str, name: str, **params) -> Dict[str, Any]:
         """Update an entity"""
-        cmd = self._build_command("update", entity_type, name)
+        if entity_type == "repository":
+            # Repository update: update repository <team> <name> <new_name>
+            team = params.pop("team", None)
+            new_name = params.pop("new_name", None)
+            if not team:
+                return {"success": False, "error": "Team required for repository update"}
+            if not new_name:
+                return {"success": False, "error": "New name required for repository update"}
+            cmd = self._build_command("update", entity_type, team, name, new_name)
+        elif entity_type == "bridge":
+            # Bridge update: update bridge <region> <name> <new_name>
+            region = params.pop("region", None)
+            new_name = params.pop("new_name", None)
+            if not region:
+                return {"success": False, "error": "Region required for bridge update"}
+            if not new_name:
+                return {"success": False, "error": "New name required for bridge update"}
+            cmd = self._build_command("update", entity_type, region, name, new_name)
+        elif entity_type == "region":
+            # Region update: update region <name> <new_name>
+            new_name = params.pop("new_name", None)
+            if not new_name:
+                return {"success": False, "error": "New name required for region update"}
+            cmd = self._build_command("update", entity_type, name, new_name)
+        elif entity_type in ["schedule", "storage"]:
+            # Schedule/Storage update: update <type> <team> <name> <new_name>
+            team = params.pop("team", None)
+            new_name = params.pop("new_name", None)
+            if not team:
+                return {"success": False, "error": f"Team required for {entity_type} update"}
+            if new_name:
+                # Renaming the entity
+                cmd = self._build_command("update", entity_type, team, name, new_name)
+            else:
+                # Just updating vault
+                cmd = self._build_command("update", entity_type, team, name, name)
+        else:
+            cmd = self._build_command("update", entity_type, name)
         
-        # Add parameters
+        # Add remaining parameters as flags
         for key, value in params.items():
             if value is not None:
                 cmd.extend([f"--{key.replace('_', '-')}", str(value)])
@@ -326,9 +409,38 @@ class CLIWrapper:
         returncode, stdout, stderr = self._execute(cmd)
         return self._handle_command_result(returncode, stdout, stderr, entity_type, "update")
     
-    def delete(self, entity_type: str, name: str) -> Dict[str, Any]:
+    def delete(self, entity_type: str, name: str, **params) -> Dict[str, Any]:
         """Delete an entity"""
-        cmd = self._build_command("rm", entity_type, name, "--force")
+        if entity_type == "repository":
+            # Check if name includes team (team/repo format)
+            if "/" in name:
+                team, repo_name = name.split("/", 1)
+                cmd = self._build_command("rm", entity_type, team, repo_name, "--force")
+            else:
+                # Need team parameter
+                team = params.get("team")
+                if not team:
+                    return {"success": False, "error": "Team required for repository deletion"}
+                cmd = self._build_command("rm", entity_type, team, name, "--force")
+        elif entity_type == "bridge":
+            # Check if name includes region (region/bridge format)
+            if "/" in name:
+                region, bridge_name = name.split("/", 1)
+                cmd = self._build_command("rm", entity_type, region, bridge_name, "--force")
+            else:
+                # Need region parameter
+                region = params.get("region")
+                if not region:
+                    return {"success": False, "error": "Region required for bridge deletion"}
+                cmd = self._build_command("rm", entity_type, region, name, "--force")
+        elif entity_type in ["schedule", "storage"]:
+            # Schedule/Storage deletion: rm <type> <team> <name>
+            team = params.get("team")
+            if not team:
+                return {"success": False, "error": f"Team required for {entity_type} deletion"}
+            cmd = self._build_command("rm", entity_type, team, name, "--force")
+        else:
+            cmd = self._build_command("rm", entity_type, name, "--force")
         
         returncode, stdout, stderr = self._execute(cmd)
         return self._handle_command_result(returncode, stdout, stderr, entity_type, "delete")
@@ -361,11 +473,14 @@ class CLIWrapper:
         returncode, stdout, stderr = self._execute(cmd)
         return self._handle_command_result(returncode, stdout, stderr, "queue", "get status")
     
-    def execute_raw(self, args: List[str], output_json: bool = True) -> Dict[str, Any]:
-        """Execute raw CLI command"""
+    def execute_raw(self, args: List[str], output_json: bool = True, stdin: str = None) -> Dict[str, Any]:
+        """Execute raw CLI command with optional stdin"""
         cmd = self._build_command(*args, output_json=output_json)
         
-        returncode, stdout, stderr = self._execute(cmd)
+        if stdin:
+            returncode, stdout, stderr = self._execute_with_stdin(cmd, stdin)
+        else:
+            returncode, stdout, stderr = self._execute(cmd)
         
         if returncode != 0:
             # For raw execution, include stdout in error response
@@ -388,6 +503,3 @@ class CLIWrapper:
             import shutil
             shutil.rmtree(self.config_dir, ignore_errors=True)
         
-        # Reset mock handler
-        if self.mock_handler:
-            self.mock_handler.reset()
