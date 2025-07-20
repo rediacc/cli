@@ -1,0 +1,103 @@
+# Basic CRUD test for repositories
+name: "Repository CRUD Operations"
+description: "Test create, read, update, delete operations for repositories"
+tags: [repository, crud, basic]
+
+dependencies:
+  company: "TestCompany"
+
+setup:
+  - create_random_team_name: team_name
+  - create_random_repository_name: repo_name
+  - create_random_repository_name: updated_repo_name
+
+steps:
+  # First create a team (prerequisite for repository)
+  - action: create
+    entity: team
+    params:
+      name: "{{ team_name }}"
+      vault:
+        SSH_PRIVATE_KEY: |
+          -----BEGIN RSA PRIVATE KEY-----
+          test-key-content
+          -----END RSA PRIVATE KEY-----
+    expect:
+      success: true
+
+  # Create repository for team
+  - action: create
+    entity: repository
+    params:
+      name: "{{ repo_name }}"
+      team: "{{ team_name }}"
+      vault:
+        repo_config:
+          plugins: ["terminal", "browser"]
+          size: "20G"
+          environment: "docker"
+    expect:
+      success: true
+    capture:
+      repository_id: "$.id"
+
+  # Verify repository exists
+  - action: verify
+    entity: repository
+    params:
+      name: "{{ repo_name }}"
+      team: "{{ team_name }}"
+    expect:
+      repoName: "{{ repo_name }}"
+      teamName: "{{ team_name }}"
+
+
+  # Update repository - rename
+  - action: update
+    entity: repository
+    params:
+      name: "{{ repo_name }}"
+      team: "{{ team_name }}"
+      new_name: "{{ updated_repo_name }}"
+    expect:
+      success: true
+
+  # Verify rename worked
+  - action: verify
+    entity: repository
+    params:
+      name: "{{ updated_repo_name }}"
+      team: "{{ team_name }}"
+    expect:
+      repoName: "{{ updated_repo_name }}"
+
+  # Update repository vault with additional configuration
+  - action: update
+    entity: repository
+    params:
+      name: "{{ updated_repo_name }}"
+      team: "{{ team_name }}"
+      vault:
+        repo_config:
+          plugins: ["terminal", "browser", "vscode"]
+          size: "50G"
+          environment: "docker"
+          backup_enabled: true
+          backup_schedule: "0 2 * * *"
+      vault_version: 2
+    expect:
+      success: true
+
+
+cleanup:
+  # Delete repository first (before team)
+  - action: delete
+    entity: repository
+    params:
+      name: "{{ updated_repo_name }}"
+      team: "{{ team_name }}"
+  # Then delete team
+  - action: delete
+    entity: team
+    params:
+      name: "{{ team_name }}"

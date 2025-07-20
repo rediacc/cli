@@ -1,0 +1,69 @@
+# Basic CRUD test for regions
+name: "Region CRUD Operations"
+description: "Test create, read, update, delete operations for regions"
+tags: [region, crud, basic]
+
+dependencies:
+  company: "TestCompany"
+
+setup:
+  - create_random_region_name: region_name
+  - create_random_region_name: updated_region_name
+
+steps:
+  # Create region
+  - action: create
+    entity: region
+    params:
+      name: "{{ region_name }}"
+      vault:
+        region_config: "test_region"
+        environment: "production"
+    expect:
+      success: true
+    capture:
+      region_id: "$.id"
+
+  # Verify region exists
+  - action: verify
+    entity: region
+    params:
+      name: "{{ region_name }}"
+    expect:
+      regionName: "{{ region_name }}"
+
+  # Update region - rename
+  - action: update
+    entity: region
+    params:
+      name: "{{ region_name }}"
+      new_name: "{{ updated_region_name }}"
+    expect:
+      success: true
+
+  # Verify rename worked
+  - action: verify
+    entity: region
+    params:
+      name: "{{ updated_region_name }}"
+    expect:
+      regionName: "{{ updated_region_name }}"
+
+  # Update region vault
+  - action: update
+    entity: region
+    params:
+      name: "{{ updated_region_name }}"
+      vault:
+        region_config: "updated_config"
+        environment: "staging"
+        last_updated: "2024-01-01"
+      vault_version: 2
+    expect:
+      success: true
+
+cleanup:
+  - action: delete
+    entity: region
+    params:
+      name: "{{ updated_region_name }}"

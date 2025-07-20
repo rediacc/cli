@@ -216,7 +216,7 @@ class TestLoader:
                 errors.append(f"Step {i+1} has unknown entity type: {step.entity}")
             
             # Validate action
-            valid_actions = ['create', 'update', 'delete', 'verify', 'wait']
+            valid_actions = ['create', 'update', 'delete', 'verify', 'wait', 'execute_raw']
             if step.action not in valid_actions:
                 errors.append(f"Step {i+1} has invalid action: {step.action}")
         

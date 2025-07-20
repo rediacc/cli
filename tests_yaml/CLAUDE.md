@@ -2,22 +2,29 @@
 
 ## Quick Start
 
-```bash
-cd ~/monorepo/cli
-python3 -m tests_yaml.run --mock --suite basic
-```
-
-**Note**: Always use `--mock` flag for testing. Real API testing requires creating test companies.
-
 ### Real API Testing
 
-1. **Create Test Company** (generates unique credentials):
+The test framework requires real API connections and automatically uses the API configuration from your `.env` file:
+
+```bash
+# The framework uses SYSTEM_DOMAIN from parent .env file
+# API URL is constructed as:
+#   - http://localhost:7322/api (for localhost)
+#   - https://yourdomain.com/api (for other domains)
+
+cd ~/monorepo/cli
+python3 -m tests_yaml.run --suite basic
+```
+
+### Authentication Options
+
+1. **Create Test Company** (automatic if no credentials provided):
 ```bash
 python3 tests_yaml/setup_test_company.py
 # Outputs: email and password
 ```
 
-2. **Run Tests with Credentials**:
+2. **Run Tests with Existing Credentials**:
 ```bash
 # Option 1: Command line args
 python3 -m tests_yaml.run --suite basic --username 'test_123@example.com' --password 'TestPass123!'
@@ -41,9 +48,7 @@ tests_yaml/
 │   ├── base.py        # TestContext, TestScenario, TestResult
 │   ├── runner.py      # Test execution & dependency resolution
 │   ├── entities.py    # Entity DTOs & relationships
-│   ├── cli_wrapper.py # CLI integration
-│   ├── mock_handler.py # Mock responses
-│   └── mock_config.json # Entity definitions
+│   └── cli_wrapper.py # CLI integration
 ├── tests/             # Test scenarios
 │   ├── basic/         # CRUD operations
 │   ├── complex/       # Multi-step workflows
@@ -55,7 +60,7 @@ tests_yaml/
 
 - **Hybrid Tests**: YAML (declarative) + Python (programmatic)
 - **Auto Dependencies**: Tests run in correct order based on entity relationships
-- **Smart Mocking**: JSON-configured mock responses, no real API needed
+- **Real API Testing**: All tests run against actual API endpoints
 - **Parallel Execution**: Independent tests run concurrently
 - **Auto Cleanup**: Resources deleted in reverse order
 
@@ -97,33 +102,26 @@ class TestWorkflow(BaseTest):
 ## Commands
 
 ```bash
-# Run all tests
-python3 -m tests_yaml.run --mock
+# Run all tests (requires credentials)
+python3 -m tests_yaml.run --username 'test@example.com' --password 'password'
 
 # Specific suite
-python3 -m tests_yaml.run --mock --suite basic
+python3 -m tests_yaml.run --suite basic --username 'test@example.com' --password 'password'
 
 # Single test
-python3 -m tests_yaml.run --mock --test "Team CRUD Operations"
+python3 -m tests_yaml.run --test "Team CRUD Operations" --username 'test@example.com' --password 'password'
 
 # List tests
-python3 -m tests_yaml.run --mock --list-tests
+python3 -m tests_yaml.run --list-tests
 
 # Generate report
-python3 -m tests_yaml.run --mock --report html --output report.html
+python3 -m tests_yaml.run --report html --output report.html --username 'test@example.com' --password 'password'
 ```
 
-## Mock Configuration
-
-Edit `framework/mock_config.json` to:
-- Add new entity types
-- Define required fields
-- Set default values
-- Configure error responses
 
 ## Tips
 
-1. Use `--mock` for fast local testing
+1. API URL is automatically detected from `.env` file
 2. Tests auto-cleanup unless `--keep-on-failure`
 3. Variable interpolation: `{{ var_name }}`
 4. Capture values: `capture: { team_id: "$.id" }`
@@ -139,5 +137,5 @@ Edit `framework/mock_config.json` to:
 
 - **Minimal dependencies**: Python stdlib only
 - **Cross-platform**: Windows, Linux, macOS
-- **Easy extension**: Add entities via JSON
-- **Clean separation**: Mock logic isolated from CLI wrapper
+- **Real API testing**: Validates actual API behavior
+- **Clean separation**: Test logic isolated from CLI wrapper

@@ -72,10 +72,7 @@ class TestFixtures:
             else:
                 raise RuntimeError(f"Failed to create company: {result.get('error')}")
         else:
-            # Mock mode
-            data = self.generator.generate_company(name)
-            self._fixtures['company'] = data
-            return data
+            raise RuntimeError("CLI wrapper required to create company")
     
     def get_or_create_team(self, company: Optional[str] = None, 
                           name: str = "TestTeam") -> Dict[str, Any]:
@@ -104,10 +101,7 @@ class TestFixtures:
             else:
                 raise RuntimeError(f"Failed to create team: {result.get('error')}")
         else:
-            # Mock mode
-            data = self.generator.generate_team(company, name)
-            self._fixtures[team_key] = data
-            return data
+            raise RuntimeError("CLI wrapper required to create team")
     
     def get_or_create_region(self, company: Optional[str] = None,
                             name: str = "TestRegion") -> Dict[str, Any]:
@@ -136,10 +130,7 @@ class TestFixtures:
             else:
                 raise RuntimeError(f"Failed to create region: {result.get('error')}")
         else:
-            # Mock mode
-            data = self.generator.generate_region(company, name)
-            self._fixtures[region_key] = data
-            return data
+            raise RuntimeError("CLI wrapper required to create region")
     
     def get_or_create_bridge(self, region: Optional[str] = None,
                             name: str = "TestBridge") -> Dict[str, Any]:
@@ -168,10 +159,7 @@ class TestFixtures:
             else:
                 raise RuntimeError(f"Failed to create bridge: {result.get('error')}")
         else:
-            # Mock mode
-            data = self.generator.generate_bridge(region, name)
-            self._fixtures[bridge_key] = data
-            return data
+            raise RuntimeError("CLI wrapper required to create bridge")
     
     def get_test_infrastructure(self) -> Dict[str, Dict[str, Any]]:
         """
@@ -216,11 +204,7 @@ class TestFixtures:
             else:
                 raise RuntimeError(f"Failed to create machine: {result.get('error')}")
         else:
-            infrastructure['machine'] = self.generator.generate_machine(
-                team=infrastructure['team']['name'],
-                bridge=infrastructure['bridge']['name'],
-                name="TestMachine"
-            )
+            raise RuntimeError("CLI wrapper required to create machine")
         
         return infrastructure
     
@@ -255,63 +239,31 @@ class TestFixtures:
         # Save updated fixtures
         self.save_fixtures()
     
-    def get_mock_responses(self) -> List[Dict[str, Any]]:
-        """Get mock API responses for unit testing"""
-        return [
-            # Login response
-            {
-                "success": True,
-                "token": "test-token-123",
-                "nextRequestCredential": "next-token-456"
-            },
-            # Create company response
-            {
-                "success": True,
-                "id": "company-123",
-                "name": "TestCompany"
-            },
-            # Create team response
-            {
-                "success": True,
-                "id": "team-123",
-                "name": "TestTeam",
-                "company": "TestCompany"
-            },
-            # Create machine response
-            {
-                "success": True,
-                "id": "machine-123",
-                "name": "TestMachine",
-                "team": "TestTeam",
-                "bridge": "TestBridge"
-            },
-            # Create queue item response
-            {
-                "success": True,
-                "taskId": "task-123",
-                "status": "PENDING"
-            },
-            # Get queue status response
-            {
-                "success": True,
-                "taskId": "task-123",
-                "status": "COMPLETED",
-                "result": "Success"
-            }
-        ]
     
     @staticmethod
     def get_test_config() -> Dict[str, Any]:
         """Get test configuration"""
+        # Build API URL from environment
+        system_domain = os.environ.get("SYSTEM_DOMAIN", "localhost")
+        system_port = os.environ.get("SYSTEM_HTTP_PORT", "7322")
+        
+        # Use REDIACC_API_URL if set, otherwise construct from domain/port
+        api_url = os.environ.get("REDIACC_API_URL")
+        if not api_url:
+            if system_domain in ["localhost", "127.0.0.1"]:
+                api_url = f"http://{system_domain}:{system_port}/api"
+            else:
+                api_url = f"https://{system_domain}/api"
+        
         return {
-            "api_url": os.environ.get("TEST_API_URL", "https://api.test.rediacc.com"),
+            "api_url": api_url,
             "timeout": 30,
             "retry_count": 3,
             "parallel_workers": 4,
             "cleanup_on_exit": True,
             "auth": {
-                "username": os.environ.get("TEST_USERNAME", None),
-                "password": os.environ.get("TEST_PASSWORD", None)
+                "username": None,  # Only from command line
+                "password": None   # Only from command line
             },
             "defaults": {
                 "company": "TestCompany",

@@ -1,0 +1,167 @@
+# Permission management test
+name: "Permission Management"
+description: "Test permission groups create, add, remove, assign operations"
+tags: [permission, basic, user]
+
+dependencies:
+  company: "TestCompany"
+
+setup:
+  - create_random_name: permission_group
+  - create_random_email: test_user_email
+
+steps:
+  # Create a test user first
+  - action: execute_raw
+    params:
+      args: ["create", "user", "{{ test_user_email }}", "--password", "TestUserPass123!"]
+    expect:
+      success: true
+    continue_on_error: true  # May fail if user creation requires special permissions
+
+  # Create permission group
+  - action: execute_raw
+    params:
+      args: ["permission", "create-group", "{{ permission_group }}"]
+    expect:
+      success: true
+
+  # List permission groups to verify creation
+  - action: execute_raw
+    params:
+      args: ["permission", "list-groups"]
+    expect:
+      success: true
+      data: "*{{ permission_group }}*"
+
+  # Add permissions to group
+  - action: execute_raw
+    params:
+      args: ["permission", "add", "{{ permission_group }}", "GetCompanyTeams"]
+    expect:
+      success: true
+
+  - action: execute_raw
+    params:
+      args: ["permission", "add", "{{ permission_group }}", "GetTeamMachines"]
+    expect:
+      success: true
+
+  - action: execute_raw
+    params:
+      args: ["permission", "add", "{{ permission_group }}", "CreateRepository"]
+    expect:
+      success: true
+
+  - action: execute_raw
+    params:
+      args: ["permission", "add", "{{ permission_group }}", "GetCompanyRegions"]
+    expect:
+      success: true
+
+  # List specific permission group details
+  - action: execute_raw
+    params:
+      args: ["permission", "list-group", "{{ permission_group }}"]
+    expect:
+      success: true
+      data: "*GetCompanyTeams*"
+      data: "*GetTeamMachines*"
+      data: "*CreateRepository*"
+      data: "*GetCompanyRegions*"
+
+  # Test JSON output for permission groups
+  - action: execute_raw
+    params:
+      args: ["--output", "json", "permission", "list-groups"]
+    expect:
+      success: true
+    capture:
+      groups_json: "$"
+
+  - action: execute_raw
+    params:
+      args: ["--output", "json", "permission", "list-group", "{{ permission_group }}"]
+    expect:
+      success: true
+    capture:
+      group_details_json: "$"
+
+  # Assign permission group to user (if user was created)
+  - action: execute_raw
+    params:
+      args: ["permission", "assign", "{{ test_user_email }}", "{{ permission_group }}"]
+    expect:
+      success: true
+    continue_on_error: true  # Depends on user creation success
+
+  # List user permissions
+  - action: execute_raw
+    params:
+      args: ["permission", "list-user", "{{ test_user_email }}"]
+    expect:
+      success: true
+    continue_on_error: true  # Depends on user creation success
+
+  # Remove permissions from group
+  - action: execute_raw
+    params:
+      args: ["permission", "remove", "{{ permission_group }}", "GetCompanyTeams", "--force"]
+    expect:
+      success: true
+
+  - action: execute_raw
+    params:
+      args: ["permission", "remove", "{{ permission_group }}", "GetTeamMachines", "--force"]
+    expect:
+      success: true
+
+  # Verify permissions were removed
+  - action: execute_raw
+    params:
+      args: ["permission", "list-group", "{{ permission_group }}"]
+    expect:
+      success: true
+      data: "*CreateRepository*"
+      # Note: We can't verify negative conditions (not_contains) in current framework
+
+  # Test error handling - add permission to non-existent group
+  - action: execute_raw
+    params:
+      args: ["permission", "add", "NonExistentGroup_{{ permission_group }}", "GetCompanyTeams"]
+    expect:
+      success: false
+
+  # Test error handling - assign non-existent group
+  - action: execute_raw
+    params:
+      args: ["permission", "assign", "{{ test_user_email }}", "NonExistentGroup_{{ permission_group }}"]
+    expect:
+      success: false
+    continue_on_error: true
+
+  # Test listing all available permissions (if supported)
+  - action: execute_raw
+    params:
+      args: ["permission", "list-available"]
+    expect:
+      success: true
+    continue_on_error: true  # This command might not exist
+
+cleanup:
+  # Reassign user to default group before deleting custom group
+  - action: execute_raw
+    params:
+      args: ["permission", "assign", "{{ test_user_email }}", "Users"]
+    continue_on_error: true
+
+  # Delete permission group
+  - action: execute_raw
+    params:
+      args: ["permission", "delete-group", "{{ permission_group }}", "--force"]
+
+  # Deactivate test user
+  - action: execute_raw
+    params:
+      args: ["user", "deactivate", "{{ test_user_email }}", "--force"]
+    continue_on_error: true

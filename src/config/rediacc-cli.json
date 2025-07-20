@@ -101,20 +101,117 @@
       "endpoint": "CreateAuthenticationRequest",
       "auth_type": "credentials",
       "params": "lambda args: {'name': args.session_name or 'CLI Session', '2FACode': args.tfa_code, 'requestedPermissions': args.permissions, 'tokenExpirationHours': args.expiration, 'target': getattr(args, 'target', None)}",
-      "success_msg": "Successfully logged in as {email}"
+      "success_msg": "Successfully logged in as {email}",
+      "help": {
+        "description": "Authenticate with the Rediacc API",
+        "details": "Creates an authentication session and receives an API token for subsequent requests. Supports two-factor authentication and permission requests.",
+        "parameters": {
+          "email": {
+            "description": "User email address",
+            "required": false,
+            "example": "user@company.com"
+          },
+          "password": {
+            "description": "User password",
+            "required": false,
+            "example": "SecureP@ssw0rd"
+          },
+          "master-password": {
+            "description": "Master password for vault encryption",
+            "required": false,
+            "example": "VaultM@sterKey"
+          },
+          "session-name": {
+            "description": "Name for this session",
+            "required": false,
+            "example": "Development Workstation"
+          },
+          "tfa-code": {
+            "description": "Two-factor authentication code",
+            "required": false,
+            "example": "123456"
+          },
+          "permissions": {
+            "description": "Requested permission group",
+            "required": false,
+            "example": "admin"
+          },
+          "expiration": {
+            "description": "Token expiration in hours (default: 24)",
+            "required": false,
+            "example": "48"
+          },
+          "target": {
+            "description": "Target resource for specialized tokens",
+            "required": false,
+            "example": "bridge-01"
+          }
+        },
+        "examples": [
+          {
+            "command": "rediacc-cli login",
+            "description": "Interactive login with prompts"
+          },
+          {
+            "command": "rediacc-cli login --email user@company.com --password 'P@ssw0rd'",
+            "description": "Direct login with credentials"
+          },
+          {
+            "command": "rediacc-cli login --email admin@company.com --tfa-code 123456 --permissions admin",
+            "description": "Admin login with 2FA"
+          }
+        ],
+        "notes": "Credentials can be provided as arguments or through interactive prompts. Token is saved locally for future use.",
+        "rules": [
+          "Email and password are required (via args or prompts)",
+          "Account must be activated before first login",
+          "Failed login attempts are tracked and may lock account",
+          "2FA code required if two-factor authentication is enabled",
+          "Token expires after specified hours (max varies by plan)",
+          "Session name helps identify tokens in audit logs",
+          "Permission requests may require additional authorization",
+          "Master password is stored in memory for vault operations",
+          "Token is saved to ~/.rediacc/config.json",
+          "Multiple named tokens can be stored simultaneously"
+        ]
+      }
     },
     "logout": {
       "auth_required": true,
       "endpoint": "DeleteUserRequest",
       "auth_type": "token",
-      "success_msg": "Successfully logged out"
+      "success_msg": "Successfully logged out",
+      "help": {
+        "description": "Log out and invalidate current session",
+        "details": "Terminates the current authentication session on the server and removes the stored token locally. The token becomes immediately invalid.",
+        "parameters": {},
+        "examples": [
+          {
+            "command": "rediacc-cli logout",
+            "description": "Log out current session"
+          }
+        ],
+        "notes": "This invalidates the token on the server. Any operations using this token will fail after logout.",
+        "rules": [
+          "Requires valid authentication token",
+          "Token is immediately invalidated on server",
+          "Removes token from local configuration",
+          "Clears stored master password from memory",
+          "Does not affect other active sessions",
+          "Cannot be undone - must login again",
+          "Logout is logged in audit trail",
+          "Any running operations continue to completion",
+          "Does not affect saved named tokens",
+          "Recommended before leaving workstation"
+        ]
+      }
     },
     "create": {
       "company": {
         "endpoint": "CreateNewCompany",
         "auth_required": false,
         "auth_type": "credentials",
-        "params": "lambda args: {'companyName': args.name}",
+        "params": "lambda args: {'companyName': args.name, 'subscriptionPlan': getattr(args, 'plan', 'COMMUNITY')}",
         "success_msg": "Successfully created company: {name}",
         "help": {
           "description": "Create a new company account with admin user",
@@ -158,7 +255,19 @@
               "description": "Create company with Elite plan"
             }
           ],
-          "notes": "The admin user is automatically activated and becomes the company owner. Activation codes are provided by Rediacc sales."
+          "notes": "The admin user is automatically activated and becomes the company owner. Activation codes are provided by Rediacc sales.",
+          "rules": [
+            "Password hash must be exactly 32 bytes when hashed",
+            "Activation code must be exactly 6 characters",
+            "User email must not already exist in the system",
+            "Email format must be valid (contains @ and .)",
+            "Subscription plan must exist and be active (COMMUNITY, ADVANCED, PREMIUM, or ELITE)",
+            "Company name is required and cannot be empty",
+            "Default company vault configuration will be applied automatically",
+            "COMMUNITY plan gets 10 years subscription, other plans get 30-day trial",
+            "Company creation is atomic - all or nothing operation",
+            "Email validation checks for proper format with @ symbol and domain"
+          ]
         }
       },
       "user": {
@@ -196,7 +305,19 @@
               "description": "Create user with specified password"
             }
           ],
-          "notes": "New users must be activated using 'rediacc-cli user activate' before they can log in. Company admins can provide activation codes."
+          "notes": "New users must be activated using 'rediacc-cli user activate' before they can log in. Company admins can provide activation codes.",
+          "rules": [
+            "User email must not already exist in the system",
+            "Password hash must be exactly 32 bytes",
+            "Activation code must be exactly 6 characters",
+            "Email format validation is performed",
+            "Company must not have exceeded user resource limits",
+            "User creation is atomic with transactional safety",
+            "New users are created in inactive state and must be activated",
+            "Empty user vault is created automatically",
+            "Resource limits depend on subscription plan",
+            "User email must be unique across the entire system"
+          ]
         }
       },
       "team": {
@@ -233,7 +354,19 @@
               "description": "Create team with vault configuration from file"
             }
           ],
-          "notes": "Team creation counts against your subscription limits. The creator automatically becomes a team member."
+          "notes": "Team creation counts against your subscription limits. The creator automatically becomes a team member.",
+          "rules": [
+            "Team name must be unique within the company",
+            "Team vault data cannot be null or empty",
+            "User must pass authentication and authorization checks",
+            "Company must not have exceeded team resource limits",
+            "Creator is automatically added as a team member",
+            "Team names are case-sensitive",
+            "Vault data must be valid JSON format",
+            "Resource limits depend on subscription plan",
+            "Team creation is tracked in audit log",
+            "Bridge users cannot be added to teams"
+          ]
         }
       },
       "region": {
@@ -270,7 +403,19 @@
               "description": "Create region with provider configuration"
             }
           ],
-          "notes": "Regions cannot be deleted if they contain bridges. Region names must be unique across the company."
+          "notes": "Regions cannot be deleted if they contain bridges. Region names must be unique across the company.",
+          "rules": [
+            "Region name must be unique within the company",
+            "Region vault data cannot be null or empty",
+            "Company must not have exceeded region resource limits",
+            "User must pass authentication and authorization checks",
+            "Vault data must be valid JSON format",
+            "Resource limits depend on subscription plan",
+            "Region names are case-sensitive",
+            "Regions with bridges cannot be deleted",
+            "Region creation is tracked in audit log",
+            "Admin permissions may be required depending on company settings"
+          ]
         }
       },
       "bridge": {
@@ -312,7 +457,19 @@
               "description": "Create bridge with custom batch size"
             }
           ],
-          "notes": "After creation, start the bridge with './bridge --bridge-mode token=<token> api_url=<url> master_password=<pwd>'. Use 'rediacc-cli login --target bridge-name' to get a bridge-specific token."
+          "notes": "After creation, start the bridge with './bridge --bridge-mode token=<token> api_url=<url> master_password=<pwd>'. Use 'rediacc-cli login --target bridge-name' to get a bridge-specific token.",
+          "rules": [
+            "Bridge name must be unique within the region",
+            "Region must exist and belong to the user's company",
+            "Bridge vault data cannot be null or empty",
+            "Company must not have exceeded bridge resource limits",
+            "User must have appropriate permissions",
+            "Vault data must be valid JSON format",
+            "Resource limits depend on subscription plan",
+            "Bridge names are case-sensitive",
+            "A bridge user account is automatically created for authentication",
+            "Bridge credentials are stored securely in the vault"
+          ]
         }
       },
       "machine": {
@@ -354,7 +511,19 @@
               "description": "Create machine with IP configuration"
             }
           ],
-          "notes": "You must be a member of the team. The bridge must exist and be accessible. Machine creation counts against subscription limits."
+          "notes": "You must be a member of the team. The bridge must exist and be accessible. Machine creation counts against subscription limits.",
+          "rules": [
+            "Machine name must be unique across the entire company (not just within team)",
+            "User must be a member of the specified team",
+            "Bridge must exist in a region within the company",
+            "Company must not have exceeded machine resource limits",
+            "Machine vault data cannot be null or empty",
+            "Vault data must be valid JSON format",
+            "Team must exist within the user's company",
+            "Resource limits depend on subscription plan",
+            "Machine names are case-sensitive",
+            "Bridge must be accessible and properly configured"
+          ]
         }
       },
       "repository": {
@@ -396,7 +565,19 @@
               "description": "Create repository with size and backup configuration"
             }
           ],
-          "notes": "Repository names must be unique within a team. After creation, deploy code using 'rediacc sync' or manage with queue functions like 'repo_new', 'repo_up', etc."
+          "notes": "Repository names must be unique within a team. After creation, deploy code using 'rediacc sync' or manage with queue functions like 'repo_new', 'repo_up', etc.",
+          "rules": [
+            "Repository name must be unique within the team",
+            "User must be a member of the specified team",
+            "Repository vault data cannot be null or empty",
+            "Company must not have exceeded repository resource limits",
+            "Team must exist within the user's company",
+            "Vault data must be valid JSON format",
+            "Parent repository must exist if specified",
+            "Resource limits depend on subscription plan",
+            "Repository names are case-sensitive",
+            "Parent repository must be in the same team"
+          ]
         }
       },
       "storage": {
@@ -438,7 +619,19 @@
               "description": "Create Azure storage with credentials from file"
             }
           ],
-          "notes": "Storage credentials are encrypted in the vault. Supported types include S3, Azure Blob, GCS, SFTP, and SMB. Used with 'repo_push' and 'repo_pull' queue functions."
+          "notes": "Storage credentials are encrypted in the vault. Supported types include S3, Azure Blob, GCS, SFTP, and SMB. Used with 'repo_push' and 'repo_pull' queue functions.",
+          "rules": [
+            "Storage name must be unique within the team",
+            "User must be a member of the specified team",
+            "Storage vault data cannot be null or empty",
+            "Company must not have exceeded storage resource limits",
+            "Team must exist within the user's company",
+            "Vault data must be valid JSON format",
+            "Resource limits depend on subscription plan",
+            "Storage names are case-sensitive",
+            "Credentials in vault are automatically encrypted",
+            "Storage types must be supported (S3, Azure, GCS, SFTP, SMB)"
+          ]
         }
       },
       "schedule": {
@@ -480,7 +673,19 @@
               "description": "Create hourly sync schedule"
             }
           ],
-          "notes": "Schedules require Premium or Elite subscription. Cron expressions follow standard format. Schedule execution creates queue items with configured priority."
+          "notes": "Schedules require Premium or Elite subscription. Cron expressions follow standard format. Schedule execution creates queue items with configured priority.",
+          "rules": [
+            "Schedule name must be unique within the team",
+            "User must be a member of the specified team",
+            "Schedule vault data cannot be null or empty",
+            "Company must not have exceeded schedule resource limits",
+            "Schedules require Premium or Elite subscription plan",
+            "Team must exist within the user's company",
+            "Vault data must be valid JSON format",
+            "Resource limits depend on subscription plan",
+            "Schedule names are case-sensitive",
+            "Cron expressions must follow standard format"
+          ]
         }
       },
       "queue-item": {
@@ -528,7 +733,19 @@
               "description": "Create high priority item with task config"
             }
           ],
-          "notes": "Priority 1-2 requires Premium/Elite subscription. Community/Advanced limited to priority 3-5. You must be a team member."
+          "notes": "Priority 1-2 requires Premium/Elite subscription. Community/Advanced limited to priority 3-5. You must be a team member.",
+          "rules": [
+            "Priority must be between 1 and 5 (1=highest, 5=lowest)",
+            "Priority levels 1-2 require Premium or Elite subscription",
+            "Community/Advanced plans automatically reset priority to 4 (default)",
+            "User must be a member of the team that owns the machine",
+            "Machine must exist and belong to the specified team",
+            "Bridge must exist and be accessible",
+            "Machine can be optional for bridge-only queue items",
+            "Queue vault data must be valid JSON format",
+            "Task execution is subject to subscription concurrency limits",
+            "Bridge must be in the same company as the machine"
+          ]
         }
       }
     },
@@ -539,6 +756,7 @@
         "help": {
           "description": "List all teams in your company",
           "details": "Displays teams with membership information, resource counts, and vault access. Only shows vault data for teams where you are a member.",
+          "parameters": {},
           "examples": [
             {
               "command": "rediacc-cli list teams",
@@ -549,7 +767,19 @@
               "description": "List all teams in JSON format for scripting"
             }
           ],
-          "notes": "Requires authentication. Vault content is only visible for teams you belong to."
+          "notes": "Requires authentication. Vault content is only visible for teams you belong to.",
+          "rules": [
+            "User must be authenticated with valid credentials",
+            "User must belong to a company to retrieve team information",
+            "All teams in the company are visible to all users",
+            "Vault data (sensitive information) is only visible for teams where you are a member",
+            "Teams are sorted alphabetically by name",
+            "Statistics show member count, machine count, repository count, schedule count, and storage count",
+            "Encrypted vault data requires company passphrase for decryption",
+            "No cross-company access is allowed",
+            "Membership status indicator shows 1 for member, 0 for non-member",
+            "Company name is included for context"
+          ]
         }
       },
       "regions": {
@@ -558,13 +788,26 @@
         "help": {
           "description": "List all regions in your company",
           "details": "Shows geographic regions where you can deploy bridges and infrastructure. Each region can contain multiple bridges for distributed task processing.",
+          "parameters": {},
           "examples": [
             {
               "command": "rediacc-cli list regions",
               "description": "Display all regions with their vault configurations"
             }
           ],
-          "notes": "Regions define geographic or logical boundaries for infrastructure deployment."
+          "notes": "Regions define geographic or logical boundaries for infrastructure deployment.",
+          "rules": [
+            "User must be authenticated with a valid token",
+            "Token must be active and not expired",
+            "User must belong to a company",
+            "Only regions within your company are visible",
+            "Administrators can see full vault data for all regions",
+            "Non-administrators cannot see sensitive vault data",
+            "Bridge count is shown for each region",
+            "Regions are sorted alphabetically by name",
+            "No team membership required to view regions",
+            "Empty result set is returned if no regions exist"
+          ]
         }
       },
       "bridges": {
@@ -586,7 +829,19 @@
               "description": "List all bridges in the us-east region"
             }
           ],
-          "notes": "Bridges must be running in bridge mode to process queue items."
+          "notes": "Bridges must be running in bridge mode to process queue items.",
+          "rules": [
+            "User must be authenticated with a valid token",
+            "Region must exist within your company",
+            "Region names are case-sensitive",
+            "Regular users can only see vault data for bridges they have access to through team machines",
+            "Access determined by: user is member of team that has machines using the bridge",
+            "Administrators can see all bridge information including sensitive vault data",
+            "Bridge credentials and user emails only visible to administrators",
+            "Machine count shown for each bridge",
+            "HasAccess indicator shows if user can use the bridge",
+            "Special 'Global Bridges' entry may be shown for cloud-managed bridges"
+          ]
         }
       },
       "users": {
@@ -595,6 +850,7 @@
         "help": {
           "description": "List all users in your company",
           "details": "Shows all user accounts including their email, status (active/inactive), permission groups, 2FA status, and last login information. Useful for user management and audit purposes.",
+          "parameters": {},
           "examples": [
             {
               "command": "rediacc-cli list users",
@@ -605,7 +861,19 @@
               "description": "Find all inactive users"
             }
           ],
-          "notes": "Requires authentication. Shows user status, permissions, and security settings. Personal information like passwords is never exposed."
+          "notes": "Requires authentication. Shows user status, permissions, and security settings. Personal information like passwords is never exposed.",
+          "rules": [
+            "User must be logged in with valid authentication token",
+            "Token must be active and not expired",
+            "User account must be activated",
+            "Token rotation required for security",
+            "Users can only view users from their own company",
+            "Administrators can see all users and their vault data",
+            "Non-administrators can only see users who share at least one team with them",
+            "Vault data (sensitive information) only visible to administrators",
+            "Shows permission groups (Administrators, Users, or Bridges)",
+            "Company boundary enforcement prevents cross-company visibility"
+          ]
         }
       },
       "sessions": {
@@ -614,6 +882,7 @@
         "help": {
           "description": "List active sessions and authentication requests",
           "details": "Shows all active authentication sessions including session names, creation time, expiration, permissions, and originating IP addresses. Helps monitor access and detect unauthorized sessions.",
+          "parameters": {},
           "examples": [
             {
               "command": "rediacc-cli list sessions",
@@ -624,7 +893,19 @@
               "description": "Filter CLI sessions"
             }
           ],
-          "notes": "Sessions expire based on tokenExpirationHours setting. Bridge tokens may have extended expiration. Use 'logout' to terminate current session."
+          "notes": "Sessions expire based on tokenExpirationHours setting. Bridge tokens may have extended expiration. Use 'logout' to terminate current session.",
+          "rules": [
+            "Valid session token required with matching verification code",
+            "Only active sessions are accepted (not expired or logged out)",
+            "Token rotation up to 3 times before requiring latest token",
+            "Users can only see their own sessions",
+            "Company maintenance mode blocks non-administrator access",
+            "Two-factor authentication must be completed if enabled",
+            "Sessions sorted by creation time (newest first)",
+            "Shows session name, creation time, permissions, and expiration",
+            "No administrative override - admins also see only their own sessions",
+            "Zero trust security model with full authentication on every request"
+          ]
         }
       },
       "resource-limits": {
@@ -633,6 +914,7 @@
         "help": {
           "description": "Display company resource limits and current usage",
           "details": "Shows your subscription limits and current usage for all resource types including teams, machines, bridges, repositories, and more. Multiple subscriptions stack their limits.",
+          "parameters": {},
           "examples": [
             {
               "command": "rediacc-cli list resource-limits",
@@ -643,7 +925,19 @@
               "description": "Extract resource limits data for monitoring"
             }
           ],
-          "notes": "Useful for capacity planning and monitoring when approaching subscription limits. Returns 402 Payment Required when limits are exceeded."
+          "notes": "Useful for capacity planning and monitoring when approaching subscription limits. Returns 402 Payment Required when limits are exceeded.",
+          "rules": [
+            "User must be authenticated and belong to a company",
+            "Resource limits are additive across multiple active subscriptions",
+            "Tracks 8 resource types: regions, teams, bridges, machines, repositories, schedules, storage, users",
+            "Shows current usage count vs total allowed limit",
+            "Usage percentage calculated for each resource type",
+            "Default to Community tier if no active subscription",
+            "Queue priority feature only for Premium/Elite tiers",
+            "Resource limits by tier: Community (2), Advanced (3-10), Premium (5-50), Elite (10-200)",
+            "Resources at 80% or more flagged as near limit",
+            "Upgrade recommended if 3+ resources at 80% capacity"
+          ]
         }
       },
       "subscription": {
@@ -652,6 +946,7 @@
         "help": {
           "description": "Show subscription details and billing information",
           "details": "Displays active subscriptions, plan details, expiration dates, and feature limits. Multiple subscriptions stack their resource limits. Shows both current usage and available capacity.",
+          "parameters": {},
           "examples": [
             {
               "command": "rediacc-cli list subscription",
@@ -662,7 +957,19 @@
               "description": "Extract subscription data for monitoring"
             }
           ],
-          "notes": "Plans: COMMUNITY (free), ADVANCED, PREMIUM, ELITE. Higher tiers offer more resources, priority levels, and features like schedules and distributed storage."
+          "notes": "Plans: COMMUNITY (free), ADVANCED, PREMIUM, ELITE. Higher tiers offer more resources, priority levels, and features like schedules and distributed storage.",
+          "rules": [
+            "User must be authenticated with valid session",
+            "Can only view subscription information for your own company",
+            "Shows highest tier subscription when multiple are active",
+            "Subscription priority: Elite > Premium > Advanced > Community",
+            "Active subscriptions must have ACTIVE status and future end date",
+            "Resource limits are cumulative across all active subscriptions",
+            "Trial subscriptions identified if 45 days or less (non-Community)",
+            "Expiration warnings shown for subscriptions ending within 30 days",
+            "Feature access varies by tier (Analytics for Premium/Elite, etc.)",
+            "Queue priority features only visible to Premium/Elite subscribers"
+          ]
         }
       },
       "data-graph": {
@@ -671,6 +978,7 @@
         "help": {
           "description": "Display company infrastructure as a hierarchical graph",
           "details": "Shows the complete infrastructure topology including regions, bridges, teams, machines, and their relationships in a graph format.",
+          "parameters": {},
           "examples": [
             {
               "command": "rediacc-cli list data-graph",
@@ -681,7 +989,19 @@
               "description": "Extract graph data for visualization"
             }
           ],
-          "notes": "Useful for understanding infrastructure topology and dependencies. JSON output can be used with graph visualization tools."
+          "notes": "Useful for understanding infrastructure topology and dependencies. JSON output can be used with graph visualization tools.",
+          "rules": [
+            "User must be authenticated with valid credentials",
+            "Can only view data for your own company",
+            "Administrators see all infrastructure across the company",
+            "Regular users only see infrastructure they have access to",
+            "Access determined through team membership chain",
+            "Users see teams they belong to and resources owned by those teams",
+            "Machines only visible if user is member of owning team",
+            "Bridges/regions visible if user has access to machines within them",
+            "Data organized in hierarchical levels for visualization",
+            "Both nodes and relationships filtered based on access rights"
+          ]
         }
       },
       "company-vault": {
@@ -690,13 +1010,26 @@
         "help": {
           "description": "View company-wide vault configuration",
           "details": "Displays the encrypted vault data stored at the company level. This typically contains global settings and shared credentials.",
+          "parameters": {},
           "examples": [
             {
               "command": "rediacc-cli list company-vault",
               "description": "View company vault contents"
             }
           ],
-          "notes": "Requires company admin permissions. Vault data is automatically decrypted if you have the master password configured."
+          "notes": "Requires company admin permissions. Vault data is automatically decrypted if you have the master password configured.",
+          "rules": [
+            "User must be logged in with valid credentials",
+            "Can only access vault data for your own company",
+            "Returns company's main vault content and version",
+            "Includes company name for identification",
+            "Request must pass security validation",
+            "Cross-company access not permitted",
+            "GetCompanyVaults (admin-only) shows ALL vaults across organization",
+            "Administrators can view decrypted credentials and sensitive data",
+            "Two-factor authentication vaults excluded for security",
+            "Bridge users allowed access for automated operations"
+          ]
         }
       },
       "lookup-data": {
@@ -722,7 +1055,19 @@
               "description": "Get lookup data specific to queue creation"
             }
           ],
-          "notes": "Returns different data based on user permissions. Admins see all resources, regular users see only accessible resources."
+          "notes": "Returns different data based on user permissions. Admins see all resources, regular users see only accessible resources.",
+          "rules": [
+            "User must be authenticated with valid token",
+            "User must belong to a company",
+            "Regular users only see teams they are members of",
+            "Regular users only see machines belonging to their teams",
+            "Regular users only see bridges/regions with accessible machines",
+            "Regular users only see users in shared teams",
+            "Administrators see all company resources",
+            "Optional context parameter filters data for specific use cases",
+            "Company isolation enforced - no cross-company visibility",
+            "All data returned as JSON with value/label pairs"
+          ]
         }
       },
       "user-company": {
@@ -731,13 +1076,26 @@
         "help": {
           "description": "Display which company the current user belongs to",
           "details": "Shows the company information for the currently authenticated user. Useful for verifying you're logged into the correct company account.",
+          "parameters": {},
           "examples": [
             {
               "command": "rediacc-cli list user-company",
               "description": "Display current user's company"
             }
           ],
-          "notes": "Requires authentication. Shows company name and ID."
+          "notes": "Requires authentication. Shows company name and ID.",
+          "rules": [
+            "Valid authentication token required",
+            "Token rotation required for security",
+            "Active session must not be expired",
+            "Users can only view their own company information",
+            "No cross-company access allowed",
+            "Company name and vault data returned",
+            "Shows team count, region count, and user count statistics",
+            "Each user associated with exactly one company",
+            "Company passphrase used to decrypt vault data",
+            "Failed validation returns no company information"
+          ]
         }
       },
       "audit-logs": {
@@ -778,7 +1136,19 @@
               "description": "Get last 100 team-related changes"
             }
           ],
-          "notes": "Audit logs are retained based on subscription tier. Includes create, update, delete operations and authentication events."
+          "notes": "Audit logs are retained based on subscription tier. Includes create, update, delete operations and authentication events.",
+          "rules": [
+            "User must be authenticated",
+            "Can only see audit logs for your own company",
+            "Default time period is 30 days if no start date provided",
+            "Start date must come before end date",
+            "Default limit is 1,000 records, maximum is 10,000",
+            "Administrators see all company audit logs",
+            "Regular users only see logs for resources they have access to",
+            "Entity type filtering is optional",
+            "Sensitive operations masked for non-administrators",
+            "Users can always view their own user account logs"
+          ]
         }
       },
       "entity-history": {
@@ -814,7 +1184,19 @@
               "description": "View last 50 changes to a team"
             }
           ],
-          "notes": "Get the credential from 'inspect' commands. History includes creates, updates, deletes, and vault changes."
+          "notes": "Get the credential from 'inspect' commands. History includes creates, updates, deletes, and vault changes.",
+          "rules": [
+            "User must be authenticated",
+            "Entity type is required and must be valid",
+            "Entity credential (GUID) is mandatory",
+            "Entity must exist in your company",
+            "Access rules vary by entity type and user role",
+            "Maximum 5,000 records, default 500",
+            "Users can view their own history, admins see all",
+            "Team/machine/repo access requires membership",
+            "Sensitive operations filtered for non-administrators",
+            "Access denial protects entity existence information"
+          ]
         }
       },
       "team-machines": {
@@ -840,7 +1222,19 @@
               "description": "List machines from multiple teams"
             }
           ],
-          "notes": "You must be a member of the team to see its machines. Shows queue count for each machine."
+          "notes": "You must be a member of the team to see its machines. Shows queue count for each machine.",
+          "rules": [
+            "Valid user authentication required with active session",
+            "User must be a member of the team to see machines",
+            "Company boundary enforced - only see machines in your company",
+            "Multiple teams supported with comma-separated names",
+            "No team filter returns machines from all your teams",
+            "Shows machine details including bridge, region, queue count",
+            "Vault information includes encrypted credentials and settings",
+            "Results sorted by team name then machine name",
+            "Invalid team names silently filtered out",
+            "Real-time queue count helps understand workload"
+          ]
         }
       },
       "team-members": {
@@ -862,7 +1256,19 @@
               "description": "List all members of production team"
             }
           ],
-          "notes": "You must be a member of the team to view its membership. Shows email addresses and join dates."
+          "notes": "You must be a member of the team to view its membership. Shows email addresses and join dates.",
+          "rules": [
+            "User must be authenticated with valid token",
+            "Can only view members of teams you belong to",
+            "Company boundary restriction applies",
+            "Team filtering with comma-separated names supported",
+            "No team specified returns members from all your teams",
+            "Shows user email and activation status",
+            "Results are deduplicated - each user appears once",
+            "No special permissions required beyond team membership",
+            "Team names are case-sensitive",
+            "No administrative override for non-member access"
+          ]
         }
       },
       "team-repositories": {
@@ -888,7 +1294,19 @@
               "description": "Extract repository names from production team"
             }
           ],
-          "notes": "You must be a member of the team. Shows repository names, credentials, and vault status."
+          "notes": "You must be a member of the team. Shows repository names, credentials, and vault status.",
+          "rules": [
+            "User must be logged in with valid credentials",
+            "User must belong to the company",
+            "User must be member of the team to view repositories",
+            "Team name filtering with exact case-sensitive match",
+            "Multiple teams supported with comma-separated names",
+            "No team specified returns repositories from all your teams",
+            "Shows repository name, GUID, and parent repository ID",
+            "Vault data decrypted using company passphrase",
+            "Results sorted by team name then repository name",
+            "Three-level access control: authentication, company, team"
+          ]
         }
       },
       "team-schedules": {
@@ -914,7 +1332,19 @@
               "description": "Get schedule details in JSON format"
             }
           ],
-          "notes": "Requires Premium or Elite subscription. Shows cron expressions, target machines, and functions. You must be a team member."
+          "notes": "Requires Premium or Elite subscription. Shows cron expressions, target machines, and functions. You must be a team member.",
+          "rules": [
+            "User must be authenticated with valid token",
+            "Must be member of the team to view schedules",
+            "Teams must belong to user's company",
+            "Schedule viewing has no subscription limits",
+            "Creating schedules requires Premium/Elite subscription",
+            "Optional team filtering with comma-separated names",
+            "Shows schedule name, team, and encrypted configuration",
+            "Vault data includes cron expressions and parameters",
+            "Results sorted by team name then schedule name",
+            "Company encryption passphrase used for vault decryption"
+          ]
         }
       },
       "team-storages": {
@@ -940,7 +1370,19 @@
               "description": "Find all S3 storage resources"
             }
           ],
-          "notes": "You must be a member of the team. Storage credentials are encrypted in vaults. Used with repo_push/repo_pull functions."
+          "notes": "You must be a member of the team. Storage credentials are encrypted in vaults. Used with repo_push/repo_pull functions.",
+          "rules": [
+            "User must be logged in with valid credentials",
+            "User account must be activated",
+            "Can only access storage from your own company",
+            "Must be member of the team to view storage",
+            "Maintenance mode blocks non-administrator access",
+            "Team name filtering supports comma-separated values",
+            "Shows storage name, team, and decrypted configuration",
+            "Storage credentials automatically decrypted",
+            "Results sorted by team name then storage name",
+            "Failed authentication results in 403 error"
+          ]
         }
       }
     },
@@ -975,7 +1417,19 @@
               "description": "Delete team without confirmation"
             }
           ],
-          "notes": "WARNING: This cascades to all team resources. Ensure data is backed up. Requires team ownership or admin permissions."
+          "notes": "WARNING: This cascades to all team resources. Ensure data is backed up. Requires team ownership or admin permissions.",
+          "rules": [
+            "You must be logged in with valid credentials",
+            "You must be a member of the team to delete it",
+            "Team must belong to your company",
+            "'Private Team' cannot be deleted (system requirement)",
+            "Cannot delete the last team in a company",
+            "Team must have no machines before deletion",
+            "Team must have no repositories before deletion",
+            "Team must have no schedules before deletion",
+            "Team must have no storage configurations before deletion",
+            "Deletion removes all memberships, vault data, and audit logs are created"
+          ]
         }
       },
       "machine": {
@@ -1013,7 +1467,19 @@
               "description": "Delete without confirmation"
             }
           ],
-          "notes": "Check for pending queue items before deletion. The actual server is not affected. Consider updating vault to mark as decommissioned instead of deleting."
+          "notes": "Check for pending queue items before deletion. The actual server is not affected. Consider updating vault to mark as decommissioned instead of deleting.",
+          "rules": [
+            "You must be logged in with valid user account",
+            "Must belong to the same company that owns the machine",
+            "Must be an active member of the team that owns the machine",
+            "Machine must exist in the specified team",
+            "Cannot delete if machine has pending queue items",
+            "Deletion removes machine configuration and vault data",
+            "Action cannot be undone",
+            "Every deletion is logged in audit trail",
+            "No special admin privileges required beyond team membership",
+            "Actual server is not affected, only Rediacc configuration removed"
+          ]
         }
       },
       "bridge": {
@@ -1051,7 +1517,19 @@
               "description": "Force delete without confirmation"
             }
           ],
-          "notes": "Cannot delete if machines are assigned. Reassign machines first using 'update machine-bridge'. Stop bridge process before deletion."
+          "notes": "Cannot delete if machines are assigned. Reassign machines first using 'update machine-bridge'. Stop bridge process before deletion.",
+          "rules": [
+            "User must be authenticated to perform this operation",
+            "User must belong to the same company as the bridge",
+            "Bridge name must exist in the specified region",
+            "Bridge must not be assigned to any machines",
+            "Bridge must not have active queue items in PENDING or ASSIGNED states",
+            "Cannot delete bridges currently processing queue items",
+            "Only bridges with FAILED, COMPLETED, or CANCELLED queue items can be deleted",
+            "Deletion will also remove all bridge vault data",
+            "Operation is permanent and cannot be undone",
+            "Bridge deletion is tracked in audit logs for compliance"
+          ]
         }
       },
       "region": {
@@ -1084,32 +1562,192 @@
               "description": "Force delete without confirmation"
             }
           ],
-          "notes": "WARNING: Cascades to all bridges in the region. Cannot delete if bridges have assigned machines. Clear all dependencies first."
+          "notes": "WARNING: Cascades to all bridges in the region. Cannot delete if bridges have assigned machines. Clear all dependencies first.",
+          "rules": [
+            "User must be authenticated to perform this operation",
+            "User must belong to the same company as the region",
+            "Region name must exist in the system",
+            "Region must not contain any bridges",
+            "Region must not be referenced by any machines",
+            "Cannot delete regions with active infrastructure",
+            "All bridges must be deleted or moved before region deletion",
+            "Region vault data will be permanently removed",
+            "Operation is permanent and cannot be undone",
+            "Region deletion is tracked in audit logs for compliance"
+          ]
         }
       },
       "repository": {
         "endpoint": "DeleteRepository",
         "params": "lambda args: {'teamName': args.team, 'repoName': args.name}",
         "confirm_msg": "Are you sure you want to delete repository '{name}' from team '{team}'?",
-        "success_msg": "Successfully deleted repository: {name}"
+        "success_msg": "Successfully deleted repository: {name}",
+        "help": {
+          "description": "Delete a repository from the system",
+          "details": "Permanently removes a repository and all its data. The repository's Docker containers will be stopped, volumes unmounted, and all associated data deleted. This action cannot be undone.",
+          "parameters": {
+            "name": {
+              "help": "Name of the repository to delete",
+              "required": true,
+              "positional": true
+            },
+            "team": {
+              "help": "Team that owns the repository",
+              "required": true
+            }
+          },
+          "examples": [
+            {
+              "command": "rediacc-cli rm repository old-app --team dev",
+              "description": "Delete repository with confirmation"
+            },
+            {
+              "command": "rediacc-cli rm repository temp-test --team qa --force",
+              "description": "Force delete without confirmation"
+            }
+          ],
+          "notes": "Ensure all data is backed up before deletion. Running containers will be stopped. Consider using repo_down first.",
+          "rules": [
+            "User must be authenticated to perform this operation",
+            "User must be a member of the specified team",
+            "Repository must exist within the team",
+            "Repository must be offline (not currently mounted)",
+            "Repository must not have active backup or restore operations",
+            "Cannot delete repositories referenced in active schedules",
+            "All associated repository vault data will be deleted",
+            "Repository files on disk will be permanently removed",
+            "Operation is permanent and cannot be undone",
+            "Repository deletion is tracked in audit logs"
+          ]
+        }
       },
       "storage": {
         "endpoint": "DeleteStorage",
         "params": "lambda args: {'teamName': args.team, 'storageName': args.name}",
         "confirm_msg": "Are you sure you want to delete storage '{name}' from team '{team}'?",
-        "success_msg": "Successfully deleted storage: {name}"
+        "success_msg": "Successfully deleted storage: {name}",
+        "help": {
+          "description": "Delete a storage configuration from the system",
+          "details": "Removes a storage configuration including credentials and settings. Does not delete actual data in the external storage system (S3, Azure, etc.), only the Rediacc configuration.",
+          "parameters": {
+            "name": {
+              "help": "Name of the storage to delete",
+              "required": true,
+              "positional": true
+            },
+            "team": {
+              "help": "Team that owns the storage",
+              "required": true
+            }
+          },
+          "examples": [
+            {
+              "command": "rediacc-cli rm storage old-backup --team ops",
+              "description": "Delete storage config with confirmation"
+            },
+            {
+              "command": "rediacc-cli rm storage temp-s3 --team dev --force",
+              "description": "Force delete without confirmation"
+            }
+          ],
+          "notes": "Only removes Rediacc configuration. Data in external storage systems remains untouched. Update any schedules using this storage.",
+          "rules": [
+            "User must be authenticated to perform this operation",
+            "User must be a member of the specified team",
+            "Storage configuration must exist within the team",
+            "Storage must not be referenced in active backup schedules",
+            "Storage must not have ongoing transfer operations",
+            "Cannot delete storage with active repository backups",
+            "All associated storage vault data will be deleted",
+            "Cloud storage data is not deleted, only the configuration",
+            "Operation is permanent and cannot be undone",
+            "Storage deletion is tracked in audit logs"
+          ]
+        }
       },
       "schedule": {
         "endpoint": "DeleteSchedule",
         "params": "lambda args: {'teamName': args.team, 'scheduleName': args.name}",
         "confirm_msg": "Are you sure you want to delete schedule '{name}' from team '{team}'?",
-        "success_msg": "Successfully deleted schedule: {name}"
+        "success_msg": "Successfully deleted schedule: {name}",
+        "help": {
+          "description": "Delete a schedule from the system",
+          "details": "Permanently removes a scheduled task. Any pending executions will be cancelled, but running tasks will complete. The schedule must be disabled before deletion.",
+          "parameters": {
+            "name": {
+              "help": "Name of the schedule to delete",
+              "required": true,
+              "positional": true
+            },
+            "team": {
+              "help": "Team that owns the schedule",
+              "required": true
+            }
+          },
+          "examples": [
+            {
+              "command": "rediacc-cli rm schedule nightly-backup --team ops",
+              "description": "Delete schedule with confirmation"
+            },
+            {
+              "command": "rediacc-cli rm schedule old-sync --team dev --force",
+              "description": "Force delete without confirmation"
+            }
+          ],
+          "notes": "Disable schedule before deletion. Running tasks will complete. History is retained for audit. Requires Premium/Elite.",
+          "rules": [
+            "User must be authenticated to perform this operation",
+            "User must be a member of the specified team",
+            "Schedule must exist within the team",
+            "Schedule must be disabled before deletion",
+            "Cannot delete schedules with running queue items",
+            "All pending scheduled tasks will be cancelled",
+            "Schedule history is retained for audit purposes",
+            "Associated schedule vault data will be deleted",
+            "Operation is permanent and cannot be undone",
+            "Schedule deletion is tracked in audit logs"
+          ]
+        }
       },
       "queue-item": {
         "endpoint": "DeleteQueueItem",
         "params": "lambda args: {'taskId': args.task_id}",
         "confirm_msg": "Are you sure you want to delete queue item '{task_id}'?",
-        "success_msg": "Successfully deleted queue item: {task_id}"
+        "success_msg": "Successfully deleted queue item: {task_id}",
+        "help": {
+          "description": "Delete a queue item from the system",
+          "details": "Removes a pending queue item to prevent execution. Only PENDING or CANCELLED items can be deleted. Running or completed items cannot be removed for audit purposes.",
+          "parameters": {
+            "taskid": {
+              "help": "Task ID of the queue item to delete",
+              "required": true,
+              "positional": true
+            }
+          },
+          "examples": [
+            {
+              "command": "rediacc-cli rm queue-item 550e8400-e29b-41d4-a716-446655440000",
+              "description": "Delete queue item with confirmation"
+            },
+            {
+              "command": "rediacc-cli rm queue-item 550e8400 --force",
+              "description": "Force delete using partial task ID"
+            }
+          ],
+          "notes": "Cannot delete running or completed items. Use 'queue cancel' for running tasks. Deletion is immediate and permanent.",
+          "rules": [
+            "User must be authenticated to perform this operation",
+            "User must have access to the team that created the queue item",
+            "Queue item must exist with the specified task ID",
+            "Can only delete items in PENDING or CANCELLED states",
+            "Cannot delete items in ASSIGNED or PROCESSING states",
+            "Cannot delete COMPLETED or FAILED items (kept for audit)",
+            "Deletion prevents the task from being executed",
+            "Associated queue vault data will be removed",
+            "Operation is permanent and cannot be undone",
+            "Queue item deletion is tracked in audit logs"
+          ]
+        }
       }
     },
     "bridge": {
@@ -1143,7 +1781,19 @@
               "description": "Force reset without confirmation"
             }
           ],
-          "notes": "Use when credentials are compromised. Requires bridge restart. Get new token with 'login --target bridge-name'."
+          "notes": "Use when credentials are compromised. Requires bridge restart. Get new token with 'login --target bridge-name'.",
+          "rules": [
+            "User must be authenticated to perform this operation",
+            "User must belong to the same company as the bridge",
+            "Bridge must exist in the system",
+            "Old authentication token will be immediately invalidated",
+            "New token is generated using cryptographically secure randomness",
+            "Bridge must be restarted with the new token to reconnect",
+            "Active bridge connections will be terminated",
+            "Any running tasks on the bridge will need to be retried",
+            "Token reset is tracked in audit logs for security",
+            "New token must be securely transmitted to bridge operator"
+          ]
         }
       }
     },
@@ -1173,7 +1823,19 @@
               "description": "Rename dev-team to development-team"
             }
           ],
-          "notes": "Team renaming doesn't affect resources or memberships. Update any automation scripts that reference the old name."
+          "notes": "Team renaming doesn't affect resources or memberships. Update any automation scripts that reference the old name.",
+          "rules": [
+            "User must be authenticated to perform this operation",
+            "User must be a member of the team being renamed",
+            "Current team name must exist in the company",
+            "New team name must be unique within the company",
+            "New name must be between 1 and 50 characters",
+            "New name cannot be empty or only whitespace",
+            "Team memberships and permissions are preserved",
+            "All references to the team are automatically updated",
+            "Team vault data remains unchanged",
+            "Name change is tracked in audit logs"
+          ]
         }
       },
       "region": {
@@ -1205,7 +1867,19 @@
               "description": "Promote test region to production"
             }
           ],
-          "notes": "Region names must be unique within the company. Bridges and their associations are preserved."
+          "notes": "Region names must be unique within the company. Bridges and their associations are preserved.",
+          "rules": [
+            "User must be authenticated to perform this operation",
+            "User must belong to the same company as the region",
+            "Current region name must exist in the company",
+            "New region name must be unique within the company",
+            "New name must be between 1 and 50 characters",
+            "New name cannot be empty or only whitespace",
+            "All bridges in the region remain associated",
+            "Machine assignments to the region are preserved",
+            "Region vault data remains unchanged",
+            "Name change is tracked in audit logs"
+          ]
         }
       },
       "bridge": {
@@ -1242,7 +1916,19 @@
               "description": "Rename test bridge to production"
             }
           ],
-          "notes": "Bridge names must be unique within a region. Update machine assignments if needed using 'update machine-bridge'."
+          "notes": "Bridge names must be unique within a region. Update machine assignments if needed using 'update machine-bridge'.",
+          "rules": [
+            "User must be authenticated to perform this operation",
+            "User must belong to the same company as the bridge",
+            "Current bridge name must exist in the region",
+            "New bridge name must be unique within the region",
+            "New name must be between 1 and 50 characters",
+            "New name cannot be empty or only whitespace",
+            "Bridge authentication token remains unchanged",
+            "Machine assignments to the bridge are preserved",
+            "Active connections are not interrupted",
+            "Name change is tracked in audit logs"
+          ]
         }
       },
       "machine": {
@@ -1275,7 +1961,19 @@
               "description": "Rename machine for clarity"
             }
           ],
-          "notes": "Machine names are globally unique. Update schedules and scripts that reference the old name."
+          "notes": "Machine names are globally unique. Update schedules and scripts that reference the old name.",
+          "rules": [
+            "User must be authenticated to perform this operation",
+            "User must be a member of the specified team",
+            "Current machine name must exist within the team",
+            "New machine name must be unique within the team",
+            "New name must be between 1 and 50 characters",
+            "New name cannot be empty or only whitespace",
+            "Machine status and bridge assignment remain unchanged",
+            "SSH connection settings are preserved",
+            "Repository associations are maintained",
+            "Name change is tracked in audit logs"
+          ]
         }
       },
       "machine-bridge": {
@@ -1312,7 +2010,19 @@
               "description": "Reassign test server to local bridge"
             }
           ],
-          "notes": "New queue items will be processed by the new bridge. Existing items in PENDING state remain with original bridge. Consider queue state before reassigning."
+          "notes": "New queue items will be processed by the new bridge. Existing items in PENDING state remain with original bridge. Consider queue state before reassigning.",
+          "rules": [
+            "User must be authenticated to perform this operation",
+            "User must be a member of the specified team",
+            "Machine must exist within the team",
+            "Bridge must exist and belong to the same company",
+            "Bridge and machine must be in the same region",
+            "Bridge must be in an active state",
+            "Previous bridge assignment will be removed",
+            "Active tasks may need to be rescheduled",
+            "Machine remains accessible through new bridge",
+            "Assignment change is tracked in audit logs"
+          ]
         }
       },
       "repository": {
@@ -1349,7 +2059,19 @@
               "description": "Version update in repository name"
             }
           ],
-          "notes": "Repository names must be unique within a team. Running containers are not affected. Update sync scripts and schedules."
+          "notes": "Repository names must be unique within a team. Running containers are not affected. Update sync scripts and schedules.",
+          "rules": [
+            "User must be authenticated to perform this operation",
+            "User must be a member of the specified team",
+            "Current repository name must exist within the team",
+            "New repository name must be unique within the team",
+            "New name must be between 1 and 50 characters",
+            "New name cannot be empty or only whitespace",
+            "Repository must be offline during rename",
+            "Physical files are not renamed, only the reference",
+            "Schedule references are automatically updated",
+            "Name change is tracked in audit logs"
+          ]
         }
       },
       "repository-vault": {
@@ -1396,7 +2118,19 @@
               "description": "Update repository config from file"
             }
           ],
-          "notes": "Vault data is encrypted. Changes may require repository restart. Use 'inspect repository' to see current vault."
+          "notes": "Vault data is encrypted. Changes may require repository restart. Use 'inspect repository' to see current vault.",
+          "rules": [
+            "User must be authenticated to perform this operation",
+            "User must be a member of the specified team",
+            "Repository must exist within the team",
+            "Vault data must be valid JSON format",
+            "Vault data is encrypted before storage",
+            "Maximum vault size is 64KB after encryption",
+            "Previous vault data is overwritten",
+            "Repository configuration like size and mount options can be updated",
+            "Changes take effect on next repository mount",
+            "Vault update is tracked in audit logs"
+          ]
         }
       },
       "storage": {
@@ -1433,7 +2167,19 @@
               "description": "Promote test storage to production"
             }
           ],
-          "notes": "Storage names must be unique within a team. Update backup scripts and schedules that reference the old name."
+          "notes": "Storage names must be unique within a team. Update backup scripts and schedules that reference the old name.",
+          "rules": [
+            "User must be authenticated to perform this operation",
+            "User must be a member of the specified team",
+            "Current storage name must exist within the team",
+            "New storage name must be unique within the team",
+            "New name must be between 1 and 50 characters",
+            "New name cannot be empty or only whitespace",
+            "Storage connection settings remain unchanged",
+            "Schedule references are automatically updated",
+            "Active backup operations are not affected",
+            "Name change is tracked in audit logs"
+          ]
         }
       },
       "storage-vault": {
@@ -1480,7 +2226,19 @@
               "description": "Change Azure container"
             }
           ],
-          "notes": "Credentials are encrypted. Test access after updating. Supports S3, Azure Blob, GCS, SFTP, and SMB."
+          "notes": "Credentials are encrypted. Test access after updating. Supports S3, Azure Blob, GCS, SFTP, and SMB.",
+          "rules": [
+            "User must be authenticated to perform this operation",
+            "User must be a member of the specified team",
+            "Storage configuration must exist within the team",
+            "Vault data must be valid JSON format",
+            "Vault data is encrypted before storage",
+            "Maximum vault size is 64KB after encryption",
+            "Cloud storage credentials can be updated",
+            "Connection strings and API keys must be valid",
+            "Changes take effect on next backup operation",
+            "Vault update is tracked in audit logs"
+          ]
         }
       },
       "schedule": {
@@ -1517,7 +2275,19 @@
               "description": "Version update in schedule name"
             }
           ],
-          "notes": "Schedule names must be unique within a team. The schedule continues running with the new name."
+          "notes": "Schedule names must be unique within a team. The schedule continues running with the new name.",
+          "rules": [
+            "User must be authenticated to perform this operation",
+            "User must be a member of the specified team",
+            "Current schedule name must exist within the team",
+            "New schedule name must be unique within the team",
+            "New name must be between 1 and 50 characters",
+            "New name cannot be empty or only whitespace",
+            "Schedule timing and configuration remain unchanged",
+            "Schedule enabled/disabled state is preserved",
+            "Execution history is maintained",
+            "Name change is tracked in audit logs"
+          ]
         }
       },
       "schedule-vault": {
@@ -1564,7 +2334,19 @@
               "description": "Update complete schedule config"
             }
           ],
-          "notes": "Requires Premium or Elite subscription. Changes take effect at next scheduled run. Use standard cron format."
+          "notes": "Requires Premium or Elite subscription. Changes take effect at next scheduled run. Use standard cron format.",
+          "rules": [
+            "User must be authenticated to perform this operation",
+            "User must be a member of the specified team",
+            "Schedule must exist within the team",
+            "Vault data must be valid JSON format",
+            "Vault data is encrypted before storage",
+            "Maximum vault size is 64KB after encryption",
+            "Schedule timing, repositories, and actions can be updated",
+            "Cron expressions must be valid if included",
+            "Changes take effect on next schedule evaluation",
+            "Vault update is tracked in audit logs"
+          ]
         }
       },
       "machine-status": {
@@ -1601,7 +2383,19 @@
               "description": "Mark machine for maintenance"
             }
           ],
-          "notes": "Status is free-form text. Use consistent conventions for automation. Requires team membership."
+          "notes": "Status is free-form text. Use consistent conventions for automation. Requires team membership.",
+          "rules": [
+            "User must be authenticated to perform this operation",
+            "User must be a member of the specified team",
+            "Machine must exist within the team",
+            "Status must be one of: online, offline, maintenance, error",
+            "Status change affects task scheduling",
+            "Offline machines will not receive new tasks",
+            "Maintenance status prevents automatic task assignment",
+            "Error status indicates machine needs attention",
+            "Status changes are immediately reflected in scheduling",
+            "Status update is tracked in audit logs"
+          ]
         }
       }
     },
@@ -1669,46 +2463,97 @@
               "description": "Update company-wide vault"
             }
           ],
-          "notes": "Vault data is encrypted with master password. Always backup current vault before updating. Use 'inspect' commands to view current vault."
+          "notes": "Vault data is encrypted with master password. Always backup current vault before updating. Use 'inspect' commands to view current vault.",
+          "rules": [
+            "User must be authenticated to perform this operation",
+            "User must have appropriate access to the entity",
+            "Vault data must be valid JSON format",
+            "Vault data is encrypted with master password before storage",
+            "Maximum vault size is 64KB after encryption",
+            "Company vault requires company admin permissions",
+            "Team vault requires team membership",
+            "Entity-specific vaults require team membership",
+            "Previous vault data is completely replaced",
+            "Vault updates are tracked in audit logs for security"
+          ]
         }
       },
       "set-password": {
         "help": {
           "description": "Set the master password for vault encryption",
           "details": "Configures the master password used to encrypt and decrypt all vault data. This password is stored locally and never transmitted. Required for vault operations.",
+          "parameters": {},
           "examples": [
             {
               "command": "rediacc-cli vault set-password",
               "description": "Set master password with secure prompt"
             }
           ],
-          "notes": "Password is stored in local configuration. Use a strong password. Required for viewing/updating vault data."
+          "notes": "Password is stored in local configuration. Use a strong password. Required for viewing/updating vault data.",
+          "rules": [
+            "This is a local client-side operation (no server API call)",
+            "The password is stored only in memory during the current CLI session",
+            "Password is never saved to disk or configuration files",
+            "Required to decrypt vault data returned from API responses",
+            "Password remains in memory until CLI exits or you use clear-password",
+            "Each company may have its own master password",
+            "Wrong password will result in garbled vault data when decrypting",
+            "Password input is hidden for security (no echo to terminal)",
+            "No password complexity requirements enforced by the client",
+            "Used for both encryption and decryption of vault fields"
+          ]
         }
       },
       "clear-password": {
         "help": {
           "description": "Clear the stored master password",
           "details": "Removes the master password from local configuration. You'll need to re-enter it for future vault operations.",
+          "parameters": {},
           "examples": [
             {
               "command": "rediacc-cli vault clear-password",
               "description": "Remove stored master password"
             }
           ],
-          "notes": "Use this for security when done with vault operations. Does not affect encrypted data."
+          "notes": "Use this for security when done with vault operations. Does not affect encrypted data.",
+          "rules": [
+            "This is a local client-side operation (no server API call)",
+            "Only clears the password from current CLI session memory",
+            "Does not affect other CLI sessions or users",
+            "Vault fields will show as encrypted base64 strings after clearing",
+            "You can set the password again anytime with vault set-password",
+            "Clearing does not log you out or affect authentication",
+            "Executes immediately without confirmation prompt",
+            "Automatically happens when you exit the CLI or logout",
+            "Useful for security when sharing terminal or taking a break",
+            "Does not modify any encrypted data stored on the server"
+          ]
         }
       },
       "status": {
         "help": {
           "description": "Show vault encryption status",
           "details": "Displays whether a master password is configured and provides information about vault encryption status.",
+          "parameters": {},
           "examples": [
             {
               "command": "rediacc-cli vault status",
               "description": "Check vault configuration status"
             }
           ],
-          "notes": "Shows if master password is set but not the password itself."
+          "notes": "Shows if master password is set but not the password itself.",
+          "rules": [
+            "This is primarily a local operation with one API call if needed",
+            "User must be authenticated to check vault status",
+            "Automatically fetches company vault info if not cached",
+            "Shows if cryptography library is installed locally",
+            "Displays current company name from authentication",
+            "Indicates if company requires vault encryption",
+            "Shows if master password is set in current session",
+            "Read-only operation that doesn't modify any data",
+            "Helps troubleshoot vault access issues",
+            "Supports JSON output mode for scripting"
+          ]
         }
       }
     },
@@ -1752,7 +2597,19 @@
               "description": "Create cluster with 3x replication"
             }
           ],
-          "notes": "Requires Elite subscription. Add machines after creation. Cluster names must be unique within a team."
+          "notes": "Requires Elite subscription. Add machines after creation. Cluster names must be unique within a team.",
+          "rules": [
+            "User must be authenticated with valid credentials",
+            "User must be a member of the specified team",
+            "Cluster name must be unique within the team",
+            "Team must exist in your company",
+            "Cluster configuration requires specific parameters in vault data",
+            "Pool PG number must be between 1 and 1024",
+            "New clusters start with PENDING status",
+            "No subscription plan restrictions for creating clusters",
+            "Vault data is encrypted using company master password",
+            "Cluster creation is logged in audit trail"
+          ]
         }
       },
       "delete-cluster": {
@@ -1790,7 +2647,19 @@
               "description": "Force delete without confirmation"
             }
           ],
-          "notes": "Remove all machines from cluster first. Data on machines is preserved. This action cannot be undone."
+          "notes": "Remove all machines from cluster first. Data on machines is preserved. This action cannot be undone.",
+          "rules": [
+            "User must be authenticated with valid credentials",
+            "User must be either an administrator or team member",
+            "Cluster must exist in the specified team",
+            "Cluster must have zero nodes before deletion",
+            "Cannot delete cluster with machines still attached",
+            "Deletion removes cluster configuration and credentials",
+            "Associated vault data is automatically cleaned up",
+            "Machine distributed storage flags remain unchanged",
+            "Operation is permanent and cannot be undone",
+            "Deletion is logged in audit trail for compliance"
+          ]
         }
       },
       "get-cluster": {
@@ -1821,7 +2690,19 @@
               "description": "Get cluster info in JSON format"
             }
           ],
-          "notes": "Shows machine membership, replication status, and storage utilization. Requires team membership."
+          "notes": "Shows machine membership, replication status, and storage utilization. Requires team membership.",
+          "rules": [
+            "User must be authenticated with valid credentials",
+            "User must be a member of the specified team",
+            "Team must exist in your company",
+            "Cluster must exist within the team",
+            "Returns cluster configuration and all node information",
+            "Shows which machine is the primary node",
+            "Includes encrypted vault data for the cluster",
+            "Read-only operation that doesn't modify data",
+            "No special permissions required beyond team membership",
+            "Operation fails if cluster doesn't exist"
+          ]
         }
       },
       "list-clusters": {
@@ -1847,7 +2728,19 @@
               "description": "Find healthy clusters"
             }
           ],
-          "notes": "Elite subscription feature. Shows cluster health, machine count, and storage capacity."
+          "notes": "Elite subscription feature. Shows cluster health, machine count, and storage capacity.",
+          "rules": [
+            "User must be authenticated with valid credentials",
+            "Can optionally filter by specific team name",
+            "Without team filter shows clusters from all your teams",
+            "User must be member of teams to see their clusters",
+            "Shows cluster status, configuration, and node count",
+            "Results sorted by creation date (newest first)",
+            "No pagination limits on results",
+            "Team membership required for visibility",
+            "Cannot see clusters from teams you're not in",
+            "Read-only operation that doesn't modify data"
+          ]
         }
       },
       "add-machines": {
@@ -1884,7 +2777,19 @@
               "description": "Add single machine to cluster"
             }
           ],
-          "notes": "Machines must be in the same team. Triggers data rebalancing. Monitor cluster health after adding."
+          "notes": "Machines must be in the same team. Triggers data rebalancing. Monitor cluster health after adding.",
+          "rules": [
+            "User must be authenticated with valid credentials",
+            "User must be a member of the specified team",
+            "Cluster must exist in the team",
+            "Machines must exist in the same team as cluster",
+            "First machine added becomes the primary node",
+            "Subsequent machines become secondary nodes",
+            "Machines already in cluster are silently skipped",
+            "Machine gets marked as distributed storage node",
+            "Multiple machines can be added in one operation",
+            "Addition is logged in audit trail"
+          ]
         }
       },
       "remove-machines": {
@@ -1927,7 +2832,19 @@
               "description": "Remove multiple machines without confirmation"
             }
           ],
-          "notes": "Ensure sufficient capacity remains. Data migration may take time. Monitor cluster during rebalancing."
+          "notes": "Ensure sufficient capacity remains. Data migration may take time. Monitor cluster during rebalancing.",
+          "rules": [
+            "User must be authenticated with valid credentials",
+            "User must be a member of the team owning the cluster",
+            "Only machines belonging to the team can be removed",
+            "Can remove any machine including primary nodes",
+            "Non-existent machines are silently skipped",
+            "Machine's storage node flag updated if not in other clusters",
+            "Multiple machines can be removed in one operation",
+            "Removal is immediate with no prerequisite checks",
+            "Cluster modified timestamp is updated",
+            "Removal is logged in audit trail"
+          ]
         }
       },
       "update-status": {
@@ -1964,7 +2881,19 @@
               "description": "Bring cluster back online"
             }
           ],
-          "notes": "OFFLINE prevents new writes. MAINTENANCE allows reads but not writes. Monitor cluster health after status changes."
+          "notes": "OFFLINE prevents new writes. MAINTENANCE allows reads but not writes. Monitor cluster health after status changes.",
+          "rules": [
+            "User must be authenticated with valid credentials",
+            "User must be a member of the team owning the cluster",
+            "Cluster must exist in the specified team",
+            "Status must be one of: PENDING, INITIALIZING, ACTIVE, DEGRADED, FAILED, MAINTENANCE",
+            "Any status can transition to any other valid status",
+            "Status change takes effect immediately",
+            "Previous status is recorded for tracking",
+            "Cluster modified timestamp is updated",
+            "Status change is atomic (all or nothing)",
+            "Change is logged in audit trail with old and new status"
+          ]
         }
       },
       "update-vault": {
@@ -2011,7 +2940,19 @@
               "description": "Update cluster config from file"
             }
           ],
-          "notes": "Changes may require cluster restart. Some settings trigger data rebalancing. Elite subscription required."
+          "notes": "Changes may require cluster restart. Some settings trigger data rebalancing. Elite subscription required.",
+          "rules": [
+            "User must be authenticated with valid credentials",
+            "User must be a member of the team owning the cluster",
+            "Cluster must exist before updating vault",
+            "Vault data must be provided as text (cannot be empty)",
+            "Maximum vault chunk size is 3,072 characters",
+            "Large vaults automatically split into multiple chunks",
+            "Vault data is encrypted with company master password",
+            "Each update increments vault version number",
+            "Previous vault data is completely replaced",
+            "Update is logged in audit trail"
+          ]
         }
       }
     },
@@ -2040,7 +2981,19 @@
               "description": "Create a read-only access group"
             }
           ],
-          "notes": "Requires admin permissions. Group names must be unique within the company. Add permissions after creation."
+          "notes": "Requires admin permissions. Group names must be unique within the company. Add permissions after creation.",
+          "rules": [
+            "User must be authenticated with valid credentials",
+            "Custom groups require paid subscription (Advanced, Premium, or Elite)",
+            "Community plan users cannot create custom permission groups",
+            "Group name must be unique within your company",
+            "Cannot use reserved names: Administrators, Users, or Bridges",
+            "Maximum group name length is 100 characters",
+            "Group name cannot be empty or only whitespace",
+            "Any authenticated user can create groups (with paid plan)",
+            "New groups start empty with no permissions",
+            "Group creation is logged in audit trail"
+          ]
         }
       },
       "delete-group": {
@@ -2073,7 +3026,19 @@
               "description": "Delete without confirmation"
             }
           ],
-          "notes": "Cannot delete system groups. Check user assignments before deletion. This is irreversible."
+          "notes": "Cannot delete system groups. Check user assignments before deletion. This is irreversible.",
+          "rules": [
+            "User must be authenticated with valid credentials",
+            "Cannot delete system groups: Administrators, Users, or Bridges",
+            "Group must not have any users assigned to it",
+            "Group must not be used by any active sessions",
+            "Only custom permission groups can be deleted",
+            "All permissions within the group are permanently removed",
+            "Deletion works on any subscription plan (including Community)",
+            "Group must exist in your company",
+            "Operation is permanent and cannot be undone",
+            "Deletion is logged in audit trail"
+          ]
         }
       },
       "add": {
@@ -2105,7 +3070,19 @@
               "description": "Allow read-only users to list machines"
             }
           ],
-          "notes": "Permission names correspond to API endpoints. Use 'list lookup-data' to see available permissions."
+          "notes": "Permission names correspond to API endpoints. Use 'list lookup-data' to see available permissions.",
+          "rules": [
+            "User must be authenticated with valid credentials",
+            "Permission group must exist in your company",
+            "Cannot add permissions to Administrators group (has all permissions)",
+            "Cannot add permissions to Bridges group (protected system group)",
+            "Permission must be a valid system permission name",
+            "Cannot add duplicate permissions to a group",
+            "Only custom groups can have permissions added",
+            "Permission names must match approved API endpoints",
+            "Each addition is logged in audit trail",
+            "Company boundaries are strictly enforced"
+          ]
         }
       },
       "remove": {
@@ -2143,7 +3120,19 @@
               "description": "Remove permission without confirmation"
             }
           ],
-          "notes": "Takes effect immediately for all users in the group. Use 'list-group' to see current permissions."
+          "notes": "Takes effect immediately for all users in the group. Use 'list-group' to see current permissions.",
+          "rules": [
+            "User must be authenticated with valid credentials",
+            "Permission group must exist in your company",
+            "Cannot modify Administrators group (protected)",
+            "Cannot modify Bridges group (protected)",
+            "Permission must exist in the specified group",
+            "Users group can have permissions removed",
+            "Users immediately lose access to removed function",
+            "Change takes effect without requiring re-login",
+            "Removal is permanent and logged in audit trail",
+            "Only appropriate admin privileges allow this operation"
+          ]
         }
       },
       "assign": {
@@ -2175,7 +3164,19 @@
               "description": "Limit contractor to read-only access"
             }
           ],
-          "notes": "Replaces user's current permission group. Changes take effect on next login. Requires admin permissions."
+          "notes": "Replaces user's current permission group. Changes take effect on next login. Requires admin permissions.",
+          "rules": [
+            "User must be authenticated with valid credentials",
+            "Target user must exist in your company",
+            "Permission group must exist in your company",
+            "Can only assign groups with equal or fewer privileges",
+            "Only administrators can assign users to Bridges group",
+            "Cannot remove last active administrator from company",
+            "Changes take effect immediately for active sessions",
+            "Higher privilege tokens are automatically downgraded",
+            "Assignment is logged with token modification count",
+            "Users can only belong to one permission group"
+          ]
         }
       },
       "list-groups": {
@@ -2184,6 +3185,7 @@
         "help": {
           "description": "List all permission groups",
           "details": "Shows all permission groups in the company including system groups and custom groups. Displays group names and member counts.",
+          "parameters": {},
           "examples": [
             {
               "command": "rediacc-cli permission list-groups",
@@ -2194,7 +3196,19 @@
               "description": "Get groups in JSON format"
             }
           ],
-          "notes": "System groups like 'Admins' and 'Bridges' cannot be modified. Shows user count for each group."
+          "notes": "System groups like 'Admins' and 'Bridges' cannot be modified. Shows user count for each group.",
+          "rules": [
+            "User must be authenticated with valid credentials",
+            "Only administrators can view permission groups",
+            "Shows all groups for your company (system and custom)",
+            "Displays group name, user count, and permission count",
+            "Lists all permissions for each group",
+            "Results sorted alphabetically by group name",
+            "No filtering or pagination available",
+            "Maintenance mode blocks non-admin access",
+            "Operation is company-specific",
+            "Failed attempts are logged for security"
+          ]
         }
       },
       "list-group": {
@@ -2220,7 +3234,19 @@
               "description": "List admin permissions in JSON"
             }
           ],
-          "notes": "Permission names correspond to API endpoints. Compare groups to understand access levels."
+          "notes": "Permission names correspond to API endpoints. Compare groups to understand access levels.",
+          "rules": [
+            "User must be authenticated with valid credentials",
+            "Only administrators can view group details",
+            "Group must exist in your company",
+            "Shows all permissions in the group alphabetically",
+            "Group names are case-sensitive",
+            "Works for both system and custom groups",
+            "No limit on permissions displayed",
+            "Company-specific access only",
+            "Access attempts are tracked for security",
+            "Returns error if group doesn't exist"
+          ]
         }
       }
     },
@@ -2228,16 +3254,121 @@
       "block-user-requests": {
         "endpoint": "UpdateCompanyBlockUserRequests",
         "params": "lambda args: {'block': args.block}",
-        "success_msg": "Successfully updated company user request blocking: {block}"
+        "success_msg": "Successfully updated company user request blocking: {block}",
+        "help": {
+          "description": "Block or unblock new user registration requests",
+          "details": "Controls whether new users can request accounts in your company. When blocked, only administrators can create new user accounts directly.",
+          "parameters": {
+            "block": {
+              "description": "Block user requests (true/false)",
+              "required": true,
+              "example": "true"
+            }
+          },
+          "examples": [
+            {
+              "command": "rediacc-cli company block-user-requests true",
+              "description": "Block new user registrations"
+            },
+            {
+              "command": "rediacc-cli company block-user-requests false",
+              "description": "Allow new user registrations"
+            }
+          ],
+          "notes": "Requires company admin permissions. Existing users are not affected. Useful during maintenance or to control company growth.",
+          "rules": [
+            "Must be authenticated with company administrator permissions",
+            "When blocked, self-registration on login page is disabled",
+            "Administrators can still create users manually",
+            "Does not affect existing user accounts or active sessions",
+            "Change takes effect immediately for new requests",
+            "Pending user requests remain in queue when blocking is enabled",
+            "Useful for controlling company user growth",
+            "Can be toggled on/off as needed without data loss",
+            "Setting is stored at company level",
+            "Change is logged in audit trail"
+          ]
+        }
       },
       "update-vault": {
         "endpoint": "UpdateCompanyVault",
         "params": "lambda args: {'companyVault': get_vault_data(args) or '{}', 'vaultVersion': getattr(args, 'vault_version', None)}",
-        "success_msg": "Successfully updated company vault"
+        "success_msg": "Successfully updated company vault",
+        "help": {
+          "description": "Update company-wide vault configuration",
+          "details": "Updates the encrypted vault containing company-wide settings, credentials, and configuration that apply to all teams and users.",
+          "parameters": {
+            "vault": {
+              "description": "JSON vault data to store",
+              "required": false,
+              "example": "{\"UNIVERSAL_USER_NAME\": \"system\", \"API_KEY\": \"abc123\"}"
+            },
+            "vault-file": {
+              "description": "File containing JSON vault data",
+              "required": false,
+              "example": "company-vault.json"
+            },
+            "vault-version": {
+              "description": "Vault schema version",
+              "required": false,
+              "example": "2"
+            }
+          },
+          "examples": [
+            {
+              "command": "rediacc-cli company update-vault --vault-file company-config.json",
+              "description": "Update from configuration file"
+            },
+            {
+              "command": "rediacc-cli company update-vault --vault '{\"UNIVERSAL_USER_NAME\":\"rediacc\"}'",
+              "description": "Update specific vault field"
+            }
+          ],
+          "notes": "Requires company admin permissions. Vault data is encrypted with master password. Changes affect all teams.",
+          "rules": [
+            "Must be authenticated with company administrator permissions",
+            "Vault data must be valid JSON format",
+            "Maximum vault size is 64KB after encryption",
+            "Vault is encrypted with company master password",
+            "Previous vault contents are completely replaced",
+            "Common fields: UNIVERSAL_USER_NAME, UNIVERSAL_USER_ID",
+            "Changes propagate to all teams and users",
+            "Vault version helps with schema migrations",
+            "Update is tracked in audit logs",
+            "Cannot be undone - backup before updating"
+          ]
+        }
       },
       "get-vaults": {
         "endpoint": "GetCompanyVaults",
-        "params": "lambda args: {}"
+        "params": "lambda args: {}",
+        "help": {
+          "description": "Retrieve all company vault data",
+          "details": "Fetches all vault configurations stored at the company level, including encrypted settings and credentials. Useful for backup or inspection.",
+          "examples": [
+            {
+              "command": "rediacc-cli company get-vaults",
+              "description": "Display all company vaults"
+            },
+            {
+              "command": "rediacc-cli company get-vaults --output json > backup.json",
+              "description": "Backup vaults to file"
+            }
+          ],
+          "notes": "Requires company admin permissions. Vault data is returned encrypted unless master password is set.",
+          "rules": [
+            "Must be authenticated with company administrator permissions",
+            "Returns all vault data stored at company level",
+            "Vault data remains encrypted in response",
+            "Decryption requires master password to be set",
+            "Includes vault version information",
+            "Useful for backup before major changes",
+            "Can export to JSON for archival",
+            "Access is logged in audit trail",
+            "Response may be large for companies with extensive configs",
+            "Read-only operation with no side effects"
+          ]
+        }
       },
       "update-vaults": {
         "endpoint": "UpdateCompanyVaults",
@@ -2268,7 +3399,19 @@
               "description": "Update multiple vaults at once"
             }
           ],
-          "notes": "Requires admin permissions. Use with caution as it replaces all vault data. Always backup first."
+          "notes": "Requires admin permissions. Use with caution as it replaces all vault data. Always backup first.",
+          "rules": [
+            "User must be authenticated with valid credentials",
+            "Only administrators can update company vaults",
+            "Bulk updates multiple vaults in single operation",
+            "User login attempts blocked during update",
+            "Cannot update if company has Global Bridge with cloud management",
+            "All vaults must belong to entities within your company",
+            "Cannot update vault if newer version exists",
+            "2FA vaults cannot be updated through this operation",
+            "Either all updates succeed or none are applied",
+            "Updates are logged with count of vaults modified"
+          ]
         }
       }
     },
@@ -2306,7 +3449,19 @@
               "description": "Get last 50 audit entries for user"
             }
           ],
-          "notes": "More detailed than entity-history. Includes access logs, failed attempts, and related entity changes."
+          "notes": "More detailed than entity-history. Includes access logs, failed attempts, and related entity changes.",
+          "rules": [
+            "User must be authenticated with valid credentials",
+            "Regular users can only view their own audit history",
+            "Team members can view audit for team resources",
+            "Administrators can view all company entity audits",
+            "Audit retention varies by subscription tier (7-365 days)",
+            "Maximum 100 records shown at once",
+            "Sensitive operations masked for non-administrators",
+            "Entity must exist and belong to your company",
+            "Region, bridge, permissions require admin access",
+            "Results sorted newest to oldest"
+          ]
         }
       }
     },
@@ -2342,19 +3497,109 @@
               "description": "Activate with custom code"
             }
           ],
-          "notes": "No authentication required for activation. Activation codes are set during user creation. Users receive activation instructions via email if configured."
+          "notes": "No authentication required for activation. Activation codes are set during user creation. Users receive activation instructions via email if configured.",
+          "rules": [
+            "No authentication required for this operation",
+            "Activation code must be exactly 6 characters long",
+            "Code comparison is case-insensitive",
+            "Email must match an existing user account",
+            "User must not already be activated",
+            "Activation code is deleted after successful use",
+            "Account becomes active and can log in",
+            "User can join teams after activation",
+            "Counts toward company's active user limit",
+            "Activation is logged in audit trail"
+          ]
         }
       },
       "deactivate": {
         "endpoint": "UpdateUserToDeactivated",
         "params": "lambda args: {'userEmail': args.email}",
         "confirm_msg": "Are you sure you want to deactivate user '{email}'?",
-        "success_msg": "Successfully deactivated user: {email}"
+        "success_msg": "Successfully deactivated user: {email}",
+        "help": {
+          "description": "Deactivate a user account",
+          "details": "Deactivates a user account, preventing login while preserving all data and history. The account can be reactivated later if needed.",
+          "parameters": {
+            "email": {
+              "description": "Email address of user to deactivate",
+              "required": true,
+              "example": "user@company.com"
+            },
+            "force": {
+              "description": "Skip confirmation prompt",
+              "required": false,
+              "example": "--force"
+            }
+          },
+          "examples": [
+            {
+              "command": "rediacc-cli user deactivate employee@company.com",
+              "description": "Deactivate with confirmation"
+            },
+            {
+              "command": "rediacc-cli user deactivate contractor@company.com --force",
+              "description": "Deactivate without confirmation"
+            }
+          ],
+          "notes": "Deactivated users cannot log in but their data is preserved. Use for employees who leave. Can be reactivated.",
+          "rules": [
+            "Requires user management or admin permissions",
+            "Cannot deactivate your own account",
+            "Cannot deactivate the last admin user",
+            "User's active sessions are terminated",
+            "User immediately loses all access",
+            "All team memberships are preserved",
+            "User's data and history remain intact",
+            "Account can be reactivated with user activate",
+            "Deactivation is logged in audit trail",
+            "Pending tasks assigned to user continue"
+          ]
+        }
       },
       "update-email": {
         "endpoint": "UpdateUserEmail",
         "params": "lambda args: {'currentUserEmail': args.current_email, 'newUserEmail': args.new_email}",
-        "success_msg": "Successfully updated user email: {current_email} → {new_email}"
+        "success_msg": "Successfully updated user email: {current_email} → {new_email}",
+        "help": {
+          "description": "Change a user's email address",
+          "details": "Updates a user's email address across the system. The new email becomes the login identifier. All permissions and data are preserved.",
+          "parameters": {
+            "current_email": {
+              "description": "Current email address",
+              "required": true,
+              "example": "old@company.com"
+            },
+            "new_email": {
+              "description": "New email address",
+              "required": true,
+              "example": "new@company.com"
+            }
+          },
+          "examples": [
+            {
+              "command": "rediacc-cli user update-email old@company.com new@company.com",
+              "description": "Change user's email"
+            },
+            {
+              "command": "rediacc-cli user update-email jane.doe@company.com jane.smith@company.com",
+              "description": "Update email after name change"
+            }
+          ],
+          "notes": "New email must be unique. User must log in with new email after change. Consider notifying the user.",
+          "rules": [
+            "Requires user management or admin permissions",
+            "New email must not already exist in system",
+            "New email must be valid email format",
+            "Cannot change email to one from different company domain",
+            "User's active sessions remain valid",
+            "All permissions and team memberships preserved",
+            "Audit history updated with both emails",
+            "User must use new email for future logins",
+            "Change notification sent to both email addresses",
+            "Email change is logged in audit trail"
+          ]
+        }
       },
       "update-password": {
         "endpoint": "UpdateUserPassword",
@@ -2380,7 +3625,19 @@
               "description": "Change password directly (less secure)"
             }
           ],
-          "notes": "Requires current authentication. Password requirements depend on company policy. After change, all sessions are invalidated - you must log in again."
+          "notes": "Requires current authentication. Password requirements depend on company policy. After change, all sessions are invalidated - you must log in again.",
+          "rules": [
+            "User must be authenticated with valid session",
+            "Session-based identity verification (no current password needed)",
+            "New password must be provided as 32-byte hash",
+            "Password is encrypted with company passphrase",
+            "Change takes effect immediately",
+            "Current session remains active (not logged out)",
+            "Other sessions remain valid until expiration",
+            "Account must be activated to change password",
+            "No password complexity rules enforced by system",
+            "Password change is logged in audit trail"
+          ]
         }
       },
       "update-2fa": {
@@ -2417,7 +3674,19 @@
               "description": "Disable 2FA"
             }
           ],
-          "notes": "Use authenticator apps like Google Authenticator or Authy. Save backup codes when enabling. 2FA adds security but is required for some operations."
+          "notes": "Use authenticator apps like Google Authenticator or Authy. Save backup codes when enabling. 2FA adds security but is required for some operations.",
+          "rules": [
+            "Must be authenticated with appropriate user management permissions",
+            "Can only update 2FA for users within your company",
+            "When enabling 2FA, system generates a secret key for the user",
+            "User must scan QR code or manually enter secret in authenticator app",
+            "Once enabled, login requires both password and 6-digit TOTP code",
+            "Disabling 2FA removes the requirement but keeps the secret for re-enabling",
+            "Admin users can force-enable or disable 2FA for other users",
+            "2FA status change takes effect on next login attempt",
+            "Compatible with standard TOTP apps (Google Authenticator, Authy, etc.)",
+            "Time window for code acceptance is typically ±30 seconds"
+          ]
         }
       }
     },
@@ -2441,7 +3710,19 @@
               "description": "Check status of auth request"
             }
           ],
-          "notes": "Request hashes are provided during login attempts. Status includes pending, authorized, or expired."
+          "notes": "Request hashes are provided during login attempts. Status includes pending, authorized, or expired.",
+          "rules": [
+            "Requires active authentication token to display status",
+            "Shows current user email, company, and assigned teams",
+            "Displays token creation time and expiration status",
+            "Lists all permission groups assigned to the user",
+            "Shows whether 2FA is enabled for the account",
+            "Indicates if account is activated or pending activation",
+            "Returns error if no valid token is present",
+            "Token details include the token ID (not the full token value)",
+            "Useful for verifying session validity before operations",
+            "Does not refresh or extend token lifetime"
+          ]
         }
       },
       "privilege": {
@@ -2473,7 +3754,19 @@
               "description": "Grant elevated access"
             }
           ],
-          "notes": "Requires existing admin permissions. Use with caution. Privileges are temporary for the session."
+          "notes": "Requires existing admin permissions. Use with caution. Privileges are temporary for the session.",
+          "rules": [
+            "Only available to users with privilege escalation permissions",
+            "May require re-entering password for security verification",
+            "Elevated privileges are temporary and session-specific",
+            "Privilege elevation is logged in audit trail",
+            "Cannot escalate beyond maximum assigned permission level",
+            "Some operations may require approval from another admin",
+            "Elevation automatically expires after timeout period",
+            "Failed elevation attempts are logged and may trigger alerts",
+            "Cannot be used to bypass company-level restrictions",
+            "Revoked immediately if suspicious activity is detected"
+          ]
         }
       }
     },
@@ -2507,7 +3800,19 @@
               "description": "Add admin to production team"
             }
           ],
-          "notes": "User must exist and be activated. You must be a team member to add others. Changes take effect immediately."
+          "notes": "User must exist and be activated. You must be a team member to add others. Changes take effect immediately.",
+          "rules": [
+            "Requires team admin or company admin permissions",
+            "User must already have an account in the company",
+            "User must have activated their account",
+            "Cannot add users from other companies",
+            "Users can be members of multiple teams",
+            "Team role determines permissions within that team only",
+            "Adding as Admin grants full control over team resources",
+            "Member role provides read and basic write access",
+            "Operation is logged in audit trail",
+            "Triggers notification email to the added user"
+          ]
         }
       },
       "remove": {
@@ -2545,14 +3850,60 @@
               "description": "Force remove without confirmation"
             }
           ],
-          "notes": "Cannot remove last team member. User loses access immediately. Consider impact on active work."
+          "notes": "Cannot remove last team member. User loses access immediately. Consider impact on active work.",
+          "rules": [
+            "Requires team admin or company admin permissions",
+            "Cannot remove the last admin from a team",
+            "User immediately loses access to all team resources",
+            "Active sessions for team resources are terminated",
+            "Does not delete the user account from the company",
+            "User can be re-added to the team later if needed",
+            "Removal is logged in audit trail",
+            "Any running operations by the user continue to completion",
+            "User's personal data and contributions are preserved",
+            "Triggers notification email to the removed user"
+          ]
         }
       }
     },
     "queue": {
       "get-next": {
         "endpoint": "GetQueueItemsNext",
-        "params": "lambda args: {'itemCount': args.count or 3}"
+        "params": "lambda args: {'itemCount': args.count or 3}",
+        "help": {
+          "description": "Get next queue items for processing",
+          "details": "Retrieves and assigns the next available queue items to the caller. Used by bridges to fetch work. Items are automatically marked as ASSIGNED.",
+          "parameters": {
+            "count": {
+              "description": "Number of items to retrieve (default: 3)",
+              "required": false,
+              "example": "5"
+            }
+          },
+          "examples": [
+            {
+              "command": "rediacc-cli queue get-next",
+              "description": "Get next 3 items (default)"
+            },
+            {
+              "command": "rediacc-cli queue get-next --count 10",
+              "description": "Get up to 10 items"
+            }
+          ],
+          "notes": "Designed for bridges. Items are assigned to caller's identity. Returns empty array if no items available.",
+          "rules": [
+            "Requires bridge or administrative authentication",
+            "Returns only PENDING items from accessible teams",
+            "Items are immediately marked as ASSIGNED",
+            "Assignment prevents other bridges from taking items",
+            "Respects queue priority ordering (1 is highest)",
+            "Maximum count is typically limited to 10",
+            "Returns fewer items if not enough available",
+            "Caller identity is recorded on assigned items",
+            "Items expire if not completed within timeout",
+            "Load balances across available bridges"
+          ]
+        }
       },
       "list": {
         "endpoint": "GetTeamQueueItems",
@@ -2651,22 +4002,156 @@
               "description": "Show high priority items for production"
             }
           ],
-          "notes": "Default includes all statuses. Stale detection helps find stuck items. Use date filters for historical analysis."
+          "notes": "Default includes all statuses. Stale detection helps find stuck items. Use date filters for historical analysis.",
+          "rules": [
+            "Requires team member or higher permissions",
+            "Shows queue items for specified team only",
+            "Default limit is 100 items, use --limit to change",
+            "Items are sorted by creation time (newest first)",
+            "Can filter by status: PENDING, ASSIGNED, PROCESSING, COMPLETED, FAILED",
+            "Can filter by specific machine or bridge",
+            "Completed items are retained for 30 days",
+            "Shows task ID, status, priority, and timestamps",
+            "Response data is decrypted if master password is set",
+            "High-priority items (1-2) are highlighted in output"
+          ]
         }
       },
       "update-response": {
         "endpoint": "UpdateQueueItemResponse",
         "params": "lambda args: {'taskId': args.task_id, 'responseVault': get_vault_data(args) or '{}'}",
-        "success_msg": "Successfully updated queue item response: {task_id}"
+        "success_msg": "Successfully updated queue item response: {task_id}",
+        "help": {
+          "description": "Update progress/status of a processing queue item",
+          "details": "Updates a queue item with intermediate results or progress information while it's being processed. Used by bridges to report progress.",
+          "parameters": {
+            "task_id": {
+              "description": "Task ID (GUID) to update",
+              "required": true,
+              "example": "550e8400-e29b-41d4-a716-446655440000"
+            },
+            "vault": {
+              "description": "JSON progress data",
+              "required": false,
+              "example": "{\"progress\": 50, \"status\": \"Processing file 2 of 4\"}"
+            },
+            "vault-file": {
+              "description": "File containing progress data",
+              "required": false,
+              "example": "progress.json"
+            }
+          },
+          "examples": [
+            {
+              "command": "rediacc-cli queue update-response 550e8400 --vault '{\"progress\":25}'",
+              "description": "Update task progress to 25%"
+            },
+            {
+              "command": "rediacc-cli queue update-response 550e8400 --vault-file status.json",
+              "description": "Update from status file"
+            }
+          ],
+          "notes": "Used by bridges during task execution. Can be called multiple times. Does not change task state.",
+          "rules": [
+            "Requires bridge or administrative authentication",
+            "Task must be assigned to caller (for bridges)",
+            "Task must be in ASSIGNED or PROCESSING state",
+            "Response vault is encrypted before storage",
+            "Updates are appended to task history",
+            "Does not change overall task status",
+            "Useful for long-running operations",
+            "Each update includes timestamp",
+            "Previous responses are preserved",
+            "Can be used to stream output data"
+          ]
+        }
       },
       "complete": {
         "endpoint": "UpdateQueueItemToCompleted",
         "params": "lambda args: {'taskId': args.task_id, 'finalVault': get_vault_data(args) or '{}'}",
-        "success_msg": "Successfully completed queue item: {task_id}"
+        "success_msg": "Successfully completed queue item: {task_id}",
+        "help": {
+          "description": "Mark a queue item as completed",
+          "details": "Marks a processing queue item as successfully completed with optional result data. Used by bridges to finalize task execution.",
+          "parameters": {
+            "task_id": {
+              "description": "Task ID (GUID) to complete",
+              "required": true,
+              "example": "550e8400-e29b-41d4-a716-446655440000"
+            },
+            "vault": {
+              "description": "JSON result data to store",
+              "required": false,
+              "example": "{\"status\": \"success\", \"output\": \"Task completed\"}"
+            },
+            "vault-file": {
+              "description": "File containing result data",
+              "required": false,
+              "example": "results.json"
+            }
+          },
+          "examples": [
+            {
+              "command": "rediacc-cli queue complete 550e8400-e29b-41d4-a716-446655440000",
+              "description": "Mark task as completed"
+            },
+            {
+              "command": "rediacc-cli queue complete 550e8400 --vault '{\"status\":\"success\"}'",
+              "description": "Complete with result data"
+            }
+          ],
+          "notes": "Typically used by bridges. Item must be in PROCESSING state. Result vault is encrypted and stored.",
+          "rules": [
+            "Requires authentication with appropriate permissions",
+            "Task must exist and belong to accessible team",
+            "Task must be in PROCESSING or ASSIGNED state",
+            "Cannot complete already COMPLETED or FAILED tasks",
+            "Final vault data is encrypted before storage",
+            "Completion time is recorded automatically",
+            "Status changes to COMPLETED immediately",
+            "Triggers any dependent operations",
+            "Completion is logged in task history",
+            "Bridge that processed task is recorded"
+          ]
+        }
       },
       "trace": {
         "endpoint": "GetQueueItemTrace",
-        "params": "lambda args: {'taskId': args.task_id}"
+        "params": "lambda args: {'taskId': args.task_id}",
+        "help": {
+          "description": "Get execution trace for a queue item",
+          "details": "Retrieves detailed execution history and logs for a specific queue item, including all state changes, assignments, and bridge interactions.",
+          "parameters": {
+            "task_id": {
+              "description": "Task ID (GUID) to trace",
+              "required": true,
+              "example": "550e8400-e29b-41d4-a716-446655440000"
+            }
+          },
+          "examples": [
+            {
+              "command": "rediacc-cli queue trace 550e8400-e29b-41d4-a716-446655440000",
+              "description": "Get full trace for task"
+            },
+            {
+              "command": "rediacc-cli queue trace 550e8400 --output json | jq '.logs'",
+              "description": "Extract logs from trace"
+            }
+          ],
+          "notes": "Shows complete task lifecycle. Useful for debugging failed tasks or monitoring execution progress.",
+          "rules": [
+            "Requires team member or higher permissions",
+            "Task must belong to accessible team",
+            "Shows all state transitions with timestamps",
+            "Includes bridge assignment history",
+            "Contains any error messages or stack traces",
+            "Shows intermediate responses from updates",
+            "Displays retry attempts if any",
+            "Includes cancellation information if cancelled",
+            "Vault data shown if master password is set",
+            "Access is logged in audit trail"
+          ]
+        }
       },
       "cancel": {
         "endpoint": "CancelQueueItem",
@@ -2698,7 +4183,19 @@
               "description": "Cancel without confirmation"
             }
           ],
-          "notes": "Cancellation is immediate for PENDING items. PROCESSING items may continue briefly while the bridge stops gracefully. Check status after cancelling."
+          "notes": "Cancellation is immediate for PENDING items. PROCESSING items may continue briefly while the bridge stops gracefully. Check status after cancelling.",
+          "rules": [
+            "Requires team member or higher permissions",
+            "Can only cancel items from your team's queue",
+            "Cannot cancel COMPLETED or FAILED items",
+            "PENDING items are cancelled immediately",
+            "ASSIGNED items are unassigned from bridge",
+            "PROCESSING items receive cancellation signal",
+            "Bridge may complete current operation before stopping",
+            "Cancelled items are marked with CANCELLED status",
+            "Cancellation is logged in queue item history",
+            "Associated resources may need manual cleanup"
+          ]
         }
       },
       "retry": {
@@ -2725,7 +4222,19 @@
               "description": "Retry all failed tasks"
             }
           ],
-          "notes": "Only FAILED items can be retried. Creates a new item with same priority and configuration. Check failure reason before retrying to avoid repeated failures."
+          "notes": "Only FAILED items can be retried. Creates a new item with same priority and configuration. Check failure reason before retrying to avoid repeated failures.",
+          "rules": [
+            "Requires team member or higher permissions",
+            "Can only retry FAILED or CANCELLED items",
+            "Original item must belong to your team",
+            "Creates new queue item with fresh task ID",
+            "Copies all parameters from original item",
+            "Resets retry count to zero",
+            "New item gets default priority unless specified",
+            "Original failed item is not modified",
+            "Links to original item for audit trail",
+            "May fail again if underlying issue not resolved"
+          ]
         }
       }
     },
@@ -2734,7 +4243,46 @@
         "endpoint": "GetTeamMachines",
         "params": "lambda args: {'teamName': args.team}",
         "filter": "lambda data, args: [m for m in data if m.get('machineName') == args.name]",
-        "single_result": true
+        "single_result": true,
+        "help": {
+          "description": "Get detailed information about a machine",
+          "details": "Shows comprehensive information about a specific machine including its configuration, status, assigned bridge, and decrypted vault data.",
+          "parameters": {
+            "team": {
+              "description": "Team that owns the machine",
+              "required": true,
+              "example": "production"
+            },
+            "name": {
+              "description": "Machine name",
+              "required": true,
+              "example": "web-server-01"
+            }
+          },
+          "examples": [
+            {
+              "command": "rediacc-cli inspect machine prod web-01",
+              "description": "Inspect production web server"
+            },
+            {
+              "command": "rediacc-cli inspect machine dev database --output json",
+              "description": "Get machine details in JSON format"
+            }
+          ],
+          "notes": "Shows decrypted vault if master password is set. Includes IP address, SSH credentials, and custom configuration.",
+          "rules": [
+            "Requires team member or higher permissions",
+            "Machine must belong to specified team",
+            "Shows machine GUID and creation timestamp",
+            "Displays current status and assigned bridge",
+            "Vault data is decrypted if master password is set",
+            "Machine names are case-insensitive for lookup",
+            "Shows SSH connection details from vault",
+            "Includes datastore path configuration",
+            "Reveals all custom fields in machine vault",
+            "Access is logged in audit trail"
+          ]
+        }
       },
       "repository": {
         "endpoint": "GetTeamRepositories", 
@@ -2766,7 +4314,19 @@
               "description": "Get repository details in JSON"
             }
           ],
-          "notes": "Shows decrypted vault if master password is set. Includes size, type, and configuration details."
+          "notes": "Shows decrypted vault if master password is set. Includes size, type, and configuration details.",
+          "rules": [
+            "Requires team member or higher permissions",
+            "Repository must belong to specified team",
+            "Shows repository GUID and creation timestamp",
+            "Displays associated machine and its status",
+            "Vault data is decrypted if master password is set",
+            "Repository names are case-insensitive for lookup",
+            "Shows Docker configuration if present in vault",
+            "Includes mount paths and datastore locations",
+            "Reveals environment variables stored in vault",
+            "Access is logged in audit trail"
+          ]
         }
       }
     }

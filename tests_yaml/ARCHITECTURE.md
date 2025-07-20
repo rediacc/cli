@@ -40,7 +40,7 @@ This testing framework provides a comprehensive, cross-platform solution for tes
 - `CLIWrapper`: Wraps rediacc-cli.py for testing
 - Handles JSON output parsing
 - Manages authentication tokens
-- Provides mock mode for unit tests
+- Executes real API calls for testing
 
 ### 2. Test Definitions (`tests/`)
 
@@ -129,7 +129,7 @@ class TestComplexWorkflow(BaseTest):
 - Pre-created entities for faster tests
 - Authentication tokens
 - Common configuration values
-- Mock data for unit tests
+- Test data generation for entities
 
 ### 4. Entity Dependency Graph
 
@@ -183,7 +183,7 @@ Company
 
 ### 1. Unit Tests
 - Test individual CLI commands
-- Mock API responses
+- API response validation
 - Validate input parsing
 - Test error handling
 

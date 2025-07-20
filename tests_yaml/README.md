@@ -11,14 +11,19 @@ A comprehensive, cross-platform testing framework for the Rediacc CLI applicatio
 - **Smart Cleanup**: Reverses creation order for proper resource cleanup
 - **Cross-Platform**: Works on Windows, Linux, and macOS
 - **Multiple Report Formats**: JSON, JUnit XML, HTML
-- **Mock Mode**: Unit testing without real API calls
+- **Real API Testing**: All tests run against actual API endpoints
 - **Comprehensive Fixtures**: Pre-created test resources
 
 ## Quick Start
 
 ### Running All Tests
 ```bash
+# API URL is automatically detected from parent .env file
+# Tests will create a new test company if no credentials provided
 python -m tests_yaml.run
+
+# Or provide existing credentials:
+python -m tests_yaml.run --username 'email@example.com' --password 'password'
 ```
 
 ### Running Specific Test Suite
@@ -147,6 +152,34 @@ class TestMyScenario(BaseTest):
 - storage
 - schedule
 - queue_item
+
+## Test Suites
+
+### Basic Tests
+Located in `tests/basic/`, these cover fundamental CRUD operations:
+
+- **test_team_crud.yaml**: Team create, read, update, delete operations
+- **test_region_crud.yaml**: Region management
+- **test_bridge_crud.yaml**: Bridge operations within regions
+- **test_machine_creation.yaml**: Machine provisioning and management
+- **test_repository_crud.yaml**: Repository lifecycle management
+- **test_storage_crud.yaml**: Storage configuration
+- **test_schedule_crud.yaml**: Schedule management
+- **test_user_management.yaml**: User creation and management
+- **test_vault_operations.yaml**: Vault get/set for all entity types
+- **test_permission_management.yaml**: Permission groups and user permissions
+- **test_queue_operations.yaml**: Queue operations, priorities, and filters
+
+### Complex Tests
+Located in `tests/complex/`, these test multi-step workflows:
+
+- **test_infrastructure_deployment.yaml**: Full infrastructure setup
+- **test_parallel_operations.yaml**: Concurrent operation testing
+
+### Negative Tests
+Located in `tests/negative/`, these test error handling:
+
+- **test_invalid_operations.yaml**: Invalid inputs and error conditions
 
 ## Variable Interpolation
 
@@ -293,9 +326,16 @@ python -m tests_yaml.run --keep-on-failure
 python -m tests_yaml.run --list-tests
 ```
 
-### Mock Mode (No Real API Calls)
+### API Configuration
+
+The test framework automatically uses the API configuration from the parent `.env` file:
+- `SYSTEM_DOMAIN`: API domain (defaults to localhost)
+- `SYSTEM_HTTP_PORT`: API port (defaults to 7322)
+- `REDIACC_API_URL`: Full API URL (overrides domain/port if set)
+
+For remote APIs, set `SYSTEM_DOMAIN` in your `.env` file:
 ```bash
-python -m tests_yaml.run --mock
+SYSTEM_DOMAIN=api.yourcompany.com
 ```
 
 ## CI/CD Integration
