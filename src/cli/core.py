@@ -1204,11 +1204,11 @@ class SubprocessRunner:
                 try:
                     data = json.loads(output) if output else {}
                     
-                    # Extract data from tables format
+                    # Extract data from resultSets format
                     response_data = data.get('data')
-                    if not response_data and data.get('tables'):
+                    if not response_data and data.get('resultSets'):
                         response_data = next(
-                            (table['data'] for table in data['tables']
+                            (table['data'] for table in data['resultSets']
                              if table.get('data') and not any('nextRequestCredential' in row for row in table['data'])),
                             None
                         )
