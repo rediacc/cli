@@ -248,8 +248,8 @@ class APIClient:
     
     def _update_token_if_needed(self, response, current_token):
         if not (response and not response.get('error') and self.config_manager): return
-        if not (tables := response.get('tables', [])) or not tables[0].get('data'): return
-        if not (new_token := tables[0]['data'][0].get('nextRequestCredential')) or new_token == current_token: return
+        if not (resultSets := response.get('resultSets', [])) or not resultSets[0].get('data'): return
+        if not (new_token := resultSets[0]['data'][0].get('nextRequestCredential')) or new_token == current_token: return
         if os.environ.get('REDIACC_TOKEN') or self.config_manager.is_token_overridden(): return
         if TokenManager.get_token() == current_token:
             TokenManager.set_token(
@@ -285,7 +285,7 @@ class APIClient:
         if response.get('error'):
             return None
         
-        for table in response.get('tables', []):
+        for table in response.get('resultSets', []):
             data = table.get('data', [])
             if not data:
                 continue
@@ -319,7 +319,7 @@ def pwd_hash(pwd):
     return "0x" + hashlib.sha256(salted_password.encode()).digest().hex()
 
 def extract_table_data(response, table_index=0):
-    return response.get('tables', [])[table_index].get('data', []) if response and len(response.get('tables', [])) > table_index else []
+    return response.get('resultSets', [])[table_index].get('data', []) if response and len(response.get('resultSets', [])) > table_index else []
 
 def get_vault_data(args):
     if not (hasattr(args, 'vault_file') and args.vault_file): return getattr(args, 'vault', '{}') or '{}'
@@ -406,11 +406,11 @@ def format_table(headers, rows):
     return '\n'.join([header_line, separator] + formatted_rows)
 
 def format_dynamic_tables(response, output_format='text', skip_fields=None):
-    if not response or 'tables' not in response:
+    if not response or 'resultSets' not in response:
         return format_output("No data available", output_format)
     
-    tables = response.get('tables', [])
-    if len(tables) <= 1:
+    resultSets = response.get('resultSets', [])
+    if len(resultSets) <= 1:
         return format_output("No records found", output_format)
     
     skip_fields = skip_fields or ['nextRequestCredential', 'newUserHash']
@@ -425,14 +425,14 @@ def format_dynamic_tables(response, output_format='text', skip_fields=None):
     
     if output_format == 'json':
         result = []
-        for table in tables[1:]:
+        for table in resultSets[1:]:
             processed = process_table_data(table)
             if processed:
                 result.extend(processed)
         return format_output(result, output_format)
     
     output_parts = []
-    for table in tables[1:]:
+    for table in resultSets[1:]:
         data = table.get('data', [])
         if not data:
             continue
@@ -561,8 +561,8 @@ class VaultBuilder:
                 return None
                 
             # Company vault data might be in first or second table
-            tables = response.get('tables', [])
-            for i, table in enumerate(tables):
+            resultSets = response.get('resultSets', [])
+            for i, table in enumerate(resultSets):
                 if table.get('data') and len(table['data']) > 0:
                     vault_data = table['data'][0]
                     if 'vaultContent' in vault_data:
@@ -871,8 +871,8 @@ class CommandHandler:
         if response.get('error'): print(format_output(None, self.output_format, None, response['error'])); return False
         
         if success_message and format_args and '{task_id}' in success_message:
-            if (tables := response.get('tables', [])) and len(tables) > 1 and tables[1].get('data'):
-                if task_id := tables[1]['data'][0].get('taskId') or tables[1]['data'][0].get('TaskId'):
+            if (resultSets := response.get('resultSets', [])) and len(resultSets) > 1 and resultSets[1].get('data'):
+                if task_id := resultSets[1]['data'][0].get('taskId') or resultSets[1]['data'][0].get('TaskId'):
                     setattr(format_args, 'task_id', task_id)
         
         if not success_message: return True
@@ -901,8 +901,8 @@ class CommandHandler:
         response = self.client.auth_request("CreateAuthenticationRequest", email, hash_pwd, login_params)
         
         if response.get('error'): print(format_output(None, self.output_format, None, f"Login failed: {response['error']}")); return 1
-        if not (tables := response.get('tables', [])) or not tables[0].get('data'): print(format_output(None, self.output_format, None, "Login failed: Could not get authentication token")); return 1
-        auth_data = tables[0]['data'][0]
+        if not (resultSets := response.get('resultSets', [])) or not resultSets[0].get('data'): print(format_output(None, self.output_format, None, "Login failed: Could not get authentication token")); return 1
+        auth_data = resultSets[0]['data'][0]
         if not (token := auth_data.get('nextRequestCredential')): print(format_output(None, self.output_format, None, "Login failed: Invalid authentication token")); return 1
         
         is_authorized = auth_data.get('isAuthorized', True)
@@ -925,12 +925,12 @@ class CommandHandler:
                     print(format_output(None, self.output_format, None, f"2FA verification failed: {response['error']}"))
                     return 1
                 
-                tables = response.get('tables', [])
-                if not tables or not tables[0].get('data'):
+                resultSets = response.get('resultSets', [])
+                if not resultSets or not resultSets[0].get('data'):
                     print(format_output(None, self.output_format, None, "2FA verification failed: Could not get authentication token"))
                     return 1
                 
-                auth_data = tables[0]['data'][0]
+                auth_data = resultSets[0]['data'][0]
                 token = auth_data.get('nextRequestCredential')
                 if not token:
                     print(format_output(None, self.output_format, None, "2FA verification failed: Invalid authentication token"))
@@ -1136,10 +1136,10 @@ class CommandHandler:
             print(output)
             return 1
         
-        tables = response.get('tables', [])
+        resultSets = response.get('resultSets', [])
         task_id = None
-        if len(tables) > 1 and tables[1].get('data'):
-            task_id = tables[1]['data'][0].get('taskId', tables[1]['data'][0].get('TaskId'))
+        if len(resultSets) > 1 and resultSets[1].get('data'):
+            task_id = resultSets[1]['data'][0].get('taskId', resultSets[1]['data'][0].get('TaskId'))
         
         if self.output_format == 'json':
             result = {
@@ -1384,8 +1384,8 @@ class CommandHandler:
                     # Create new response with filtered data
                     filtered_response = {
                         'success': True,
-                        'tables': [
-                            response['tables'][0],  # Keep credentials table
+                        'resultSets': [
+                            response['resultSets'][0],  # Keep credentials table
                             {'data': filtered_data}  # Replace data with filtered results
                         ]
                     }
@@ -1828,11 +1828,11 @@ class CommandHandler:
     
     def format_queue_trace(self, response, output_format):
         """Format queue trace response with multiple result sets"""
-        if not response or 'tables' not in response:
+        if not response or 'resultSets' not in response:
             return format_output("No trace data available", output_format)
         
-        tables = response.get('tables', [])
-        if len(tables) < 2:
+        resultSets = response.get('resultSets', [])
+        if len(resultSets) < 2:
             return format_output("No trace data found", output_format)
         
         if output_format == 'json':
@@ -1845,13 +1845,13 @@ class CommandHandler:
             }
             
             # Table 1 (index 1): Queue Item Details
-            if len(tables) > 1 and tables[1].get('data'):
-                item_data = tables[1]['data'][0] if tables[1]['data'] else {}
+            if len(resultSets) > 1 and resultSets[1].get('data'):
+                item_data = resultSets[1]['data'][0] if resultSets[1]['data'] else {}
                 result['queue_item'] = item_data
             
             # Table 2 (index 2): Request Vault
-            if len(tables) > 2 and tables[2].get('data'):
-                vault_data = tables[2]['data'][0] if tables[2]['data'] else {}
+            if len(resultSets) > 2 and resultSets[2].get('data'):
+                vault_data = resultSets[2]['data'][0] if resultSets[2]['data'] else {}
                 result['request_vault'] = {
                     'type': vault_data.get('VaultType', 'Request'),
                     'version': vault_data.get('VaultVersion'),
@@ -1860,8 +1860,8 @@ class CommandHandler:
                 }
             
             # Table 3 (index 3): Response Vault
-            if len(tables) > 3 and tables[3].get('data'):
-                vault_data = tables[3]['data'][0] if tables[3]['data'] else {}
+            if len(resultSets) > 3 and resultSets[3].get('data'):
+                vault_data = resultSets[3]['data'][0] if resultSets[3]['data'] else {}
                 result['response_vault'] = {
                     'type': vault_data.get('VaultType', 'Response'),
                     'version': vault_data.get('VaultVersion'),
@@ -1870,15 +1870,15 @@ class CommandHandler:
                 }
             
             # Table 4 (index 4): Timeline
-            if len(tables) > 4 and tables[4].get('data'):
-                result['timeline'] = tables[4]['data']
+            if len(resultSets) > 4 and resultSets[4].get('data'):
+                result['timeline'] = resultSets[4]['data']
             
             return format_output(result, output_format)
         else:
             output_parts = []
             
-            if len(tables) > 1 and tables[1].get('data') and tables[1]['data']:
-                item_data = tables[1]['data'][0]
+            if len(resultSets) > 1 and resultSets[1].get('data') and resultSets[1]['data']:
+                item_data = resultSets[1]['data'][0]
                 output_parts.append(colorize("QUEUE ITEM DETAILS", 'HEADER'))
                 output_parts.append("=" * 80)
                 
@@ -1914,8 +1914,8 @@ class CommandHandler:
                 max_label_width = max(len(label) for label, _ in details)
                 output_parts.extend(f"{label.ljust(max_label_width)} : {value}" for label, value in details if value is not None)
                 
-            if len(tables) > 2 and tables[2].get('data') and tables[2]['data']:
-                vault_data = tables[2]['data'][0]
+            if len(resultSets) > 2 and resultSets[2].get('data') and resultSets[2]['data']:
+                vault_data = resultSets[2]['data'][0]
                 if vault_data.get('HasContent'):
                     output_parts.append("")
                     output_parts.append(colorize("REQUEST VAULT", 'HEADER'))
@@ -1927,8 +1927,8 @@ class CommandHandler:
                     except:
                         output_parts.append(vault_data.get('VaultContent', 'No content'))
             
-            if len(tables) > 3 and tables[3].get('data') and tables[3]['data']:
-                vault_data = tables[3]['data'][0]
+            if len(resultSets) > 3 and resultSets[3].get('data') and resultSets[3]['data']:
+                vault_data = resultSets[3]['data'][0]
                 if vault_data.get('HasContent'):
                     output_parts.append("")
                     output_parts.append(colorize("RESPONSE VAULT", 'HEADER'))
@@ -1940,12 +1940,12 @@ class CommandHandler:
                     except:
                         output_parts.append(vault_data.get('VaultContent', 'No content'))
             
-            if len(tables) > 4 and tables[4].get('data') and tables[4]['data']:
+            if len(resultSets) > 4 and resultSets[4].get('data') and resultSets[4]['data']:
                 output_parts.append("")
                 output_parts.append(colorize("PROCESSING TIMELINE", 'HEADER'))
                 output_parts.append("=" * 80)
                 
-                timeline_data = tables[4]['data']
+                timeline_data = resultSets[4]['data']
                 if timeline_data:
                     headers = ['Time', 'Status', 'Description']
                     rows = [
@@ -2004,8 +2004,8 @@ class CommandHandler:
             
             # Find our repository and extract GUID
             repo_guid = None
-            if len(repos_response.get('tables', [])) > 1:
-                repos = repos_response['tables'][1].get('data', [])
+            if len(repos_response.get('resultSets', [])) > 1:
+                repos = repos_response['resultSets'][1].get('data', [])
                 for repo in repos:
                     if repo.get('repoName') == args.name or repo.get('repositoryName') == args.name:
                         repo_guid = repo.get('repoGuid') or repo.get('repositoryGuid')
@@ -2070,8 +2070,8 @@ class CommandHandler:
             
             # Extract task ID
             task_id = None
-            if len(queue_response.get('tables', [])) > 1 and queue_response['tables'][1].get('data'):
-                task_id = queue_response['tables'][1]['data'][0].get('taskId') or queue_response['tables'][1]['data'][0].get('TaskId')
+            if len(queue_response.get('resultSets', [])) > 1 and queue_response['resultSets'][1].get('data'):
+                task_id = queue_response['resultSets'][1]['data'][0].get('taskId') or queue_response['resultSets'][1]['data'][0].get('TaskId')
             
             # Prepare result data
             result = {
@@ -2144,8 +2144,8 @@ class CommandHandler:
                 return 1
             
             source_repo = None
-            if len(source_repo_response.get('tables', [])) > 1:
-                repos = source_repo_response['tables'][1].get('data', [])
+            if len(source_repo_response.get('resultSets', [])) > 1:
+                repos = source_repo_response['resultSets'][1].get('data', [])
                 source_repo = next((r for r in repos if r.get('repoName') == args.source_repo), None)
             
             if not source_repo:
@@ -2164,8 +2164,8 @@ class CommandHandler:
                 # Check if destination repository exists
                 dest_repo_response = self.client.token_request("GetTeamRepositories", {'teamName': args.dest_team})
                 dest_repo = None
-                if not dest_repo_response.get('error') and len(dest_repo_response.get('tables', [])) > 1:
-                    repos = dest_repo_response['tables'][1].get('data', [])
+                if not dest_repo_response.get('error') and len(dest_repo_response.get('resultSets', [])) > 1:
+                    repos = dest_repo_response['resultSets'][1].get('data', [])
                     dest_repo = next((r for r in repos if r.get('repoName') == args.dest_repo), None)
                 
                 if not dest_repo:
@@ -2185,8 +2185,8 @@ class CommandHandler:
                     
                     # Refetch to get the new repository GUID
                     dest_repo_response = self.client.token_request("GetTeamRepositories", {'teamName': args.dest_team})
-                    if not dest_repo_response.get('error') and len(dest_repo_response.get('tables', [])) > 1:
-                        repos = dest_repo_response['tables'][1].get('data', [])
+                    if not dest_repo_response.get('error') and len(dest_repo_response.get('resultSets', [])) > 1:
+                        repos = dest_repo_response['resultSets'][1].get('data', [])
                         dest_repo = next((r for r in repos if r.get('repoName') == args.dest_repo), None)
                 
                 if dest_repo:
@@ -2259,8 +2259,8 @@ class CommandHandler:
             
             # Extract task ID
             task_id = None
-            if len(queue_response.get('tables', [])) > 1 and queue_response['tables'][1].get('data'):
-                task_id = queue_response['tables'][1]['data'][0].get('taskId') or queue_response['tables'][1]['data'][0].get('TaskId')
+            if len(queue_response.get('resultSets', [])) > 1 and queue_response['resultSets'][1].get('data'):
+                task_id = queue_response['resultSets'][1]['data'][0].get('taskId') or queue_response['resultSets'][1]['data'][0].get('TaskId')
             
             # Prepare result data
             result = {
@@ -2328,8 +2328,8 @@ class CommandHandler:
             print(format_output(None, self.output_format, None, f"Failed to get machine data: {response['error']}"))
             return None
         
-        if len(response.get('tables', [])) > 1 and response['tables'][1].get('data'):
-            machines = response['tables'][1]['data']
+        if len(response.get('resultSets', [])) > 1 and response['resultSets'][1].get('data'):
+            machines = response['resultSets'][1]['data']
             machine_data = next((m for m in machines if m.get('machineName') == machine_name), None)
             
             if not machine_data:
@@ -2348,8 +2348,8 @@ class CommandHandler:
         """Helper to get team vault data"""
         # Use GetCompanyTeams which returns teams with vaultContent
         response = self.client.token_request("GetCompanyTeams", {})
-        if not response.get('error') and len(response.get('tables', [])) > 1:
-            teams = response['tables'][1].get('data', [])
+        if not response.get('error') and len(response.get('resultSets', [])) > 1:
+            teams = response['resultSets'][1].get('data', [])
             for team in teams:
                 if team.get('teamName') == team_name:
                     vault = team.get('vaultContent') or team.get('teamVault', '{}')
@@ -2370,8 +2370,8 @@ class CommandHandler:
     def _get_storage_vault(self, team_name, storage_name):
         """Helper to get storage vault data"""
         response = self.client.token_request("GetTeamStorageSystems", {'teamName': team_name})
-        if not response.get('error') and len(response.get('tables', [])) > 1:
-            storages = response['tables'][1].get('data', [])
+        if not response.get('error') and len(response.get('resultSets', [])) > 1:
+            storages = response['resultSets'][1].get('data', [])
             storage = next((s for s in storages if s.get('storageName') == storage_name), None)
             if storage:
                 return storage.get('vaultContent') or storage.get('storageVault', '{}')
@@ -2390,12 +2390,12 @@ class CommandHandler:
     def _extract_command_output(self, completion_result):
         """Extract command output from completion result"""
         # Don't check for completed status - we want output even for failed tasks
-        if not completion_result.get('tables'):
+        if not completion_result.get('resultSets'):
             return None
             
-        # Response vault is at table index 2 (tables array index 2)
-        if len(completion_result['tables']) > 2:
-            response_vault = completion_result['tables'][2]
+        # Response vault is at table index 2 (resultSets array index 2)
+        if len(completion_result['resultSets']) > 2:
+            response_vault = completion_result['resultSets'][2]
             if response_vault and len(response_vault) > 0:
                 vault_data = response_vault[0]
                 if vault_data.get('vaultContent'):
@@ -2410,12 +2410,12 @@ class CommandHandler:
     
     def _extract_bridge_result(self, completion_result):
         """Extract structured result data from bridge-only task completion"""
-        if not completion_result.get('completed') or not completion_result.get('tables'):
+        if not completion_result.get('completed') or not completion_result.get('resultSets'):
             return None
             
-        # Response vault is at table index 2 (tables array index 2)
-        if len(completion_result['tables']) > 2:
-            response_vault = completion_result['tables'][2]
+        # Response vault is at table index 2 (resultSets array index 2)
+        if len(completion_result['resultSets']) > 2:
+            response_vault = completion_result['resultSets'][2]
             if response_vault and len(response_vault) > 0:
                 vault_data = response_vault[0]
                 if vault_data.get('vaultContent'):
@@ -2430,10 +2430,10 @@ class CommandHandler:
     def _format_completion_result(self, result, completion_result):
         """Format completion result based on output format"""
         if self.output_format == 'json-full':
-            # Full output with all server tables
+            # Full output with all server resultSets
             result['completed'] = completion_result['completed']
             result['final_status'] = completion_result['status'].lower()
-            result['server_tables'] = completion_result['tables']
+            result['server_tables'] = completion_result['resultSets']
             if completion_result.get('error'):
                 result['error'] = completion_result['error']
         elif self.output_format == 'json':
@@ -2473,12 +2473,12 @@ class CommandHandler:
                 time.sleep(poll_interval)
                 continue
             
-            # GetQueueItemTrace returns multiple tables
-            # We include all tables except table 0 (which contains nextRequestCredential)
-            tables = response.get('tables', [])
-            if len(tables) > 1:
+            # GetQueueItemTrace returns multiple resultSets
+            # We include all resultSets except table 0 (which contains nextRequestCredential)
+            resultSets = response.get('resultSets', [])
+            if len(resultSets) > 1:
                 # Get status from table 1 (queue details)
-                task_data = tables[1].get('data', [{}])[0] if tables[1].get('data') else {}
+                task_data = resultSets[1].get('data', [{}])[0] if resultSets[1].get('data') else {}
                 status = task_data.get('status', '').upper()
                 
                 if status != last_status:
@@ -2488,16 +2488,16 @@ class CommandHandler:
                 
                 # Check if task is done
                 if status in ['COMPLETED', 'FAILED', 'CANCELLED', 'ERROR']:
-                    # Return all tables except table 0
+                    # Return all resultSets except table 0
                     result = {
                         'completed': status == 'COMPLETED',
                         'status': status,
-                        'tables': []
+                        'resultSets': []
                     }
                     
-                    # Include all tables except table 0 (credentials)
-                    for i in range(1, len(tables)):
-                        result['tables'].append(tables[i].get('data', []))
+                    # Include all resultSets except table 0 (credentials)
+                    for i in range(1, len(resultSets)):
+                        result['resultSets'].append(resultSets[i].get('data', []))
                     
                     return result
             
@@ -2510,7 +2510,7 @@ class CommandHandler:
         return {
             'completed': False,
             'status': 'TIMEOUT',
-            'tables': [],
+            'resultSets': [],
             'error': f'Task timed out after {timeout} seconds'
         }
     
@@ -2527,8 +2527,8 @@ class CommandHandler:
             all_machines = []
             for team in teams:
                 machines_response = self.client.token_request("GetTeamMachines", {'teamName': team})
-                if not machines_response.get('error') and len(machines_response.get('tables', [])) > 1:
-                    machines = machines_response['tables'][1].get('data', [])
+                if not machines_response.get('error') and len(machines_response.get('resultSets', [])) > 1:
+                    machines = machines_response['resultSets'][1].get('data', [])
                     all_machines.extend(machines)
             
             if not all_machines:
@@ -2601,8 +2601,8 @@ class CommandHandler:
                 
                 # Get task ID
                 task_id = None
-                if len(queue_response.get('tables', [])) > 1 and queue_response['tables'][1].get('data'):
-                    task_id = queue_response['tables'][1]['data'][0].get('taskId') or queue_response['tables'][1]['data'][0].get('TaskId')
+                if len(queue_response.get('resultSets', [])) > 1 and queue_response['resultSets'][1].get('data'):
+                    task_id = queue_response['resultSets'][1]['data'][0].get('taskId') or queue_response['resultSets'][1]['data'][0].get('TaskId')
                 
                 if not task_id:
                     results.append({
@@ -2629,7 +2629,7 @@ class CommandHandler:
                         'status': 'success' if completion_result['completed'] else 'failed',
                         'message': 'Connected' if completion_result['completed'] else completion_result.get('error', 'Connection failed'),
                         'duration': time.time() - start_time,
-                        'server_tables': completion_result.get('tables', []) if getattr(args, 'wait', False) else None
+                        'server_tables': completion_result.get('resultSets', []) if getattr(args, 'wait', False) else None
                     })
                 else:
                     results.append({
@@ -2750,8 +2750,8 @@ class CommandHandler:
             
             # Extract task ID
             task_id = None
-            if len(queue_response.get('tables', [])) > 1 and queue_response['tables'][1].get('data'):
-                task_id = queue_response['tables'][1]['data'][0].get('taskId') or queue_response['tables'][1]['data'][0].get('TaskId')
+            if len(queue_response.get('resultSets', [])) > 1 and queue_response['resultSets'][1].get('data'):
+                task_id = queue_response['resultSets'][1]['data'][0].get('taskId') or queue_response['resultSets'][1]['data'][0].get('TaskId')
             
             # Prepare result data
             result = {
@@ -2857,8 +2857,8 @@ class CommandHandler:
             
             # Extract task ID
             task_id = None
-            if len(queue_response.get('tables', [])) > 1 and queue_response['tables'][1].get('data'):
-                task_id = queue_response['tables'][1]['data'][0].get('taskId') or queue_response['tables'][1]['data'][0].get('TaskId')
+            if len(queue_response.get('resultSets', [])) > 1 and queue_response['resultSets'][1].get('data'):
+                task_id = queue_response['resultSets'][1]['data'][0].get('taskId') or queue_response['resultSets'][1]['data'][0].get('TaskId')
             
             # Prepare result data
             result = {
@@ -2970,8 +2970,8 @@ class CommandHandler:
             
             # Extract task ID
             task_id = None
-            if len(queue_response.get('tables', [])) > 1 and queue_response['tables'][1].get('data'):
-                task_id = queue_response['tables'][1]['data'][0].get('taskId') or queue_response['tables'][1]['data'][0].get('TaskId')
+            if len(queue_response.get('resultSets', [])) > 1 and queue_response['resultSets'][1].get('data'):
+                task_id = queue_response['resultSets'][1]['data'][0].get('taskId') or queue_response['resultSets'][1]['data'][0].get('TaskId')
             
             # Prepare result data
             result = {
@@ -3021,6 +3021,214 @@ class CommandHandler:
                         if completion_result.get('error'):
                             print(f"Error: {completion_result['error']}")
                         return 1
+            
+            return 0
+            
+        except Exception as e:
+            print(format_output(None, self.output_format, None, f"Workflow error: {str(e)}"))
+            return 1
+    
+    def workflow_add_machine(self, args):
+        """Create machine and test SSH connection"""
+        try:
+            # Step 1: Create machine record in database using existing create command infrastructure
+            vault_data = getattr(args, 'vault', '{}')
+            if vault_data == '{}' or not vault_data:
+                # Create basic machine vault with common fields
+                vault_data = json.dumps({
+                    "ip": "",
+                    "user": "",
+                    "datastore": "/mnt/datastore"
+                })
+            
+            # Create a fake args object for the create machine command
+            class CreateArgs:
+                def __init__(self, team, bridge, name, vault):
+                    self.team = team
+                    self.bridge = bridge
+                    self.name = name
+                    self.vault = vault
+                    self.vault_file = None
+            
+            create_args = CreateArgs(args.team, args.bridge, args.name, vault_data)
+            
+            # Use the existing create machine command
+            create_result = self.generic_command('create', 'machine', create_args)
+            
+            if create_result != 0:
+                print(format_output(None, self.output_format, None, f"Failed to create machine: {args.name}"))
+                return 1
+            
+            # Log machine creation success
+            if self.output_format not in ['json', 'json-full']:
+                print(colorize(f"Machine '{args.name}' created in team '{args.team}'", 'GREEN'))
+            
+            # Step 2: Test connection if not skipped and SSH credentials are available
+            test_connection_success = False
+            ssh_test_task_id = None
+            
+            if not getattr(args, 'no_test', False):
+                # Parse vault data to check for SSH credentials
+                try:
+                    vault_json = json.loads(vault_data)
+                    has_ssh_creds = vault_json.get('ip') and vault_json.get('user')
+                    
+                    if has_ssh_creds:
+                        # Get team vault for SSH keys
+                        team_vault = self._get_team_vault(args.team)
+                        
+                        # Build SSH test vault
+                        vault_builder = VaultBuilder(self.client)
+                        ssh_queue_vault = vault_builder.build_for_ssh_test(
+                            bridge_name=args.bridge,
+                            machine_vault=vault_data,
+                            team_name=args.team,
+                            team_vault=team_vault
+                        )
+                        
+                        # Create SSH test queue item
+                        ssh_response = self.client.token_request("CreateQueueItem", {
+                            'teamName': args.team,
+                            'bridgeName': args.bridge,
+                            'queueVault': ssh_queue_vault
+                        })
+                        
+                        if ssh_response.get('error'):
+                            if self.output_format not in ['json', 'json-full']:
+                                print(colorize(f"Warning: SSH test failed to queue: {ssh_response['error']}", 'YELLOW'))
+                        else:
+                            # Extract SSH test task ID
+                            if len(ssh_response.get('resultSets', [])) > 1 and ssh_response['resultSets'][1].get('data'):
+                                ssh_test_task_id = ssh_response['resultSets'][1]['data'][0].get('taskId') or ssh_response['resultSets'][1]['data'][0].get('TaskId')
+                            
+                            if self.output_format not in ['json', 'json-full']:
+                                print(colorize("SSH connectivity test queued", 'BLUE'))
+                                if ssh_test_task_id:
+                                    print(f"SSH Test Task ID: {ssh_test_task_id}")
+                            
+                            # Wait for SSH test if requested
+                            if getattr(args, 'wait', False) and ssh_test_task_id:
+                                if self.output_format not in ['json', 'json-full']:
+                                    print(colorize("Waiting for SSH test...", 'BLUE'))
+                                
+                                ssh_completion = self._wait_for_task_completion(
+                                    ssh_test_task_id, 
+                                    args.team, 
+                                    timeout=getattr(args, 'wait_timeout', 30),
+                                    poll_interval=getattr(args, 'poll_interval', 2)
+                                )
+                                
+                                if ssh_completion['completed']:
+                                    test_connection_success = True
+                                    if self.output_format not in ['json', 'json-full']:
+                                        print(colorize("SSH test completed successfully", 'GREEN'))
+                                        
+                                        # Display SSH test results
+                                        bridge_result = self._extract_bridge_result(ssh_completion)
+                                        if bridge_result:
+                                            print("\nSSH Test Results:")
+                                            print("-" * 50)
+                                            print(f"Status: {bridge_result.get('status', 'unknown')}")
+                                            print(f"Auth Method: {bridge_result.get('auth_method', 'unknown')}")
+                                            if 'kernel_compatibility' in bridge_result:
+                                                kernel_info = bridge_result['kernel_compatibility']
+                                                if 'os_info' in kernel_info:
+                                                    print(f"OS: {kernel_info['os_info'].get('pretty_name', 'Unknown')}")
+                                                print(f"Kernel: {kernel_info.get('kernel_version', 'Unknown')}")
+                                                print(f"Compatibility: {kernel_info.get('compatibility_status', 'unknown')}")
+                                else:
+                                    if self.output_format not in ['json', 'json-full']:
+                                        print(colorize(f"SSH test {ssh_completion['status'].lower()}", 'YELLOW'))
+                                        if ssh_completion.get('error'):
+                                            print(f"SSH Test Error: {ssh_completion['error']}")
+                    else:
+                        if self.output_format not in ['json', 'json-full']:
+                            print(colorize("SSH test skipped: No SSH credentials in machine vault", 'YELLOW'))
+                        
+                except json.JSONDecodeError:
+                    if self.output_format not in ['json', 'json-full']:
+                        print(colorize("SSH test skipped: Invalid vault JSON", 'YELLOW'))
+            else:
+                if self.output_format not in ['json', 'json-full']:
+                    print(colorize("SSH test skipped (--no-test specified)", 'YELLOW'))
+            
+            # Step 3: Run machine setup if connection test succeeded and auto-setup requested
+            setup_task_id = None
+            if test_connection_success and getattr(args, 'auto_setup', False):
+                if self.output_format not in ['json', 'json-full']:
+                    print(colorize("Starting automatic machine setup...", 'BLUE'))
+                
+                # Build setup parameters
+                setup_params = {
+                    'datastore_size': getattr(args, 'datastore_size', '95%'),
+                    'source': 'apt-repo',
+                    'rclone_source': 'install-script',
+                    'docker_source': 'docker-repo',
+                    'install_amd_driver': 'auto',
+                    'install_nvidia_driver': 'auto',
+                    'kernel_module_mode': 'auto'
+                }
+                
+                # Get machine and team vault data  
+                team_vault = self._get_team_vault(args.team)
+                
+                # Build setup vault
+                vault_builder = VaultBuilder(self.client)
+                setup_queue_vault = vault_builder.build_for_setup(
+                    team_name=args.team,
+                    machine_name=args.name,
+                    bridge_name=args.bridge,
+                    params=setup_params,
+                    team_vault=team_vault,
+                    machine_vault=vault_data
+                )
+                
+                # Create setup queue item
+                setup_response = self.client.token_request("CreateQueueItem", {
+                    'teamName': args.team,
+                    'machineName': args.name,
+                    'bridgeName': args.bridge,
+                    'queueVault': setup_queue_vault
+                })
+                
+                if setup_response.get('error'):
+                    if self.output_format not in ['json', 'json-full']:
+                        print(colorize(f"Warning: Machine setup failed to queue: {setup_response['error']}", 'YELLOW'))
+                else:
+                    # Extract setup task ID
+                    if len(setup_response.get('resultSets', [])) > 1 and setup_response['resultSets'][1].get('data'):
+                        setup_task_id = setup_response['resultSets'][1]['data'][0].get('taskId') or setup_response['resultSets'][1]['data'][0].get('TaskId')
+                    
+                    if self.output_format not in ['json', 'json-full']:
+                        print(colorize("Machine setup queued", 'GREEN'))
+                        if setup_task_id:
+                            print(f"Setup Task ID: {setup_task_id}")
+            
+            # Prepare result data
+            result = {
+                'machine': args.name,
+                'team': args.team,
+                'bridge': args.bridge,
+                'ssh_test_success': test_connection_success,
+                'ssh_test_task_id': ssh_test_task_id,
+                'setup_task_id': setup_task_id
+            }
+            
+            # Output final results
+            if self.output_format in ['json', 'json-full']:
+                print(format_output(result, self.output_format, "Machine creation workflow completed"))
+            else:
+                print(colorize("\nMachine Creation Workflow Summary:", 'HEADER'))
+                print("=" * 50)
+                print(f"Machine: {args.name}")
+                print(f"Team: {args.team}")
+                print(f"Bridge: {args.bridge}")
+                print(f"SSH Test: {'Passed' if test_connection_success else 'Skipped/Failed'}")
+                if ssh_test_task_id:
+                    print(f"SSH Test Task ID: {ssh_test_task_id}")
+                if setup_task_id:
+                    print(f"Setup Task ID: {setup_task_id}")
+                    print(colorize("Tip: Use 'rediacc queue trace' to monitor setup progress", 'BLUE'))
             
             return 0
             
@@ -3165,6 +3373,20 @@ def setup_parser():
     setup_parser.add_argument('--wait', action='store_true', help='Wait for completion')
     setup_parser.add_argument('--poll-interval', type=int, default=2, help='Polling interval in seconds when waiting (default: 2)')
     setup_parser.add_argument('--wait-timeout', type=int, default=300, help='Timeout in seconds when waiting (default: 300)')
+    
+    # Add machine workflow
+    add_machine_parser = workflow_subparsers.add_parser('add-machine', help='Create machine with SSH connection test')
+    add_machine_parser.add_argument('--team', required=True, help='Team name')
+    add_machine_parser.add_argument('--name', required=True, help='Machine name')
+    add_machine_parser.add_argument('--bridge', required=True, help='Bridge name')
+    add_machine_parser.add_argument('--vault', help='Machine vault data (JSON) with ip, user, ssh_password, etc.')
+    add_machine_parser.add_argument('--no-test', action='store_true', help='Skip SSH connection test')
+    add_machine_parser.add_argument('--auto-setup', action='store_true', help='Automatically run machine setup if SSH test passes')
+    add_machine_parser.add_argument('--datastore-size', default='95%', help='Datastore size for auto-setup (default: 95%%)')
+    add_machine_parser.add_argument('--wait', action='store_true', help='Wait for SSH test completion')
+    add_machine_parser.add_argument('--trace', action='store_true', help='Show task IDs for tracking')
+    add_machine_parser.add_argument('--poll-interval', type=int, default=2, help='Polling interval in seconds when waiting (default: 2)')
+    add_machine_parser.add_argument('--wait-timeout', type=int, default=30, help='Timeout in seconds when waiting for SSH test (default: 30)')
     
     return parser
 
@@ -3317,6 +3539,8 @@ def main():
             return handler.workflow_ssh_test(args)
         elif args.workflow_type == 'machine-setup':
             return handler.workflow_machine_setup(args)
+        elif args.workflow_type == 'add-machine':
+            return handler.workflow_add_machine(args)
         else:
             error = f"Unknown workflow type: {args.workflow_type}"
             output = format_output(None, output_format, None, error)

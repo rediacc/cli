@@ -356,8 +356,8 @@ async def main():
         if dashboard_result.get('success'):
             try:
                 # Parse the GetCompanyDashboardJson response
-                if 'tables' in dashboard_result:
-                    for table in dashboard_result['tables']:
+                if 'resultSets' in dashboard_result:
+                    for table in dashboard_result['resultSets']:
                         if 'data' in table and len(table['data']) > 0:
                             for row in table['data']:
                                 if 'subscriptionAndResourcesJson' in row:
