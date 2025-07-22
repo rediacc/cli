@@ -37,7 +37,6 @@ steps:
     entity: team
     params:
       name: "Private Team"
-    continue_on_error: true  # Might already exist
   
   # Create machines
   - action: create
@@ -77,7 +76,6 @@ steps:
   - action: execute_raw
     params:
       args: ["--output", "json", "workflow", "connectivity-test", "--team", "Private Team", "--wait", "--wait-timeout", "60"]
-    continue_on_error: true
     capture:
       connectivity_result: "$"
       total_machines: "$.data.total"
@@ -88,7 +86,6 @@ steps:
   - action: execute_raw
     params:
       args: ["--output", "json", "workflow", "ssh-test", "--team", "Private Team", "--bridge", "{{ bridge_name }}", "--host", "192.168.111.11", "--user", "muhammed", "--wait", "--wait-timeout", "30"]
-    continue_on_error: true
     capture:
       ssh_test_11_result: "$"
       ssh_test_11_status: "$.data.final_status"
@@ -96,7 +93,6 @@ steps:
   - action: execute_raw
     params:
       args: ["--output", "json", "workflow", "ssh-test", "--team", "Private Team", "--bridge", "{{ bridge_name }}", "--host", "192.168.111.12", "--user", "muhammed", "--wait", "--wait-timeout", "30"]
-    continue_on_error: true
     capture:
       ssh_test_12_result: "$"
       ssh_test_12_status: "$.data.final_status"
@@ -105,7 +101,6 @@ steps:
   - action: execute_raw
     params:
       args: ["--output", "json", "workflow", "hello-test", "--team", "Private Team", "--machine", "rediacc11", "--wait", "--wait-timeout", "60"]
-    continue_on_error: true
     capture:
       hello_11_result: "$"
       hello_11_completed: "$.data.completed"
@@ -114,7 +109,6 @@ steps:
   - action: execute_raw
     params:
       args: ["--output", "json", "workflow", "hello-test", "--team", "Private Team", "--machine", "rediacc12", "--wait", "--wait-timeout", "60"]
-    continue_on_error: true
     capture:
       hello_12_result: "$"
       hello_12_completed: "$.data.completed"
@@ -160,41 +154,34 @@ cleanup:
   - action: execute_raw
     params:
       args: ["--output", "json", "delete", "repository", "--team", "Private Team", "--name", "{{ source_repo_name }}"]
-    continue_on_error: true
   
   - action: execute_raw
     params:
       args: ["--output", "json", "delete", "repository", "--team", "Private Team", "--name", "{{ self_dest_repo_name }}"]
-    continue_on_error: true
   
   - action: execute_raw
     params:
       args: ["--output", "json", "delete", "repository", "--team", "Private Team", "--name", "{{ cross_dest_repo_name }}"]
-    continue_on_error: true
   
   # Delete machines
   - action: delete
     entity: machine
     params:
       name: "rediacc11"
-    continue_on_error: true
   
   - action: delete
     entity: machine
     params:
       name: "rediacc12"
-    continue_on_error: true
   
   # Delete bridge
   - action: delete
     entity: bridge
     params:
       name: "{{ bridge_name }}"
-    continue_on_error: true
   
   # Delete region
   - action: delete
     entity: region
     params:
       name: "{{ region_name }}"
-    continue_on_error: true

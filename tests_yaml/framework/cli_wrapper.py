@@ -212,6 +212,24 @@ class CLIWrapper:
             if isinstance(obj, dict) and "data" in obj and isinstance(obj["data"], dict):
                 result.setdefault("data", {}).update(obj["data"])
         
+        # CRITICAL: Ensure overall success is true only if ALL responses are successful
+        # Check if any response has success=false
+        any_failed = any(
+            isinstance(obj, dict) and obj.get("success") == False
+            for obj in json_objects
+        )
+        
+        if any_failed:
+            result["success"] = False
+            # Collect any error messages from failed responses
+            errors = [obj.get("error") for obj in json_objects 
+                     if isinstance(obj, dict) and obj.get("success") == False and obj.get("error")]
+            if errors:
+                result["error"] = "; ".join(errors)
+        else:
+            # All responses successful - ensure success field is set
+            result["success"] = True
+        
         return result
     
     
@@ -377,12 +395,24 @@ class CLIWrapper:
             new_name = params.pop("new_name", None)
             if not region:
                 return {"success": False, "error": "Region required for bridge update"}
+            
+            # If no new_name provided but vault params exist, use current name as new_name
+            # This allows vault-only updates to work with the CLI's required positional arguments
+            if not new_name and ("vault" in params or "vault_version" in params):
+                new_name = name  # Use same name for vault-only updates
+            
             if not new_name:
                 return {"success": False, "error": "New name required for bridge update"}
             cmd = self._build_command("update", entity_type, region, name, new_name)
         elif entity_type == "region":
             # Region update: update region <name> <new_name>
             new_name = params.pop("new_name", None)
+            
+            # If no new_name provided but vault params exist, use current name as new_name
+            # This allows vault-only updates to work with the CLI's required positional arguments
+            if not new_name and ("vault" in params or "vault_version" in params):
+                new_name = name  # Use same name for vault-only updates
+            
             if not new_name:
                 return {"success": False, "error": "New name required for region update"}
             cmd = self._build_command("update", entity_type, name, new_name)

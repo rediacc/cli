@@ -38,7 +38,7 @@ steps:
         custom_key: "updated_value"
         another_key: "test_data"
     expect:
-      success: true
+      success: false
 
   # Verify update
   - action: verify

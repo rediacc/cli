@@ -37,7 +37,7 @@ The tests are designed to work with the following infrastructure:
 - Bridge: "Global Bridges"
 - Hosts: 192.168.111.11, 192.168.111.12, 192.168.111.21
 
-Tests will gracefully handle missing entities using `continue_on_error: true`.
+Tests will fail if required entities are missing.
 
 ## Important Notes
 

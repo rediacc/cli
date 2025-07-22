@@ -110,7 +110,7 @@ class TestLoader:
             
             # Validate entity types (skip for special actions)
             for step in test.steps + test.cleanup:
-                if step.action in ['wait', 'sleep', 'log', 'set_var']:
+                if step.action in ['wait', 'sleep', 'log', 'set_var', 'execute_raw']:
                     continue  # These actions don't need entity types
                 try:
                     EntityType(step.entity)

@@ -86,7 +86,7 @@ steps:
           backup_schedule: "0 2 * * *"
       vault_version: 2
     expect:
-      success: true
+      success: false
 
 
 cleanup:

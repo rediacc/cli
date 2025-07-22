@@ -18,10 +18,10 @@ steps:
   # The framework doesn't yet support user operations like enable_2fa, disable_2fa, etc.
   # These would need to be added to the runner.py _execute_step method
   
-  # Create a placeholder test that passes
-  - action: wait
+  # Test user operations - list users should work
+  - action: execute_raw
     params:
-      seconds: 0.1
+      args: ["list", "users"]
     expect:
       success: true
 
