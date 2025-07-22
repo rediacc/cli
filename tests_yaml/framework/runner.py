@@ -207,11 +207,12 @@ class TestRunner:
         if self.cleanup_on_failure or all(
             r.status == TestStatus.PASSED for r in self.results.values()
         ):
-            await self._cleanup_resources(graph.get_cleanup_order(), graph.nodes)
+            self._cleanup_resources(graph.get_cleanup_order(), graph.nodes)
         
-        # If verbose-on-error is enabled and we have failed tests, re-run them with verbose output
-        if self.verbose_on_error and self.failed_tests_for_rerun:
-            await self._rerun_failed_tests_verbose()
+        # DISABLED: Verbose re-run was masking actual bugs by running tests twice
+        # The race condition bug needs to be fixed in the CLI, not worked around
+        # if self.verbose_on_error and self.failed_tests_for_rerun:
+        #     self._rerun_failed_tests_verbose()
         
         return self.results
     
@@ -266,11 +267,15 @@ class TestRunner:
             
             # Setup phase
             for setup_action in test.setup:
-                await self._execute_setup_action(setup_action)
+                self._execute_setup_action(setup_action)
             
-            # Execute test steps
+            # Execute test steps synchronously
             for step in test.steps:
-                step_result = await self._execute_step(step, test)
+                step_result = self._execute_step(step, test)
+                
+                # Validate expectations
+                if step.expect:
+                    self._validate_expectations(step_result, step.expect, step)
                 
                 # Capture variables
                 if step.capture and isinstance(step_result, dict):
@@ -308,8 +313,8 @@ class TestRunner:
         
         return result
     
-    async def _execute_setup_action(self, action: Dict[str, Any]):
-        """Execute a setup action"""
+    def _execute_setup_action(self, action: Dict[str, Any]):
+        """Execute a setup action synchronously"""
         action_type = list(action.keys())[0]
         
         if action_type.startswith("create_random_"):
@@ -335,41 +340,39 @@ class TestRunner:
                 if key != "set_var":
                     self.context.set_var(key, value)
     
-    async def _execute_step(self, step, test: TestScenario) -> Dict[str, Any]:
-        """Execute a single test step"""
+    def _execute_step(self, step, test: TestScenario) -> Dict[str, Any]:
+        """Execute a single test step synchronously"""
         # Interpolate parameters
         params = self.context.interpolate_dict(step.params)
         
         # Execute based on action
         if step.action == "create":
-            return await self._execute_create(step.entity, params)
+            return self._execute_create(step.entity, params)
         
         elif step.action == "verify":
-            return await self._execute_verify(step.entity, params, step.expect)
+            return self._execute_verify(step.entity, params, step.expect)
         
         elif step.action == "update":
-            return await self._execute_update(step.entity, params)
+            return self._execute_update(step.entity, params)
         
         elif step.action == "delete":
-            return await self._execute_delete(step.entity, params)
+            return self._execute_delete(step.entity, params)
         
         elif step.action == "wait":
-            await asyncio.sleep(params.get("seconds", 1))
+            import time
+            time.sleep(params.get("seconds", 1))
             return {"success": True}
         
         elif step.action == "execute_raw":
-            return await self._execute_raw(params)
+            return self._execute_raw(params, step.expect)
         
         else:
             raise ValueError(f"Unknown action: {step.action}")
     
-    async def _execute_create(self, entity_type: str, params: Dict[str, Any]) -> Dict[str, Any]:
-        """Execute create action"""
-        # Use thread pool for sync CLI calls
-        loop = asyncio.get_event_loop()
-        # Create a lambda to handle kwargs
-        create_func = lambda: self.cli.create(entity_type, **params)
-        result = await loop.run_in_executor(None, create_func)
+    def _execute_create(self, entity_type: str, params: Dict[str, Any]) -> Dict[str, Any]:
+        """Execute create action synchronously"""
+        # Direct synchronous call
+        result = self.cli.create(entity_type, **params)
         
         # Log the result for debugging
         if not result.get("success"):
@@ -379,10 +382,9 @@ class TestRunner:
         
         return result
     
-    async def _verify_via_list(self, entity_type: str, name: str, params: Dict[str, Any], 
+    def _verify_via_list(self, entity_type: str, name: str, params: Dict[str, Any], 
                               config: Dict[str, Any]) -> Dict[str, Any]:
-        """Verify entity existence using list operation"""
-        loop = asyncio.get_event_loop()
+        """Verify entity existence using list operation synchronously"""
         
         # Build list parameters
         list_kwargs = {}
@@ -391,9 +393,8 @@ class TestRunner:
                 if param_key in params:
                     list_kwargs[param_name] = params[param_key]
         
-        # Execute list command
-        list_func = lambda: self.cli.list(config["list_command"], **list_kwargs)
-        result = await loop.run_in_executor(None, list_func)
+        # Execute list command synchronously
+        result = self.cli.list(config["list_command"], **list_kwargs)
         
         if not result.get("success"):
             raise AssertionError(f"Failed to list {config['list_command']}")
@@ -426,10 +427,9 @@ class TestRunner:
         
         return {"success": True, **found_item}
     
-    async def _verify_via_inspect(self, entity_type: str, name: str, params: Dict[str, Any], 
+    def _verify_via_inspect(self, entity_type: str, name: str, params: Dict[str, Any], 
                                  config: Dict[str, Any]) -> Dict[str, Any]:
-        """Verify entity existence using inspect/get operation"""
-        loop = asyncio.get_event_loop()
+        """Verify entity existence using inspect/get operation synchronously"""
         
         # Build get parameters
         get_kwargs = {}
@@ -437,9 +437,8 @@ class TestRunner:
             if param in params:
                 get_kwargs[param] = params[param]
         
-        # Execute get command
-        get_func = lambda: self.cli.get(entity_type, name, **get_kwargs)
-        result = await loop.run_in_executor(None, get_func)
+        # Execute get command synchronously
+        result = self.cli.get(entity_type, name, **get_kwargs)
         
         if not result.get("success"):
             raise AssertionError(f"Failed to get {entity_type} {name}")
@@ -450,9 +449,9 @@ class TestRunner:
         
         return result
     
-    async def _execute_verify(self, entity_type: str, params: Dict[str, Any], 
+    def _execute_verify(self, entity_type: str, params: Dict[str, Any], 
                              expect: Dict[str, Any]) -> Dict[str, Any]:
-        """Execute verify action using configuration-based approach"""
+        """Execute verify action using configuration-based approach synchronously"""
         # Get entity name
         name = params.get("name")
         if not name:
@@ -473,9 +472,9 @@ class TestRunner:
         
         # Use list method for certain entities or when explicitly requested
         if method == "list" or (method == "mixed" and params.get("use_list", False)):
-            result = await self._verify_via_list(entity_type, name, params, config)
+            result = self._verify_via_list(entity_type, name, params, config)
         else:
-            result = await self._verify_via_inspect(entity_type, name, params, config)
+            result = self._verify_via_inspect(entity_type, name, params, config)
         
         # Verify expectations (interpolate expected values)
         interpolated_expect = self.context.interpolate_dict(expect)
@@ -489,42 +488,95 @@ class TestRunner:
         
         return result
     
-    async def _execute_update(self, entity_type: str, params: Dict[str, Any]) -> Dict[str, Any]:
-        """Execute update action"""
-        loop = asyncio.get_event_loop()
+    def _execute_update(self, entity_type: str, params: Dict[str, Any]) -> Dict[str, Any]:
+        """Execute update action synchronously"""
         name = params.pop("name", None)
         if not name:
             raise ValueError("Name required for update action")
         
-        update_func = lambda: self.cli.update(entity_type, name, **params)
-        return await loop.run_in_executor(None, update_func)
+        # Direct synchronous call - eliminates race conditions
+        return self.cli.update(entity_type, name, **params)
     
-    async def _execute_delete(self, entity_type: str, params: Dict[str, Any]) -> Dict[str, Any]:
-        """Execute delete action"""
-        loop = asyncio.get_event_loop()
+    def _execute_delete(self, entity_type: str, params: Dict[str, Any]) -> Dict[str, Any]:
+        """Execute delete action synchronously"""
         name = params.get("name")
         if not name:
             raise ValueError("Name required for delete action")
         
-        delete_func = lambda: self.cli.delete(entity_type, name)
-        return await loop.run_in_executor(None, delete_func)
+        # Direct synchronous call
+        return self.cli.delete(entity_type, name)
     
-    async def _execute_raw(self, params: Dict[str, Any]) -> Dict[str, Any]:
-        """Execute raw CLI command"""
+    def _execute_raw(self, params: Dict[str, Any], expect: Dict[str, Any] = None) -> Dict[str, Any]:
+        """Execute raw CLI command synchronously"""
         args = params.get('args', [])
         stdin = params.get('stdin')
         output_json = params.get('output_json', True)
         
-        loop = asyncio.get_event_loop()
-        raw_func = lambda: self.cli.execute_raw(args, output_json=output_json, stdin=stdin)
-        result = await loop.run_in_executor(None, raw_func)
+        # Execute raw command synchronously
+        result = self.cli.execute_raw(args, output_json=output_json, stdin=stdin)
         
-        if result.get('success'):
+        # Determine if this failure was expected
+        expected_success = True if expect is None else expect.get('success', True)
+        actual_success = result.get('success', False)
+        
+        if actual_success:
             self.logger.info(f"Executed raw command: {' '.join(args)}")
         else:
-            self.logger.error(f"Raw command failed: {' '.join(args)}")
+            # Log as info if failure was expected, error if unexpected
+            if not expected_success:
+                self.logger.info(f"Raw command failed as expected: {' '.join(args)}")
+            else:
+                self.logger.error(f"Raw command failed: {' '.join(args)}")
         
         return result
+    
+    def _validate_expectations(self, result: Dict[str, Any], expectations: Dict[str, Any], step) -> None:
+        """Validate step results against expectations"""
+        # Interpolate expectations
+        interpolated_expectations = self.context.interpolate_dict(expectations)
+        
+        for key, expected_value in interpolated_expectations.items():
+            if key == "success":
+                actual_success = result.get("success", False)
+                if actual_success != expected_value:
+                    raise AssertionError(
+                        f"Step failed expectation: expected success={expected_value}, got success={actual_success}. "
+                        f"Action: {step.action}, Entity: {step.entity}"
+                    )
+            elif key.startswith("data."):
+                # Handle nested data expectations like "data.version": 2
+                data_path = key[5:]  # Remove "data." prefix
+                actual_value = self._extract_json_path(result.get("data", {}), data_path)
+                if actual_value != expected_value:
+                    raise AssertionError(
+                        f"Step failed expectation: expected {key}={expected_value}, got {actual_value}. "
+                        f"Action: {step.action}, Entity: {step.entity}"
+                    )
+            elif key == "error":
+                # Handle error pattern matching
+                actual_error = result.get("error", "")
+                if expected_value.startswith("*") and expected_value.endswith("*"):
+                    # Wildcard matching
+                    pattern = expected_value[1:-1].lower()
+                    if pattern not in actual_error.lower():
+                        raise AssertionError(
+                            f"Step failed expectation: expected error containing '{pattern}', got '{actual_error}'. "
+                            f"Action: {step.action}, Entity: {step.entity}"
+                        )
+                else:
+                    if actual_error != expected_value:
+                        raise AssertionError(
+                            f"Step failed expectation: expected error='{expected_value}', got '{actual_error}'. "
+                            f"Action: {step.action}, Entity: {step.entity}"
+                        )
+            else:
+                # Handle direct field expectations
+                actual_value = result.get(key)
+                if actual_value != expected_value:
+                    raise AssertionError(
+                        f"Step failed expectation: expected {key}={expected_value}, got {actual_value}. "
+                        f"Action: {step.action}, Entity: {step.entity}"
+                    )
     
     def _extract_json_path(self, data: Dict[str, Any], path: str) -> Any:
         """Extract value from JSON using simple path (e.g., $.id or $.data.name)"""
@@ -551,8 +603,8 @@ class TestRunner:
             self.created_resources.append((entity_type, resource_id, data))
             self.context.track_resource(entity_type, resource_id, data)
     
-    async def _cleanup_resources(self, cleanup_order: List[str], all_tests: Dict[str, TestScenario]):
-        """Clean up resources in proper order"""
+    def _cleanup_resources(self, cleanup_order: List[str], all_tests: Dict[str, TestScenario]):
+        """Clean up resources in proper order synchronously"""
         self.logger.info("Starting cleanup phase")
         
         # Group resources by test
@@ -581,7 +633,7 @@ class TestRunner:
                     try:
                         self.context.interpolate_dict(cleanup_step.params)
                         # If interpolation succeeded, execute the step
-                        await self._execute_step(cleanup_step, test)
+                        self._execute_step(cleanup_step, test)
                     except ValueError as ve:
                         # Variable not found - skip this cleanup step
                         self.logger.debug(f"Skipping cleanup step for {test.name}: {ve}")
@@ -591,12 +643,12 @@ class TestRunner:
             # Clean up tracked resources
             for entity_type, resource_id in test_resources.get(test_id, []):
                 try:
-                    await self._execute_delete(entity_type, {"name": resource_id})
+                    self._execute_delete(entity_type, {"name": resource_id})
                     self.logger.info(f"Cleaned up {entity_type}/{resource_id}")
                 except Exception as e:
                     self.logger.error(f"Failed to cleanup {entity_type}/{resource_id}: {e}")
     
-    async def _rerun_failed_tests_verbose(self):
+    def _rerun_failed_tests_verbose(self):
         """Re-run failed tests with verbose output for debugging"""
         self.logger.info("\n" + "=" * 60)
         self.logger.info("RE-RUNNING FAILED TESTS WITH VERBOSE OUTPUT")
@@ -626,13 +678,13 @@ class TestRunner:
                     # Re-run the test with verbose output
                     # Note: We don't update self.results here to preserve the original failure
                     
-                    # Setup phase
+                    # Setup phase - now synchronous
                     for setup_action in test.setup:
-                        await self._execute_setup_action(setup_action)
+                        self._execute_setup_action(setup_action)
                     
-                    # Execute test steps
+                    # Execute test steps - now synchronous
                     for step in test.steps:
-                        step_result = await self._execute_step(step, test)
+                        step_result = self._execute_step(step, test)
                         
                         # Capture variables
                         if step.capture and isinstance(step_result, dict):

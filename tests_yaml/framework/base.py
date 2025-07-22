@@ -164,7 +164,6 @@ class TestStep:
     retry: int = 0
     timeout: int = 30
     parallel: bool = False  # Whether this step can run in parallel with others
-    continue_on_error: bool = False  # Whether to continue if this step fails
     
     def to_dict(self) -> Dict[str, Any]:
         return {

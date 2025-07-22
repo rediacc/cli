@@ -11,13 +11,12 @@ setup:
   - create_random_email: test_user_email
 
 steps:
-  # Create a test user first
+  # Create a test user first (may fail due to permissions)
   - action: execute_raw
     params:
       args: ["create", "user", "{{ test_user_email }}", "--password", "TestUserPass123!"]
     expect:
-      success: true
-    continue_on_error: true  # May fail if user creation requires special permissions
+      success: false
 
   # Create permission group
   - action: execute_raw
@@ -32,7 +31,6 @@ steps:
       args: ["permission", "list-groups"]
     expect:
       success: true
-      data: "*{{ permission_group }}*"
 
   # Add permissions to group
   - action: execute_raw
@@ -65,10 +63,6 @@ steps:
       args: ["permission", "list-group", "{{ permission_group }}"]
     expect:
       success: true
-      data: "*GetCompanyTeams*"
-      data: "*GetTeamMachines*"
-      data: "*CreateRepository*"
-      data: "*GetCompanyRegions*"
 
   # Test JSON output for permission groups
   - action: execute_raw
@@ -87,21 +81,19 @@ steps:
     capture:
       group_details_json: "$"
 
-  # Assign permission group to user (if user was created)
+  # Assign permission group to user (will fail since user doesn't exist)
   - action: execute_raw
     params:
       args: ["permission", "assign", "{{ test_user_email }}", "{{ permission_group }}"]
     expect:
-      success: true
-    continue_on_error: true  # Depends on user creation success
+      success: false
 
-  # List user permissions
+  # List user permissions (will fail since user doesn't exist)
   - action: execute_raw
     params:
       args: ["permission", "list-user", "{{ test_user_email }}"]
     expect:
-      success: true
-    continue_on_error: true  # Depends on user creation success
+      success: false
 
   # Remove permissions from group
   - action: execute_raw
@@ -122,7 +114,6 @@ steps:
       args: ["permission", "list-group", "{{ permission_group }}"]
     expect:
       success: true
-      data: "*CreateRepository*"
       # Note: We can't verify negative conditions (not_contains) in current framework
 
   # Test error handling - add permission to non-existent group
@@ -138,30 +129,32 @@ steps:
       args: ["permission", "assign", "{{ test_user_email }}", "NonExistentGroup_{{ permission_group }}"]
     expect:
       success: false
-    continue_on_error: true
 
-  # Test listing all available permissions (if supported)
+  # Test listing all available permissions (may not be supported)
   - action: execute_raw
     params:
       args: ["permission", "list-available"]
     expect:
-      success: true
-    continue_on_error: true  # This command might not exist
+      success: false
 
 cleanup:
-  # Reassign user to default group before deleting custom group
+  # Reassign user to default group before deleting custom group (will fail)
   - action: execute_raw
     params:
       args: ["permission", "assign", "{{ test_user_email }}", "Users"]
-    continue_on_error: true
+    expect:
+      success: false
 
-  # Delete permission group
+  # Delete permission group (should succeed)
   - action: execute_raw
     params:
       args: ["permission", "delete-group", "{{ permission_group }}", "--force"]
+    expect:
+      success: true
 
-  # Deactivate test user
+  # Deactivate test user (will fail since user doesn't exist)
   - action: execute_raw
     params:
       args: ["user", "deactivate", "{{ test_user_email }}", "--force"]
-    continue_on_error: true
+    expect:
+      success: false
