@@ -259,6 +259,8 @@ docker_build() {
     docker build -t rediacc-cli:latest \
         --build-arg REDIACC_LINUX_USER=rediacc \
         --build-arg REDIACC_LINUX_GROUP=rediacc \
+        --build-arg REDIACC_USER_UID=7111 \
+        --build-arg REDIACC_USER_GID=7111 \
         -f "$CLI_ROOT/docker/Dockerfile" \
         "$CLI_ROOT"
     
@@ -365,6 +367,8 @@ desktop_docker_build() {
         docker build -t rediacc/cli:latest \
             --build-arg REDIACC_LINUX_USER=rediacc \
             --build-arg REDIACC_LINUX_GROUP=rediacc \
+            --build-arg REDIACC_USER_UID=7111 \
+            --build-arg REDIACC_USER_GID=7111 \
             -f "$CLI_ROOT/docker/Dockerfile" \
             "$CLI_ROOT"
         
@@ -378,6 +382,8 @@ desktop_docker_build() {
     docker build -t rediacc/cli-gui:latest \
         --build-arg REDIACC_LINUX_USER=rediacc \
         --build-arg REDIACC_LINUX_GROUP=rediacc \
+        --build-arg REDIACC_USER_UID=7111 \
+        --build-arg REDIACC_USER_GID=7111 \
         -f "$CLI_ROOT/docker/Dockerfile.gui" \
         "$CLI_ROOT"
     

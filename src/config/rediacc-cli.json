@@ -528,7 +528,7 @@
       },
       "repository": {
         "endpoint": "CreateRepository",
-        "params": "lambda args: {'teamName': args.team, 'repoName': args.name, 'repoVault': get_vault_data(args) or '{}'}",
+        "params": "lambda args: {'teamName': args.team, 'repoName': args.name, 'repoVault': get_vault_data(args) or '{}', 'repoGuid': getattr(args, 'guid', None)}",
         "success_msg": "Successfully created repository: {name} for team {team}",
         "help": {
           "description": "Create a new repository for code and data storage",
@@ -553,6 +553,11 @@
               "description": "File containing JSON vault configuration",
               "required": false,
               "example": "repo-config.json"
+            },
+            "guid": {
+              "description": "Optional specific GUID for the repository",
+              "required": false,
+              "example": "550e8400-e29b-41d4-a716-446655440000"
             }
           },
           "examples": [
@@ -563,6 +568,10 @@
             {
               "command": "rediacc-cli create repository prod backend-api --vault '{\"size\":\"20G\",\"backup\":\"daily\"}'",
               "description": "Create repository with size and backup configuration"
+            },
+            {
+              "command": "rediacc-cli create repository dev legacy-app --guid 550e8400-e29b-41d4-a716-446655440000",
+              "description": "Create repository with specific GUID"
             }
           ],
           "notes": "Repository names must be unique within a team. After creation, deploy code using 'rediacc sync' or manage with queue functions like 'repo_new', 'repo_up', etc.",
@@ -576,7 +585,10 @@
             "Parent repository must exist if specified",
             "Resource limits depend on subscription plan",
             "Repository names are case-sensitive",
-            "Parent repository must be in the same team"
+            "Parent repository must be in the same team",
+            "GUID must be a valid UUID format if specified",
+            "GUID must be unique across all repositories if specified",
+            "GUID is auto-generated if not provided"
           ]
         }
       },

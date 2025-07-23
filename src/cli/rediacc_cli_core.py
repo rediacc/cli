@@ -51,10 +51,10 @@ def safe_error_message(message: str) -> str:
     guid_pattern = r'\b[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}\b'
     return re.sub(guid_pattern, lambda m: f"{m.group(0)[:8]}...", message, flags=re.IGNORECASE)
 
-DATASTORE_PATH = get('REDIACC_DATASTORE_PATH')
-INTERIM_FOLDER_NAME = get('REDIACC_INTERIM_FOLDER')
-MOUNTS_FOLDER_NAME = get('REDIACC_MOUNTS_FOLDER')
-REPOS_FOLDER_NAME = get('REDIACC_REPOS_FOLDER')
+# These folder names are constants that must match the values in bridge/cli/scripts/internal.sh
+INTERIM_FOLDER_NAME = 'interim'
+MOUNTS_FOLDER_NAME = 'mounts'
+REPOS_FOLDER_NAME = 'repos'
 
 COLORS = {
     'HEADER': '\033[95m', 
@@ -432,8 +432,12 @@ def get_machine_connection_info(machine_info: Dict[str, Any]) -> Dict[str, Any]:
     
     ip = vault.get('ip') or vault.get('IP')
     ssh_user = vault.get('user') or vault.get('USER')
-    datastore = vault.get('datastore') or vault.get('DATASTORE', DATASTORE_PATH)
+    datastore = vault.get('datastore') or vault.get('DATASTORE')
     host_entry = vault.get('hostEntry') or vault.get('HOST_ENTRY')
+    
+    # Validate required fields
+    if not datastore:
+        error_exit(f"Machine vault for '{machine_name}' is missing required 'datastore' field")
     
     universal_user, universal_user_id = _get_universal_user_info()
     if not universal_user:

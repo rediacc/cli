@@ -474,27 +474,21 @@ def build_queue_vault_data(function_name, args):
     return json.dumps(vault_data)
 
 def generate_hardware_id():
-    possible_urls = [
-        "http://localhost:7322/api/health/hardware-id",
-        "http://localhost:5000/api/health/hardware-id",
-        "http://localhost:80/api/health/hardware-id",
-    ]
+    # Use the API URL from environment/config
+    api_base_url = BASE_URL.removesuffix('/api/StoredProcedure').removesuffix('/api')
+    hardware_id_url = f"{api_base_url}/api/health/hardware-id"
     
-    last_error = None
-    for hardware_id_url in possible_urls:
-        try:
-            req = urllib.request.Request(hardware_id_url)
-            with urllib.request.urlopen(req, timeout=5) as response:
-                data = json.loads(response.read().decode('utf-8'))
-                return data['hardwareId']
-        except (urllib.error.URLError, Exception) as e:
-            last_error = e
-    
-    raise Exception(
-        f"Failed to generate hardware ID. Please ensure the middleware is running.\n"
-        f"Try: ./go system up middleware\n"
-        f"Last error: {str(last_error)}"
-    )
+    try:
+        req = urllib.request.Request(hardware_id_url)
+        with urllib.request.urlopen(req, timeout=5) as response:
+            data = json.loads(response.read().decode('utf-8'))
+            return data['hardwareId']
+    except (urllib.error.URLError, Exception) as e:
+        raise Exception(
+            f"Failed to generate hardware ID from {hardware_id_url}. Please ensure the middleware is running.\n"
+            f"Try: ./go system up middleware\n"
+            f"Error: {str(e)}"
+        )
 
 def request_license_from_server(hardware_id, base_url=None):
     base_url = base_url or BASE_URL
