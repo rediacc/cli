@@ -870,6 +870,14 @@ class CommandHandler:
     def handle_response(self, response, success_message=None, format_args=None):
         if response.get('error'): print(format_output(None, self.output_format, None, response['error'])); return False
         
+        # Debug: Check if response indicates failure
+        if response.get('failure') or response.get('success') == False:
+            errors = response.get('errors', [])
+            if errors:
+                error_msg = '; '.join(errors)
+                print(format_output(None, self.output_format, None, f"Operation failed: {error_msg}"))
+                return False
+        
         if success_message and format_args and '{task_id}' in success_message:
             if (resultSets := response.get('resultSets', [])) and len(resultSets) > 1 and resultSets[1].get('data'):
                 if task_id := resultSets[1]['data'][0].get('taskId') or resultSets[1]['data'][0].get('TaskId'):
