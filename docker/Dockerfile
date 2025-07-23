@@ -26,8 +26,10 @@ ENV LC_ALL=C.UTF-8
 # Set up non-root user following monorepo security pattern
 ARG REDIACC_LINUX_USER=rediacc
 ARG REDIACC_LINUX_GROUP=rediacc
-RUN addgroup -g 111 -S $REDIACC_LINUX_GROUP && \
-    adduser -u 111 -S -G $REDIACC_LINUX_GROUP -h /home/$REDIACC_LINUX_USER -s /bin/bash $REDIACC_LINUX_USER
+ARG REDIACC_USER_UID=7111
+ARG REDIACC_USER_GID=7111
+RUN addgroup -g $REDIACC_USER_GID -S $REDIACC_LINUX_GROUP && \
+    adduser -u $REDIACC_USER_UID -S -G $REDIACC_LINUX_GROUP -h /home/$REDIACC_LINUX_USER -s /bin/bash $REDIACC_LINUX_USER
 
 # Create working directory
 WORKDIR /app

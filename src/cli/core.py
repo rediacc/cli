@@ -204,10 +204,6 @@ class Config:
     
     # Optional configuration keys with descriptions
     OPTIONAL_KEYS = {
-        'REDIACC_DATASTORE_PATH': 'Path to the datastore directory',
-        'REDIACC_INTERIM_FOLDER': 'Name of the interim folder',
-        'REDIACC_MOUNTS_FOLDER': 'Name of the mounts folder',
-        'REDIACC_REPOS_FOLDER': 'Name of the repos folder',
         'REDIACC_LINUX_USER': 'Linux user for Docker containers',
         'REDIACC_LINUX_GROUP': 'Linux group for Docker containers',
         'REDIACC_USER_UID': 'UID for the Linux user',
