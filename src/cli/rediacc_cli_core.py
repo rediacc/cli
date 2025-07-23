@@ -51,10 +51,10 @@ def safe_error_message(message: str) -> str:
     guid_pattern = r'\b[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}\b'
     return re.sub(guid_pattern, lambda m: f"{m.group(0)[:8]}...", message, flags=re.IGNORECASE)
 
-DATASTORE_PATH = get('REDIACC_DATASTORE_PATH') or '/mnt/datastore'
-INTERIM_FOLDER_NAME = get('REDIACC_INTERIM_FOLDER') or 'interim'
-MOUNTS_FOLDER_NAME = get('REDIACC_MOUNTS_FOLDER') or 'mounts'
-REPOS_FOLDER_NAME = get('REDIACC_REPOS_FOLDER') or 'repos'
+DATASTORE_PATH = get('REDIACC_DATASTORE_PATH')
+INTERIM_FOLDER_NAME = get('REDIACC_INTERIM_FOLDER')
+MOUNTS_FOLDER_NAME = get('REDIACC_MOUNTS_FOLDER')
+REPOS_FOLDER_NAME = get('REDIACC_REPOS_FOLDER')
 
 COLORS = {
     'HEADER': '\033[95m', 
