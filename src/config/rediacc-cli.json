@@ -2398,7 +2398,7 @@
           "notes": "Status is free-form text. Use consistent conventions for automation. Requires team membership.",
           "rules": [
             "User must be authenticated to perform this operation",
-            "User must be a member of the specified team",
+            "User must be a member of the specified team OR be a bridge that owns at least one machine in the same team",
             "Machine must exist within the team",
             "Status must be one of: online, offline, maintenance, error",
             "Status change affects task scheduling",
@@ -2406,7 +2406,8 @@
             "Maintenance status prevents automatic task assignment",
             "Error status indicates machine needs attention",
             "Status changes are immediately reflected in scheduling",
-            "Status update is tracked in audit logs"
+            "Status update is tracked in audit logs",
+            "Bridges can update status of any machine in teams where they own at least one machine"
           ]
         }
       }
