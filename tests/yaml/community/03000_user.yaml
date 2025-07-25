@@ -1,0 +1,63 @@
+name: "USER_MANAGEMENT_TEST"
+description: "Test user creation, 2FA, password management, and user operations"
+executor: "rediacc-cli.py"
+
+# Export user data for use in other tests (e.g., permission assignment)
+chain_export:
+  test_user_email: "${config.test_data.user.email_pattern}"
+  test_user_email2: "${config.test_data.user.email_pattern2}"
+
+tests:
+  - name: "create_test_user"
+    command: ["create", "user", "${config.test_data.user.email_pattern}"]
+    args:
+      password: "${config.test_data.user.password}"
+    expect:
+      success: true
+  
+  - name: "create_second_test_user"
+    command: ["create", "user", "${config.test_data.user.email_pattern2}"]
+    args:
+      password: "${config.test_data.user.password}"
+    expect:
+      success: true
+  
+  - name: "list_users"
+    command: ["list", "users"]
+    expect:
+      success: true
+  
+  # Note: 2FA operations require the user's password and cannot be done by admin
+  # The console shows 2FA is a two-step process: generate secret, then confirm with code
+  # For now, we'll skip 2FA tests as they require interactive TOTP code generation
+  
+  # - name: "enable_2fa_for_user"
+  #   command: ["user", "update-2fa", "true"]
+  #   args:
+  #     email: "${config.test_data.user.email_pattern}"
+  #     password: "${config.test_data.user.password}"
+  #   expect:
+  #     success: true
+  
+  # Note: Password reset/update requires the user to be logged in as that user
+  # Skipping password reset test as it requires user authentication
+  
+  - name: "deactivate_user"
+    command: ["user", "deactivate", "${config.test_data.user.email_pattern2}"]
+    args:
+      force: true
+    expect:
+      success: true
+  
+  - name: "activate_user"
+    command: ["user", "activate", "${config.test_data.user.email_pattern2}"]
+    args:
+      code: "${config.test_environment.activation_code}"
+      password: "${config.test_data.user.password}"
+    expect:
+      success: true
+  
+  - name: "verify_users_in_list"
+    command: ["list", "users"]
+    expect:
+      success: true

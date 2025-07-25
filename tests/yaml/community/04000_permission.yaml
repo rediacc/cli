@@ -1,0 +1,68 @@
+name: "PERMISSION_MANAGEMENT_TEST"
+description: "Test permission groups, permissions assignment, and access control"
+executor: "rediacc-cli.py"
+
+# Export permission group data for potential use in other tests
+chain_export:
+  permission_group: "${config.test_data.permission.group_pattern}"
+
+tests:
+  # Note: Custom permission groups are only available in paid plans (Advanced, Premium, Elite)
+  # For Community edition, we'll work with existing default groups
+  
+  - name: "list_existing_permission_groups"
+    command: ["permission", "list-groups"]
+    expect:
+      success: true
+  
+  - name: "add_permission_get_teams"
+    command: ["permission", "add", "${config.test_data.permission.group_pattern}", "GetCompanyTeams"]
+    expect:
+      success: true
+  
+  - name: "add_permission_get_machines"
+    command: ["permission", "add", "${config.test_data.permission.group_pattern}", "GetTeamMachines"]
+    expect:
+      success: true
+  
+  - name: "add_permission_create_repo"
+    command: ["permission", "add", "${config.test_data.permission.group_pattern}", "CreateRepository"]
+    expect:
+      success: true
+  
+  - name: "add_permission_get_regions"
+    command: ["permission", "add", "${config.test_data.permission.group_pattern}", "GetCompanyRegions"]
+    expect:
+      success: true
+  
+  - name: "list_permission_groups"
+    command: ["permission", "list-groups"]
+    expect:
+      success: true
+  
+  - name: "list_specific_permission_group"
+    command: ["permission", "list-group", "${config.test_data.permission.group_pattern}"]
+    expect:
+      success: true
+  
+  - name: "assign_permission_to_user"
+    command: ["permission", "assign", "${chain.test_user_email}", "${config.test_data.permission.group_pattern}"]
+    expect:
+      success: true
+  
+  - name: "list_user_permissions"
+    command: ["permission", "list-user", "${chain.test_user_email}"]
+    expect:
+      success: true
+  
+  - name: "remove_permission_from_group"
+    command: ["permission", "remove", "${config.test_data.permission.group_pattern}", "CreateRepository"]
+    args:
+      force: true
+    expect:
+      success: true
+  
+  - name: "verify_permission_removed"
+    command: ["permission", "list-group", "${config.test_data.permission.group_pattern}"]
+    expect:
+      success: true

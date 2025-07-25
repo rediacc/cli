@@ -431,6 +431,10 @@ def format_dynamic_tables(response, output_format='text', skip_fields=None):
                 result.extend(processed)
         return format_output(result, output_format)
     
+    if output_format == 'json-full':
+        # Return the complete response with all resultSets for json-full
+        return format_output({'resultSets': resultSets}, output_format)
+    
     output_parts = []
     for table in resultSets[1:]:
         data = table.get('data', [])
@@ -883,8 +887,13 @@ class CommandHandler:
             format_dict = {k: getattr(format_args, k, '') for k in dir(format_args) if not k.startswith('_')}
             success_message = success_message.format(**format_dict)
         
-        if self.output_format == 'json':
+        if self.output_format in ['json', 'json-full']:
             data = {'task_id': format_args.task_id} if hasattr(format_args, 'task_id') and format_args.task_id else {}
+            
+            # For json-full, include the complete response data
+            if self.output_format == 'json-full' and response.get('resultSets'):
+                data['resultSets'] = response['resultSets']
+            
             print(format_output(data, self.output_format, success_message))
         else:
             print(colorize(success_message, 'GREEN'))
@@ -912,7 +921,7 @@ class CommandHandler:
         
         if authentication_status == '2FA_REQUIRED' and not is_authorized:
             if not hasattr(args, 'tfa_code') or not args.tfa_code:
-                if self.output_format != 'json':
+                if self.output_format not in ['json', 'json-full']:
                     from core import I18n
                     i18n = I18n()
                     tfa_code = input(i18n.get('enter_tfa_code'))
@@ -953,17 +962,17 @@ class CommandHandler:
             
             if self.config_manager.validate_master_password(master_password):
                 self.config_manager.set_master_password(master_password)
-                if self.output_format != 'json':
+                if self.output_format not in ['json', 'json-full']:
                     print(colorize("Master password validated successfully", 'GREEN'))
             else:
                 print(format_output(None, self.output_format, None, 
                     "Invalid master password. Please check with your administrator for the correct company master password."))
-                if self.output_format != 'json':
+                if self.output_format not in ['json', 'json-full']:
                     print(colorize("Warning: Logged in but vault data will not be decrypted", 'YELLOW'))
-        elif hasattr(args, 'master_password') and args.master_password and self.output_format != 'json':
+        elif hasattr(args, 'master_password') and args.master_password and self.output_format not in ['json', 'json-full']:
             print(colorize("Note: Your company has not enabled vault encryption. The master password will not be used.", 'YELLOW'))
         
-        if self.output_format == 'json':
+        if self.output_format in ['json', 'json-full']:
             result = {
                 'email': email,
                 'company': company,
@@ -1143,7 +1152,7 @@ class CommandHandler:
         if len(resultSets) > 1 and resultSets[1].get('data'):
             task_id = resultSets[1]['data'][0].get('taskId', resultSets[1]['data'][0].get('TaskId'))
         
-        if self.output_format == 'json':
+        if self.output_format in ['json', 'json-full']:
             result = {
                 'task_id': task_id,
                 'function': args.function,
@@ -1166,7 +1175,7 @@ class CommandHandler:
                 setattr(args, param_name, None)
             
             if param_info.get('required', False) and getattr(args, param_name) is None:
-                if self.output_format == 'json':
+                if self.output_format in ['json', 'json-full']:
                     print(format_output(None, self.output_format, None, f"Missing required parameter: {param_name}"))
                     return False
                 
@@ -1175,7 +1184,7 @@ class CommandHandler:
         return True
     
     def queue_list_functions(self, args):
-        if self.output_format == 'json':
+        if self.output_format in ['json', 'json-full']:
             result = {
                 func_name: {
                     'description': func_def.get('description', ''),
@@ -1361,7 +1370,8 @@ class CommandHandler:
         # For list commands or permission list commands, format the output
         if cmd_type == 'list' or cmd_type == 'inspect' or (cmd_type == 'permission' and resource_type in ['list-groups', 'list-group']) or \
            (cmd_type == 'team-member' and resource_type == 'list') or \
-           (cmd_type == 'queue' and resource_type in ['get-next', 'list', 'trace']):
+           (cmd_type == 'queue' and resource_type in ['get-next', 'list', 'trace']) or \
+           (cmd_type == 'company' and resource_type == 'get-vaults'):
             if response.get('error'):
                 output = format_output(None, self.output_format, None, response['error'])
                 print(output)

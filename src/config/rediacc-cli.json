@@ -211,7 +211,7 @@
         "endpoint": "CreateNewCompany",
         "auth_required": false,
         "auth_type": "credentials",
-        "params": "lambda args: {'companyName': args.name}",
+        "params": "lambda args: {'companyName': args.name, 'subscriptionPlan': args.plan} if hasattr(args, 'plan') and args.plan else {'companyName': args.name}",
         "success_msg": "Successfully created company: {name}",
         "help": {
           "description": "Create a new company account with admin user",
@@ -272,7 +272,7 @@
       },
       "user": {
         "endpoint": "CreateNewUser",
-        "params": "lambda args: {'newUserEmail': args.email, 'newUserHash': pwd_hash(args.password), 'activationCode': args.activation_code or TEST_ACTIVATION_CODE}",
+        "params": "lambda args: {'newUserEmail': args.email, 'newUserHash': pwd_hash(args.password)}",
         "success_msg": "Successfully created user: {email}",
         "help": {
           "description": "Create a new user in your company",

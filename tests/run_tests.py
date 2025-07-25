@@ -168,8 +168,8 @@ class TestRunner:
                 # String format for backward compatibility
                 cmd.extend(command.split())
         
-        # Always use JSON output
-        cmd.extend(['--output', 'json'])
+        # Always use json-full for testing to capture all data
+        cmd.extend(['--output', 'json-full'])
         
         # Add arguments
         args = self._resolve_variables(test_spec.get('args', {}))
@@ -191,7 +191,7 @@ class TestRunner:
         
         return cmd
     
-    def _execute_command(self, cmd: List[str], timeout: int = 30) -> dict:
+    def _execute_command(self, cmd: List[str], timeout: int = 30, stdin_data: str = None) -> dict:
         """Execute command and return result"""
         try:
             # Execute command
@@ -199,7 +199,8 @@ class TestRunner:
                 cmd,
                 capture_output=True,
                 text=True,
-                timeout=timeout
+                timeout=timeout,
+                input=stdin_data
             )
             
             # Try to parse JSON output
@@ -269,6 +270,23 @@ class TestRunner:
         filename = '.'.join(filename_parts) + '.json'
         return filename
     
+    def _generate_consolidated_filename(self, test_file_name: str, parent_test_name: str) -> str:
+        """Generate filename for consolidated test results"""
+        # Build filename: basic.00001_company_setup.COMPANY_SETUP_TEST.json
+        filename_parts = []
+        
+        # Only include directory if it's not empty (i.e., not in yaml root)
+        if self.current_test_dir:
+            filename_parts.append(self.current_test_dir)
+            
+        filename_parts.extend([
+            test_file_name,           # Test file name (e.g., "00001_company_setup")
+            parent_test_name          # Parent test name (e.g., "COMPANY_SETUP_TEST")
+        ])
+        
+        filename = '.'.join(filename_parts) + '.json'
+        return filename
+    
     def _save_output(self, test_name: str, filename: str, data: Any, command_info: dict = None):
         """Save test output to file with command metadata"""
         output_file = self.output_dir / filename
@@ -287,13 +305,19 @@ class TestRunner:
         with open(output_file, 'w') as f:
             json.dump(output_data, f, indent=2)
     
-    def run_test_file(self, test_file: str) -> bool:
+    def run_test_file(self, test_file: str, base_files: List[Path] = None) -> bool:
         """Run a single test file"""
         print(f"\n{colorize('Running test file:', 'BOLD')} {test_file}")
         
-        # Load test file
-        with open(test_file, 'r') as f:
-            test_spec = yaml.safe_load(f)
+        # Start timing for entire test file
+        file_start_time = time.time()
+        
+        # Load test file and merge with base files if provided
+        test_spec = self._load_and_merge_test_files(test_file, base_files)
+        
+        # Debug: show if merging happened
+        if base_files:
+            print(f"  {colorize('Merged with:', 'BLUE')} {', '.join([str(bf.name) for bf in base_files])}")
         
         # Extract configuration
         name = test_spec.get('name', 'Unnamed Test')
@@ -317,13 +341,29 @@ class TestRunner:
         else:
             self.current_test_dir = test_dir
         
+        # Initialize collection for this test file
+        test_file_results = {
+            'test_metadata': {
+                'test_file': str(test_file_path),
+                'test_name': name,
+                'description': description,
+                'timestamp': datetime.now().isoformat(),
+                'test_id': self.test_id
+            },
+            'setup_results': [],
+            'test_results': [],
+            'chain_exports': {}
+        }
+        
         # Run setup if present
         if 'setup' in test_spec:
             print(colorize('Running setup...', 'YELLOW'))
             for setup_step in test_spec['setup']:
-                self._run_test_step(setup_step, executor, is_setup=True, 
+                result = self._run_test_step(setup_step, executor, is_setup=True, 
                                   test_file_name=test_file_base, 
-                                  parent_test_name=name)
+                                  parent_test_name=name,
+                                  collect_results=True)
+                test_file_results['setup_results'].append(result)
         
         # Clear test context for this file
         self.context['tests'] = []
@@ -333,28 +373,43 @@ class TestRunner:
         for i, test in enumerate(test_spec.get('tests', [])):
             result = self._run_test_step(test, executor, test_index=i,
                                        test_file_name=test_file_base,
-                                       parent_test_name=name)
+                                       parent_test_name=name,
+                                       collect_results=True)
             test_results.append(result)
+            test_file_results['test_results'].append(result)
             
             # Stop on first failure
             if not result['success']:
                 print(f"\n{colorize('STOPPING: Test failed, halting execution', 'RED')}")
-                return False
+                break
             
             # Store result in context for variable resolution
             if i >= len(self.context['tests']):
                 self.context['tests'].append({})
             
-            if result['success'] and 'output' in result:
-                self.context['tests'][i] = result['output']
+            # Extract output from the result.result.output structure
+            if result['success'] and 'result' in result and 'output' in result['result']:
+                self.context['tests'][i] = result['result']['output']
         
         # Handle chain exports
         if 'chain_export' in test_spec:
             exports = self._resolve_variables(test_spec['chain_export'])
             self.chain_context.update(exports)
+            test_file_results['chain_exports'] = exports
             print(f"\n{colorize('Chain exports:', 'BLUE')}")
             for key, value in exports.items():
                 print(f"  {key}: {value}")
+        
+        # Calculate total execution time
+        total_execution_time = time.time() - file_start_time
+        test_file_results['test_metadata']['total_execution_time_seconds'] = round(total_execution_time, 3)
+        
+        # Save consolidated results for this test file
+        consolidated_filename = self._generate_consolidated_filename(test_file_base, name)
+        consolidated_path = self.output_dir / consolidated_filename
+        with open(consolidated_path, 'w') as f:
+            json.dump(test_file_results, f, indent=2)
+        print(f"\n{colorize('Consolidated results saved:', 'GREEN')} {consolidated_filename}")
         
         # Summary
         passed = sum(1 for r in test_results if r['success'])
@@ -364,10 +419,11 @@ class TestRunner:
         print(f"  {colorize(f'Passed: {passed}', 'GREEN')}")
         if failed > 0:
             print(f"  {colorize(f'Failed: {failed}', 'RED')}")
+        print(f"  {colorize(f'Total time: {total_execution_time:.3f}s', 'BLUE')}")
         
         return failed == 0
     
-    def _run_test_step(self, step: dict, executor: str, test_index: int = -1, is_setup: bool = False, test_file_name: str = None, parent_test_name: str = None) -> dict:
+    def _run_test_step(self, step: dict, executor: str, test_index: int = -1, is_setup: bool = False, test_file_name: str = None, parent_test_name: str = None, collect_results: bool = False) -> dict:
         """Run a single test step"""
         step_name = step.get('name', f'Step {test_index + 1}')
         
@@ -430,7 +486,28 @@ class TestRunner:
                             self.tested_endpoints.add(endpoint)
         
         timeout = step.get('timeout', self.config.get('default_timeout', 30))
-        result = self._execute_command(cmd, timeout)
+        
+        # Get stdin data if provided
+        stdin_data = step.get('stdin')
+        if stdin_data:
+            stdin_data = self._resolve_variables(stdin_data)
+        
+        # Capture start time
+        start_time = time.time()
+        result = self._execute_command(cmd, timeout, stdin_data)
+        # Calculate execution time
+        execution_time = time.time() - start_time
+        
+        # Build comprehensive result
+        test_result = {
+            'test_name': step_name,
+            'timestamp': datetime.now().isoformat(),
+            'execution_time_seconds': round(execution_time, 3),
+            'command_executed': command_info,
+            'result': result,
+            'success': True,
+            'errors': []
+        }
         
         # Validate expectations
         if 'expect' in step:
@@ -446,40 +523,49 @@ class TestRunner:
             errors = self._validate_expectation(output, expected)
             
             if errors:
-                print(f"  {colorize('FAILED:', 'RED')} Validation errors:")
+                print(f"  {colorize('FAILED:', 'RED')} Validation errors ({execution_time:.3f}s):")
                 for error in errors:
                     print(f"    - {error}")
                 
-                # Save output even on validation failure
-                auto_filename = self._generate_output_filename(test_file_name, parent_test_name, step_name)
-                self._save_output(step_name, auto_filename, result.get('output', result), command_info)
-                print(f"  {colorize('Output saved:', 'YELLOW')} {auto_filename}")
+                test_result['success'] = False
+                test_result['errors'] = errors
                 
-                return {'success': False, 'errors': errors, 'output': output}
+                # Only save individual file when not collecting results
+                if not collect_results:
+                    auto_filename = self._generate_output_filename(test_file_name, parent_test_name, step_name)
+                    self._save_output(step_name, auto_filename, result, command_info)
+                    print(f"  {colorize('Output saved:', 'YELLOW')} {auto_filename}")
+                
+                return test_result
             else:
                 # Test passed (expected result matches actual)
-                print(f"  {colorize('PASSED', 'GREEN')}")
+                print(f"  {colorize('PASSED', 'GREEN')} ({execution_time:.3f}s)")
         else:
             # No expectations defined, check if command succeeded
             if result['success']:
-                print(f"  {colorize('PASSED', 'GREEN')}")
+                print(f"  {colorize('PASSED', 'GREEN')} ({execution_time:.3f}s)")
             else:
                 error_msg = result.get('error') or result.get('stderr', 'Unknown error')
-                print(f"  {colorize('FAILED:', 'RED')} {error_msg}")
+                print(f"  {colorize('FAILED:', 'RED')} {error_msg} ({execution_time:.3f}s)")
                 
-                # Save error output
-                auto_filename = self._generate_output_filename(test_file_name, parent_test_name, step_name)
-                self._save_output(step_name, auto_filename, result, command_info)
-                print(f"  {colorize('Output saved:', 'YELLOW')} {auto_filename}")
+                test_result['success'] = False
+                test_result['errors'] = [error_msg]
                 
-                return {'success': False, 'error': error_msg}
+                # Only save individual file when not collecting results
+                if not collect_results:
+                    auto_filename = self._generate_output_filename(test_file_name, parent_test_name, step_name)
+                    self._save_output(step_name, auto_filename, result, command_info)
+                    print(f"  {colorize('Output saved:', 'YELLOW')} {auto_filename}")
+                
+                return test_result
         
-        # Save output (always save, using auto-generated filename)
-        auto_filename = self._generate_output_filename(test_file_name, parent_test_name, step_name)
-        self._save_output(step_name, auto_filename, result.get('output', result), command_info)
-        print(f"  {colorize('Output saved:', 'YELLOW')} {auto_filename}")
+        # Only save individual file when not collecting results
+        if not collect_results:
+            auto_filename = self._generate_output_filename(test_file_name, parent_test_name, step_name)
+            self._save_output(step_name, auto_filename, result, command_info)
+            print(f"  {colorize('Output saved:', 'YELLOW')} {auto_filename}")
         
-        return {'success': True, 'output': result.get('output', {})}
+        return test_result
     
     def generate_coverage_report(self):
         """Generate coverage report showing tested commands and endpoints"""
@@ -559,11 +645,90 @@ class TestRunner:
         
         print(f"\n{colorize('Coverage report saved to:', 'GREEN')} {coverage_file}")
     
-    def run_all_tests(self, test_pattern: str = None) -> bool:
-        """Run all test files matching pattern"""
-        yaml_dir = Path(__file__).parent / 'yaml'
+    def _load_and_merge_test_files(self, test_file: Path, base_files: List[Path] = None) -> dict:
+        """Load and merge test files with inheritance support"""
+        # Start with empty spec
+        merged_spec = {}
         
-        # Find all test files
+        # Load and merge base files in order (lowest to highest tier)
+        if base_files:
+            for base_file in base_files:
+                with open(base_file, 'r') as f:
+                    base_spec = yaml.safe_load(f)
+                    merged_spec = self._deep_merge(merged_spec, base_spec)
+        
+        # Load and merge the main file
+        with open(test_file, 'r') as f:
+            main_spec = yaml.safe_load(f)
+            merged_spec = self._deep_merge(merged_spec, main_spec)
+        
+        return merged_spec
+    
+    def _deep_merge(self, base: dict, override: dict) -> dict:
+        """Deep merge two dictionaries, with override taking precedence"""
+        result = base.copy()
+        
+        for key, value in override.items():
+            if key in result:
+                if isinstance(result[key], dict) and isinstance(value, dict):
+                    # Recursively merge dictionaries
+                    result[key] = self._deep_merge(result[key], value)
+                elif isinstance(result[key], list) and isinstance(value, list):
+                    # For lists, we need special handling
+                    if key == 'tests':
+                        # For tests, merge by test name
+                        result[key] = self._merge_test_lists(result[key], value)
+                    else:
+                        # For other lists, override completely
+                        result[key] = value
+                else:
+                    # For other types, override
+                    result[key] = value
+            else:
+                result[key] = value
+        
+        return result
+    
+    def _merge_test_lists(self, base_tests: list, override_tests: list) -> list:
+        """Merge test lists by test name"""
+        # Create a map of base tests by name
+        base_map = {test.get('name'): test for test in base_tests if isinstance(test, dict)}
+        
+        # Process override tests
+        result = []
+        override_names = set()
+        
+        for test in override_tests:
+            if isinstance(test, dict) and 'name' in test:
+                test_name = test['name']
+                override_names.add(test_name)
+                
+                if test_name in base_map:
+                    # Merge with base test
+                    merged_test = self._deep_merge(base_map[test_name], test)
+                    result.append(merged_test)
+                else:
+                    # New test
+                    result.append(test)
+        
+        # Add base tests that weren't overridden
+        for test in base_tests:
+            if isinstance(test, dict) and test.get('name') not in override_names:
+                result.append(test)
+        
+        return result
+    
+    def _get_test_hierarchy(self, test_pattern: str) -> Dict[str, List[Path]]:
+        """Organize test files by hierarchy (community, advanced, premium, elite)"""
+        yaml_dir = Path(__file__).parent / 'yaml'
+        hierarchy = {
+            'community': [],
+            'advanced': [],
+            'premium': [],
+            'elite': []
+        }
+        
+        # Find all test files based on pattern
         if test_pattern:
             # Check if it's a direct file path
             test_path = Path(test_pattern)
@@ -575,19 +740,138 @@ class TestRunner:
         else:
             test_files = list(yaml_dir.rglob('*.yaml'))
         
-        if not test_files:
+        # Exclude config.yaml and organize by directory
+        for test_file in test_files:
+            if test_file.name == 'config.yaml':
+                continue
+                
+            # Determine which tier this test belongs to
+            parent_dir = test_file.parent.name
+            if parent_dir in hierarchy:
+                hierarchy[parent_dir].append(test_file)
+            elif test_file.parent == yaml_dir:
+                # Files directly in yaml/ are considered community
+                hierarchy['community'].append(test_file)
+        
+        # Sort files within each tier
+        for tier in hierarchy:
+            hierarchy[tier].sort()
+            
+        return hierarchy
+    
+    def _determine_test_tiers(self, test_pattern: str) -> List[str]:
+        """Determine which test tiers to run based on pattern"""
+        # Map of tier dependencies
+        tier_dependencies = {
+            'community': ['community'],
+            'advanced': ['community', 'advanced'],
+            'premium': ['community', 'advanced', 'premium'],
+            'elite': ['community', 'advanced', 'premium', 'elite']
+        }
+        
+        if not test_pattern:
+            return ['community']  # Default to community only
+            
+        # Check if pattern specifies a tier
+        for tier in ['elite', 'premium', 'advanced', 'community']:
+            if tier in test_pattern:
+                return tier_dependencies[tier]
+                
+        # If no tier specified, run only the files matching the pattern
+        return ['community', 'advanced', 'premium', 'elite']
+    
+    def run_all_tests(self, test_pattern: str = None) -> bool:
+        """Run all test files matching pattern with hierarchical support"""
+        # Determine which tiers to run first
+        tiers_to_run = self._determine_test_tiers(test_pattern)
+        
+        # Get test hierarchy - if we're running multiple tiers due to dependencies,
+        # we need to get ALL files for those tiers, not just the ones matching the pattern
+        if test_pattern and len(tiers_to_run) > 1:
+            # Pattern specified a tier, get all files for dependent tiers
+            all_hierarchy = self._get_test_hierarchy(None)  # Get all files
+            pattern_hierarchy = self._get_test_hierarchy(test_pattern)  # Get pattern-specific files
+            
+            # Build the hierarchy we need
+            hierarchy = {}
+            for tier in tiers_to_run:
+                if tier in pattern_hierarchy and pattern_hierarchy[tier]:
+                    # Use pattern-specific files for the target tier
+                    hierarchy[tier] = pattern_hierarchy[tier]
+                else:
+                    # Use all files for dependent tiers
+                    hierarchy[tier] = all_hierarchy.get(tier, [])
+        else:
+            # Normal pattern matching
+            hierarchy = self._get_test_hierarchy(test_pattern)
+        
+        # Collect all test files to run with override logic
+        # Higher tiers override lower tiers based on filename
+        test_files_by_name = {}  # filename -> [(tier, filepath), ...]
+        tier_priority = {'community': 0, 'advanced': 1, 'premium': 2, 'elite': 3}
+        
+        # Collect all files by name, keeping track of all tiers
+        for tier in tiers_to_run:
+            for test_file in hierarchy.get(tier, []):
+                filename = test_file.name
+                if filename not in test_files_by_name:
+                    test_files_by_name[filename] = []
+                test_files_by_name[filename].append((tier, test_file))
+        
+        # For each filename, determine which files to use (base + override)
+        files_to_run = []  # List of (test_file, base_files) tuples
+        for filename, tier_files in sorted(test_files_by_name.items()):
+            # Sort by tier priority
+            tier_files.sort(key=lambda x: tier_priority.get(x[0], 0))
+            
+            # Collect all files from lowest to highest tier for merging
+            base_files = [filepath for tier, filepath in tier_files[:-1]]
+            main_file = tier_files[-1][1]  # Highest priority file
+            
+            files_to_run.append((main_file, base_files))
+        
+        if not files_to_run:
             print(colorize('No test files found!', 'YELLOW'))
+            yaml_dir = Path(__file__).parent / 'yaml'
             print(f"Searched in: {yaml_dir}")
             if test_pattern:
                 print(f"Pattern: {test_pattern}")
             return True
         
-        print(f"{colorize('Found', 'BOLD')} {len(test_files)} test file(s)")
+        print(f"{colorize('Found', 'BOLD')} {len(files_to_run)} test file(s)")
+        if len(tiers_to_run) > 1:
+            print(f"{colorize('Running tiers:', 'BOLD')} {', '.join(tiers_to_run)}")
+            
+            # Show merge information
+            for main_file, base_files in files_to_run:
+                if base_files:
+                    base_tiers = []
+                    for base_file in base_files:
+                        for tier in tiers_to_run:
+                            if base_file in hierarchy.get(tier, []):
+                                base_tiers.append(tier)
+                                break
+                    
+                    main_tier = None
+                    for tier in tiers_to_run:
+                        if main_file in hierarchy.get(tier, []):
+                            main_tier = tier
+                            break
+                    
+                    if main_tier and base_tiers:
+                        print(f"  {colorize('Merge:', 'YELLOW')} {main_file.name} from {main_tier} extends {', '.join(base_tiers)}")
+            
+            # Debug: show what's in hierarchy
+            print(f"\n  {colorize('Debug - Files found:', 'BLUE')}")
+            for tier in tiers_to_run:
+                tier_files = hierarchy.get(tier, [])
+                if tier_files:
+                    print(f"    {tier}: {', '.join([f.name for f in tier_files])}")
         
-        # Run each test file
+        # Run each test file with its base files
         all_passed = True
-        for test_file in sorted(test_files):
-            if not self.run_test_file(test_file):
+        for test_file, base_files in files_to_run:
+            if not self.run_test_file(test_file, base_files):
                 all_passed = False
                 print(f"\n{colorize('STOPPING: Halting execution due to test failure', 'RED')}")
                 break  # Stop running further test files
