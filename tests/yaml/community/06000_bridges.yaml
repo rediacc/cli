@@ -27,3 +27,12 @@ tests:
     command: ["update", "bridge", "BridgeTestRegion-${TIMESTAMP}_${TEST_ID}", "${config.test_data.bridge.name_pattern}", "Updated-${config.test_data.bridge.name_pattern}"]
     expect:
       success: true
+  
+  # Note: list bridges requires a region parameter, so we'll skip the "list all" test
+  
+  - name: "list_region_bridges"
+    command: ["list", "bridges", "BridgeTestRegion-${TIMESTAMP}_${TEST_ID}"]
+    expect:
+      success: true
+      output_contains:
+        - "Updated-${config.test_data.bridge.name_pattern}"

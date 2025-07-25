@@ -1,0 +1,30 @@
+name: "USER_INFO_TEST"
+description: "Test user information retrieval - company and requests"
+executor: "rediacc-cli.py"
+
+# Import user data from previous tests
+chain_import:
+  - "admin_email"
+  - "company_name"
+
+tests:
+  - name: "get_user_company"
+    command: ["list", "user-company"]
+    expect:
+      success: true
+      output_contains:
+        - "${chain.company_name}"
+      # Should return the current user's company information
+  
+  - name: "list_user_sessions"
+    command: ["list", "sessions"]
+    expect:
+      success: true
+      output_contains:
+        - "${chain.admin_email}"
+      # Should show active sessions for the user
+  
+  # Note: auth status command requires a request_hash parameter
+  # and is used to check status of a specific authentication request,
+  # not general auth status. The list sessions command above
+  # provides current session information.

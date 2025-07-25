@@ -1,0 +1,38 @@
+name: "PERMISSION_DETAILS_TEST"
+description: "Test retrieving permission group details"
+executor: "rediacc-cli.py"
+
+# Import permission group from previous test
+chain_import:
+  - "permission_group"
+
+tests:
+  - name: "list_all_permission_groups"
+    command: ["permission", "list-groups"]
+    expect:
+      success: true
+      # Should list all permission groups in the company
+  
+  - name: "get_administrators_permission_group_details"
+    command: ["permission", "list-group", "Administrators"]
+    expect:
+      success: true
+      output_contains:
+        - "Administrators"
+      # Administrators permission group should always exist
+  
+  - name: "get_users_permission_group_details"
+    command: ["permission", "list-group", "Users"]
+    expect:
+      success: true
+      output_contains:
+        - "Users"
+      # Users permission group should always exist
+  
+  - name: "get_bridges_permission_group_details"
+    command: ["permission", "list-group", "Bridges"]
+    expect:
+      success: true
+      output_contains:
+        - "Bridges"
+      # Bridges permission group should always exist
