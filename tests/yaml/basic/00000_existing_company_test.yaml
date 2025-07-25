@@ -1,0 +1,32 @@
+name: "EXISTING_COMPANY_TEST"
+description: "Test using an existing company (skip creation due to backend config)"
+executor: "rediacc-cli.py"
+
+# This test assumes a company already exists
+# You need to provide valid credentials via environment variables:
+# REDIACC_TEST_EMAIL - existing user email
+# REDIACC_TEST_PASSWORD - existing user password
+
+tests:
+  - name: "login_with_existing_user"
+    command: ["login"]
+    args:
+      email: "${env.REDIACC_TEST_EMAIL}"
+      password: "${env.REDIACC_TEST_PASSWORD}"
+    expect:
+      success: true
+  
+  - name: "list_teams"
+    command: ["list", "teams"]
+    expect:
+      success: true
+  
+  - name: "get_company_vaults"
+    command: ["company", "get-vaults"]
+    expect:
+      success: true
+  
+  - name: "logout"
+    command: ["logout"]
+    expect:
+      success: true
