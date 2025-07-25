@@ -595,19 +595,15 @@ class TestRunner:
         untested_commands = all_commands - self.tested_commands
         if untested_commands:
             print(f"\n{colorize('Untested Commands:', 'YELLOW')}")
-            for cmd in sorted(untested_commands)[:10]:  # Show first 10
+            for cmd in sorted(untested_commands):
                 print(f"  - {cmd}")
-            if len(untested_commands) > 10:
-                print(f"  ... and {len(untested_commands) - 10} more")
         
         # Show untested endpoints
         untested_endpoints = all_endpoints - self.tested_endpoints
         if untested_endpoints:
             print(f"\n{colorize('Untested Endpoints/Stored Procedures:', 'YELLOW')}")
-            for endpoint in sorted(untested_endpoints)[:10]:  # Show first 10
+            for endpoint in sorted(untested_endpoints):
                 print(f"  - {endpoint}")
-            if len(untested_endpoints) > 10:
-                print(f"  ... and {len(untested_endpoints) - 10} more")
         
         # Save coverage report
         coverage_file = self.output_dir / 'coverage_report.json'
