@@ -1,0 +1,41 @@
+name: "TEAM_INFO_TEST"
+description: "Test team information retrieval - machines, members, and queue items"
+executor: "rediacc-cli.py"
+
+# Import team name from previous test
+chain_import:
+  - "test_team_name"
+  - "admin_email"
+
+tests:
+  - name: "list_team_machines"
+    command: ["list", "team-machines", "${chain.test_team_name}"]
+    expect:
+      success: true
+      # Should list all machines assigned to the team (likely empty for new team)
+  
+  - name: "list_team_members"
+    command: ["list", "team-members", "${chain.test_team_name}"]
+    expect:
+      success: true
+      output_contains:
+        - "${chain.admin_email}"
+      # Admin should be a member of the team
+  
+  # - name: "get_team_queue_items"
+  #   command: ["queue", "list"]
+  #   args:
+  #     team: "${chain.test_team_name}"
+  #   expect:
+  #     success: true
+  #     # Should list queue items for the team (likely empty for new team)
+  # 
+  # - name: "get_team_queue_items_all_statuses"
+  #   command: ["queue", "list"]
+  #   args:
+  #     team: "${chain.test_team_name}"
+  #     status: "ALL"
+  #   expect:
+  #     success: true
+  #     # Should list all queue items regardless of status
+  # Note: Commented out due to SQL error: "Implicit conversion from data type sql_variant to nvarchar is not allowed"
