@@ -22,21 +22,47 @@ test_data:
   team:
     default_name: "Default"
     name_pattern: "TestTeam-${TIMESTAMP}"
+  
+  # User test data
+  user:
+    email_pattern: "testuser-${TIMESTAMP}@test.com"
+    email_pattern2: "testuser2-${TIMESTAMP}@test.com"
+    password: "TestUser@Pass123!"
+    new_password: "NewTestUser@Pass456!"
+  
+  # Permission test data
+  permission:
+    group_pattern: "TestPermGroup-${TIMESTAMP}_${TEST_ID}"
     
   # Machine test data
   machine:
-    name_pattern: "test-machine-${RANDOM}"
+    name_pattern: "TestMachine-${TIMESTAMP}_${TEST_ID}"
     description: "Test machine created by automated tests"
   
   # Region test data
   region:
-    name_pattern: "test-region-${RANDOM}"
+    name_pattern: "TestRegion-${TIMESTAMP}_${TEST_ID}"
     description: "Test region for machine placement"
+  
+  # Bridge test data
+  bridge:
+    name_pattern: "TestBridge-${TIMESTAMP}_${TEST_ID}"
+    description: "Test bridge for queue processing"
   
   # Repository test data
   repository:
-    name_pattern: "test-repo-${RANDOM}"
+    name_pattern: "TestRepo-${TIMESTAMP}_${TEST_ID}"
     description: "Test repository created by automated tests"
+  
+  # Storage test data (Advanced+ plans)
+  storage:
+    name_pattern: "TestStorage-${TIMESTAMP}_${TEST_ID}"
+    description: "Test storage resource for backups"
+  
+  # Schedule test data (Premium+ plans)
+  schedule:
+    name_pattern: "TestSchedule-${TIMESTAMP}_${TEST_ID}"
+    description: "Test schedule for automated tasks"
 
 # Test execution settings
 execution:
