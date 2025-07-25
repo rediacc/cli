@@ -1,0 +1,18 @@
+name: "COMPANY_VAULT_GET_TEST"
+description: "Test retrieving company vault configurations"
+executor: "rediacc-cli.py"
+
+# Export data to chain context for use in subsequent test files
+chain_export:
+  company_vaults_retrieved: true
+
+tests:
+  - name: "get_company_vault"
+    command: ["list", "company-vault"]
+    expect:
+      success: true
+  
+  - name: "get_company_vaults"
+    command: ["company", "get-vaults"]
+    expect:
+      success: true

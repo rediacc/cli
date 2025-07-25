@@ -1,0 +1,23 @@
+name: "COMPANY_DASHBOARD_TEST"
+description: "Test company dashboard and data graph endpoints"
+executor: "rediacc-cli.py"
+
+# Export data to chain context for use in subsequent test files
+chain_export:
+  dashboard_accessed: true
+
+tests:
+  - name: "get_company_resource_limits"
+    command: ["list", "resource-limits"]
+    expect:
+      success: true
+  
+  - name: "get_company_subscription"
+    command: ["list", "subscription"]
+    expect:
+      success: true
+  
+  - name: "get_company_data_graph"
+    command: ["list", "data-graph"]
+    expect:
+      success: true

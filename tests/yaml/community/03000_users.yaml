@@ -1,0 +1,24 @@
+name: "USERS_TEST"
+description: "Test user creation and activation"
+executor: "rediacc-cli.py"
+
+# Export data to chain context for use in subsequent test files
+chain_export:
+  test_user_email: "${config.test_data.user.email_pattern}"
+  test_user_password: "${config.test_data.user.password}"
+
+tests:
+  - name: "create_new_user"
+    command: ["create", "user", "${config.test_data.user.email_pattern}"]
+    args:
+      password: "${config.test_data.user.password}"
+    expect:
+      success: true
+  
+  - name: "activate_user_account"
+    command: ["user", "activate", "${config.test_data.user.email_pattern}"]
+    args:
+      code: "${config.test_environment.activation_code}"
+      password: "${config.test_data.user.password}"
+    expect:
+      success: true

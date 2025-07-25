@@ -1,0 +1,34 @@
+name: "CLEANUP_AND_LOGOUT"
+description: "Clean up test user and logout"
+executor: "rediacc-cli.py"
+
+# This test demonstrates cleanup of a test user before logout
+# Note: Full resource cleanup is complex due to database constraints:
+# - Bridges create their own user accounts
+# - Some resources may have been renamed during tests
+# - Foreign key constraints must be respected
+
+tests:
+  # Deactivate the test user created in 03000_users.yaml
+  - name: "deactivate_test_user"
+    command: ["user", "deactivate", "${chain.test_user_email}"]
+    args:
+      force: true
+    expect:
+      success: true
+    condition: "${chain.test_user_email} != ''"
+    description: "Deactivate test user to prevent login"
+
+  # Logout from current session
+  - name: "logout"
+    command: ["logout"]
+    expect:
+      success: true
+    description: "Logout and invalidate authentication token"
+  
+  # Verify logout worked by confirming authenticated commands fail
+  - name: "verify_logout_worked"
+    command: ["list", "teams"]
+    expect:
+      success: false  # This test PASSES when the command FAILS
+    description: "Verify logout by confirming authenticated commands fail"

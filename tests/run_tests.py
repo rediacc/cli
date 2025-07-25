@@ -38,7 +38,7 @@ class TestRunner:
         self.cli_config = self._load_cli_config()
         self.timestamp = datetime.now().strftime('%Y%m%d_%H%M%S')
         self.test_id = f"test_{self.timestamp}"
-        self.output_dir = Path(output_dir or f"test_results/{self.test_id}")
+        self.output_dir = Path(output_dir or "test_results")
         self.output_dir.mkdir(parents=True, exist_ok=True)
         
         # Clean up old test results - keep only last 10
@@ -58,28 +58,10 @@ class TestRunner:
         }
     
     def _cleanup_old_results(self):
-        """Clean up old test results, keeping only the last 10"""
-        results_dir = Path("test_results")
-        if not results_dir.exists():
-            return
-            
-        # Get all test directories
-        test_dirs = []
-        for dir_path in results_dir.iterdir():
-            if dir_path.is_dir() and dir_path.name.startswith("test_"):
-                test_dirs.append(dir_path)
-        
-        # Sort by modification time (newest first)
-        test_dirs.sort(key=lambda x: x.stat().st_mtime, reverse=True)
-        
-        # Remove directories beyond the 10th
-        for old_dir in test_dirs[10:]:
-            try:
-                import shutil
-                shutil.rmtree(old_dir)
-                print(f"Cleaned up old test result: {old_dir.name}")
-            except Exception as e:
-                print(f"Warning: Could not remove {old_dir}: {e}")
+        """Clean up old test results - currently disabled since files are overwritten"""
+        # Since we're not using timestamps in filenames anymore,
+        # files will be overwritten on each run, so cleanup is not needed
+        pass
     
     def _load_config(self, config_file: str) -> dict:
         """Load test configuration"""
