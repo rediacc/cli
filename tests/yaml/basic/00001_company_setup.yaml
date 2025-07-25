@@ -1,0 +1,51 @@
+name: "COMPANY_SETUP_TEST"
+description: "Test company creation and initial configuration"
+executor: "rediacc-cli.py"
+
+# Export data to chain context for use in subsequent test files
+chain_export:
+  company_name: "${config.test_data.company.name_pattern}"
+  admin_email: "${config.test_data.company.admin_email_pattern}"
+  admin_password: "${config.test_data.company.admin_password}"
+
+tests:
+  - name: "create_new_company"
+    command: ["create", "company", "${config.test_data.company.name_pattern}"]
+    args:
+      email: "${config.test_data.company.admin_email_pattern}"
+      password: "${config.test_data.company.admin_password}"
+    expect:
+      success: true
+  
+  - name: "activate_user_account"
+    command: ["user", "activate", "${config.test_data.company.admin_email_pattern}"]
+    args:
+      code: "${config.test_environment.activation_code}"
+      password: "${config.test_data.company.admin_password}"
+    expect:
+      success: true
+  
+  - name: "login_as_company_admin"
+    command: ["login"]
+    args:
+      email: "${config.test_data.company.admin_email_pattern}"
+      password: "${config.test_data.company.admin_password}"
+    expect:
+      success: true
+  
+  - name: "get_company_vaults"
+    command: ["company", "get-vaults"]
+    expect:
+      success: true
+  
+  - name: "update_company_vault"
+    command: ["company", "update-vault"]
+    args:
+      vault: "${config.test_data.company.vault_data}"
+    expect:
+      success: true
+  
+  - name: "logout"
+    command: ["logout"]
+    expect:
+      success: true

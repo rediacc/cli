@@ -211,7 +211,7 @@
         "endpoint": "CreateNewCompany",
         "auth_required": false,
         "auth_type": "credentials",
-        "params": "lambda args: {'companyName': args.name, 'subscriptionPlan': getattr(args, 'plan', 'COMMUNITY')}",
+        "params": "lambda args: {'companyName': args.name}",
         "success_msg": "Successfully created company: {name}",
         "help": {
           "description": "Create a new company account with admin user",
@@ -3483,7 +3483,7 @@
         "auth_required": false,
         "auth_type": "credentials",
         "endpoint": "ActivateUserAccount",
-        "params": "lambda args: {'userEmail': args.email, 'activationCode': args.code or TEST_ACTIVATION_CODE}",
+        "params": "lambda args: {'activationCode': args.code or TEST_ACTIVATION_CODE}",
         "success_msg": "Successfully activated user: {email}",
         "help": {
           "description": "Activate a user account",

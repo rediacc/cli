@@ -1,0 +1,43 @@
+name: "TEAM_OPERATIONS_TEST"
+description: "Test team creation and management - depends on 00001_company_setup.yaml"
+executor: "rediacc-cli.py"
+
+# This test expects these values from previous test chain
+chain_requires:
+  - company_name
+  - admin_email
+  - admin_password
+
+# Export team data for subsequent tests
+chain_export:
+  default_team: "Default"
+  test_team: "${config.test_data.team.name_pattern}"
+
+tests:
+  - name: "login_with_admin_from_previous_test"
+    command: ["login"]
+    args:
+      email: "${chain.admin_email}"
+      password: "${chain.admin_password}"
+    expect:
+      success: true
+  
+  - name: "create_default_team"
+    command: ["create", "team", "Default"]
+    expect:
+      success: true
+  
+  - name: "create_test_team"
+    command: ["create", "team", "${config.test_data.team.name_pattern}"]
+    expect:
+      success: true
+  
+  - name: "list_teams"
+    command: ["list", "teams"]
+    expect:
+      success: true
+  
+  - name: "logout"
+    command: ["logout"]
+    expect:
+      success: true
