@@ -4,7 +4,7 @@ executor: "rediacc-cli.py"
 
 # Export data to chain context for use in subsequent test files
 chain_export:
-  test_team_name: "${config.test_data.team.name_pattern}"
+  test_team_name: "Updated-${config.test_data.team.name_pattern}"
 
 tests:
   - name: "create_team"
