@@ -58,10 +58,15 @@ class TestRunner:
         }
     
     def _cleanup_old_results(self):
-        """Clean up old test results - currently disabled since files are overwritten"""
-        # Since we're not using timestamps in filenames anymore,
-        # files will be overwritten on each run, so cleanup is not needed
-        pass
+        """Clean up all JSON files in test results directory"""
+        # Delete all JSON files in the output directory
+        if self.output_dir.exists():
+            for json_file in self.output_dir.glob('*.json'):
+                try:
+                    json_file.unlink()
+                except Exception as e:
+                    print(f"Warning: Failed to delete {json_file}: {e}")
+            print(f"Cleaned up test results directory: {self.output_dir}")
     
     def _load_config(self, config_file: str) -> dict:
         """Load test configuration"""
