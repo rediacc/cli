@@ -3266,7 +3266,7 @@
     "company": {
       "block-user-requests": {
         "endpoint": "UpdateCompanyBlockUserRequests",
-        "params": "lambda args: {'block': args.block}",
+        "params": "lambda args: {'blockUserRequests': args.block}",
         "success_msg": "Successfully updated company user request blocking: {block}",
         "help": {
           "description": "Block or unblock new user registration requests",
@@ -3305,7 +3305,7 @@
       },
       "update-vault": {
         "endpoint": "UpdateCompanyVault",
-        "params": "lambda args: {'companyVault': get_vault_data(args) or '{}', 'vaultVersion': getattr(args, 'vault_version', None)}",
+        "params": "lambda args: {'companyVault': get_vault_data(args) or '{}', 'vaultVersion': getattr(args, 'vault_version', 1)}",
         "success_msg": "Successfully updated company vault",
         "help": {
           "description": "Update company-wide vault configuration",
@@ -3424,6 +3424,81 @@
             "2FA vaults cannot be updated through this operation",
             "Either all updates succeed or none are applied",
             "Updates are logged with count of vaults modified"
+          ]
+        }
+      },
+      "export-data": {
+        "endpoint": "ExportCompanyData",
+        "params": "lambda args: {}",
+        "success_msg": "Successfully exported company data",
+        "help": {
+          "description": "Export all company data to JSON format",
+          "details": "Exports complete company configuration including teams, users, permissions, regions, bridges, and machines. Vault data is included in encrypted form.",
+          "parameters": {},
+          "examples": [
+            {
+              "command": "rediacc-cli company export-data > company-backup.json",
+              "description": "Export company data to file"
+            },
+            {
+              "command": "rediacc-cli company export-data | jq '.teams'",
+              "description": "View exported teams data"
+            }
+          ],
+          "notes": "Requires admin permissions. Export includes all entity configurations and relationships. Vault data remains encrypted.",
+          "rules": [
+            "Must be authenticated with administrator permissions",
+            "Exports all company entities and configurations",
+            "Vault data is included in encrypted form",
+            "Export can be large for companies with many resources",
+            "Includes timestamps and version information",
+            "Useful for backup before major changes",
+            "Can be used with import-data for migration",
+            "Operation is logged in audit trail"
+          ]
+        }
+      },
+      "import-data": {
+        "endpoint": "ImportCompanyData",
+        "params": "lambda args: {'companyDataJson': get_vault_data(args) or '{}', 'importMode': getattr(args, 'import_mode', 'skip')}",
+        "success_msg": "Successfully imported company data",
+        "help": {
+          "description": "Import company data from JSON",
+          "details": "Imports company configuration from a previously exported JSON file. Supports skip mode (default) which skips existing entities, or override mode which updates existing entities.",
+          "parameters": {
+            "vault-file": {
+              "description": "File containing exported company data",
+              "required": true,
+              "example": "company-backup.json"
+            },
+            "import-mode": {
+              "description": "Import mode: skip or override",
+              "required": false,
+              "example": "override",
+              "default": "skip"
+            }
+          },
+          "examples": [
+            {
+              "command": "rediacc-cli company import-data --vault-file backup.json",
+              "description": "Import with skip mode (default)"
+            },
+            {
+              "command": "rediacc-cli company import-data --vault-file backup.json --import-mode override",
+              "description": "Import with override mode"
+            }
+          ],
+          "notes": "Requires admin permissions. Skip mode preserves existing data. Override mode updates existing entities. Always backup before importing.",
+          "rules": [
+            "Must be authenticated with administrator permissions",
+            "Import data must be from same or compatible version",
+            "Skip mode: existing entities are preserved",
+            "Override mode: existing entities are updated",
+            "Cannot import if company passphrase has changed",
+            "User accounts must match email addresses",
+            "Import creates audit log entries",
+            "Partial imports may occur if errors encountered",
+            "Vault data must be compatible with current passphrase"
           ]
         }
       }
@@ -4696,6 +4771,12 @@
       "update-vaults": [
         {"name": "--vault", "help": "JSON vault data"},
         {"name": "--vault-file", "help": "File containing JSON vault data"}
+      ],
+      "export-data": [],
+      "import-data": [
+        {"name": "--vault", "help": "JSON company data to import"},
+        {"name": "--vault-file", "help": "File containing JSON company data"},
+        {"name": "--import-mode", "help": "Import mode: skip or override", "choices": ["skip", "override"], "default": "skip"}
       ]
     },
     "audit": {

@@ -1,0 +1,16 @@
+name: "QUEUE_TEST"
+description: "Test queue item creation"
+executor: "rediacc-cli.py"
+
+# Export data to chain context for use in subsequent test files
+chain_export:
+  test_queue_created: true
+
+tests:
+  - name: "create_queue_item"
+    command: ["create", "queue-item", "MachineTestTeam-${TIMESTAMP}_${TEST_ID}", "Updated-TestMachine-${TIMESTAMP}_${TEST_ID}", "Updated-TestBridge-${TIMESTAMP}_${TEST_ID}"]
+    args:
+      priority: "3"
+      vault: "{\"function\": \"hello\", \"test\": \"true\"}"
+    expect:
+      success: true

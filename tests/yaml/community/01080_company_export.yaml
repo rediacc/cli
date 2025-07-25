@@ -1,0 +1,14 @@
+name: "Company Export Import"
+description: "Test company data export and import functionality - stored procedures: public_ExportCompanyData, public_ImportCompanyData"
+executor: "rediacc-cli.py"
+
+# Export data to chain context for use in subsequent test files
+chain_export:
+  company_export_available: true
+
+tests:
+  - name: "export_company_data"
+    command: ["company", "export-data"]
+    expect:
+      success: true
+    description: "Export all company data to JSON format - exports complete company configuration"

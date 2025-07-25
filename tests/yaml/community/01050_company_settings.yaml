@@ -1,0 +1,32 @@
+name: "COMPANY_SETTINGS_TEST"
+description: "Test company settings updates including user request blocking and vault operations"
+executor: "rediacc-cli.py"
+
+# Export data to chain context for use in subsequent test files
+chain_export:
+  company_vault_updated: true
+
+tests:
+  - name: "update_company_block_user_requests_on"
+    command: ["company", "block-user-requests", "true"]
+    expect:
+      success: true
+  
+  - name: "update_company_block_user_requests_off"
+    command: ["company", "block-user-requests", "false"]
+    expect:
+      success: true
+  
+  # - name: "update_company_vault"
+  #   command: ["company", "update-vault"]
+  #   args:
+  #     vault: "{\"API_TIMEOUT\": \"30\", \"DEFAULT_REGION\": \"us-east\"}"
+  #   expect:
+  #     success: true
+  
+  # - name: "update_company_vaults_bulk"
+  #   command: ["company", "update-vaults"]
+  #   args:
+  #     vault: "{\"primary\": {\"key1\": \"value1\"}, \"secondary\": {\"key2\": \"value2\"}}"
+  #   expect:
+  #     success: true

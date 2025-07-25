@@ -1,0 +1,20 @@
+name: "TEAMS_TEST"
+description: "Test team creation, renaming, and vault updates"
+executor: "rediacc-cli.py"
+
+# Export data to chain context for use in subsequent test files
+chain_export:
+  test_team_name: "${config.test_data.team.name_pattern}"
+
+tests:
+  - name: "create_team"
+    command: ["create", "team", "${config.test_data.team.name_pattern}"]
+    args:
+      vault: "{\"SSH_USER\": \"deploy\", \"SSH_PORT\": \"22\"}"
+    expect:
+      success: true
+  
+  - name: "update_team_name"
+    command: ["update", "team", "${config.test_data.team.name_pattern}", "Updated-${config.test_data.team.name_pattern}"]
+    expect:
+      success: true

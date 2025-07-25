@@ -1,0 +1,28 @@
+name: "COMPANY_LIST_ENTITIES_TEST"
+description: "Test listing company entities - users, teams, regions, and permission groups"
+executor: "rediacc-cli.py"
+
+# Export data to chain context for use in subsequent test files
+chain_export:
+  entities_listed: true
+
+tests:
+  - name: "list_company_permission_groups"
+    command: ["permission", "list-groups"]
+    expect:
+      success: true
+  
+  - name: "list_company_regions"
+    command: ["list", "regions"]
+    expect:
+      success: true
+  
+  - name: "list_company_teams"
+    command: ["list", "teams"]
+    expect:
+      success: true
+  
+  - name: "list_company_users"
+    command: ["list", "users"]
+    expect:
+      success: true

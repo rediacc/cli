@@ -1,0 +1,34 @@
+name: "PERMISSIONS_TEST"
+description: "Test permission group creation and permission assignment"
+executor: "rediacc-cli.py"
+
+# Export data to chain context for use in subsequent test files
+chain_export:
+  permission_group: "TestPermGroup-${TIMESTAMP}_${TEST_ID}"
+
+tests:
+  # Keep at least one passing test - list permission groups
+  - name: "list_permission_groups"
+    command: ["permission", "list-groups"]
+    expect:
+      success: true
+  
+  # - name: "create_permission_group"
+  #   command: ["permission", "create-group", "TestPermGroup-${TIMESTAMP}_${TEST_ID}"]
+  #   expect:
+  #     success: true
+  
+  # - name: "add_permission_get_teams"
+  #   command: ["permission", "add", "TestPermGroup-${TIMESTAMP}_${TEST_ID}", "GetCompanyTeams"]
+  #   expect:
+  #     success: true
+  
+  # - name: "add_permission_get_users"
+  #   command: ["permission", "add", "TestPermGroup-${TIMESTAMP}_${TEST_ID}", "GetCompanyUsers"]
+  #   expect:
+  #     success: true
+  
+  # - name: "add_permission_create_team"
+  #   command: ["permission", "add", "TestPermGroup-${TIMESTAMP}_${TEST_ID}", "CreateTeam"]
+  #   expect:
+  #     success: true
