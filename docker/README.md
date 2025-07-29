@@ -63,30 +63,6 @@ docker run -it --rm \
   rediacc/cli:latest ./rediacc gui
 ```
 
-## Docker Compose
-
-Docker Compose provides pre-configured services:
-
-```bash
-# Run CLI command
-docker-compose run --rm cli
-
-# Interactive shell
-docker-compose run --rm cli-shell
-
-# Run tests
-docker-compose run --rm cli-test
-
-# GUI (requires X11 setup)
-xhost +local:docker
-docker-compose run --rm cli ./rediacc gui
-```
-
-### Available Services
-
-- **cli** - Complete CLI service with GUI support
-- **cli-shell** - Interactive development shell
-- **cli-test** - Test runner
 
 ## Volumes
 
@@ -94,7 +70,6 @@ The following volumes are used:
 
 - `./cli/.rediacc` - CLI configuration and tokens (local to project)
 - `~/.ssh` - SSH keys (read-only)
-- `/workspace` - Current directory (for docker-compose)
 
 ### Important Note on Config Directory
 
@@ -103,16 +78,11 @@ The Docker setup now uses a local `.rediacc` directory within the CLI folder (`.
 1. **Isolation**: Each project instance has its own configuration
 2. **Portability**: Config travels with the project
 3. **Permissions**: No conflicts with host user permissions
-4. **Docker Compose**: Works seamlessly with relative paths
 
 When running from the monorepo root:
 ```bash
 # Correct - uses local config
 docker run -v ./cli/.rediacc:/home/rediacc/.rediacc ...
-
-# For docker-compose (from cli/docker directory)
-# The compose file uses ../.rediacc which resolves to cli/.rediacc
-docker-compose run --rm cli
 ```
 
 ## Security Notes

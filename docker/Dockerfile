@@ -66,7 +66,6 @@ COPY --chown=$REDIACC_LINUX_USER:$REDIACC_LINUX_GROUP rediacc.ps1 ./rediacc.ps1
 COPY --chown=$REDIACC_LINUX_USER:$REDIACC_LINUX_GROUP src/ ./src/
 COPY --chown=$REDIACC_LINUX_USER:$REDIACC_LINUX_GROUP scripts/ ./scripts/
 COPY --chown=$REDIACC_LINUX_USER:$REDIACC_LINUX_GROUP docs/ ./docs/
-COPY --chown=$REDIACC_LINUX_USER:$REDIACC_LINUX_GROUP .env.example ./.env.example
 
 # Replace version in Python files
 RUN find ./src/cli -name "*.py" -exec sed -i "s/__version__ = \"dev\"/__version__ = \"$VERSION\"/g" {} \;
@@ -120,9 +119,9 @@ ENV TERM=xterm-256color
 ENV REDIACC_CONFIG_DIR=/home/rediacc/.config
 ENV DISPLAY=:0
 
-# Note: Environment variables should be provided at runtime via --env-file or -e flags
-# Example: docker run --env-file .env rediacc/cli:latest
-# See .env.example for required configuration
+# Note: Environment variables can be provided at runtime via -e flags
+# Example: docker run -e REDIACC_API_URL=http://api.example.com:7322/api rediacc/cli:latest
+# Default values are built into the application
 
 # Declare volumes for persistent data
 VOLUME ["/home/rediacc/.config", "/home/rediacc/.ssh"]

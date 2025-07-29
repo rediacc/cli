@@ -196,24 +196,26 @@ class ConfigError(Exception):
 class Config:
     """Configuration manager for Rediacc CLI"""
     
-    # Required configuration keys
+    # Default configuration values
+    DEFAULTS = {
+        'SYSTEM_HTTP_PORT': '443',
+        'REDIACC_API_URL': 'https://www.rediacc.com/api',
+        'REDIACC_LINUX_USER': 'rediacc',
+        'REDIACC_LINUX_GROUP': 'rediacc',
+        'REDIACC_USER_UID': '7111',
+        'REDIACC_USER_GID': '7111',
+        'REDIACC_TEST_ACTIVATION_CODE': '111111',
+        'REDIACC_DEFAULT_THEME': 'dark',
+        'REDIACC_TEMP_DIR': 'C:\\Windows\\Temp' if platform.system() == 'Windows' else '/tmp',
+        'REDIACC_MSYS2_ROOT': 'C:\\msys64' if platform.system() == 'Windows' else None,
+        'REDIACC_PYTHON_PATH': None,  # Will use system default if not set
+        'REDIACC_CONFIG_DIR': None,  # Will use default path logic if not set
+    }
+    
+    # Required configuration keys (must have valid values)
     REQUIRED_KEYS = {
         'SYSTEM_HTTP_PORT': 'Port for the Rediacc API server',
         'REDIACC_API_URL': 'Full URL to the Rediacc API endpoint',
-    }
-    
-    # Optional configuration keys with descriptions
-    OPTIONAL_KEYS = {
-        'REDIACC_LINUX_USER': 'Linux user for Docker containers',
-        'REDIACC_LINUX_GROUP': 'Linux group for Docker containers',
-        'REDIACC_USER_UID': 'UID for the Linux user',
-        'REDIACC_USER_GID': 'GID for the Linux group',
-        'REDIACC_CONFIG_DIR': 'Directory for CLI configuration files',
-        'REDIACC_TEST_ACTIVATION_CODE': 'Test activation code for development',
-        'REDIACC_DEFAULT_THEME': 'Default theme for GUI (dark/light)',
-        'REDIACC_TEMP_DIR': 'Temporary directory (Windows)',
-        'REDIACC_MSYS2_ROOT': 'MSYS2 installation directory (Windows)',
-        'REDIACC_PYTHON_PATH': 'Python interpreter path',
     }
     
     def __init__(self):
@@ -222,42 +224,30 @@ class Config:
         self.logger = get_logger(__name__)
     
     def load(self, env_file: Optional[str] = None):
-        """Load configuration from environment and .env files"""
+        """Load configuration from defaults and environment variables"""
         if self._loaded: return
-        self._load_env_file(env_file)
+        self._load_defaults()
         self._load_from_environment()
         self._validate()
         self._loaded = True
     
-    def _find_env_file(self) -> Optional[Path]:
-        """Find .env file in current, parent directories, or home"""
-        current = Path.cwd()
-        if (env_path := current / '.env').exists(): return env_path
+    def _load_defaults(self):
+        """Load default configuration values"""
+        # Start with all defaults
+        self._config = self.DEFAULTS.copy()
         
-        for parent in current.parents:
-            if (env_path := parent / '.env').exists(): return env_path
-            if (parent / 'cli').is_dir() and (parent / 'middleware').is_dir(): break
-        
-        local_env = get_config_dir() / '.env'
-        return local_env if local_env.exists() else None
-    
-    def _load_env_file(self, env_file: Optional[str] = None):
-        if not (env_path := Path(env_file) if env_file else self._find_env_file()) or not env_path.exists(): return
-        
-        try:
-            with open(env_path, 'r') as f:
-                for line in f:
-                    if (line := line.strip()) and not line.startswith('#') and '=' in line:
-                        key, value = line.split('=', 1)
-                        self._config[key.strip()] = value.strip().strip('"\'')
-        except Exception as e: self.logger.warning(f"Failed to load .env file: {e}")
+        # Filter out None values for optional configs
+        self._config = {k: v for k, v in self._config.items() if v is not None}
     
     def _load_from_environment(self):
-        """Load configuration from environment variables"""
-        all_keys = [*self.REQUIRED_KEYS.keys(), *self.OPTIONAL_KEYS.keys()]
-        self._config.update((key, os.environ[key]) for key in all_keys if key in os.environ)
+        """Load configuration from environment variables, overriding defaults"""
+        # Override with any environment variables that are set
+        for key in self.DEFAULTS.keys():
+            if key in os.environ:
+                self._config[key] = os.environ[key]
         
-        if 'REDIACC_API_URL' not in self._config and (api_url := self._load_api_url_from_shared_config()):
+        # Also check for API URL in shared config if not set in environment
+        if 'REDIACC_API_URL' not in os.environ and (api_url := self._load_api_url_from_shared_config()):
             self._config['REDIACC_API_URL'] = api_url
     
     def _load_api_url_from_shared_config(self) -> Optional[str]:
@@ -284,8 +274,7 @@ class Config:
         if missing:
             raise ConfigError(
                 "Missing required configuration:\n" + "\n".join(missing) +
-                "\n\nPlease set these environment variables or create a .env file." +
-                "\nSee .env.example for a template."
+                "\n\nPlease set these environment variables."
             )
     
     def get(self, key: str, default: Optional[str] = None) -> Optional[str]:
