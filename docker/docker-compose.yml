@@ -15,10 +15,13 @@ services:
     environment:
       - SYSTEM_HTTP_PORT=${SYSTEM_HTTP_PORT}
       - REDIACC_API_URL=${REDIACC_API_URL}
+      - DISPLAY=${DISPLAY}
     volumes:
       - ../.config:/home/rediacc/.config
       - ~/.ssh:/home/rediacc/.ssh:ro
       - .:/workspace
+      - /tmp/.X11-unix:/tmp/.X11-unix:rw
+      - ~/.Xauthority:/home/rediacc/.Xauthority:ro
     working_dir: /workspace
     network_mode: host
     stdin_open: true
@@ -36,21 +39,3 @@ services:
     extends: cli
     container_name: rediacc-cli-test
     command: ./rediacc test
-
-  # Service with GUI support (X11 forwarding)
-  cli-gui:
-    build:
-      context: ..
-      dockerfile: docker/Dockerfile.gui
-    image: rediacc/cli-gui:latest
-    container_name: rediacc-cli-gui
-    extends: cli
-    environment:
-      - DISPLAY=${DISPLAY}
-    volumes:
-      - ../.config:/home/rediacc/.config
-      - /tmp/.X11-unix:/tmp/.X11-unix:rw
-      - ~/.Xauthority:/home/rediacc/.Xauthority:ro
-    devices:
-      - /dev/dri:/dev/dri
-    command: ./rediacc gui

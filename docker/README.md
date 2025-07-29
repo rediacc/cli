@@ -4,28 +4,17 @@ This directory contains Docker configurations for the Rediacc CLI tools.
 
 ## Available Images
 
-1. **rediacc/cli** - Base CLI image with all tools
-2. **rediacc/cli-gui** - CLI with GUI support (X11 forwarding)
+**rediacc/cli** - Complete CLI image with all tools including GUI support (X11 forwarding)
 
 ## Building Images
 
-### Build Base Image
+### Build Image
 ```bash
 # From the cli directory
 docker build -f docker/Dockerfile -t rediacc/cli:latest .
 
 # Or use the build script
 ./scripts/build-docker.sh
-```
-
-### Build GUI Image
-```bash
-# Build base image first, then GUI image
-docker build -f docker/Dockerfile -t rediacc/cli:latest .
-docker build -f docker/Dockerfile.gui -t rediacc/cli-gui:latest .
-
-# Or use the build script
-./scripts/build-docker.sh --with-gui
 ```
 
 ## Running with Docker
@@ -63,7 +52,7 @@ docker run -it --rm \
   -e DISPLAY=$DISPLAY \
   -v /tmp/.X11-unix:/tmp/.X11-unix:rw \
   -v ./cli/.rediacc:/home/rediacc/.rediacc \
-  rediacc/cli-gui:latest ./rediacc gui
+  rediacc/cli:latest ./rediacc gui
 ```
 
 **Windows (with X server like VcXsrv):**
@@ -71,7 +60,7 @@ docker run -it --rm \
 docker run -it --rm \
   -e DISPLAY=host.docker.internal:0 \
   -v ./cli/.rediacc:/home/rediacc/.rediacc \
-  rediacc/cli-gui:latest ./rediacc gui
+  rediacc/cli:latest ./rediacc gui
 ```
 
 ## Docker Compose
@@ -89,15 +78,15 @@ docker-compose run --rm cli-shell
 docker-compose run --rm cli-test
 
 # GUI (requires X11 setup)
-docker-compose run --rm cli-gui
+xhost +local:docker
+docker-compose run --rm cli ./rediacc gui
 ```
 
 ### Available Services
 
-- **cli** - Basic CLI service
+- **cli** - Complete CLI service with GUI support
 - **cli-shell** - Interactive development shell
 - **cli-test** - Test runner
-- **cli-gui** - GUI-enabled CLI
 
 ## Volumes
 
@@ -163,9 +152,7 @@ To publish to a registry:
 ```bash
 # Tag for registry
 docker tag rediacc/cli:latest registry.example.com/rediacc/cli:latest
-docker tag rediacc/cli-gui:latest registry.example.com/rediacc/cli-gui:latest
 
-# Push images
+# Push image
 docker push registry.example.com/rediacc/cli:latest
-docker push registry.example.com/rediacc/cli-gui:latest
 ```

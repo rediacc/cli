@@ -4,6 +4,9 @@
 Rediacc CLI - Complete command-line interface for Rediacc Middleware API
 Includes all functionality from both CLI and test suite with enhanced queue support
 """
+
+__version__ = "dev"  # This will be replaced during build/release
+
 import argparse
 import getpass
 import hashlib
@@ -3252,6 +3255,8 @@ def setup_parser():
     parser = argparse.ArgumentParser(
         description='Rediacc CLI - Complete interface for Rediacc Middleware API with enhanced queue support'
     )
+    parser.add_argument('--version', action='version', 
+                       version=f'Rediacc CLI v{__version__}' if __version__ != 'dev' else 'Rediacc CLI Development')
     parser.add_argument('--output', '-o', choices=['text', 'json', 'json-full'], default='text',
                        help='Output format: text, json (concise), or json-full (comprehensive)')
     parser.add_argument('--token', '-t', help='Authentication token (overrides saved token)')

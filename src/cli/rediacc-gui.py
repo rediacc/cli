@@ -7,6 +7,8 @@ Rediacc CLI GUI application, including plugin management, terminal access,
 and file synchronization tools.
 """
 
+__version__ = "dev"  # This will be replaced during build/release
+
 import tkinter as tk
 from tkinter import ttk, scrolledtext, messagebox, filedialog
 import subprocess
@@ -59,7 +61,10 @@ class MainWindow(BaseWindow):
     """Main window with Terminal and File Sync tools"""
     
     def __init__(self):
-        super().__init__(tk.Tk(), i18n.get('app_title'))
+        title = i18n.get('app_title')
+        if __version__ != 'dev':
+            title += f' v{__version__}'
+        super().__init__(tk.Tk(), title)
         self.logger = get_logger(__name__)
         self.runner = SubprocessRunner()
         # Start maximized
@@ -2439,6 +2444,8 @@ Version: 1.0.0
         
         # Update window title
         new_title = i18n.get('app_title')
+        if __version__ != 'dev':
+            new_title += f' v{__version__}'
         self.logger.debug(f"Setting window title to: '{new_title}'")
         self.root.title(new_title)
         
