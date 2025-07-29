@@ -15,16 +15,8 @@ NC='\033[0m'
 SCRIPT_DIR="$( cd "$( dirname "${BASH_SOURCE[0]}" )" && pwd )"
 CLI_ROOT="$SCRIPT_DIR"
 
-# Create .env from .env.example if it doesn't exist
-if [ ! -f "$CLI_ROOT/.env" ] && [ -f "$CLI_ROOT/.env.example" ]; then
-    echo -e "${CYAN}Creating .env from .env.example...${NC}"
-    cp "$CLI_ROOT/.env.example" "$CLI_ROOT/.env"
-fi
-
-# Source environment if available
-if [ -f "$CLI_ROOT/.env" ]; then
-    export $(grep -v '^#' "$CLI_ROOT/.env" | xargs)
-fi
+# Note: Environment variables can be set externally if needed
+# Default values are defined in the Python code
 
 # Helper functions
 find_python() {
@@ -129,8 +121,6 @@ print_help() {
     echo "    docker-build          Build CLI Docker image"
     echo "    docker-run            Run CLI in Docker container"
     echo "    docker-shell          Interactive shell in Docker"
-    echo "    docker-compose-up     Start services with docker-compose"
-    echo "    docker-compose-down   Stop services"
     echo
     echo "  Setup:"
     echo "    setup       Install dependencies and set up environment"
@@ -330,15 +320,6 @@ docker_shell() {
         /bin/bash
 }
 
-docker_compose_up() {
-    echo -e "${GREEN}Starting services with docker-compose...${NC}"
-    docker-compose -f "$CLI_ROOT/docker/docker-compose.yml" up -d
-}
-
-docker_compose_down() {
-    echo -e "${GREEN}Stopping services...${NC}"
-    docker-compose -f "$CLI_ROOT/docker/docker-compose.yml" down
-}
 
 # Desktop functions
 desktop() {
@@ -565,16 +546,6 @@ case "$1" in
     docker-shell)
         shift
         docker_shell "$@"
-        ;;
-        
-    docker-compose-up)
-        shift
-        docker_compose_up "$@"
-        ;;
-        
-    docker-compose-down)
-        shift
-        docker_compose_down "$@"
         ;;
         
     desktop-docker-build)
