@@ -1,4 +1,10 @@
 #!/usr/bin/env python3
+"""
+Rediacc CLI Plugin - Plugin management for repositories
+"""
+
+__version__ = "dev"  # This will be replaced during build/release
+
 import argparse
 import os
 import subprocess
@@ -407,6 +413,9 @@ Plugin Access:
   The local port forwards to the plugin's Unix socket on the remote repository.
 """
     )
+    
+    parser.add_argument('--version', action='version', 
+                       version=f'Rediacc CLI Plugin v{__version__}' if __version__ != 'dev' else 'Rediacc CLI Plugin Development')
     
     subparsers = parser.add_subparsers(dest='command', help='Commands')
     

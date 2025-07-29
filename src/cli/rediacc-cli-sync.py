@@ -1,4 +1,10 @@
 #!/usr/bin/env python3
+"""
+Rediacc CLI Sync - Rsync-based file synchronization with repositories
+"""
+
+__version__ = "dev"  # This will be replaced during build/release
+
 import argparse
 import os
 import subprocess
@@ -224,6 +230,8 @@ Examples:
     %(prog)s download --token=<GUID> --machine=server1 --repo=data --local=/backup --mirror --verify --confirm
 """
     )
+    parser.add_argument('--version', action='version', 
+                       version=f'Rediacc CLI Sync v{__version__}' if __version__ != 'dev' else 'Rediacc CLI Sync Development')
     # Add verbose to main parser
     add_common_arguments(parser, include_args=['verbose'])
     

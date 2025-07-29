@@ -16,6 +16,18 @@ RUN apk add --no-cache \
     ca-certificates \
     tzdata \
     ncurses \
+    tk \
+    tcl \
+    xvfb \
+    xauth \
+    xhost \
+    fontconfig \
+    ttf-dejavu \
+    xterm \
+    font-misc-misc \
+    font-cursor-misc \
+    font-adobe-100dpi \
+    font-adobe-75dpi \
     && rm -rf /var/cache/apk/*
 
 # Set timezone and locale
@@ -31,8 +43,22 @@ ARG REDIACC_USER_GID=7111
 RUN addgroup -g $REDIACC_USER_GID -S $REDIACC_LINUX_GROUP && \
     adduser -u $REDIACC_USER_UID -S -G $REDIACC_LINUX_GROUP -h /home/$REDIACC_LINUX_USER -s /bin/bash $REDIACC_LINUX_USER
 
+# Create X11 unix socket directory
+RUN mkdir -p /tmp/.X11-unix && \
+    chmod 1777 /tmp/.X11-unix
+
+# Configure xterm to use available fonts
+RUN mkdir -p /etc/X11/app-defaults && \
+    echo "XTerm*faceName: DejaVu Sans Mono" > /etc/X11/app-defaults/XTerm && \
+    echo "XTerm*faceSize: 10" >> /etc/X11/app-defaults/XTerm && \
+    echo "XTerm*renderFont: true" >> /etc/X11/app-defaults/XTerm && \
+    echo "XTerm*font: fixed" >> /etc/X11/app-defaults/XTerm
+
 # Create working directory
 WORKDIR /app
+
+# Accept version build argument
+ARG VERSION=dev
 
 # Copy directory structure
 COPY --chown=$REDIACC_LINUX_USER:$REDIACC_LINUX_GROUP rediacc ./rediacc
@@ -41,11 +67,15 @@ COPY --chown=$REDIACC_LINUX_USER:$REDIACC_LINUX_GROUP src/ ./src/
 COPY --chown=$REDIACC_LINUX_USER:$REDIACC_LINUX_GROUP scripts/ ./scripts/
 COPY --chown=$REDIACC_LINUX_USER:$REDIACC_LINUX_GROUP docs/ ./docs/
 
+# Replace version in Python files
+RUN find ./src/cli -name "*.py" -exec sed -i "s/__version__ = \"dev\"/__version__ = \"$VERSION\"/g" {} \;
+
 # Make scripts executable
 RUN chmod +x rediacc src/cli/*
 
-# Note: Rediacc Desktop (GUI functionality via --gui flag) requires X11 display and won't work in standard Docker containers
-# For Rediacc Desktop support, use X11 forwarding or run on the host system
+# Note: This image includes GUI support. To use Rediacc Desktop (GUI functionality via --gui flag):
+# - Linux/macOS: Use X11 forwarding with -e DISPLAY=$DISPLAY -v /tmp/.X11-unix:/tmp/.X11-unix:rw
+# - Windows: Use X server (e.g., VcXsrv) with -e DISPLAY=host.docker.internal:0
 
 # Copy requirements if exists
 COPY --chown=$REDIACC_LINUX_USER:$REDIACC_LINUX_GROUP requirements.txt ./
@@ -87,6 +117,7 @@ ENV PYTHONUNBUFFERED=1
 ENV TMPDIR=/home/rediacc/tmp
 ENV TERM=xterm-256color
 ENV REDIACC_CONFIG_DIR=/home/rediacc/.config
+ENV DISPLAY=:0
 
 # Note: Environment variables should be provided at runtime via --env-file or -e flags
 # Example: docker run --env-file .env rediacc/cli:latest
@@ -96,8 +127,8 @@ ENV REDIACC_CONFIG_DIR=/home/rediacc/.config
 VOLUME ["/home/rediacc/.config", "/home/rediacc/.ssh"]
 
 # Add metadata labels following OCI conventions
-LABEL org.opencontainers.image.title="Rediacc CLI"
-LABEL org.opencontainers.image.description="Command-line interface for Rediacc platform"
+LABEL org.opencontainers.image.title="Rediacc CLI with GUI"
+LABEL org.opencontainers.image.description="Command-line interface and desktop GUI for Rediacc platform"
 LABEL org.opencontainers.image.vendor="Rediacc"
 LABEL org.opencontainers.image.source="https://github.com/rediacc/monorepo"
 

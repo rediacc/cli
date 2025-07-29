@@ -378,17 +378,17 @@ desktop_docker_build() {
         fi
     fi
     
-    # Build GUI image
-    docker build -t rediacc/cli-gui:latest \
+    # Build CLI image (includes GUI support)
+    docker build -t rediacc/cli:latest \
         --build-arg REDIACC_LINUX_USER=rediacc \
         --build-arg REDIACC_LINUX_GROUP=rediacc \
         --build-arg REDIACC_USER_UID=7111 \
         --build-arg REDIACC_USER_GID=7111 \
-        -f "$CLI_ROOT/docker/Dockerfile.gui" \
+        -f "$CLI_ROOT/docker/Dockerfile" \
         "$CLI_ROOT"
     
     if [ $? -eq 0 ]; then
-        echo -e "${GREEN}Docker image built successfully: rediacc/cli-gui:latest${NC}"
+        echo -e "${GREEN}Docker image built successfully: rediacc/cli:latest${NC}"
     else
         echo -e "${RED}Docker build failed${NC}"
         return 1
@@ -399,7 +399,7 @@ desktop_docker() {
     echo -e "${GREEN}Running Rediacc Desktop in Docker...${NC}"
     
     # Check if image exists
-    IMAGE_EXISTS=$(docker images -q rediacc/cli-gui:latest 2>/dev/null)
+    IMAGE_EXISTS=$(docker images -q rediacc/cli:latest 2>/dev/null)
     
     # Check if rebuild is needed
     REBUILD_NEEDED=false
@@ -483,7 +483,7 @@ desktop_docker() {
         -v "$REDIACC_VOLUME:/home/rediacc/.config:rw" \
         -v "$CLI_ROOT/.env:/app/.env:ro" \
         --network host \
-        rediacc/cli-gui:latest \
+        rediacc/cli:latest \
         python3 /app/src/cli/rediacc-gui.py
     
     # Copy config back if it was updated
@@ -579,6 +579,11 @@ case "$1" in
     desktop-docker)
         shift
         desktop_docker "$@"
+        ;;
+        
+    version|--version)
+        # Show version of main CLI
+        "$PYTHON_CMD" "$CLI_ROOT/src/cli/rediacc-cli.py" --version
         ;;
         
     help|--help|-h)

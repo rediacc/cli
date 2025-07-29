@@ -4,7 +4,7 @@
 [CmdletBinding()]
 param(
     [Parameter(Position=0)]
-    [ValidateSet('setup', 'login', 'sync', 'term', 'test', 'gui', 'help')]
+    [ValidateSet('setup', 'login', 'sync', 'term', 'test', 'gui', 'help', 'version')]
     [string]$Command = 'help',
     
     [Parameter(Position=1, ValueFromRemainingArguments=$true)]
@@ -1151,6 +1151,10 @@ switch ($Command) {
     
     'gui' {
         Invoke-RediaccCLI -Tool "rediacc-gui" -Arguments $Arguments
+    }
+    
+    'version' {
+        Invoke-RediaccCLI -Tool "rediacc-cli" -Arguments @('--version')
     }
     
     'help' {

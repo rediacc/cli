@@ -1,4 +1,10 @@
 #!/usr/bin/env python3
+"""
+Rediacc CLI Term - SSH terminal access to repositories and machines
+"""
+
+__version__ = "dev"  # This will be replaced during build/release
+
 import argparse
 import subprocess
 import sys
@@ -170,6 +176,8 @@ def main():
         formatter_class=argparse.RawDescriptionHelpFormatter,
         epilog=epilog_text
     )
+    parser.add_argument('--version', action='version', 
+                       version=f'Rediacc CLI Term v{__version__}' if __version__ != 'dev' else 'Rediacc CLI Term Development')
     # Add common arguments
     add_common_arguments(parser, include_args=['verbose', 'token', 'team', 'machine'])
     
