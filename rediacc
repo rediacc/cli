@@ -15,6 +15,12 @@ NC='\033[0m'
 SCRIPT_DIR="$( cd "$( dirname "${BASH_SOURCE[0]}" )" && pwd )"
 CLI_ROOT="$SCRIPT_DIR"
 
+# Create .env from .env.example if it doesn't exist
+if [ ! -f "$CLI_ROOT/.env" ] && [ -f "$CLI_ROOT/.env.example" ]; then
+    echo -e "${CYAN}Creating .env from .env.example...${NC}"
+    cp "$CLI_ROOT/.env.example" "$CLI_ROOT/.env"
+fi
+
 # Source environment if available
 if [ -f "$CLI_ROOT/.env" ]; then
     export $(grep -v '^#' "$CLI_ROOT/.env" | xargs)
@@ -591,7 +597,8 @@ case "$1" in
         ;;
         
     "")
-        print_help
+        # When no arguments provided, run the CLI directly (shows its own help)
+        "$PYTHON_CMD" "$CLI_ROOT/src/cli/rediacc-cli.py"
         ;;
         
     *)

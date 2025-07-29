@@ -66,6 +66,7 @@ COPY --chown=$REDIACC_LINUX_USER:$REDIACC_LINUX_GROUP rediacc.ps1 ./rediacc.ps1
 COPY --chown=$REDIACC_LINUX_USER:$REDIACC_LINUX_GROUP src/ ./src/
 COPY --chown=$REDIACC_LINUX_USER:$REDIACC_LINUX_GROUP scripts/ ./scripts/
 COPY --chown=$REDIACC_LINUX_USER:$REDIACC_LINUX_GROUP docs/ ./docs/
+COPY --chown=$REDIACC_LINUX_USER:$REDIACC_LINUX_GROUP .env.example ./.env.example
 
 # Replace version in Python files
 RUN find ./src/cli -name "*.py" -exec sed -i "s/__version__ = \"dev\"/__version__ = \"$VERSION\"/g" {} \;
@@ -136,5 +137,7 @@ LABEL org.opencontainers.image.source="https://github.com/rediacc/monorepo"
 HEALTHCHECK --interval=30s --timeout=3s --start-period=5s --retries=3 \
     CMD python3 -c "import sys; sys.path.insert(0, '/app/src/modules'); import rediacc_cli_core; sys.exit(0)" || exit 1
 
-# Default command - show help
-CMD ["./rediacc", "help"]
+# Use ENTRYPOINT so arguments are passed correctly
+ENTRYPOINT ["./rediacc"]
+# Default command if no arguments provided
+CMD []
