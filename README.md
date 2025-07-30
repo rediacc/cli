@@ -13,7 +13,7 @@ cp .env.example .env
 
 Required configuration:
 - `SYSTEM_HTTP_PORT`: API server port (e.g., 7322)
-- `REDIACC_API_URL`: Full API URL (e.g., http://localhost:7322/api)
+- `SYSTEM_API_URL`: Full API URL (e.g., http://localhost:7322/api)
 
 See `.env.example` for all available configuration options.
 

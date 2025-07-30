@@ -5,13 +5,21 @@ set -e
 
 # Required environment variables:
 # - SYSTEM_HTTP_PORT: Middleware API port (default: 443)
-# - REDIACC_API_URL: Full API URL (default: https://www.rediacc.com/api)
+# - SYSTEM_API_URL: Full API URL (default: https://www.rediacc.com/api)
 # Optional environment variables:
 # - TAG: Version tag for builds (default: dev)
 
 # Root directory
 ROOT_DIR="$( cd "$( dirname "${BASH_SOURCE[0]}" )" && pwd )"
 MONOREPO_DIR="$( cd "$ROOT_DIR/.." && pwd )"
+
+# Source parent .env file if it exists
+if [ -f "$MONOREPO_DIR/.env" ]; then
+    echo "📁 Loading environment from $MONOREPO_DIR/.env"
+    set -a  # automatically export all variables
+    source "$MONOREPO_DIR/.env"
+    set +a  # turn off automatic export
+fi
 
 # Use TAG environment variable if provided, otherwise use date-based version
 if [ -n "$TAG" ] && [ "$TAG" != "latest" ] && [ "$TAG" != "dev" ]; then
@@ -22,26 +30,20 @@ fi
 
 # Function to check required environment variables
 check_required_env() {
-    local missing=0
+    # These environment variables are optional - Python code has defaults
+    # SYSTEM_HTTP_PORT defaults to 443
+    # SYSTEM_API_URL defaults to https://www.rediacc.com/api
     
     if [ -z "$SYSTEM_HTTP_PORT" ]; then
-        echo "❌ Error: SYSTEM_HTTP_PORT is not set!"
-        missing=1
+        echo "ℹ️  SYSTEM_HTTP_PORT not set, using default: 443"
+    else
+        echo "✅ SYSTEM_HTTP_PORT set to: $SYSTEM_HTTP_PORT"
     fi
     
-    if [ -z "$REDIACC_API_URL" ]; then
-        echo "❌ Error: REDIACC_API_URL is not set!"
-        missing=1
-    fi
-    
-    if [ $missing -eq 1 ]; then
-        echo ""
-        echo "Please ensure the following environment variables are set:"
-        echo "  - SYSTEM_HTTP_PORT (e.g., export SYSTEM_HTTP_PORT=7322)"
-        echo "  - REDIACC_API_URL (e.g., export REDIACC_API_URL=http://localhost:7322/api)"
-        echo ""
-        echo "These can be set in your shell or passed when running the script."
-        exit 1
+    if [ -z "$SYSTEM_API_URL" ]; then
+        echo "ℹ️  SYSTEM_API_URL not set, using default: https://www.rediacc.com/api"
+    else
+        echo "✅ SYSTEM_API_URL set to: $SYSTEM_API_URL"
     fi
 }
 
@@ -138,10 +140,11 @@ function setup() {
     echo "✅ Configuration uses built-in defaults (can be overridden with environment variables)"
     
     # Check middleware connectivity
-    if curl -s "$REDIACC_API_URL" > /dev/null 2>&1; then
-        echo "✅ Middleware API is accessible at $REDIACC_API_URL"
+    API_URL="${SYSTEM_API_URL:-https://www.rediacc.com/api}"
+    if curl -s "$API_URL" > /dev/null 2>&1; then
+        echo "✅ Middleware API is accessible at $API_URL"
     else
-        echo "⚠️  Middleware API is not accessible at $REDIACC_API_URL"
+        echo "⚠️  Middleware API is not accessible at $API_URL"
         echo "Start it with: cd ../middleware && ./go start"
     fi
     
@@ -345,7 +348,8 @@ function status() {
     fi
     
     # Check middleware connectivity
-    if curl -s "$REDIACC_API_URL" > /dev/null 2>&1; then
+    API_URL="${SYSTEM_API_URL:-https://www.rediacc.com/api}"
+    if curl -s "$API_URL" > /dev/null 2>&1; then
         echo "✅ Middleware API is accessible"
     else
         echo "❌ Middleware API is not accessible"

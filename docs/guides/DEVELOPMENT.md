@@ -35,7 +35,7 @@ rediacc-cli-sync upload --dev --local ./src --machine dev --repo test
 
 ```bash
 # Point to local API
-export REDIACC_API_URL="http://localhost:8080"
+export SYSTEM_API_URL="http://localhost:8080"
 export REDIACC_VERIFY_SSL=0
 
 # Use local middleware
@@ -131,7 +131,7 @@ set -e
 
 # Setup
 export REDIACC_TOKEN="test-token"
-export REDIACC_API_URL="http://localhost:8080"
+export SYSTEM_API_URL="http://localhost:8080"
 
 # Test: Create and verify team
 echo "Creating test team..."
@@ -159,7 +159,7 @@ git checkout -b feature/new-command
 
 # 2. Set up dev environment
 export REDIACC_DEV_MODE=1
-export REDIACC_API_URL="http://localhost:8080"
+export SYSTEM_API_URL="http://localhost:8080"
 export REDIACC_VERBOSE=1
 
 # 3. Test changes iteratively
@@ -310,7 +310,7 @@ REDIACC_DEBUG=3                 # Maximum debug level
 REDIACC_VERBOSE=1               # Verbose output
 
 # API development
-REDIACC_API_URL="http://localhost:8080"
+SYSTEM_API_URL="http://localhost:8080"
 REDIACC_VERIFY_SSL=0            # Disable SSL verification
 REDIACC_LOG_REQUESTS=1          # Log all API requests
 
