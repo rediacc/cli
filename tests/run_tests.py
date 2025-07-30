@@ -449,8 +449,14 @@ class TestRunner:
                 main_cmd = command_parts[0]
                 sub_cmd = None
                 
+                # Check if this is a dynamic endpoint (starts with uppercase letter)
+                if main_cmd and main_cmd[0].isupper():
+                    # This is a direct endpoint call
+                    self.tested_endpoints.add(main_cmd)
+                    # Also track it as a dynamic command
+                    self.tested_commands.add(f"dynamic.{main_cmd}")
                 # For single commands like "login", "logout"
-                if len(command_parts) == 1:
+                elif len(command_parts) == 1:
                     command_key = main_cmd
                     # Check if it's a top-level command in CMD_CONFIG
                     cmd_config = self.cli_config.get('CMD_CONFIG', {})

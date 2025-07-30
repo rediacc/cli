@@ -10,17 +10,19 @@ chain_export:
 
 tests:
   - name: "create_new_company"
-    command: ["create", "company", "${config.test_data.company.name_pattern}"]
+    command: ["CreateNewCompany"]
     args:
+      companyName: "${config.test_data.company.name_pattern}"
       email: "${config.test_data.company.admin_email_pattern}"
       password: "${config.test_data.company.admin_password}"
     expect:
       success: true
   
   - name: "activate_user_account"
-    command: ["user", "activate", "${config.test_data.company.admin_email_pattern}"]
+    command: ["ActivateUserAccount"]
     args:
-      code: "${config.test_environment.activation_code}"
+      email: "${config.test_data.company.admin_email_pattern}"
+      activationCode: "${config.test_environment.activation_code}"
       password: "${config.test_data.company.admin_password}"
     expect:
       success: true
@@ -34,6 +36,6 @@ tests:
       success: true
   
   - name: "get_company_vaults"
-    command: ["company", "get-vaults"]
+    command: ["GetCompanyVaults"]
     expect:
       success: true
