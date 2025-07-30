@@ -909,7 +909,7 @@ class CommandHandler:
         
         login_params = {'name': args.session_name or "CLI Session"}
         
-        for attr, param in [('tfa_code', '2FACode'), ('permissions', 'requestedPermissions'), ('expiration', 'tokenExpirationHours'), ('target', 'target')]:
+        for attr, param in [('tfa_code', 'TFACode'), ('permissions', 'requestedPermissions'), ('expiration', 'tokenExpirationHours'), ('target', 'target')]:
             if hasattr(args, attr) and (value := getattr(args, attr)): login_params[param] = value
         
         response = self.client.auth_request("CreateAuthenticationRequest", email, hash_pwd, login_params)
@@ -922,32 +922,32 @@ class CommandHandler:
         is_authorized = auth_data.get('isAuthorized', True)
         authentication_status = auth_data.get('authenticationStatus', '')
         
-        if authentication_status == '2FA_REQUIRED' and not is_authorized:
+        if authentication_status == 'TFA_REQUIRED' and not is_authorized:
             if not hasattr(args, 'tfa_code') or not args.tfa_code:
                 if self.output_format not in ['json', 'json-full']:
                     from core import I18n
                     i18n = I18n()
                     tfa_code = input(i18n.get('enter_tfa_code'))
                 else:
-                    print(format_output(None, self.output_format, None, "2FA_REQUIRED. Please provide --tfa-code parameter."))
+                    print(format_output(None, self.output_format, None, "TFA_REQUIRED. Please provide --tfa-code parameter."))
                     return 1
                 
-                login_params['2FACode'] = tfa_code
+                login_params['TFACode'] = tfa_code
                 response = self.client.auth_request("CreateAuthenticationRequest", email, hash_pwd, login_params)
                 
                 if response.get('error'):
-                    print(format_output(None, self.output_format, None, f"2FA verification failed: {response['error']}"))
+                    print(format_output(None, self.output_format, None, f"TFA verification failed: {response['error']}"))
                     return 1
                 
                 resultSets = response.get('resultSets', [])
                 if not resultSets or not resultSets[0].get('data'):
-                    print(format_output(None, self.output_format, None, "2FA verification failed: Could not get authentication token"))
+                    print(format_output(None, self.output_format, None, "TFA verification failed: Could not get authentication token"))
                     return 1
                 
                 auth_data = resultSets[0]['data'][0]
                 token = auth_data.get('nextRequestCredential')
                 if not token:
-                    print(format_output(None, self.output_format, None, "2FA verification failed: Invalid authentication token"))
+                    print(format_output(None, self.output_format, None, "TFA verification failed: Invalid authentication token"))
                     return 1
         
         company = auth_data.get('companyName')
@@ -1317,7 +1317,7 @@ class CommandHandler:
              lambda: setattr(args, 'password', getpass.getpass("Password for new user: "))),
             (cmd_type == 'user' and resource_type == 'update-password' and not args.new_password,
              lambda: setattr(args, 'new_password', getpass.getpass("New password: "))),
-            (cmd_type == 'user' and resource_type == 'update-2fa' and not hasattr(args, 'password'),
+            (cmd_type == 'user' and resource_type == 'update-tfa' and not hasattr(args, 'password'),
              lambda: setattr(args, 'password', getpass.getpass("Current password: ")))
         ]
         

@@ -19,7 +19,7 @@ Company (Root Level)
 │
 ├── 03000_users.yaml → [protected_CreateNewUser, protected_ActivateUserAccount]
 │   ├── User (belongs to Company, requires PermissionsId)
-│   ├── 03050_user_auth.yaml → [protected_UpdateUserPassword, public_UpdateUser2FA]
+│   ├── 03050_user_auth.yaml → [protected_UpdateUserPassword, public_UpdateUserTFA]
 │   ├── 03080_user_sessions.yaml → [protected_CreateAuthenticationRequest, public_DeleteUserRequest, public_GetUserRequests]
 │   ├── 03100_user_update.yaml → [public_UpdateUserEmail, public_UpdateUserToDeactivated, public_UpdateUserAssignedPermissions]
 │   └── 03200_user_info.yaml → [public_GetUserCompany, public_GetRequestAuthenticationStatus]
@@ -57,7 +57,7 @@ Company (Root Level)
 │   └── Audit trail for all entity operations
 │
 ├── 09500_authentication.yaml → [public_GetRequestAuthenticationStatus, public_PrivilegeAuthenticationRequest]
-│   └── Session management and 2FA privilege elevation
+│   └── Session management and TFA privilege elevation
 │
 ├── 10000_vault_management.yaml → [private_ManageEncryptedVault]
 │   └── Core vault encryption/decryption operations
@@ -84,7 +84,7 @@ Company (Root Level)
 - `CreatePermissionInGroup` executes with elevated 'dbo' privileges
 
 ### User & Authentication
-- **2FA Setup**: `UpdateUser2FA` with secret generation and verification
+- **TFA Setup**: `UpdateUserTFA` with secret generation and verification
 - **Session Management**: `CreateAuthenticationRequest` with token expiration
 - **Privilege Elevation**: `PrivilegeAuthenticationRequest` for sensitive operations
 
@@ -199,7 +199,7 @@ sed -i '1a\  - name: "create_permission_group"\n    command: ["permission", "cre
 
 ### Core Tables
 1. **Company** - Full CRUD + vault operations (01xxx series)
-2. **User** - Full CRUD + auth/2FA (03xxx series)
+2. **User** - Full CRUD + auth/TFA (03xxx series)
 3. **Permissions** - Groups and individual permissions (02xxx series)
 4. **Team** - Full CRUD + vault operations (04xxx series)
 5. **Participation** - Team membership (04100)

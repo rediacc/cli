@@ -67,7 +67,7 @@ Sub-tests use decimal notation:
 ## Advanced Tests
 
 1. **00010.1_company_setup_advanced.yaml** - Create company with ADVANCED plan
-2. **00031.2_user_2fa_management.yaml** - 2FA documentation (manual testing)
+2. **00031.2_user_tfa_management.yaml** - TFA documentation (manual testing)
 3. **00040.1_permission_management_advanced.yaml** - Custom permission groups
 
 ## Test Features
@@ -89,7 +89,7 @@ See individual test files for examples. Key elements:
 
 ## Notes
 
-- Tests requiring interactive input (like TOTP for 2FA) are documented but skipped
+- Tests requiring interactive input (like TOTP for TFA) are documented but skipped
 - Subscription plan testing requires development environment
 - All tests use `--output json-full` for comprehensive result capture
 - Tests stop on first failure to prevent cascading errors
