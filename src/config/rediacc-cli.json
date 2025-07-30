@@ -3,8 +3,16 @@
     "os_setup": {
       "description": "Setup operating system with required tools and configurations",
       "params": {
-        "datastore_size": {"type": "string", "default": "95%", "help": "Datastore size (e.g., 95%, 100G)"},
-        "source": {"type": "string", "default": "apt-repo", "help": "Package source"}
+        "datastore_size": {
+          "type": "string",
+          "default": "95%",
+          "help": "Datastore size (e.g., 95%, 100G)"
+        },
+        "source": {
+          "type": "string",
+          "default": "apt-repo",
+          "help": "Package source"
+        }
       }
     },
     "hello": {
@@ -18,80 +26,168 @@
     "repo_new": {
       "description": "Create a new repository",
       "params": {
-        "repo": {"type": "string", "required": true, "help": "Repository name"},
-        "size": {"type": "string", "required": true, "help": "Repository size (e.g., 10G)"}
+        "repo": {
+          "type": "string",
+          "required": true,
+          "help": "Repository name"
+        },
+        "size": {
+          "type": "string",
+          "required": true,
+          "help": "Repository size (e.g., 10G)"
+        }
       }
     },
     "repo_mount": {
       "description": "Mount repository filesystems",
       "params": {
-        "repo": {"type": "string", "required": true, "help": "Repository name(s), comma-separated"},
-        "from": {"type": "string", "help": "Remote machine to mount from"}
+        "repo": {
+          "type": "string",
+          "required": true,
+          "help": "Repository name(s), comma-separated"
+        },
+        "from": {
+          "type": "string",
+          "help": "Remote machine to mount from"
+        }
       }
     },
     "repo_unmount": {
       "description": "Unmount repository filesystems",
       "params": {
-        "repo": {"type": "string", "required": true, "help": "Repository name(s), comma-separated"},
-        "from": {"type": "string", "help": "Remote machine to unmount from"}
+        "repo": {
+          "type": "string",
+          "required": true,
+          "help": "Repository name(s), comma-separated"
+        },
+        "from": {
+          "type": "string",
+          "help": "Remote machine to unmount from"
+        }
       }
     },
     "repo_up": {
       "description": "Start repository services using Rediaccfile",
       "params": {
-        "repo": {"type": "string", "required": true, "help": "Repository name(s), comma-separated"},
-        "option": {"type": "string", "help": "Options (e.g., prep-only)"}
+        "repo": {
+          "type": "string",
+          "required": true,
+          "help": "Repository name(s), comma-separated"
+        },
+        "option": {
+          "type": "string",
+          "help": "Options (e.g., prep-only)"
+        }
       }
     },
     "repo_down": {
       "description": "Stop repository services",
       "params": {
-        "repo": {"type": "string", "required": true, "help": "Repository name(s), comma-separated"}
+        "repo": {
+          "type": "string",
+          "required": true,
+          "help": "Repository name(s), comma-separated"
+        }
       }
     },
     "repo_resize": {
       "description": "Resize repository storage",
       "params": {
-        "repo": {"type": "string", "required": true, "help": "Repository name"},
-        "size": {"type": "string", "required": true, "help": "New size (e.g., 20G)"}
+        "repo": {
+          "type": "string",
+          "required": true,
+          "help": "Repository name"
+        },
+        "size": {
+          "type": "string",
+          "required": true,
+          "help": "New size (e.g., 20G)"
+        }
       }
     },
     "repo_rm": {
       "description": "Delete repository",
       "params": {
-        "repo": {"type": "string", "required": true, "help": "Repository name"}
+        "repo": {
+          "type": "string",
+          "required": true,
+          "help": "Repository name"
+        }
       }
     },
     "repo_ownership": {
       "description": "Change repository ownership",
       "params": {
-        "repo": {"type": "string", "required": true, "help": "Repository name"},
-        "from": {"type": "string", "required": true, "help": "Current owner"},
-        "to": {"type": "string", "help": "New owner (default: universal user)"}
+        "repo": {
+          "type": "string",
+          "required": true,
+          "help": "Repository name"
+        },
+        "from": {
+          "type": "string",
+          "required": true,
+          "help": "Current owner"
+        },
+        "to": {
+          "type": "string",
+          "help": "New owner (default: universal user)"
+        }
       }
     },
     "list_system": {
       "description": "List repositories",
       "params": {
-        "kind": {"type": "string", "default": "repo", "help": "Type to list"},
-        "format": {"type": "string", "help": "Output format (json)"}
+        "kind": {
+          "type": "string",
+          "default": "repo",
+          "help": "Type to list"
+        },
+        "format": {
+          "type": "string",
+          "help": "Output format (json)"
+        }
       }
     },
     "repo_push": {
       "description": "Push repository to remote storage",
       "params": {
-        "repo": {"type": "string", "required": true, "help": "Repository name(s), comma-separated"},
-        "dest": {"type": "string", "required": true, "help": "Destination filename"},
-        "to": {"type": "string", "help": "Destination machine/storage"},
-        "state": {"type": "string", "help": "Required repository state (online/offline)"},
-        "option": {"type": "string", "help": "Options (e.g., override)"}
+        "repo": {
+          "type": "string",
+          "required": true,
+          "help": "Repository name(s), comma-separated"
+        },
+        "dest": {
+          "type": "string",
+          "required": true,
+          "help": "Destination filename"
+        },
+        "to": {
+          "type": "string",
+          "help": "Destination machine/storage"
+        },
+        "state": {
+          "type": "string",
+          "help": "Required repository state (online/offline)"
+        },
+        "option": {
+          "type": "string",
+          "help": "Options (e.g., override)"
+        }
       }
     },
     "repo_pull": {
       "description": "Pull repository from remote storage",
       "params": {
-        "from": {"type": "string", "required": true, "help": "Source machine/storage"},
-        "repo": {"type": "string", "required": true, "help": "Repository name(s), comma-separated"}
+        "from": {
+          "type": "string",
+          "required": true,
+          "help": "Source machine/storage"
+        },
+        "repo": {
+          "type": "string",
+          "required": true,
+          "help": "Repository name(s), comma-separated"
+        }
       }
     }
   },
@@ -1807,6 +1903,11 @@
             "New token must be securely transmitted to bridge operator"
           ]
         }
+      },
+      "update-bridge-vault": {
+        "endpoint": "UpdateBridgeVault",
+        "params": "lambda args: {'bridgeName': args.bridge, 'bridgeVault': args.vault, 'regionName': args.region, 'vaultVersion': args.vault_version}",
+        "success_msg": "Operation completed successfully"
       }
     },
     "update": {
@@ -1851,7 +1952,7 @@
         }
       },
       "region": {
-        "endpoint": "UpdateRegionName", 
+        "endpoint": "UpdateRegionName",
         "params": "lambda args: {'regionName': args.name, 'newRegionName': args.new_name}",
         "success_msg": "Successfully updated region name: {name} → {new_name}",
         "help": {
@@ -2434,7 +2535,16 @@
               "description": "Type of resource to update",
               "required": true,
               "example": "machine",
-              "choices": ["team", "machine", "region", "bridge", "company", "repository", "storage", "schedule"]
+              "choices": [
+                "team",
+                "machine",
+                "region",
+                "bridge",
+                "company",
+                "repository",
+                "storage",
+                "schedule"
+              ]
             },
             "name": {
               "description": "Resource name (not needed for 'company')",
@@ -2675,240 +2785,6 @@
           ]
         }
       },
-      "get-cluster": {
-        "endpoint": "GetDistributedStorageCluster",
-        "params": "lambda args: {'teamName': args.team, 'clusterName': args.name}",
-        "help": {
-          "description": "Get details of a specific storage cluster",
-          "details": "Shows detailed information about a distributed storage cluster including configuration, member machines, and health status.",
-          "parameters": {
-            "team": {
-              "description": "Team that owns the cluster",
-              "required": true,
-              "example": "storage-team"
-            },
-            "name": {
-              "description": "Cluster name",
-              "required": true,
-              "example": "main-cluster"
-            }
-          },
-          "examples": [
-            {
-              "command": "rediacc-cli distributed-storage get-cluster storage-team main-cluster",
-              "description": "View cluster details"
-            },
-            {
-              "command": "rediacc-cli distributed-storage get-cluster data replicated-storage --output json",
-              "description": "Get cluster info in JSON format"
-            }
-          ],
-          "notes": "Shows machine membership, replication status, and storage utilization. Requires team membership.",
-          "rules": [
-            "User must be authenticated with valid credentials",
-            "User must be a member of the specified team",
-            "Team must exist in your company",
-            "Cluster must exist within the team",
-            "Returns cluster configuration and all node information",
-            "Shows which machine is the primary node",
-            "Includes encrypted vault data for the cluster",
-            "Read-only operation that doesn't modify data",
-            "No special permissions required beyond team membership",
-            "Operation fails if cluster doesn't exist"
-          ]
-        }
-      },
-      "list-clusters": {
-        "endpoint": "ListDistributedStorageClusters",
-        "params": "lambda args: {'teamName': args.team}",
-        "help": {
-          "description": "List all storage clusters for a team",
-          "details": "Shows all distributed storage clusters owned by a team including their status and machine counts.",
-          "parameters": {
-            "team": {
-              "description": "Team name to list clusters from",
-              "required": true,
-              "example": "storage-team"
-            }
-          },
-          "examples": [
-            {
-              "command": "rediacc-cli distributed-storage list-clusters storage-team",
-              "description": "List all clusters in storage-team"
-            },
-            {
-              "command": "rediacc-cli distributed-storage list-clusters data --output json | jq '.[] | select(.status == \"HEALTHY\")'",
-              "description": "Find healthy clusters"
-            }
-          ],
-          "notes": "Elite subscription feature. Shows cluster health, machine count, and storage capacity.",
-          "rules": [
-            "User must be authenticated with valid credentials",
-            "Can optionally filter by specific team name",
-            "Without team filter shows clusters from all your teams",
-            "User must be member of teams to see their clusters",
-            "Shows cluster status, configuration, and node count",
-            "Results sorted by creation date (newest first)",
-            "No pagination limits on results",
-            "Team membership required for visibility",
-            "Cannot see clusters from teams you're not in",
-            "Read-only operation that doesn't modify data"
-          ]
-        }
-      },
-      "add-machines": {
-        "endpoint": "AddMachinesToDistributedStorage",
-        "params": "lambda args: {'teamName': args.team, 'clusterName': args.cluster, 'machineNames': args.machines}",
-        "success_msg": "Successfully added machines to distributed storage cluster: {cluster}",
-        "help": {
-          "description": "Add machines to a storage cluster",
-          "details": "Adds one or more machines as storage nodes to a distributed storage cluster. Machines must have sufficient storage capacity.",
-          "parameters": {
-            "team": {
-              "description": "Team that owns the cluster",
-              "required": true,
-              "example": "storage-team"
-            },
-            "cluster": {
-              "description": "Cluster name",
-              "required": true,
-              "example": "main-cluster"
-            },
-            "machines": {
-              "description": "Comma-separated list of machine names",
-              "required": true,
-              "example": "storage-01,storage-02,storage-03"
-            }
-          },
-          "examples": [
-            {
-              "command": "rediacc-cli distributed-storage add-machines storage-team main-cluster storage-01,storage-02",
-              "description": "Add two machines to cluster"
-            },
-            {
-              "command": "rediacc-cli distributed-storage add-machines data backup-cluster storage-03",
-              "description": "Add single machine to cluster"
-            }
-          ],
-          "notes": "Machines must be in the same team. Triggers data rebalancing. Monitor cluster health after adding.",
-          "rules": [
-            "User must be authenticated with valid credentials",
-            "User must be a member of the specified team",
-            "Cluster must exist in the team",
-            "Machines must exist in the same team as cluster",
-            "First machine added becomes the primary node",
-            "Subsequent machines become secondary nodes",
-            "Machines already in cluster are silently skipped",
-            "Machine gets marked as distributed storage node",
-            "Multiple machines can be added in one operation",
-            "Addition is logged in audit trail"
-          ]
-        }
-      },
-      "remove-machines": {
-        "endpoint": "RemoveMachinesFromDistributedStorage",
-        "params": "lambda args: {'teamName': args.team, 'clusterName': args.cluster, 'machineNames': args.machines}",
-        "confirm_msg": "Are you sure you want to remove machines from cluster '{cluster}'?",
-        "success_msg": "Successfully removed machines from distributed storage cluster: {cluster}",
-        "help": {
-          "description": "Remove machines from a storage cluster",
-          "details": "Removes machines from a distributed storage cluster. Data is migrated to remaining nodes before removal.",
-          "parameters": {
-            "team": {
-              "description": "Team that owns the cluster",
-              "required": true,
-              "example": "storage-team"
-            },
-            "cluster": {
-              "description": "Cluster name",
-              "required": true,
-              "example": "main-cluster"
-            },
-            "machines": {
-              "description": "Comma-separated list of machine names",
-              "required": true,
-              "example": "storage-01,storage-02"
-            },
-            "force": {
-              "description": "Skip confirmation prompt",
-              "required": false,
-              "example": "--force"
-            }
-          },
-          "examples": [
-            {
-              "command": "rediacc-cli distributed-storage remove-machines storage-team main-cluster storage-01",
-              "description": "Remove machine with confirmation"
-            },
-            {
-              "command": "rediacc-cli distributed-storage remove-machines data backup old-node-01,old-node-02 --force",
-              "description": "Remove multiple machines without confirmation"
-            }
-          ],
-          "notes": "Ensure sufficient capacity remains. Data migration may take time. Monitor cluster during rebalancing.",
-          "rules": [
-            "User must be authenticated with valid credentials",
-            "User must be a member of the team owning the cluster",
-            "Only machines belonging to the team can be removed",
-            "Can remove any machine including primary nodes",
-            "Non-existent machines are silently skipped",
-            "Machine's storage node flag updated if not in other clusters",
-            "Multiple machines can be removed in one operation",
-            "Removal is immediate with no prerequisite checks",
-            "Cluster modified timestamp is updated",
-            "Removal is logged in audit trail"
-          ]
-        }
-      },
-      "update-status": {
-        "endpoint": "UpdateDistributedStorageClusterStatus",
-        "params": "lambda args: {'teamName': args.team, 'clusterName': args.cluster, 'status': args.status}",
-        "success_msg": "Successfully updated distributed storage cluster status: {cluster}",
-        "help": {
-          "description": "Update cluster operational status",
-          "details": "Changes the operational status of a distributed storage cluster. Used for maintenance or to control cluster availability.",
-          "parameters": {
-            "team": {
-              "description": "Team that owns the cluster",
-              "required": true,
-              "example": "storage-team"
-            },
-            "cluster": {
-              "description": "Cluster name",
-              "required": true,
-              "example": "main-cluster"
-            },
-            "status": {
-              "description": "New status (ONLINE, OFFLINE, MAINTENANCE)",
-              "required": true,
-              "example": "MAINTENANCE"
-            }
-          },
-          "examples": [
-            {
-              "command": "rediacc-cli distributed-storage update-status storage-team main-cluster MAINTENANCE",
-              "description": "Put cluster in maintenance mode"
-            },
-            {
-              "command": "rediacc-cli distributed-storage update-status data backup-cluster ONLINE",
-              "description": "Bring cluster back online"
-            }
-          ],
-          "notes": "OFFLINE prevents new writes. MAINTENANCE allows reads but not writes. Monitor cluster health after status changes.",
-          "rules": [
-            "User must be authenticated with valid credentials",
-            "User must be a member of the team owning the cluster",
-            "Cluster must exist in the specified team",
-            "Status must be one of: PENDING, INITIALIZING, ACTIVE, DEGRADED, FAILED, MAINTENANCE",
-            "Any status can transition to any other valid status",
-            "Status change takes effect immediately",
-            "Previous status is recorded for tracking",
-            "Cluster modified timestamp is updated",
-            "Status change is atomic (all or nothing)",
-            "Change is logged in audit trail with old and new status"
-          ]
-        }
-      },
       "update-vault": {
         "endpoint": "UpdateDistributedStorageClusterVault",
         "params": "lambda args: {'teamName': args.team, 'clusterName': args.cluster, 'clusterVault': get_vault_data(args) or '{}', 'vaultVersion': getattr(args, 'vault_version', 1)}",
@@ -2967,6 +2843,86 @@
             "Update is logged in audit trail"
           ]
         }
+      },
+      "update-machine-distributed-storage": {
+        "endpoint": "UpdateMachineDistributedStorage",
+        "params": "lambda args: {'clusterName': args.cluster, 'machineName': args.machine, 'teamName': args.team}",
+        "success_msg": "Operation completed successfully"
+      },
+      "create-distributed-storage-rbd-image": {
+        "endpoint": "CreateDistributedStorageRbdImage",
+        "params": "lambda args: {'imageName': args.image, 'imageVault': args.vault, 'machineName': args.machine, 'poolName': args.pool, 'teamName': args.team}",
+        "success_msg": "Operation completed successfully"
+      },
+      "list-distributed-storage-clusters": {
+        "endpoint": "GetDistributedStorageClusters",
+        "params": "lambda args: {}",
+        "success_msg": "Operation completed successfully"
+      },
+      "delete-distributed-storage-rbd-image": {
+        "endpoint": "DeleteDistributedStorageRbdImage",
+        "params": "lambda args: {'imageName': args.image, 'poolName': args.pool, 'teamName': args.team}",
+        "success_msg": "Operation completed successfully"
+      },
+      "create-distributed-storage-rbd-clone": {
+        "endpoint": "CreateDistributedStorageRbdClone",
+        "params": "lambda args: {'cloneName': args.clone, 'cloneVault': args.vault, 'imageName': args.image, 'poolName': args.pool, 'snapshotName': args.snapshot, 'teamName': args.team}",
+        "success_msg": "Operation completed successfully"
+      },
+      "list-distributed-storage-rbd-snapshots": {
+        "endpoint": "GetDistributedStorageRbdSnapshots",
+        "params": "lambda args: {'imageName': args.image, 'poolName': args.pool, 'teamName': args.team}",
+        "success_msg": "Operation completed successfully"
+      },
+      "list-distributed-storage-rbd-clones": {
+        "endpoint": "GetDistributedStorageRbdClones",
+        "params": "lambda args: {'imageName': args.image, 'poolName': args.pool, 'snapshotName': args.snapshot, 'teamName': args.team}",
+        "success_msg": "Operation completed successfully"
+      },
+      "create-distributed-storage-pool": {
+        "endpoint": "CreateDistributedStoragePool",
+        "params": "lambda args: {'clusterName': args.cluster, 'poolName': args.pool, 'poolVault': args.vault, 'teamName': args.team}",
+        "success_msg": "Operation completed successfully"
+      },
+      "list-distributed-storage-rbd-images": {
+        "endpoint": "GetDistributedStorageRbdImages",
+        "params": "lambda args: {'poolName': args.pool, 'teamName': args.team}",
+        "success_msg": "Operation completed successfully"
+      },
+      "create-distributed-storage-rbd-snapshot": {
+        "endpoint": "CreateDistributedStorageRbdSnapshot",
+        "params": "lambda args: {'imageName': args.image, 'poolName': args.pool, 'snapshotName': args.snapshot, 'snapshotVault': args.vault, 'teamName': args.team}",
+        "success_msg": "Operation completed successfully"
+      },
+      "delete-distributed-storage-rbd-clone": {
+        "endpoint": "DeleteDistributedStorageRbdClone",
+        "params": "lambda args: {'cloneName': args.clone, 'imageName': args.image, 'poolName': args.pool, 'snapshotName': args.snapshot, 'teamName': args.team}",
+        "success_msg": "Operation completed successfully"
+      },
+      "delete-distributed-storage-pool": {
+        "endpoint": "DeleteDistributedStoragePool",
+        "params": "lambda args: {'poolName': args.pool, 'teamName': args.team}",
+        "success_msg": "Operation completed successfully"
+      },
+      "list-distributed-storage-pools": {
+        "endpoint": "GetDistributedStoragePools",
+        "params": "lambda args: {'clusterName': args.cluster, 'teamName': args.team}",
+        "success_msg": "Operation completed successfully"
+      },
+      "list-distributed-storage-cluster-machines": {
+        "endpoint": "GetDistributedStorageClusterMachines",
+        "params": "lambda args: {'clusterName': args.cluster}",
+        "success_msg": "Operation completed successfully"
+      },
+      "update-distributed-storage-pool-vault": {
+        "endpoint": "UpdateDistributedStoragePoolVault",
+        "params": "lambda args: {'poolName': args.pool, 'poolVault': args.vault, 'teamName': args.team, 'vaultVersion': args.vault_version}",
+        "success_msg": "Operation completed successfully"
+      },
+      "delete-distributed-storage-rbd-snapshot": {
+        "endpoint": "DeleteDistributedStorageRbdSnapshot",
+        "params": "lambda args: {'imageName': args.image, 'poolName': args.pool, 'snapshotName': args.snapshot, 'teamName': args.team}",
+        "success_msg": "Operation completed successfully"
       }
     },
     "permission": {
@@ -4373,7 +4329,7 @@
         }
       },
       "repository": {
-        "endpoint": "GetTeamRepositories", 
+        "endpoint": "GetTeamRepositories",
         "params": "lambda args: {'teamName': args.team}",
         "filter": "lambda data, args: [r for r in data if r.get('repoName') == args.name]",
         "single_result": true,
@@ -4417,81 +4373,319 @@
           ]
         }
       }
+    },
+    "clone": {
+      "update-clone-machine-removals": {
+        "endpoint": "UpdateCloneMachineRemovals",
+        "params": "lambda args: {'cloneName': args.clone, 'imageName': args.image, 'machineNames': args.machine_names, 'poolName': args.pool, 'snapshotName': args.snapshot, 'teamName': args.team}",
+        "success_msg": "Operation completed successfully"
+      },
+      "list-available-machines-for-clone": {
+        "endpoint": "GetAvailableMachinesForClone",
+        "params": "lambda args: {'teamName': args.team}",
+        "success_msg": "Operation completed successfully"
+      },
+      "update-clone-machine-assignments": {
+        "endpoint": "UpdateCloneMachineAssignments",
+        "params": "lambda args: {'cloneName': args.clone, 'imageName': args.image, 'machineNames': args.machine_names, 'poolName': args.pool, 'snapshotName': args.snapshot, 'teamName': args.team}",
+        "success_msg": "Operation completed successfully"
+      },
+      "list-clone-machine-assignment-validation": {
+        "endpoint": "GetCloneMachineAssignmentValidation",
+        "params": "lambda args: {'machineNames': args.machine_names, 'teamName': args.team}",
+        "success_msg": "Operation completed successfully"
+      },
+      "list-clone-machines": {
+        "endpoint": "GetCloneMachines",
+        "params": "lambda args: {'cloneName': args.clone, 'imageName': args.image, 'poolName': args.pool, 'snapshotName': args.snapshot, 'teamName': args.team}",
+        "success_msg": "Operation completed successfully"
+      }
+    },
+    "machine": {
+      "update-machine-vault": {
+        "endpoint": "UpdateMachineVault",
+        "params": "lambda args: {'machineName': args.machine, 'machineVault': args.vault, 'teamName': args.team, 'vaultVersion': args.vault_version}",
+        "success_msg": "Operation completed successfully"
+      },
+      "update-machine-cluster-removal": {
+        "endpoint": "UpdateMachineClusterRemoval",
+        "params": "lambda args: {'machineName': args.machine, 'teamName': args.team}",
+        "success_msg": "Operation completed successfully"
+      },
+      "list-machine-assignment-status": {
+        "endpoint": "GetMachineAssignmentStatus",
+        "params": "lambda args: {'machineName': args.machine, 'teamName': args.team}",
+        "success_msg": "Operation completed successfully"
+      },
+      "update-machine-cluster-assignment": {
+        "endpoint": "UpdateMachineClusterAssignment",
+        "params": "lambda args: {'clusterName': args.cluster, 'machineName': args.machine, 'teamName': args.team}",
+        "success_msg": "Operation completed successfully"
+      }
+    },
+    "region": {
+      "update-region-vault": {
+        "endpoint": "UpdateRegionVault",
+        "params": "lambda args: {'regionName': args.region, 'regionVault': args.vault, 'vaultVersion': args.vault_version}",
+        "success_msg": "Operation completed successfully"
+      }
+    },
+    "misc": {
+      "update-image-machine-assignment": {
+        "endpoint": "UpdateImageMachineAssignment",
+        "params": "lambda args: {'imageName': args.image, 'newMachineName': args.new_machine_name, 'poolName': args.pool, 'teamName': args.team}",
+        "success_msg": "Operation completed successfully"
+      },
+      "is-registered": {
+        "endpoint": "IsRegistered",
+        "params": "lambda args: {'currentUserEmail': args.current_user_email, 'newUserEmail': args.new_user_email, 'userName': args.user_name}",
+        "success_msg": "Operation completed successfully"
+      }
+    },
+    "team": {
+      "update-team-vault": {
+        "endpoint": "UpdateTeamVault",
+        "params": "lambda args: {'teamName': args.team, 'teamVault': args.vault, 'vaultVersion': args.vault_version}",
+        "success_msg": "Operation completed successfully"
+      }
     }
   },
   "ARG_DEFS": {
     "login": [
-      {"name": "--email", "help": "User email address"},
-      {"name": "--password", "help": "User password"},
-      {"name": "--master-password", "help": "Master password for vault encryption"},
-      {"name": "--session-name", "help": "Name for this session"},
-      {"name": "--tfa-code", "help": "Two-factor authentication code"},
-      {"name": "--permissions", "help": "Requested permission group"},
-      {"name": "--expiration", "type": "int", "help": "Token expiration in hours (default: 24)"},
-      {"name": "--target", "help": "Target resource (e.g., bridge name for bridge token)"}
+      {
+        "name": "--email",
+        "help": "User email address"
+      },
+      {
+        "name": "--password",
+        "help": "User password"
+      },
+      {
+        "name": "--master-password",
+        "help": "Master password for vault encryption"
+      },
+      {
+        "name": "--session-name",
+        "help": "Name for this session"
+      },
+      {
+        "name": "--tfa-code",
+        "help": "Two-factor authentication code"
+      },
+      {
+        "name": "--permissions",
+        "help": "Requested permission group"
+      },
+      {
+        "name": "--expiration",
+        "type": "int",
+        "help": "Token expiration in hours (default: 24)"
+      },
+      {
+        "name": "--target",
+        "help": "Target resource (e.g., bridge name for bridge token)"
+      }
     ],
     "logout": [],
     "create": {
       "company": [
-        {"name": "name", "help": "Company name"},
-        {"name": "--email", "help": "Admin email address"},
-        {"name": "--password", "help": "Admin password"},
-        {"name": "--activation-code", "help": "Activation code (default: 111111)"},
-        {"name": "--plan", "help": "Subscription plan", "choices": ["COMMUNITY", "ADVANCED", "PREMIUM", "ELITE"]}
+        {
+          "name": "name",
+          "help": "Company name"
+        },
+        {
+          "name": "--email",
+          "help": "Admin email address"
+        },
+        {
+          "name": "--password",
+          "help": "Admin password"
+        },
+        {
+          "name": "--activation-code",
+          "help": "Activation code (default: 111111)"
+        },
+        {
+          "name": "--plan",
+          "help": "Subscription plan",
+          "choices": [
+            "COMMUNITY",
+            "ADVANCED",
+            "PREMIUM",
+            "ELITE"
+          ]
+        }
       ],
       "user": [
-        {"name": "email", "help": "User email address"},
-        {"name": "--password", "help": "User password"},
-        {"name": "--activation-code", "help": "Activation code (default: 111111)"}
+        {
+          "name": "email",
+          "help": "User email address"
+        },
+        {
+          "name": "--password",
+          "help": "User password"
+        },
+        {
+          "name": "--activation-code",
+          "help": "Activation code (default: 111111)"
+        }
       ],
       "team": [
-        {"name": "name", "help": "Team name"},
-        {"name": "--vault", "help": "JSON vault data"},
-        {"name": "--vault-file", "help": "File containing JSON vault data"}
+        {
+          "name": "name",
+          "help": "Team name"
+        },
+        {
+          "name": "--vault",
+          "help": "JSON vault data"
+        },
+        {
+          "name": "--vault-file",
+          "help": "File containing JSON vault data"
+        }
       ],
       "region": [
-        {"name": "name", "help": "Region name"},
-        {"name": "--vault", "help": "JSON vault data"},
-        {"name": "--vault-file", "help": "File containing JSON vault data"}
+        {
+          "name": "name",
+          "help": "Region name"
+        },
+        {
+          "name": "--vault",
+          "help": "JSON vault data"
+        },
+        {
+          "name": "--vault-file",
+          "help": "File containing JSON vault data"
+        }
       ],
       "bridge": [
-        {"name": "region", "help": "Region name"},
-        {"name": "name", "help": "Bridge name"},
-        {"name": "--vault", "help": "JSON vault data"},
-        {"name": "--vault-file", "help": "File containing JSON vault data"}
+        {
+          "name": "region",
+          "help": "Region name"
+        },
+        {
+          "name": "name",
+          "help": "Bridge name"
+        },
+        {
+          "name": "--vault",
+          "help": "JSON vault data"
+        },
+        {
+          "name": "--vault-file",
+          "help": "File containing JSON vault data"
+        }
       ],
       "machine": [
-        {"name": "team", "help": "Team name"},
-        {"name": "bridge", "help": "Bridge name"},
-        {"name": "name", "help": "Machine name"},
-        {"name": "--vault", "help": "JSON vault data"},
-        {"name": "--vault-file", "help": "File containing JSON vault data"}
+        {
+          "name": "team",
+          "help": "Team name"
+        },
+        {
+          "name": "bridge",
+          "help": "Bridge name"
+        },
+        {
+          "name": "name",
+          "help": "Machine name"
+        },
+        {
+          "name": "--vault",
+          "help": "JSON vault data"
+        },
+        {
+          "name": "--vault-file",
+          "help": "File containing JSON vault data"
+        }
       ],
       "repository": [
-        {"name": "team", "help": "Team name"},
-        {"name": "name", "help": "Repository name"},
-        {"name": "--vault", "help": "JSON vault data"},
-        {"name": "--vault-file", "help": "File containing JSON vault data"}
+        {
+          "name": "team",
+          "help": "Team name"
+        },
+        {
+          "name": "name",
+          "help": "Repository name"
+        },
+        {
+          "name": "--vault",
+          "help": "JSON vault data"
+        },
+        {
+          "name": "--vault-file",
+          "help": "File containing JSON vault data"
+        }
       ],
       "storage": [
-        {"name": "team", "help": "Team name"},
-        {"name": "name", "help": "Storage name"},
-        {"name": "--vault", "help": "JSON vault data"},
-        {"name": "--vault-file", "help": "File containing JSON vault data"}
+        {
+          "name": "team",
+          "help": "Team name"
+        },
+        {
+          "name": "name",
+          "help": "Storage name"
+        },
+        {
+          "name": "--vault",
+          "help": "JSON vault data"
+        },
+        {
+          "name": "--vault-file",
+          "help": "File containing JSON vault data"
+        }
       ],
       "schedule": [
-        {"name": "team", "help": "Team name"},
-        {"name": "name", "help": "Schedule name"},
-        {"name": "--vault", "help": "JSON vault data"},
-        {"name": "--vault-file", "help": "File containing JSON vault data"}
+        {
+          "name": "team",
+          "help": "Team name"
+        },
+        {
+          "name": "name",
+          "help": "Schedule name"
+        },
+        {
+          "name": "--vault",
+          "help": "JSON vault data"
+        },
+        {
+          "name": "--vault-file",
+          "help": "File containing JSON vault data"
+        }
       ],
       "queue-item": [
-        {"name": "team", "help": "Team name"},
-        {"name": "machine", "help": "Machine name"},
-        {"name": "bridge", "help": "Bridge name"},
-        {"name": "--priority", "type": "int", "default": 3, "choices": [1, 2, 3, 4, 5], "help": "Priority level (1=highest, 5=lowest, default=3). Premium/Elite subscriptions only."},
-        {"name": "--vault", "help": "JSON vault data"},
-        {"name": "--vault-file", "help": "File containing JSON vault data"}
+        {
+          "name": "team",
+          "help": "Team name"
+        },
+        {
+          "name": "machine",
+          "help": "Machine name"
+        },
+        {
+          "name": "bridge",
+          "help": "Bridge name"
+        },
+        {
+          "name": "--priority",
+          "type": "int",
+          "default": 3,
+          "choices": [
+            1,
+            2,
+            3,
+            4,
+            5
+          ],
+          "help": "Priority level (1=highest, 5=lowest, default=3). Premium/Elite subscriptions only."
+        },
+        {
+          "name": "--vault",
+          "help": "JSON vault data"
+        },
+        {
+          "name": "--vault-file",
+          "help": "File containing JSON vault data"
+        }
       ]
     },
     "list": {
@@ -4501,141 +4695,423 @@
       "sessions": [],
       "resource-limits": [],
       "subscription": [],
-      "bridges": [{"name": "region", "help": "Region name"}],
+      "bridges": [
+        {
+          "name": "region",
+          "help": "Region name"
+        }
+      ],
       "data-graph": [],
       "company-vault": [],
-      "lookup-data": [{"name": "--context", "help": "Context filter (e.g., machine_create, queue_create)"}],
+      "lookup-data": [
+        {
+          "name": "--context",
+          "help": "Context filter (e.g., machine_create, queue_create)"
+        }
+      ],
       "user-company": [],
       "audit-logs": [
-        {"name": "--start-date", "help": "Start date for audit logs (ISO format)"},
-        {"name": "--end-date", "help": "End date for audit logs (ISO format)"},
-        {"name": "--entity-filter", "help": "Filter by entity type (e.g., Team, Machine, User)"},
-        {"name": "--max-records", "type": "int", "help": "Maximum number of records to retrieve (default: 1000)"}
+        {
+          "name": "--start-date",
+          "help": "Start date for audit logs (ISO format)"
+        },
+        {
+          "name": "--end-date",
+          "help": "End date for audit logs (ISO format)"
+        },
+        {
+          "name": "--entity-filter",
+          "help": "Filter by entity type (e.g., Team, Machine, User)"
+        },
+        {
+          "name": "--max-records",
+          "type": "int",
+          "help": "Maximum number of records to retrieve (default: 1000)"
+        }
       ],
       "entity-history": [
-        {"name": "entity_type", "help": "Entity type (e.g., Team, Machine, User, Region, Bridge)"},
-        {"name": "credential", "help": "Entity credential (GUID)"},
-        {"name": "--max-records", "type": "int", "help": "Maximum number of records to retrieve (default: 500)"}
+        {
+          "name": "entity_type",
+          "help": "Entity type (e.g., Team, Machine, User, Region, Bridge)"
+        },
+        {
+          "name": "credential",
+          "help": "Entity credential (GUID)"
+        },
+        {
+          "name": "--max-records",
+          "type": "int",
+          "help": "Maximum number of records to retrieve (default: 500)"
+        }
       ],
-      "team-machines": [{"name": "team", "help": "Team name"}],
-      "team-members": [{"name": "team", "help": "Team name"}],
-      "team-repositories": [{"name": "team", "help": "Team name"}],
-      "team-schedules": [{"name": "team", "help": "Team name"}],
-      "team-storages": [{"name": "team", "help": "Team name"}]
+      "team-machines": [
+        {
+          "name": "team",
+          "help": "Team name"
+        }
+      ],
+      "team-members": [
+        {
+          "name": "team",
+          "help": "Team name"
+        }
+      ],
+      "team-repositories": [
+        {
+          "name": "team",
+          "help": "Team name"
+        }
+      ],
+      "team-schedules": [
+        {
+          "name": "team",
+          "help": "Team name"
+        }
+      ],
+      "team-storages": [
+        {
+          "name": "team",
+          "help": "Team name"
+        }
+      ]
     },
     "update": {
       "team": [
-        {"name": "name", "help": "Team name"},
-        {"name": "new_name", "help": "New team name"}
+        {
+          "name": "name",
+          "help": "Team name"
+        },
+        {
+          "name": "new_name",
+          "help": "New team name"
+        }
       ],
       "region": [
-        {"name": "name", "help": "Region name"},
-        {"name": "new_name", "help": "New region name"}
+        {
+          "name": "name",
+          "help": "Region name"
+        },
+        {
+          "name": "new_name",
+          "help": "New region name"
+        }
       ],
       "bridge": [
-        {"name": "region", "help": "Region name"},
-        {"name": "name", "help": "Bridge name"},
-        {"name": "new_name", "help": "New bridge name"}
+        {
+          "name": "region",
+          "help": "Region name"
+        },
+        {
+          "name": "name",
+          "help": "Bridge name"
+        },
+        {
+          "name": "new_name",
+          "help": "New bridge name"
+        }
       ],
       "machine": [
-        {"name": "team", "help": "Team name"},
-        {"name": "name", "help": "Machine name"},
-        {"name": "new_name", "help": "New machine name"}
+        {
+          "name": "team",
+          "help": "Team name"
+        },
+        {
+          "name": "name",
+          "help": "Machine name"
+        },
+        {
+          "name": "new_name",
+          "help": "New machine name"
+        }
       ],
       "machine-bridge": [
-        {"name": "team", "help": "Team name"},
-        {"name": "name", "help": "Machine name"},
-        {"name": "new_bridge", "help": "New bridge name"}
+        {
+          "name": "team",
+          "help": "Team name"
+        },
+        {
+          "name": "name",
+          "help": "Machine name"
+        },
+        {
+          "name": "new_bridge",
+          "help": "New bridge name"
+        }
       ],
       "repository": [
-        {"name": "team", "help": "Team name"},
-        {"name": "name", "help": "Repository name"},
-        {"name": "new_name", "help": "New repository name"}
+        {
+          "name": "team",
+          "help": "Team name"
+        },
+        {
+          "name": "name",
+          "help": "Repository name"
+        },
+        {
+          "name": "new_name",
+          "help": "New repository name"
+        }
       ],
       "storage": [
-        {"name": "team", "help": "Team name"},
-        {"name": "name", "help": "Storage name"},
-        {"name": "new_name", "help": "New storage name"}
+        {
+          "name": "team",
+          "help": "Team name"
+        },
+        {
+          "name": "name",
+          "help": "Storage name"
+        },
+        {
+          "name": "new_name",
+          "help": "New storage name"
+        }
       ],
       "schedule": [
-        {"name": "team", "help": "Team name"},
-        {"name": "name", "help": "Schedule name"},
-        {"name": "new_name", "help": "New schedule name"}
+        {
+          "name": "team",
+          "help": "Team name"
+        },
+        {
+          "name": "name",
+          "help": "Schedule name"
+        },
+        {
+          "name": "new_name",
+          "help": "New schedule name"
+        }
       ],
       "repository-vault": [
-        {"name": "team", "help": "Team name"},
-        {"name": "name", "help": "Repository name"},
-        {"name": "--vault", "help": "JSON vault data"},
-        {"name": "--vault-file", "help": "File containing JSON vault data"},
-        {"name": "--vault-version", "type": "int", "help": "Vault version"}
+        {
+          "name": "team",
+          "help": "Team name"
+        },
+        {
+          "name": "name",
+          "help": "Repository name"
+        },
+        {
+          "name": "--vault",
+          "help": "JSON vault data"
+        },
+        {
+          "name": "--vault-file",
+          "help": "File containing JSON vault data"
+        },
+        {
+          "name": "--vault-version",
+          "type": "int",
+          "help": "Vault version"
+        }
       ],
       "storage-vault": [
-        {"name": "team", "help": "Team name"},
-        {"name": "name", "help": "Storage name"},
-        {"name": "--vault", "help": "JSON vault data"},
-        {"name": "--vault-file", "help": "File containing JSON vault data"},
-        {"name": "--vault-version", "type": "int", "help": "Vault version"}
+        {
+          "name": "team",
+          "help": "Team name"
+        },
+        {
+          "name": "name",
+          "help": "Storage name"
+        },
+        {
+          "name": "--vault",
+          "help": "JSON vault data"
+        },
+        {
+          "name": "--vault-file",
+          "help": "File containing JSON vault data"
+        },
+        {
+          "name": "--vault-version",
+          "type": "int",
+          "help": "Vault version"
+        }
       ],
       "schedule-vault": [
-        {"name": "team", "help": "Team name"},
-        {"name": "name", "help": "Schedule name"},
-        {"name": "--vault", "help": "JSON vault data"},
-        {"name": "--vault-file", "help": "File containing JSON vault data"},
-        {"name": "--vault-version", "type": "int", "help": "Vault version"}
+        {
+          "name": "team",
+          "help": "Team name"
+        },
+        {
+          "name": "name",
+          "help": "Schedule name"
+        },
+        {
+          "name": "--vault",
+          "help": "JSON vault data"
+        },
+        {
+          "name": "--vault-file",
+          "help": "File containing JSON vault data"
+        },
+        {
+          "name": "--vault-version",
+          "type": "int",
+          "help": "Vault version"
+        }
       ],
       "machine-status": [
-        {"name": "team", "help": "Team name"},
-        {"name": "name", "help": "Machine name"},
-        {"name": "status", "help": "New status value"}
+        {
+          "name": "team",
+          "help": "Team name"
+        },
+        {
+          "name": "name",
+          "help": "Machine name"
+        },
+        {
+          "name": "status",
+          "help": "New status value"
+        }
       ]
     },
     "rm": {
       "team": [
-        {"name": "name", "help": "Team name"},
-        {"name": "--force", "action": "store_true", "help": "Skip confirmation"}
+        {
+          "name": "name",
+          "help": "Team name"
+        },
+        {
+          "name": "--force",
+          "action": "store_true",
+          "help": "Skip confirmation"
+        }
       ],
       "machine": [
-        {"name": "team", "help": "Team name"},
-        {"name": "name", "help": "Machine name"},
-        {"name": "--force", "action": "store_true", "help": "Skip confirmation"}
+        {
+          "name": "team",
+          "help": "Team name"
+        },
+        {
+          "name": "name",
+          "help": "Machine name"
+        },
+        {
+          "name": "--force",
+          "action": "store_true",
+          "help": "Skip confirmation"
+        }
       ],
       "bridge": [
-        {"name": "region", "help": "Region name"},
-        {"name": "name", "help": "Bridge name"},
-        {"name": "--force", "action": "store_true", "help": "Skip confirmation"}
+        {
+          "name": "region",
+          "help": "Region name"
+        },
+        {
+          "name": "name",
+          "help": "Bridge name"
+        },
+        {
+          "name": "--force",
+          "action": "store_true",
+          "help": "Skip confirmation"
+        }
       ],
       "region": [
-        {"name": "name", "help": "Region name"},
-        {"name": "--force", "action": "store_true", "help": "Skip confirmation"}
+        {
+          "name": "name",
+          "help": "Region name"
+        },
+        {
+          "name": "--force",
+          "action": "store_true",
+          "help": "Skip confirmation"
+        }
       ],
       "repository": [
-        {"name": "team", "help": "Team name"},
-        {"name": "name", "help": "Repository name"},
-        {"name": "--force", "action": "store_true", "help": "Skip confirmation"}
+        {
+          "name": "team",
+          "help": "Team name"
+        },
+        {
+          "name": "name",
+          "help": "Repository name"
+        },
+        {
+          "name": "--force",
+          "action": "store_true",
+          "help": "Skip confirmation"
+        }
       ],
       "storage": [
-        {"name": "team", "help": "Team name"},
-        {"name": "name", "help": "Storage name"},
-        {"name": "--force", "action": "store_true", "help": "Skip confirmation"}
+        {
+          "name": "team",
+          "help": "Team name"
+        },
+        {
+          "name": "name",
+          "help": "Storage name"
+        },
+        {
+          "name": "--force",
+          "action": "store_true",
+          "help": "Skip confirmation"
+        }
       ],
       "schedule": [
-        {"name": "team", "help": "Team name"},
-        {"name": "name", "help": "Schedule name"},
-        {"name": "--force", "action": "store_true", "help": "Skip confirmation"}
+        {
+          "name": "team",
+          "help": "Team name"
+        },
+        {
+          "name": "name",
+          "help": "Schedule name"
+        },
+        {
+          "name": "--force",
+          "action": "store_true",
+          "help": "Skip confirmation"
+        }
       ],
       "queue-item": [
-        {"name": "task_id", "help": "Task ID"},
-        {"name": "--force", "action": "store_true", "help": "Skip confirmation"}
+        {
+          "name": "task_id",
+          "help": "Task ID"
+        },
+        {
+          "name": "--force",
+          "action": "store_true",
+          "help": "Skip confirmation"
+        }
       ]
     },
     "vault": {
       "set": [
-        {"name": "resource_type", "help": "Resource type", "choices": ["team", "machine", "region", "bridge", "company", "repository", "storage", "schedule"]},
-        {"name": "name", "help": "Resource name"},
-        {"name": "file", "nargs": "?", "help": "File containing JSON vault data (or - for stdin)"},
-        {"name": "--team", "help": "Team name (for machine, repository, storage, schedule)"},
-        {"name": "--region", "help": "Region name (for bridge)"},
-        {"name": "--vault-version", "type": "int", "help": "Vault version"}
+        {
+          "name": "resource_type",
+          "help": "Resource type",
+          "choices": [
+            "team",
+            "machine",
+            "region",
+            "bridge",
+            "company",
+            "repository",
+            "storage",
+            "schedule"
+          ]
+        },
+        {
+          "name": "name",
+          "help": "Resource name"
+        },
+        {
+          "name": "file",
+          "nargs": "?",
+          "help": "File containing JSON vault data (or - for stdin)"
+        },
+        {
+          "name": "--team",
+          "help": "Team name (for machine, repository, storage, schedule)"
+        },
+        {
+          "name": "--region",
+          "help": "Region name (for bridge)"
+        },
+        {
+          "name": "--vault-version",
+          "type": "int",
+          "help": "Vault version"
+        }
       ],
       "set-password": [],
       "clear-password": [],
@@ -4643,210 +5119,687 @@
     },
     "permission": {
       "create-group": [
-        {"name": "name", "help": "Permission group name"}
+        {
+          "name": "name",
+          "help": "Permission group name"
+        }
       ],
       "delete-group": [
-        {"name": "name", "help": "Permission group name"},
-        {"name": "--force", "action": "store_true", "help": "Skip confirmation"}
+        {
+          "name": "name",
+          "help": "Permission group name"
+        },
+        {
+          "name": "--force",
+          "action": "store_true",
+          "help": "Skip confirmation"
+        }
       ],
       "add": [
-        {"name": "group", "help": "Permission group name"},
-        {"name": "name", "help": "Permission name"}
+        {
+          "name": "group",
+          "help": "Permission group name"
+        },
+        {
+          "name": "name",
+          "help": "Permission name"
+        }
       ],
       "remove": [
-        {"name": "group", "help": "Permission group name"},
-        {"name": "name", "help": "Permission name"},
-        {"name": "--force", "action": "store_true", "help": "Skip confirmation"}
+        {
+          "name": "group",
+          "help": "Permission group name"
+        },
+        {
+          "name": "name",
+          "help": "Permission name"
+        },
+        {
+          "name": "--force",
+          "action": "store_true",
+          "help": "Skip confirmation"
+        }
       ],
       "assign": [
-        {"name": "email", "help": "User email address"},
-        {"name": "group", "help": "Permission group name"}
+        {
+          "name": "email",
+          "help": "User email address"
+        },
+        {
+          "name": "group",
+          "help": "Permission group name"
+        }
       ],
       "list-groups": [],
       "list-group": [
-        {"name": "name", "help": "Permission group name"}
+        {
+          "name": "name",
+          "help": "Permission group name"
+        }
       ]
     },
     "user": {
       "activate": [
-        {"name": "email", "help": "User email address"},
-        {"name": "--code", "help": "Activation code (default: 111111)"},
-        {"name": "--password", "help": "User password"}
+        {
+          "name": "email",
+          "help": "User email address"
+        },
+        {
+          "name": "--code",
+          "help": "Activation code (default: 111111)"
+        },
+        {
+          "name": "--password",
+          "help": "User password"
+        }
       ],
       "deactivate": [
-        {"name": "email", "help": "User email address"},
-        {"name": "--force", "action": "store_true", "help": "Skip confirmation"}
+        {
+          "name": "email",
+          "help": "User email address"
+        },
+        {
+          "name": "--force",
+          "action": "store_true",
+          "help": "Skip confirmation"
+        }
       ],
       "update-email": [
-        {"name": "current_email", "help": "Current user email"},
-        {"name": "new_email", "help": "New user email"}
+        {
+          "name": "current_email",
+          "help": "Current user email"
+        },
+        {
+          "name": "new_email",
+          "help": "New user email"
+        }
       ],
       "update-password": [
-        {"name": "--new-password", "help": "New password"}
+        {
+          "name": "--new-password",
+          "help": "New password"
+        }
       ],
       "update-2fa": [
-        {"name": "enable", "help": "Enable (1/true) or disable (0/false) 2FA", "type": "lambda x: bool(int(x) if x in ['0', '1'] else x.lower() == 'true')"},
-        {"name": "--password", "help": "Current password for verification"},
-        {"name": "--current-code", "help": "Current 2FA code (required when disabling)"}
+        {
+          "name": "enable",
+          "help": "Enable (1/true) or disable (0/false) 2FA",
+          "type": "lambda x: bool(int(x) if x in ['0', '1'] else x.lower() == 'true')"
+        },
+        {
+          "name": "--password",
+          "help": "Current password for verification"
+        },
+        {
+          "name": "--current-code",
+          "help": "Current 2FA code (required when disabling)"
+        }
       ]
     },
     "team-member": {
       "add": [
-        {"name": "team", "help": "Team name"},
-        {"name": "email", "help": "User email address"}
+        {
+          "name": "team",
+          "help": "Team name"
+        },
+        {
+          "name": "email",
+          "help": "User email address"
+        }
       ],
       "remove": [
-        {"name": "team", "help": "Team name"},
-        {"name": "email", "help": "User email address"},
-        {"name": "--force", "action": "store_true", "help": "Skip confirmation"}
+        {
+          "name": "team",
+          "help": "Team name"
+        },
+        {
+          "name": "email",
+          "help": "User email address"
+        },
+        {
+          "name": "--force",
+          "action": "store_true",
+          "help": "Skip confirmation"
+        }
       ]
     },
     "bridge": {
       "reset-auth": [
-        {"name": "name", "help": "Bridge name"},
-        {"name": "--force", "action": "store_true", "help": "Skip confirmation"}
+        {
+          "name": "name",
+          "help": "Bridge name"
+        },
+        {
+          "name": "--force",
+          "action": "store_true",
+          "help": "Skip confirmation"
+        }
       ]
     },
     "queue": {
       "get-next": [
-        {"name": "--count", "type": "int", "help": "Number of items to retrieve (default: 3)"}
+        {
+          "name": "--count",
+          "type": "int",
+          "help": "Number of items to retrieve (default: 3)"
+        }
       ],
       "list": [
-        {"name": "--team", "help": "Filter by team name(s), comma-separated"},
-        {"name": "--machine", "help": "Filter by specific machine name"},
-        {"name": "--bridge", "help": "Filter by specific bridge name"},
-        {"name": "--status", "help": "Filter by status(es), comma-separated (e.g., PENDING,PROCESSING)"},
-        {"name": "--priority", "type": "int", "help": "Filter by specific priority (1-5)"},
-        {"name": "--min-priority", "type": "int", "help": "Filter by minimum priority (1-5)"},
-        {"name": "--max-priority", "type": "int", "help": "Filter by maximum priority (1-5)"},
-        {"name": "--date-from", "help": "Filter by date range start (ISO format)"},
-        {"name": "--date-to", "help": "Filter by date range end (ISO format)"},
-        {"name": "--task-id", "help": "Search for specific task ID"},
-        {"name": "--no-completed", "dest": "include_completed", "action": "store_false", "help": "Exclude completed items (default: include)"},
-        {"name": "--no-cancelled", "dest": "include_cancelled", "action": "store_false", "help": "Exclude cancelled items (default: include)"},
-        {"name": "--only-stale", "action": "store_true", "help": "Show only stale items"},
-        {"name": "--stale-threshold", "type": "int", "help": "Custom stale threshold in minutes (default: 10)"},
-        {"name": "--max-records", "type": "int", "help": "Maximum records to retrieve (default: 1000, max: 10000)"}
+        {
+          "name": "--team",
+          "help": "Filter by team name(s), comma-separated"
+        },
+        {
+          "name": "--machine",
+          "help": "Filter by specific machine name"
+        },
+        {
+          "name": "--bridge",
+          "help": "Filter by specific bridge name"
+        },
+        {
+          "name": "--status",
+          "help": "Filter by status(es), comma-separated (e.g., PENDING,PROCESSING)"
+        },
+        {
+          "name": "--priority",
+          "type": "int",
+          "help": "Filter by specific priority (1-5)"
+        },
+        {
+          "name": "--min-priority",
+          "type": "int",
+          "help": "Filter by minimum priority (1-5)"
+        },
+        {
+          "name": "--max-priority",
+          "type": "int",
+          "help": "Filter by maximum priority (1-5)"
+        },
+        {
+          "name": "--date-from",
+          "help": "Filter by date range start (ISO format)"
+        },
+        {
+          "name": "--date-to",
+          "help": "Filter by date range end (ISO format)"
+        },
+        {
+          "name": "--task-id",
+          "help": "Search for specific task ID"
+        },
+        {
+          "name": "--no-completed",
+          "dest": "include_completed",
+          "action": "store_false",
+          "help": "Exclude completed items (default: include)"
+        },
+        {
+          "name": "--no-cancelled",
+          "dest": "include_cancelled",
+          "action": "store_false",
+          "help": "Exclude cancelled items (default: include)"
+        },
+        {
+          "name": "--only-stale",
+          "action": "store_true",
+          "help": "Show only stale items"
+        },
+        {
+          "name": "--stale-threshold",
+          "type": "int",
+          "help": "Custom stale threshold in minutes (default: 10)"
+        },
+        {
+          "name": "--max-records",
+          "type": "int",
+          "help": "Maximum records to retrieve (default: 1000, max: 10000)"
+        }
       ],
       "update-response": [
-        {"name": "task_id", "help": "Task ID"},
-        {"name": "--vault", "help": "JSON vault data"},
-        {"name": "--vault-file", "help": "File containing JSON vault data"}
+        {
+          "name": "task_id",
+          "help": "Task ID"
+        },
+        {
+          "name": "--vault",
+          "help": "JSON vault data"
+        },
+        {
+          "name": "--vault-file",
+          "help": "File containing JSON vault data"
+        }
       ],
       "complete": [
-        {"name": "task_id", "help": "Task ID"},
-        {"name": "--vault", "help": "JSON vault data"},
-        {"name": "--vault-file", "help": "File containing JSON vault data"}
+        {
+          "name": "task_id",
+          "help": "Task ID"
+        },
+        {
+          "name": "--vault",
+          "help": "JSON vault data"
+        },
+        {
+          "name": "--vault-file",
+          "help": "File containing JSON vault data"
+        }
       ],
       "add": [
-        {"name": "team", "help": "Team name"},
-        {"name": "machine", "help": "Machine name"},
-        {"name": "bridge", "help": "Bridge name"},
-        {"name": "function", "help": "Function to execute", "choices": ["os_setup", "hello", "uninstall", "repo_new", "repo_mount", "repo_unmount", "repo_up", "repo_down", "repo_resize", "repo_rm", "repo_ownership", "list_system", "repo_push", "repo_pull"]},
-        {"name": "--description", "help": "Queue item description"},
-        {"name": "--priority", "type": "int", "default": 5, "help": "Priority (1-10, default: 5)"}
+        {
+          "name": "team",
+          "help": "Team name"
+        },
+        {
+          "name": "machine",
+          "help": "Machine name"
+        },
+        {
+          "name": "bridge",
+          "help": "Bridge name"
+        },
+        {
+          "name": "function",
+          "help": "Function to execute",
+          "choices": [
+            "os_setup",
+            "hello",
+            "uninstall",
+            "repo_new",
+            "repo_mount",
+            "repo_unmount",
+            "repo_up",
+            "repo_down",
+            "repo_resize",
+            "repo_rm",
+            "repo_ownership",
+            "list_system",
+            "repo_push",
+            "repo_pull"
+          ]
+        },
+        {
+          "name": "--description",
+          "help": "Queue item description"
+        },
+        {
+          "name": "--priority",
+          "type": "int",
+          "default": 5,
+          "help": "Priority (1-10, default: 5)"
+        }
       ],
       "list-functions": [],
       "trace": [
-        {"name": "task_id", "help": "Task ID to trace"}
+        {
+          "name": "task_id",
+          "help": "Task ID to trace"
+        }
       ],
       "cancel": [
-        {"name": "task_id", "help": "Task ID to cancel"},
-        {"name": "--force", "action": "store_true", "help": "Skip confirmation"}
+        {
+          "name": "task_id",
+          "help": "Task ID to cancel"
+        },
+        {
+          "name": "--force",
+          "action": "store_true",
+          "help": "Skip confirmation"
+        }
       ],
       "retry": [
-        {"name": "task_id", "help": "Task ID to retry"}
+        {
+          "name": "task_id",
+          "help": "Task ID to retry"
+        }
       ]
     },
     "company": {
       "block-user-requests": [
-        {"name": "block", "help": "Block user requests (true/false)", "type": "lambda x: x.lower() == 'true'"}
+        {
+          "name": "block",
+          "help": "Block user requests (true/false)",
+          "type": "lambda x: x.lower() == 'true'"
+        }
       ],
       "update-vault": [
-        {"name": "--vault", "help": "JSON vault data"},
-        {"name": "--vault-file", "help": "File containing JSON vault data"},
-        {"name": "--vault-version", "type": "int", "help": "Vault version"}
+        {
+          "name": "--vault",
+          "help": "JSON vault data"
+        },
+        {
+          "name": "--vault-file",
+          "help": "File containing JSON vault data"
+        },
+        {
+          "name": "--vault-version",
+          "type": "int",
+          "help": "Vault version"
+        }
       ],
       "get-vaults": [],
       "update-vaults": [
-        {"name": "--vault", "help": "JSON vault data"},
-        {"name": "--vault-file", "help": "File containing JSON vault data"}
+        {
+          "name": "--vault",
+          "help": "JSON vault data"
+        },
+        {
+          "name": "--vault-file",
+          "help": "File containing JSON vault data"
+        }
       ],
       "export-data": [],
       "import-data": [
-        {"name": "--vault", "help": "JSON company data to import"},
-        {"name": "--vault-file", "help": "File containing JSON company data"},
-        {"name": "--import-mode", "help": "Import mode: skip or override", "choices": ["skip", "override"], "default": "skip"}
+        {
+          "name": "--vault",
+          "help": "JSON company data to import"
+        },
+        {
+          "name": "--vault-file",
+          "help": "File containing JSON company data"
+        },
+        {
+          "name": "--import-mode",
+          "help": "Import mode: skip or override",
+          "choices": [
+            "skip",
+            "override"
+          ],
+          "default": "skip"
+        }
       ]
     },
     "audit": {
       "trace": [
-        {"name": "entity_type", "help": "Entity type (e.g., Team, Machine, User, Region, Bridge)"},
-        {"name": "credential", "help": "Entity credential (GUID)"},
-        {"name": "--max-records", "type": "int", "help": "Maximum number of records to retrieve"}
+        {
+          "name": "entity_type",
+          "help": "Entity type (e.g., Team, Machine, User, Region, Bridge)"
+        },
+        {
+          "name": "credential",
+          "help": "Entity credential (GUID)"
+        },
+        {
+          "name": "--max-records",
+          "type": "int",
+          "help": "Maximum number of records to retrieve"
+        }
       ]
     },
     "inspect": {
       "machine": [
-        {"name": "team", "help": "Team name"},
-        {"name": "name", "help": "Machine name"}
+        {
+          "name": "team",
+          "help": "Team name"
+        },
+        {
+          "name": "name",
+          "help": "Machine name"
+        }
       ],
       "repository": [
-        {"name": "team", "help": "Team name"},
-        {"name": "name", "help": "Repository name"}
+        {
+          "name": "team",
+          "help": "Team name"
+        },
+        {
+          "name": "name",
+          "help": "Repository name"
+        }
       ]
     },
     "distributed-storage": {
       "create-cluster": [
-        {"name": "team", "help": "Team name"},
-        {"name": "name", "help": "Cluster name"},
-        {"name": "--vault", "help": "JSON vault data"},
-        {"name": "--vault-file", "help": "File containing JSON vault data"}
+        {
+          "name": "team",
+          "help": "Team name"
+        },
+        {
+          "name": "name",
+          "help": "Cluster name"
+        },
+        {
+          "name": "--vault",
+          "help": "JSON vault data"
+        },
+        {
+          "name": "--vault-file",
+          "help": "File containing JSON vault data"
+        }
       ],
       "delete-cluster": [
-        {"name": "team", "help": "Team name"},
-        {"name": "name", "help": "Cluster name"},
-        {"name": "--force", "action": "store_true", "help": "Skip confirmation"}
+        {
+          "name": "team",
+          "help": "Team name"
+        },
+        {
+          "name": "name",
+          "help": "Cluster name"
+        },
+        {
+          "name": "--force",
+          "action": "store_true",
+          "help": "Skip confirmation"
+        }
       ],
       "get-cluster": [
-        {"name": "team", "help": "Team name"},
-        {"name": "name", "help": "Cluster name"}
+        {
+          "name": "team",
+          "help": "Team name"
+        },
+        {
+          "name": "name",
+          "help": "Cluster name"
+        }
       ],
       "list-clusters": [
-        {"name": "team", "help": "Team name"}
+        {
+          "name": "team",
+          "help": "Team name"
+        }
       ],
       "add-machines": [
-        {"name": "team", "help": "Team name"},
-        {"name": "cluster", "help": "Cluster name"},
-        {"name": "machines", "help": "Comma-separated list of machine names"}
+        {
+          "name": "team",
+          "help": "Team name"
+        },
+        {
+          "name": "cluster",
+          "help": "Cluster name"
+        },
+        {
+          "name": "machines",
+          "help": "Comma-separated list of machine names"
+        }
       ],
       "remove-machines": [
-        {"name": "team", "help": "Team name"},
-        {"name": "cluster", "help": "Cluster name"},
-        {"name": "machines", "help": "Comma-separated list of machine names"},
-        {"name": "--force", "action": "store_true", "help": "Skip confirmation"}
+        {
+          "name": "team",
+          "help": "Team name"
+        },
+        {
+          "name": "cluster",
+          "help": "Cluster name"
+        },
+        {
+          "name": "machines",
+          "help": "Comma-separated list of machine names"
+        },
+        {
+          "name": "--force",
+          "action": "store_true",
+          "help": "Skip confirmation"
+        }
       ],
       "update-status": [
-        {"name": "team", "help": "Team name"},
-        {"name": "cluster", "help": "Cluster name"},
-        {"name": "status", "help": "New status value"}
+        {
+          "name": "team",
+          "help": "Team name"
+        },
+        {
+          "name": "cluster",
+          "help": "Cluster name"
+        },
+        {
+          "name": "status",
+          "help": "New status value"
+        }
       ],
       "update-vault": [
-        {"name": "team", "help": "Team name"},
-        {"name": "cluster", "help": "Cluster name"},
-        {"name": "--vault", "help": "JSON vault data"},
-        {"name": "--vault-file", "help": "File containing JSON vault data"},
-        {"name": "--vault-version", "type": "int", "help": "Vault version (default: 1)"}
+        {
+          "name": "team",
+          "help": "Team name"
+        },
+        {
+          "name": "cluster",
+          "help": "Cluster name"
+        },
+        {
+          "name": "--vault",
+          "help": "JSON vault data"
+        },
+        {
+          "name": "--vault-file",
+          "help": "File containing JSON vault data"
+        },
+        {
+          "name": "--vault-version",
+          "type": "int",
+          "help": "Vault version (default: 1)"
+        }
       ]
     },
     "auth": {
       "status": [
-        {"name": "request_hash", "help": "Request hash to check status for"}
+        {
+          "name": "request_hash",
+          "help": "Request hash to check status for"
+        }
       ],
       "privilege": [
-        {"name": "request_hash", "help": "Request hash to privilege"},
-        {"name": "privilege", "help": "Privilege level to grant"}
+        {
+          "name": "request_hash",
+          "help": "Request hash to privilege"
+        },
+        {
+          "name": "privilege",
+          "help": "Privilege level to grant"
+        }
       ]
+    },
+    "bridgeName": {
+      "type": "string",
+      "required": true,
+      "help": "bridgeName parameter"
+    },
+    "bridgeVault": {
+      "type": "string",
+      "required": true,
+      "help": "bridgeVault parameter"
+    },
+    "regionName": {
+      "type": "string",
+      "required": true,
+      "help": "regionName parameter"
+    },
+    "vaultVersion": {
+      "type": "string",
+      "required": true,
+      "help": "vaultVersion parameter"
+    },
+    "cloneName": {
+      "type": "string",
+      "required": true,
+      "help": "cloneName parameter"
+    },
+    "imageName": {
+      "type": "string",
+      "required": true,
+      "help": "imageName parameter"
+    },
+    "machineNames": {
+      "type": "string",
+      "required": true,
+      "help": "machineNames parameter"
+    },
+    "poolName": {
+      "type": "string",
+      "required": true,
+      "help": "poolName parameter"
+    },
+    "snapshotName": {
+      "type": "string",
+      "required": true,
+      "help": "snapshotName parameter"
+    },
+    "teamName": {
+      "type": "string",
+      "required": true,
+      "help": "teamName parameter"
+    },
+    "machineName": {
+      "type": "string",
+      "required": true,
+      "help": "machineName parameter"
+    },
+    "machineVault": {
+      "type": "string",
+      "required": true,
+      "help": "machineVault parameter"
+    },
+    "clusterName": {
+      "type": "string",
+      "required": true,
+      "help": "clusterName parameter"
+    },
+    "imageVault": {
+      "type": "string",
+      "required": true,
+      "help": "imageVault parameter"
+    },
+    "regionVault": {
+      "type": "string",
+      "required": true,
+      "help": "regionVault parameter"
+    },
+    "cloneVault": {
+      "type": "string",
+      "required": true,
+      "help": "cloneVault parameter"
+    },
+    "newMachineName": {
+      "type": "string",
+      "required": true,
+      "help": "newMachineName parameter"
+    },
+    "teamVault": {
+      "type": "string",
+      "required": true,
+      "help": "teamVault parameter"
+    },
+    "poolVault": {
+      "type": "string",
+      "required": true,
+      "help": "poolVault parameter"
+    },
+    "currentUserEmail": {
+      "type": "string",
+      "required": true,
+      "help": "currentUserEmail parameter"
+    },
+    "newUserEmail": {
+      "type": "string",
+      "required": true,
+      "help": "newUserEmail parameter"
+    },
+    "userName": {
+      "type": "string",
+      "required": true,
+      "help": "userName parameter"
+    },
+    "snapshotVault": {
+      "type": "string",
+      "required": true,
+      "help": "snapshotVault parameter"
     }
   }
 }
