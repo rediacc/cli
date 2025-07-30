@@ -270,6 +270,9 @@
           "Token is saved to ~/.rediacc/config.json",
           "Multiple named tokens can be stored simultaneously"
         ]
+      },
+      "login": {
+        "params": "lambda args: {'2FACode': args.2_f_a_code, 'name': args.name, 'requestedPermissions': args.requested_permissions, 'target': args.target, 'tokenExpirationHours': args.token_expiration_hours}"
       }
     },
     "logout": {
@@ -307,51 +310,23 @@
         "endpoint": "CreateNewCompany",
         "auth_required": false,
         "auth_type": "credentials",
-        "params": "lambda args: {'companyName': args.name, 'subscriptionPlan': args.plan} if hasattr(args, 'plan') and args.plan else {'companyName': args.name}",
+        "params": "lambda args: {'companyName': args.company_name, 'activationCode': args.activation_code, 'subscriptionPlan': args.subscription_plan, 'companyVaultDefaults': args.vault_defaults}",
         "success_msg": "Successfully created company: {name}",
         "help": {
           "description": "Create a new company account with admin user",
           "details": "Creates a new Rediacc company along with its admin user account. The email and password parameters are used to create the admin user who will own the company. This is typically the first step in setting up a new Rediacc deployment.",
           "parameters": {
-            "name": {
-              "description": "Company name",
-              "required": true,
-              "example": "Acme Corporation"
-            },
-            "email": {
-              "description": "Admin user email address",
-              "required": true,
-              "example": "admin@acme.com"
-            },
-            "password": {
-              "description": "Admin user password",
-              "required": true,
-              "example": "SecurePass123!"
-            },
-            "activation-code": {
-              "description": "Activation code for company creation",
+            "activation_code": {
+              "description": "",
               "required": false,
-              "default": "111111",
-              "example": "ABC123"
+              "example": ""
             },
-            "plan": {
-              "description": "Initial subscription plan",
+            "vault_defaults": {
+              "description": "",
               "required": false,
-              "default": "COMMUNITY",
-              "example": "ADVANCED"
+              "example": ""
             }
           },
-          "examples": [
-            {
-              "command": "rediacc-cli create company 'Acme Corp' --email admin@acme.com",
-              "description": "Create company with Community plan"
-            },
-            {
-              "command": "rediacc-cli create company 'Enterprise Inc' --email admin@enterprise.com --plan ELITE",
-              "description": "Create company with Elite plan"
-            }
-          ],
-          "notes": "The admin user is automatically activated and becomes the company owner. Activation codes are provided by Rediacc sales.",
           "rules": [
             "Password hash must be exactly 32 bytes when hashed",
             "Activation code must be exactly 6 characters",
@@ -368,40 +343,18 @@
       },
       "user": {
         "endpoint": "CreateNewUser",
-        "params": "lambda args: {'newUserEmail': args.email, 'newUserHash': pwd_hash(args.password)}",
+        "params": "lambda args: {'newUserEmail': args.new_user_email, 'newUserHash': args.new_user_hash, 'activationCode': args.activation_code}",
         "success_msg": "Successfully created user: {email}",
         "help": {
           "description": "Create a new user in your company",
           "details": "Creates a new user account that can access the company resources. Users must be activated before they can log in.",
           "parameters": {
-            "email": {
-              "description": "User's email address",
-              "required": true,
-              "example": "john.doe@company.com"
-            },
-            "password": {
-              "description": "User's password (will be prompted if not provided)",
+            "activation_code": {
+              "description": "",
               "required": false,
-              "example": "SecurePass123!"
-            },
-            "activation-code": {
-              "description": "Activation code for user creation",
-              "required": false,
-              "default": "111111",
-              "example": "USER456"
+              "example": ""
             }
           },
-          "examples": [
-            {
-              "command": "rediacc-cli create user john.doe@company.com",
-              "description": "Create user and prompt for password"
-            },
-            {
-              "command": "rediacc-cli create user jane.smith@company.com --password 'Pass123!'",
-              "description": "Create user with specified password"
-            }
-          ],
-          "notes": "New users must be activated using 'rediacc-cli user activate' before they can log in. Company admins can provide activation codes.",
           "rules": [
             "User email must not already exist in the system",
             "Password hash must be exactly 32 bytes",
@@ -516,7 +469,7 @@
       },
       "bridge": {
         "endpoint": "CreateBridge",
-        "params": "lambda args: {'regionName': args.region, 'bridgeName': args.name, 'bridgeVault': get_vault_data(args) or '{}'}",
+        "params": "lambda args: {'regionName': args.region, 'bridgeName': args.bridge, 'bridgeVault': get_vault_data(args) or '{}'}",
         "success_msg": "Successfully created bridge: {name} in region {region}",
         "help": {
           "description": "Create a new bridge for task processing",
@@ -527,20 +480,10 @@
               "required": true,
               "example": "us-east"
             },
-            "name": {
-              "description": "Unique name for the bridge",
-              "required": true,
-              "example": "bridge-01"
-            },
             "vault": {
               "description": "JSON configuration for the bridge (batch size, timeout settings)",
               "required": false,
               "example": "{\"batch_size\": 5, \"poll_interval\": 30}"
-            },
-            "vault-file": {
-              "description": "File containing JSON vault configuration",
-              "required": false,
-              "example": "bridge-config.json"
             }
           },
           "examples": [
@@ -570,7 +513,7 @@
       },
       "machine": {
         "endpoint": "CreateMachine",
-        "params": "lambda args: {'teamName': args.team, 'bridgeName': args.bridge, 'machineName': args.name, 'machineVault': get_vault_data(args) or '{}'}",
+        "params": "lambda args: {'teamName': args.team, 'bridgeName': args.bridge, 'machineName': args.machine, 'machineVault': get_vault_data(args) or '{}'}",
         "success_msg": "Successfully created machine: {name} for team {team}",
         "help": {
           "description": "Create a new machine in a team",
@@ -585,11 +528,6 @@
               "description": "Bridge to connect through (must exist in a region)",
               "required": true,
               "example": "us-east-bridge-01"
-            },
-            "name": {
-              "description": "Unique name for the machine (company-wide)",
-              "required": true,
-              "example": "web-server-01"
             },
             "vault": {
               "description": "JSON with machine config (ip, user, ssh_port, datastore)",
@@ -624,7 +562,7 @@
       },
       "repository": {
         "endpoint": "CreateRepository",
-        "params": "lambda args: {'teamName': args.team, 'repoName': args.name, 'repoVault': get_vault_data(args) or '{}', 'repoGuid': getattr(args, 'guid', None)}",
+        "params": "lambda args: {'teamName': args.team, 'repoName': args.repository, 'repoVault': get_vault_data(args) or '{}', 'parentRepoName': args.parent_repo, 'repoGuid': args.repo_guid}",
         "success_msg": "Successfully created repository: {name} for team {team}",
         "help": {
           "description": "Create a new repository for code and data storage",
@@ -635,42 +573,17 @@
               "required": true,
               "example": "dev-team"
             },
-            "name": {
-              "description": "Unique name for the repository within the team",
-              "required": true,
-              "example": "web-app"
-            },
             "vault": {
               "description": "JSON configuration (size, type, settings)",
               "required": false,
               "example": "{\"size\": \"10G\", \"type\": \"docker\"}"
             },
-            "vault-file": {
-              "description": "File containing JSON vault configuration",
+            "parent_repo": {
+              "description": "",
               "required": false,
-              "example": "repo-config.json"
-            },
-            "guid": {
-              "description": "Optional specific GUID for the repository",
-              "required": false,
-              "example": "550e8400-e29b-41d4-a716-446655440000"
+              "example": ""
             }
           },
-          "examples": [
-            {
-              "command": "rediacc-cli create repository dev-team web-app",
-              "description": "Create a basic repository"
-            },
-            {
-              "command": "rediacc-cli create repository prod backend-api --vault '{\"size\":\"20G\",\"backup\":\"daily\"}'",
-              "description": "Create repository with size and backup configuration"
-            },
-            {
-              "command": "rediacc-cli create repository dev legacy-app --guid 550e8400-e29b-41d4-a716-446655440000",
-              "description": "Create repository with specific GUID"
-            }
-          ],
-          "notes": "Repository names must be unique within a team. After creation, deploy code using 'rediacc sync' or manage with queue functions like 'repo_new', 'repo_up', etc.",
           "rules": [
             "Repository name must be unique within the team",
             "User must be a member of the specified team",
@@ -690,7 +603,7 @@
       },
       "storage": {
         "endpoint": "CreateStorage",
-        "params": "lambda args: {'teamName': args.team, 'storageName': args.name, 'storageVault': get_vault_data(args) or '{}'}",
+        "params": "lambda args: {'teamName': args.team, 'storageName': args.storage, 'storageVault': get_vault_data(args) or '{}'}",
         "success_msg": "Successfully created storage: {name} for team {team}",
         "help": {
           "description": "Create a new storage resource",
@@ -701,20 +614,10 @@
               "required": true,
               "example": "data-team"
             },
-            "name": {
-              "description": "Unique name for the storage within the team",
-              "required": true,
-              "example": "backup-s3"
-            },
             "vault": {
               "description": "JSON with storage credentials and configuration",
               "required": false,
               "example": "{\"type\": \"s3\", \"bucket\": \"my-backups\", \"region\": \"us-east-1\", \"access_key\": \"...\", \"secret_key\": \"...\"}"
-            },
-            "vault-file": {
-              "description": "File containing JSON vault configuration with credentials",
-              "required": false,
-              "example": "storage-creds.json"
             }
           },
           "examples": [
@@ -744,7 +647,7 @@
       },
       "schedule": {
         "endpoint": "CreateSchedule",
-        "params": "lambda args: {'teamName': args.team, 'scheduleName': args.name, 'scheduleVault': get_vault_data(args) or '{}'}",
+        "params": "lambda args: {'teamName': args.team, 'scheduleName': args.schedule, 'scheduleVault': get_vault_data(args) or '{}'}",
         "success_msg": "Successfully created schedule: {name} for team {team}",
         "help": {
           "description": "Create a scheduled task",
@@ -755,20 +658,10 @@
               "required": true,
               "example": "ops-team"
             },
-            "name": {
-              "description": "Unique name for the schedule within the team",
-              "required": true,
-              "example": "daily-backup"
-            },
             "vault": {
               "description": "JSON with schedule configuration (cron, function, target)",
               "required": false,
               "example": "{\"cron\": \"0 2 * * *\", \"timezone\": \"UTC\", \"function\": \"repo_push\", \"machine\": \"backup-01\", \"params\": {...}}"
-            },
-            "vault-file": {
-              "description": "File containing JSON schedule configuration",
-              "required": false,
-              "example": "schedule-config.json"
             }
           },
           "examples": [
@@ -798,7 +691,7 @@
       },
       "queue-item": {
         "endpoint": "CreateQueueItem",
-        "params": "lambda args: {'teamName': args.team, 'machineName': args.machine, 'bridgeName': args.bridge, 'queueVault': get_vault_data(args) or '{}', 'priority': getattr(args, 'priority', 3)}",
+        "params": "lambda args: {'teamName': args.team, 'machineName': args.machine, 'bridgeName': args.bridge, 'queueVault': get_vault_data(args) or '{}', 'priority': args.priority}",
         "success_msg": "Successfully created queue item for machine {machine} with priority {priority}",
         "help": {
           "description": "Create a queue item for task execution",
@@ -819,16 +712,16 @@
               "required": true,
               "example": "us-east-bridge-01"
             },
+            "vault": {
+              "description": "JSON with task configuration and parameters",
+              "required": false,
+              "example": "{\"function\": \"deploy\", \"version\": \"1.2.3\"}"
+            },
             "priority": {
               "description": "Priority level (1=highest, 5=lowest)",
               "required": false,
               "default": "3",
               "example": "1"
-            },
-            "vault": {
-              "description": "JSON with task configuration and parameters",
-              "required": false,
-              "example": "{\"function\": \"deploy\", \"version\": \"1.2.3\"}"
             }
           },
           "examples": [
@@ -1208,32 +1101,11 @@
       },
       "audit-logs": {
         "endpoint": "GetAuditLogs",
-        "params": "lambda args: {'startDate': getattr(args, 'start_date', None), 'endDate': getattr(args, 'end_date', None), 'entityFilter': getattr(args, 'entity_filter', None), 'maxRecords': getattr(args, 'max_records', None)}",
+        "params": "lambda args: {'startDate': args.start_date, 'endDate': args.end_date, 'entityFilter': args.entity_filter, 'maxRecords': args.max_records}",
         "help": {
           "description": "View audit trail of system changes",
           "details": "Shows detailed audit logs of all system modifications including who made changes, when, and what was changed. Essential for compliance, security monitoring, and troubleshooting.",
-          "parameters": {
-            "start-date": {
-              "description": "Start date for audit logs (ISO 8601 format)",
-              "required": false,
-              "example": "2024-01-01T00:00:00Z"
-            },
-            "end-date": {
-              "description": "End date for audit logs (ISO 8601 format)",
-              "required": false,
-              "example": "2024-01-31T23:59:59Z"
-            },
-            "entity-filter": {
-              "description": "Filter by entity type",
-              "required": false,
-              "example": "Machine"
-            },
-            "max-records": {
-              "description": "Maximum records to retrieve (default: 1000)",
-              "required": false,
-              "example": "500"
-            }
-          },
+          "parameters": {},
           "examples": [
             {
               "command": "rediacc-cli list audit-logs --start-date 2024-01-01T00:00:00Z",
@@ -1261,25 +1133,15 @@
       },
       "entity-history": {
         "endpoint": "GetEntityHistory",
-        "params": "lambda args: {'entity': args.entity_type, 'credential': args.credential, 'maxRecords': getattr(args, 'max_records', None)}",
+        "params": "lambda args: {'entity': args.entity, 'credential': args.credential, 'maxRecords': args.max_records}",
         "help": {
           "description": "View change history for a specific entity",
           "details": "Shows the modification history for a specific entity (team, machine, user, etc.) identified by its credential GUID. Includes who made changes, when, and what was changed.",
           "parameters": {
-            "entity_type": {
-              "description": "Type of entity (Team, Machine, User, Region, Bridge, Repository, Storage, Schedule)",
-              "required": true,
-              "example": "Machine"
-            },
             "credential": {
               "description": "Entity's unique credential (GUID)",
               "required": true,
               "example": "550e8400-e29b-41d4-a716-446655440000"
-            },
-            "max-records": {
-              "description": "Maximum records to retrieve (default: 500)",
-              "required": false,
-              "example": "100"
             }
           },
           "examples": [
@@ -1542,7 +1404,7 @@
       },
       "machine": {
         "endpoint": "DeleteMachine",
-        "params": "lambda args: {'teamName': args.team, 'machineName': args.name}",
+        "params": "lambda args: {'teamName': args.team, 'machineName': args.machine}",
         "confirm_msg": "Are you sure you want to delete machine '{name}' from team '{team}'?",
         "success_msg": "Successfully deleted machine: {name}",
         "help": {
@@ -1553,16 +1415,6 @@
               "description": "Team that owns the machine",
               "required": true,
               "example": "dev-team"
-            },
-            "name": {
-              "description": "Machine name to delete",
-              "required": true,
-              "example": "old-server"
-            },
-            "force": {
-              "description": "Skip confirmation prompt",
-              "required": false,
-              "example": "--force"
             }
           },
           "examples": [
@@ -1592,7 +1444,7 @@
       },
       "bridge": {
         "endpoint": "DeleteBridge",
-        "params": "lambda args: {'regionName': args.region, 'bridgeName': args.name}",
+        "params": "lambda args: {'regionName': args.region, 'bridgeName': args.bridge}",
         "confirm_msg": "Are you sure you want to delete bridge '{name}' from region '{region}'?",
         "success_msg": "Successfully deleted bridge: {name}",
         "help": {
@@ -1603,16 +1455,6 @@
               "description": "Region containing the bridge",
               "required": true,
               "example": "us-east"
-            },
-            "name": {
-              "description": "Bridge name to delete",
-              "required": true,
-              "example": "old-bridge"
-            },
-            "force": {
-              "description": "Skip confirmation prompt",
-              "required": false,
-              "example": "--force"
             }
           },
           "examples": [
@@ -1687,18 +1529,13 @@
       },
       "repository": {
         "endpoint": "DeleteRepository",
-        "params": "lambda args: {'teamName': args.team, 'repoName': args.name}",
+        "params": "lambda args: {'teamName': args.team, 'repoName': args.repository}",
         "confirm_msg": "Are you sure you want to delete repository '{name}' from team '{team}'?",
         "success_msg": "Successfully deleted repository: {name}",
         "help": {
           "description": "Delete a repository from the system",
           "details": "Permanently removes a repository and all its data. The repository's Docker containers will be stopped, volumes unmounted, and all associated data deleted. This action cannot be undone.",
           "parameters": {
-            "name": {
-              "help": "Name of the repository to delete",
-              "required": true,
-              "positional": true
-            },
             "team": {
               "help": "Team that owns the repository",
               "required": true
@@ -1731,18 +1568,13 @@
       },
       "storage": {
         "endpoint": "DeleteStorage",
-        "params": "lambda args: {'teamName': args.team, 'storageName': args.name}",
+        "params": "lambda args: {'teamName': args.team, 'storageName': args.storage}",
         "confirm_msg": "Are you sure you want to delete storage '{name}' from team '{team}'?",
         "success_msg": "Successfully deleted storage: {name}",
         "help": {
           "description": "Delete a storage configuration from the system",
           "details": "Removes a storage configuration including credentials and settings. Does not delete actual data in the external storage system (S3, Azure, etc.), only the Rediacc configuration.",
           "parameters": {
-            "name": {
-              "help": "Name of the storage to delete",
-              "required": true,
-              "positional": true
-            },
             "team": {
               "help": "Team that owns the storage",
               "required": true
@@ -1775,18 +1607,13 @@
       },
       "schedule": {
         "endpoint": "DeleteSchedule",
-        "params": "lambda args: {'teamName': args.team, 'scheduleName': args.name}",
+        "params": "lambda args: {'teamName': args.team, 'scheduleName': args.schedule}",
         "confirm_msg": "Are you sure you want to delete schedule '{name}' from team '{team}'?",
         "success_msg": "Successfully deleted schedule: {name}",
         "help": {
           "description": "Delete a schedule from the system",
           "details": "Permanently removes a scheduled task. Any pending executions will be cancelled, but running tasks will complete. The schedule must be disabled before deletion.",
           "parameters": {
-            "name": {
-              "help": "Name of the schedule to delete",
-              "required": true,
-              "positional": true
-            },
             "team": {
               "help": "Team that owns the schedule",
               "required": true
@@ -1861,7 +1688,7 @@
     "bridge": {
       "reset-auth": {
         "endpoint": "ResetBridgeAuthorization",
-        "params": "lambda args: {'bridgeName': args.name}",
+        "params": "lambda args: {'bridgeName': args.bridge, 'isCloudManaged': args.cloud_managed}",
         "confirm_msg": "Are you sure you want to reset authorization for bridge '{name}'? This will generate new credentials.",
         "success_msg": "Successfully reset authorization for bridge: {name}",
         "help": {
@@ -1877,19 +1704,13 @@
               "description": "Skip confirmation prompt",
               "required": false,
               "example": "--force"
+            },
+            "cloud_managed": {
+              "description": "",
+              "required": false,
+              "example": ""
             }
           },
-          "examples": [
-            {
-              "command": "rediacc-cli bridge reset-auth main-bridge",
-              "description": "Reset bridge auth with confirmation"
-            },
-            {
-              "command": "rediacc-cli bridge reset-auth compromised-bridge --force",
-              "description": "Force reset without confirmation"
-            }
-          ],
-          "notes": "Use when credentials are compromised. Requires bridge restart. Get new token with 'login --target bridge-name'.",
           "rules": [
             "User must be authenticated to perform this operation",
             "User must belong to the same company as the bridge",
@@ -1906,37 +1727,30 @@
       },
       "update-bridge-vault": {
         "endpoint": "UpdateBridgeVault",
-        "params": "lambda args: {'bridgeName': args.bridge, 'bridgeVault': args.vault, 'regionName': args.region, 'vaultVersion': args.vault_version}",
+        "params": "lambda args: {'regionName': args.region, 'bridgeName': args.bridge, 'bridgeVault': get_vault_data(args) or '{}', 'vaultVersion': args.vault_version}",
         "success_msg": "Operation completed successfully"
       }
     },
     "update": {
       "team": {
         "endpoint": "UpdateTeamName",
-        "params": "lambda args: {'teamName': args.name, 'newTeamName': args.new_name}",
+        "params": "lambda args: {'currentTeamName': args.current_team_name, 'newTeamName': args.new_name}",
         "success_msg": "Successfully updated team name: {name} → {new_name}",
         "help": {
           "description": "Rename a team",
           "details": "Changes the name of an existing team. All resources remain associated with the team. References in scripts and configurations must be updated manually.",
           "parameters": {
-            "name": {
-              "description": "Current team name",
-              "required": true,
-              "example": "old-team-name"
-            },
             "new_name": {
               "description": "New team name (must be unique)",
               "required": true,
               "example": "new-team-name"
+            },
+            "current_team_name": {
+              "description": "",
+              "required": true,
+              "example": ""
             }
           },
-          "examples": [
-            {
-              "command": "rediacc-cli update team dev-team development-team",
-              "description": "Rename dev-team to development-team"
-            }
-          ],
-          "notes": "Team renaming doesn't affect resources or memberships. Update any automation scripts that reference the old name.",
           "rules": [
             "User must be authenticated to perform this operation",
             "User must be a member of the team being renamed",
@@ -1953,34 +1767,23 @@
       },
       "region": {
         "endpoint": "UpdateRegionName",
-        "params": "lambda args: {'regionName': args.name, 'newRegionName': args.new_name}",
+        "params": "lambda args: {'currentRegionName': args.current_region_name, 'newRegionName': args.new_name}",
         "success_msg": "Successfully updated region name: {name} → {new_name}",
         "help": {
           "description": "Rename a region",
           "details": "Changes the name of an existing region. All bridges within the region remain associated. Update any scripts or configurations that reference the old name.",
           "parameters": {
-            "name": {
-              "description": "Current region name",
-              "required": true,
-              "example": "old-region"
-            },
             "new_name": {
               "description": "New region name (must be unique)",
               "required": true,
               "example": "new-region"
+            },
+            "current_region_name": {
+              "description": "",
+              "required": true,
+              "example": ""
             }
           },
-          "examples": [
-            {
-              "command": "rediacc-cli update region us-east us-east-1",
-              "description": "Rename region for clarity"
-            },
-            {
-              "command": "rediacc-cli update region test production",
-              "description": "Promote test region to production"
-            }
-          ],
-          "notes": "Region names must be unique within the company. Bridges and their associations are preserved.",
           "rules": [
             "User must be authenticated to perform this operation",
             "User must belong to the same company as the region",
@@ -1997,7 +1800,7 @@
       },
       "bridge": {
         "endpoint": "UpdateBridgeName",
-        "params": "lambda args: {'regionName': args.region, 'bridgeName': args.name, 'newBridgeName': args.new_name}",
+        "params": "lambda args: {'regionName': args.region, 'currentBridgeName': args.current_bridge_name, 'newBridgeName': args.new_name}",
         "success_msg": "Successfully updated bridge name: {name} → {new_name}",
         "help": {
           "description": "Rename a bridge",
@@ -2008,10 +1811,10 @@
               "required": true,
               "example": "us-east"
             },
-            "name": {
-              "description": "Current bridge name",
+            "current_bridge_name": {
+              "description": "",
               "required": true,
-              "example": "old-bridge"
+              "example": ""
             },
             "new_name": {
               "description": "New bridge name (unique within region)",
@@ -2019,17 +1822,6 @@
               "example": "new-bridge"
             }
           },
-          "examples": [
-            {
-              "command": "rediacc-cli update bridge us-east bridge-01 main-bridge",
-              "description": "Rename bridge for clarity"
-            },
-            {
-              "command": "rediacc-cli update bridge europe test-bridge prod-bridge",
-              "description": "Rename test bridge to production"
-            }
-          ],
-          "notes": "Bridge names must be unique within a region. Update machine assignments if needed using 'update machine-bridge'.",
           "rules": [
             "User must be authenticated to perform this operation",
             "User must belong to the same company as the bridge",
@@ -2046,7 +1838,7 @@
       },
       "machine": {
         "endpoint": "UpdateMachineName",
-        "params": "lambda args: {'teamName': args.team, 'machineName': args.name, 'newMachineName': args.new_name}",
+        "params": "lambda args: {'teamName': args.team, 'currentMachineName': args.current_machine_name, 'newMachineName': args.new_name}",
         "success_msg": "Successfully updated machine name: {name} → {new_name}",
         "help": {
           "description": "Rename a machine",
@@ -2057,10 +1849,10 @@
               "required": true,
               "example": "production-team"
             },
-            "name": {
-              "description": "Current machine name",
+            "current_machine_name": {
+              "description": "",
               "required": true,
-              "example": "old-server"
+              "example": ""
             },
             "new_name": {
               "description": "New machine name (company-wide unique)",
@@ -2068,13 +1860,6 @@
               "example": "new-server"
             }
           },
-          "examples": [
-            {
-              "command": "rediacc-cli update machine prod web-01 web-server-01",
-              "description": "Rename machine for clarity"
-            }
-          ],
-          "notes": "Machine names are globally unique. Update schedules and scripts that reference the old name.",
           "rules": [
             "User must be authenticated to perform this operation",
             "User must be a member of the specified team",
@@ -2091,7 +1876,7 @@
       },
       "machine-bridge": {
         "endpoint": "UpdateMachineAssignedBridge",
-        "params": "lambda args: {'teamName': args.team, 'machineName': args.name, 'newBridgeName': args.new_bridge}",
+        "params": "lambda args: {'teamName': args.team, 'machineName': args.machine, 'newBridgeName': args.new_name}",
         "success_msg": "Successfully updated machine bridge: {name} → {new_bridge}",
         "help": {
           "description": "Reassign a machine to a different bridge",
@@ -2101,16 +1886,6 @@
               "description": "Team that owns the machine",
               "required": true,
               "example": "production-team"
-            },
-            "name": {
-              "description": "Machine to reassign",
-              "required": true,
-              "example": "web-server-01"
-            },
-            "new_bridge": {
-              "description": "Target bridge name (must exist)",
-              "required": true,
-              "example": "us-west-bridge-01"
             }
           },
           "examples": [
@@ -2140,7 +1915,7 @@
       },
       "repository": {
         "endpoint": "UpdateRepositoryName",
-        "params": "lambda args: {'teamName': args.team, 'repoName': args.name, 'newRepoName': args.new_name}",
+        "params": "lambda args: {'teamName': args.team, 'currentRepoName': args.current_repo_name, 'newRepoName': args.new_name}",
         "success_msg": "Successfully updated repository name: {name} → {new_name}",
         "help": {
           "description": "Rename a repository",
@@ -2151,10 +1926,10 @@
               "required": true,
               "example": "dev-team"
             },
-            "name": {
-              "description": "Current repository name",
+            "current_repo_name": {
+              "description": "",
               "required": true,
-              "example": "old-app"
+              "example": ""
             },
             "new_name": {
               "description": "New repository name (unique within team)",
@@ -2162,17 +1937,6 @@
               "example": "new-app"
             }
           },
-          "examples": [
-            {
-              "command": "rediacc-cli update repository dev webapp web-application",
-              "description": "Rename repository for clarity"
-            },
-            {
-              "command": "rediacc-cli update repository prod api-v1 api-v2",
-              "description": "Version update in repository name"
-            }
-          ],
-          "notes": "Repository names must be unique within a team. Running containers are not affected. Update sync scripts and schedules.",
           "rules": [
             "User must be authenticated to perform this operation",
             "User must be a member of the specified team",
@@ -2189,7 +1953,7 @@
       },
       "repository-vault": {
         "endpoint": "UpdateRepositoryVault",
-        "params": "lambda args: {'teamName': args.team, 'repoName': args.name, 'repoVault': get_vault_data(args) or '{}', 'vaultVersion': getattr(args, 'vault_version', 1)}",
+        "params": "lambda args: {'teamName': args.team, 'repoName': args.repository, 'repoVault': get_vault_data(args) or '{}', 'vaultVersion': args.vault_version}",
         "success_msg": "Successfully updated repository vault: {name}",
         "help": {
           "description": "Update repository configuration vault",
@@ -2200,25 +1964,10 @@
               "required": true,
               "example": "dev-team"
             },
-            "name": {
-              "description": "Repository name",
-              "required": true,
-              "example": "web-app"
-            },
             "vault": {
               "description": "JSON configuration data",
               "required": false,
               "example": "{\"size\": \"20G\", \"env\": {\"NODE_ENV\": \"production\"}}"
-            },
-            "vault-file": {
-              "description": "File containing JSON vault data",
-              "required": false,
-              "example": "repo-config.json"
-            },
-            "vault-version": {
-              "description": "Vault schema version (default: 1)",
-              "required": false,
-              "example": "2"
             }
           },
           "examples": [
@@ -2248,7 +1997,7 @@
       },
       "storage": {
         "endpoint": "UpdateStorageName",
-        "params": "lambda args: {'teamName': args.team, 'storageName': args.name, 'newStorageName': args.new_name}",
+        "params": "lambda args: {'teamName': args.team, 'currentStorageName': args.current_storage_name, 'newStorageName': args.new_name}",
         "success_msg": "Successfully updated storage name: {name} → {new_name}",
         "help": {
           "description": "Rename a storage resource",
@@ -2259,10 +2008,10 @@
               "required": true,
               "example": "backup-team"
             },
-            "name": {
-              "description": "Current storage name",
+            "current_storage_name": {
+              "description": "",
               "required": true,
-              "example": "old-backup"
+              "example": ""
             },
             "new_name": {
               "description": "New storage name (unique within team)",
@@ -2270,17 +2019,6 @@
               "example": "new-backup"
             }
           },
-          "examples": [
-            {
-              "command": "rediacc-cli update storage backup s3-temp s3-archive",
-              "description": "Rename storage for clarity"
-            },
-            {
-              "command": "rediacc-cli update storage data azure-test azure-prod",
-              "description": "Promote test storage to production"
-            }
-          ],
-          "notes": "Storage names must be unique within a team. Update backup scripts and schedules that reference the old name.",
           "rules": [
             "User must be authenticated to perform this operation",
             "User must be a member of the specified team",
@@ -2297,7 +2035,7 @@
       },
       "storage-vault": {
         "endpoint": "UpdateStorageVault",
-        "params": "lambda args: {'teamName': args.team, 'storageName': args.name, 'storageVault': get_vault_data(args) or '{}', 'vaultVersion': getattr(args, 'vault_version', 1)}",
+        "params": "lambda args: {'teamName': args.team, 'storageName': args.storage, 'storageVault': get_vault_data(args) or '{}', 'vaultVersion': args.vault_version}",
         "success_msg": "Successfully updated storage vault: {name}",
         "help": {
           "description": "Update storage credentials and configuration",
@@ -2308,25 +2046,10 @@
               "required": true,
               "example": "backup-team"
             },
-            "name": {
-              "description": "Storage name",
-              "required": true,
-              "example": "s3-backup"
-            },
             "vault": {
               "description": "JSON with storage credentials and config",
               "required": false,
               "example": "{\"type\": \"s3\", \"bucket\": \"backups\", \"access_key\": \"...\", \"secret_key\": \"...\"}"
-            },
-            "vault-file": {
-              "description": "File containing JSON vault data",
-              "required": false,
-              "example": "storage-creds.json"
-            },
-            "vault-version": {
-              "description": "Vault schema version (default: 1)",
-              "required": false,
-              "example": "2"
             }
           },
           "examples": [
@@ -2356,7 +2079,7 @@
       },
       "schedule": {
         "endpoint": "UpdateScheduleName",
-        "params": "lambda args: {'teamName': args.team, 'scheduleName': args.name, 'newScheduleName': args.new_name}",
+        "params": "lambda args: {'teamName': args.team, 'currentScheduleName': args.current_schedule_name, 'newScheduleName': args.new_name}",
         "success_msg": "Successfully updated schedule name: {name} → {new_name}",
         "help": {
           "description": "Rename a scheduled task",
@@ -2367,10 +2090,10 @@
               "required": true,
               "example": "ops-team"
             },
-            "name": {
-              "description": "Current schedule name",
+            "current_schedule_name": {
+              "description": "",
               "required": true,
-              "example": "old-backup"
+              "example": ""
             },
             "new_name": {
               "description": "New schedule name (unique within team)",
@@ -2378,17 +2101,6 @@
               "example": "daily-backup"
             }
           },
-          "examples": [
-            {
-              "command": "rediacc-cli update schedule ops backup-task daily-backup",
-              "description": "Rename schedule for clarity"
-            },
-            {
-              "command": "rediacc-cli update schedule prod sync-v1 sync-v2",
-              "description": "Version update in schedule name"
-            }
-          ],
-          "notes": "Schedule names must be unique within a team. The schedule continues running with the new name.",
           "rules": [
             "User must be authenticated to perform this operation",
             "User must be a member of the specified team",
@@ -2405,7 +2117,7 @@
       },
       "schedule-vault": {
         "endpoint": "UpdateScheduleVault",
-        "params": "lambda args: {'teamName': args.team, 'scheduleName': args.name, 'scheduleVault': get_vault_data(args) or '{}', 'vaultVersion': getattr(args, 'vault_version', 1)}",
+        "params": "lambda args: {'teamName': args.team, 'scheduleName': args.schedule, 'scheduleVault': get_vault_data(args) or '{}', 'vaultVersion': args.vault_version}",
         "success_msg": "Successfully updated schedule vault: {name}",
         "help": {
           "description": "Update schedule configuration",
@@ -2416,25 +2128,10 @@
               "required": true,
               "example": "ops-team"
             },
-            "name": {
-              "description": "Schedule name",
-              "required": true,
-              "example": "daily-backup"
-            },
             "vault": {
               "description": "JSON with schedule configuration",
               "required": false,
               "example": "{\"cron\": \"0 2 * * *\", \"function\": \"repo_push\", \"machine\": \"backup-01\", \"params\": {...}}"
-            },
-            "vault-file": {
-              "description": "File containing JSON vault data",
-              "required": false,
-              "example": "schedule-config.json"
-            },
-            "vault-version": {
-              "description": "Vault schema version (default: 1)",
-              "required": false,
-              "example": "2"
             }
           },
           "examples": [
@@ -2464,7 +2161,7 @@
       },
       "machine-status": {
         "endpoint": "UpdateMachineStatus",
-        "params": "lambda args: {'teamName': args.team, 'machineName': args.name, 'status': args.status}",
+        "params": "lambda args: {'teamName': args.team, 'machineName': args.machine, 'machineStatus': args.status}",
         "success_msg": "Successfully updated machine status: {name}",
         "help": {
           "description": "Update the status of a machine",
@@ -2475,28 +2172,12 @@
               "required": true,
               "example": "production-team"
             },
-            "name": {
-              "description": "Machine name to update",
-              "required": true,
-              "example": "web-server-01"
-            },
             "status": {
-              "description": "New status message",
+              "description": "",
               "required": true,
-              "example": "Under maintenance until 5pm"
+              "example": ""
             }
           },
-          "examples": [
-            {
-              "command": "rediacc-cli update machine-status prod web-01 'Online'",
-              "description": "Set machine as online"
-            },
-            {
-              "command": "rediacc-cli update machine-status prod db-01 'Maintenance mode - do not use'",
-              "description": "Mark machine for maintenance"
-            }
-          ],
-          "notes": "Status is free-form text. Use consistent conventions for automation. Requires team membership.",
           "rules": [
             "User must be authenticated to perform this operation",
             "User must be a member of the specified team OR be a bridge that owns at least one machine in the same team",
@@ -2683,22 +2364,12 @@
     "distributed-storage": {
       "create-cluster": {
         "endpoint": "CreateDistributedStorageCluster",
-        "params": "lambda args: {'teamName': args.team, 'clusterName': args.name, 'clusterVault': get_vault_data(args) or '{}'}",
+        "params": "lambda args: {'clusterName': args.cluster, 'clusterVault': get_vault_data(args) or '{}'}",
         "success_msg": "Successfully created distributed storage cluster: {name} for team {team}",
         "help": {
           "description": "Create a distributed storage cluster",
           "details": "Creates a cluster configuration for distributed storage across multiple machines. Enables redundant storage with automatic replication and failover.",
           "parameters": {
-            "team": {
-              "description": "Team that will own the cluster",
-              "required": true,
-              "example": "storage-team"
-            },
-            "name": {
-              "description": "Unique name for the cluster",
-              "required": true,
-              "example": "main-cluster"
-            },
             "vault": {
               "description": "JSON configuration for the cluster",
               "required": false,
@@ -2710,17 +2381,6 @@
               "example": "cluster-config.json"
             }
           },
-          "examples": [
-            {
-              "command": "rediacc-cli distributed-storage create-cluster storage-team main-cluster",
-              "description": "Create a basic storage cluster"
-            },
-            {
-              "command": "rediacc-cli distributed-storage create-cluster data replicated-storage --vault '{\"replication_factor\":3}'",
-              "description": "Create cluster with 3x replication"
-            }
-          ],
-          "notes": "Requires Elite subscription. Add machines after creation. Cluster names must be unique within a team.",
           "rules": [
             "User must be authenticated with valid credentials",
             "User must be a member of the specified team",
@@ -2737,40 +2397,19 @@
       },
       "delete-cluster": {
         "endpoint": "DeleteDistributedStorageCluster",
-        "params": "lambda args: {'teamName': args.team, 'clusterName': args.name}",
+        "params": "lambda args: {'clusterName': args.cluster}",
         "confirm_msg": "Are you sure you want to delete distributed storage cluster '{name}' from team '{team}'?",
         "success_msg": "Successfully deleted distributed storage cluster: {name}",
         "help": {
           "description": "Delete a distributed storage cluster",
           "details": "Permanently removes a distributed storage cluster configuration. Does not delete data on machines, only the cluster configuration.",
           "parameters": {
-            "team": {
-              "description": "Team that owns the cluster",
-              "required": true,
-              "example": "storage-team"
-            },
-            "name": {
-              "description": "Cluster name to delete",
-              "required": true,
-              "example": "old-cluster"
-            },
             "force": {
               "description": "Skip confirmation prompt",
               "required": false,
               "example": "--force"
             }
           },
-          "examples": [
-            {
-              "command": "rediacc-cli distributed-storage delete-cluster storage-team old-cluster",
-              "description": "Delete cluster with confirmation"
-            },
-            {
-              "command": "rediacc-cli distributed-storage delete-cluster data temp-cluster --force",
-              "description": "Force delete without confirmation"
-            }
-          ],
-          "notes": "Remove all machines from cluster first. Data on machines is preserved. This action cannot be undone.",
           "rules": [
             "User must be authenticated with valid credentials",
             "User must be either an administrator or team member",
@@ -2787,17 +2426,12 @@
       },
       "update-vault": {
         "endpoint": "UpdateDistributedStorageClusterVault",
-        "params": "lambda args: {'teamName': args.team, 'clusterName': args.cluster, 'clusterVault': get_vault_data(args) or '{}', 'vaultVersion': getattr(args, 'vault_version', 1)}",
+        "params": "lambda args: {'clusterName': args.cluster, 'clusterVault': get_vault_data(args) or '{}', 'vaultVersion': args.vault_version}",
         "success_msg": "Successfully updated distributed storage cluster vault: {cluster}",
         "help": {
           "description": "Update cluster configuration vault",
           "details": "Updates the encrypted configuration for a distributed storage cluster including replication settings, storage policies, and performance parameters.",
           "parameters": {
-            "team": {
-              "description": "Team that owns the cluster",
-              "required": true,
-              "example": "storage-team"
-            },
             "cluster": {
               "description": "Cluster name",
               "required": true,
@@ -2819,17 +2453,6 @@
               "example": "2"
             }
           },
-          "examples": [
-            {
-              "command": "rediacc-cli distributed-storage update-vault storage main-cluster --vault '{\"replication_factor\":5}'",
-              "description": "Increase replication factor"
-            },
-            {
-              "command": "rediacc-cli distributed-storage update-vault data backup --vault-file new-cluster-config.json",
-              "description": "Update cluster config from file"
-            }
-          ],
-          "notes": "Changes may require cluster restart. Some settings trigger data rebalancing. Elite subscription required.",
           "rules": [
             "User must be authenticated with valid credentials",
             "User must be a member of the team owning the cluster",
@@ -2846,12 +2469,12 @@
       },
       "update-machine-distributed-storage": {
         "endpoint": "UpdateMachineDistributedStorage",
-        "params": "lambda args: {'clusterName': args.cluster, 'machineName': args.machine, 'teamName': args.team}",
+        "params": "lambda args: {'teamName': args.team, 'machineName': args.machine, 'clusterName': args.cluster}",
         "success_msg": "Operation completed successfully"
       },
       "create-distributed-storage-rbd-image": {
         "endpoint": "CreateDistributedStorageRbdImage",
-        "params": "lambda args: {'imageName': args.image, 'imageVault': args.vault, 'machineName': args.machine, 'poolName': args.pool, 'teamName': args.team}",
+        "params": "lambda args: {'poolName': args.pool, 'teamName': args.team, 'imageName': args.image, 'imageVault': get_vault_data(args) or '{}', 'machineName': args.machine}",
         "success_msg": "Operation completed successfully"
       },
       "list-distributed-storage-clusters": {
@@ -2866,7 +2489,7 @@
       },
       "create-distributed-storage-rbd-clone": {
         "endpoint": "CreateDistributedStorageRbdClone",
-        "params": "lambda args: {'cloneName': args.clone, 'cloneVault': args.vault, 'imageName': args.image, 'poolName': args.pool, 'snapshotName': args.snapshot, 'teamName': args.team}",
+        "params": "lambda args: {'snapshotName': args.snapshot, 'imageName': args.image, 'poolName': args.pool, 'teamName': args.team, 'cloneName': args.clone, 'cloneVault': get_vault_data(args) or '{}'}",
         "success_msg": "Operation completed successfully"
       },
       "list-distributed-storage-rbd-snapshots": {
@@ -2876,12 +2499,12 @@
       },
       "list-distributed-storage-rbd-clones": {
         "endpoint": "GetDistributedStorageRbdClones",
-        "params": "lambda args: {'imageName': args.image, 'poolName': args.pool, 'snapshotName': args.snapshot, 'teamName': args.team}",
+        "params": "lambda args: {'snapshotName': args.snapshot, 'imageName': args.image, 'poolName': args.pool, 'teamName': args.team}",
         "success_msg": "Operation completed successfully"
       },
       "create-distributed-storage-pool": {
         "endpoint": "CreateDistributedStoragePool",
-        "params": "lambda args: {'clusterName': args.cluster, 'poolName': args.pool, 'poolVault': args.vault, 'teamName': args.team}",
+        "params": "lambda args: {'clusterName': args.cluster, 'teamName': args.team, 'poolName': args.pool, 'poolVault': get_vault_data(args) or '{}'}",
         "success_msg": "Operation completed successfully"
       },
       "list-distributed-storage-rbd-images": {
@@ -2891,12 +2514,12 @@
       },
       "create-distributed-storage-rbd-snapshot": {
         "endpoint": "CreateDistributedStorageRbdSnapshot",
-        "params": "lambda args: {'imageName': args.image, 'poolName': args.pool, 'snapshotName': args.snapshot, 'snapshotVault': args.vault, 'teamName': args.team}",
+        "params": "lambda args: {'imageName': args.image, 'poolName': args.pool, 'teamName': args.team, 'snapshotName': args.snapshot, 'snapshotVault': get_vault_data(args) or '{}'}",
         "success_msg": "Operation completed successfully"
       },
       "delete-distributed-storage-rbd-clone": {
         "endpoint": "DeleteDistributedStorageRbdClone",
-        "params": "lambda args: {'cloneName': args.clone, 'imageName': args.image, 'poolName': args.pool, 'snapshotName': args.snapshot, 'teamName': args.team}",
+        "params": "lambda args: {'cloneName': args.clone, 'snapshotName': args.snapshot, 'imageName': args.image, 'poolName': args.pool, 'teamName': args.team}",
         "success_msg": "Operation completed successfully"
       },
       "delete-distributed-storage-pool": {
@@ -2906,7 +2529,7 @@
       },
       "list-distributed-storage-pools": {
         "endpoint": "GetDistributedStoragePools",
-        "params": "lambda args: {'clusterName': args.cluster, 'teamName': args.team}",
+        "params": "lambda args: {'teamName': args.team, 'clusterName': args.cluster}",
         "success_msg": "Operation completed successfully"
       },
       "list-distributed-storage-cluster-machines": {
@@ -2916,12 +2539,12 @@
       },
       "update-distributed-storage-pool-vault": {
         "endpoint": "UpdateDistributedStoragePoolVault",
-        "params": "lambda args: {'poolName': args.pool, 'poolVault': args.vault, 'teamName': args.team, 'vaultVersion': args.vault_version}",
+        "params": "lambda args: {'poolName': args.pool, 'teamName': args.team, 'poolVault': get_vault_data(args) or '{}', 'vaultVersion': args.vault_version}",
         "success_msg": "Operation completed successfully"
       },
       "delete-distributed-storage-rbd-snapshot": {
         "endpoint": "DeleteDistributedStorageRbdSnapshot",
-        "params": "lambda args: {'imageName': args.image, 'poolName': args.pool, 'snapshotName': args.snapshot, 'teamName': args.team}",
+        "params": "lambda args: {'snapshotName': args.snapshot, 'imageName': args.image, 'poolName': args.pool, 'teamName': args.team}",
         "success_msg": "Operation completed successfully"
       }
     },
@@ -3106,17 +2729,12 @@
       },
       "assign": {
         "endpoint": "UpdateUserAssignedPermissions",
-        "params": "lambda args: {'userEmail': args.email, 'permissionGroupName': args.group}",
+        "params": "lambda args: {'userEmail': args.user_email, 'permissionGroupName': args.group}",
         "success_msg": "Successfully assigned permission group {group} to user {email}",
         "help": {
           "description": "Assign permission group to user",
           "details": "Changes a user's permission group, granting them all permissions associated with that group. Users can only belong to one permission group.",
           "parameters": {
-            "email": {
-              "description": "User email address",
-              "required": true,
-              "example": "developer@company.com"
-            },
             "group": {
               "description": "Permission group to assign",
               "required": true,
@@ -3341,7 +2959,7 @@
       },
       "update-vaults": {
         "endpoint": "UpdateCompanyVaults",
-        "params": "lambda args: {'vaults': get_vault_data(args) or '{}'}",
+        "params": "lambda args: {'updates': args.updates}",
         "success_msg": "Successfully updated company vaults",
         "help": {
           "description": "Bulk update multiple company vaults",
@@ -3356,19 +2974,13 @@
               "description": "File containing JSON vaults data",
               "required": false,
               "example": "all-vaults.json"
+            },
+            "updates": {
+              "description": "",
+              "required": true,
+              "example": ""
             }
           },
-          "examples": [
-            {
-              "command": "rediacc-cli company update-vaults --vault-file vaults-backup.json",
-              "description": "Restore vaults from backup"
-            },
-            {
-              "command": "rediacc-cli company update-vaults --vault '{\"settings\":{...},\"credentials\":{...}}'",
-              "description": "Update multiple vaults at once"
-            }
-          ],
-          "notes": "Requires admin permissions. Use with caution as it replaces all vault data. Always backup first.",
           "rules": [
             "User must be authenticated with valid credentials",
             "Only administrators can update company vaults",
@@ -3462,38 +3074,22 @@
     "audit": {
       "trace": {
         "endpoint": "GetEntityAuditTrace",
-        "params": "lambda args: {'entity': args.entity_type, 'credential': args.credential, 'maxRecords': getattr(args, 'max_records', None)}",
+        "params": "lambda args: {'entityType': args.entity_type, 'entityIdentifier': args.entity_identifier}",
         "help": {
           "description": "Get detailed audit trail for entity",
           "details": "Retrieves comprehensive audit information for a specific entity including all changes, access logs, and related operations.",
           "parameters": {
             "entity_type": {
-              "description": "Type of entity (Team, Machine, User, Region, Bridge)",
+              "description": "",
               "required": true,
-              "example": "Machine"
+              "example": ""
             },
-            "credential": {
-              "description": "Entity credential (GUID)",
+            "entity_identifier": {
+              "description": "",
               "required": true,
-              "example": "550e8400-e29b-41d4-a716-446655440000"
-            },
-            "max-records": {
-              "description": "Maximum records to retrieve",
-              "required": false,
-              "example": "1000"
+              "example": ""
             }
           },
-          "examples": [
-            {
-              "command": "rediacc-cli audit trace Machine 550e8400-e29b-41d4-a716-446655440000",
-              "description": "Get full audit trail for machine"
-            },
-            {
-              "command": "rediacc-cli audit trace User 123e4567-e89b-12d3-a456-426614174000 --max-records 50",
-              "description": "Get last 50 audit entries for user"
-            }
-          ],
-          "notes": "More detailed than entity-history. Includes access logs, failed attempts, and related entity changes.",
           "rules": [
             "User must be authenticated with valid credentials",
             "Regular users can only view their own audit history",
@@ -3686,7 +3282,7 @@
       },
       "update-2fa": {
         "endpoint": "UpdateUser2FA",
-        "params": "lambda args: {'enable': args.enable, 'userHash': pwd_hash(args.password), 'currentCode': getattr(args, 'current_code', None)}",
+        "params": "lambda args: {'enable': args.enable, 'userHash': args.user_hash, 'currentCode': args.current_code, 'generateOnly': args.generate_only, 'verificationCode': args.verification_code, 'secret': args.secret, 'confirmEnable': args.confirm_enable}",
         "success_msg": "Successfully updated 2FA settings",
         "help": {
           "description": "Configure two-factor authentication",
@@ -3697,28 +3293,27 @@
               "required": true,
               "example": "true"
             },
-            "password": {
-              "description": "Current password for verification",
+            "generate_only": {
+              "description": "",
               "required": true,
-              "example": "CurrentP@ssw0rd"
+              "example": ""
             },
-            "current-code": {
-              "description": "Current 2FA code (required when disabling)",
-              "required": false,
-              "example": "123456"
+            "verification_code": {
+              "description": "",
+              "required": true,
+              "example": ""
+            },
+            "secret": {
+              "description": "",
+              "required": true,
+              "example": ""
+            },
+            "confirm_enable": {
+              "description": "",
+              "required": true,
+              "example": ""
             }
           },
-          "examples": [
-            {
-              "command": "rediacc-cli user update-2fa true --password 'MyP@ssw0rd'",
-              "description": "Enable 2FA"
-            },
-            {
-              "command": "rediacc-cli user update-2fa false --password 'MyP@ssw0rd' --current-code 123456",
-              "description": "Disable 2FA"
-            }
-          ],
-          "notes": "Use authenticator apps like Google Authenticator or Authy. Save backup codes when enabling. 2FA adds security but is required for some operations.",
           "rules": [
             "Must be authenticated with appropriate user management permissions",
             "Can only update 2FA for users within your company",
@@ -3771,34 +3366,18 @@
       },
       "privilege": {
         "endpoint": "PrivilegeAuthenticationRequest",
-        "params": "lambda args: {'requestHash': args.request_hash, 'privilege': args.privilege}",
+        "params": "lambda args: {'2FACode': args.2_f_a_code}",
         "success_msg": "Successfully privileged authentication request",
         "help": {
           "description": "Grant special privileges to auth request",
           "details": "Elevates an authentication request with special privileges. Used for administrative operations requiring enhanced permissions.",
           "parameters": {
-            "request_hash": {
-              "description": "Authentication request hash",
+            "2_f_a_code": {
+              "description": "",
               "required": true,
-              "example": "a1b2c3d4e5f6..."
-            },
-            "privilege": {
-              "description": "Privilege level to grant",
-              "required": true,
-              "example": "admin"
+              "example": ""
             }
           },
-          "examples": [
-            {
-              "command": "rediacc-cli auth privilege a1b2c3d4e5f6789 admin",
-              "description": "Grant admin privilege to request"
-            },
-            {
-              "command": "rediacc-cli auth privilege xyz123 elevated",
-              "description": "Grant elevated access"
-            }
-          ],
-          "notes": "Requires existing admin permissions. Use with caution. Privileges are temporary for the session.",
           "rules": [
             "Only available to users with privilege escalation permissions",
             "May require re-entering password for security verification",
@@ -3817,7 +3396,7 @@
     "team-member": {
       "add": {
         "endpoint": "CreateTeamMembership",
-        "params": "lambda args: {'teamName': args.team, 'newUserEmail': args.email}",
+        "params": "lambda args: {'teamName': args.team, 'newUserEmail': args.new_user_email}",
         "success_msg": "Successfully added {email} to team {team}",
         "help": {
           "description": "Add user to team",
@@ -3827,11 +3406,6 @@
               "description": "Team name",
               "required": true,
               "example": "dev-team"
-            },
-            "email": {
-              "description": "User email address",
-              "required": true,
-              "example": "developer@company.com"
             }
           },
           "examples": [
@@ -3861,7 +3435,7 @@
       },
       "remove": {
         "endpoint": "DeleteUserFromTeam",
-        "params": "lambda args: {'teamName': args.team, 'removeUserEmail': args.email}",
+        "params": "lambda args: {'teamName': args.team, 'removeUserEmail': args.remove_user_email}",
         "confirm_msg": "Are you sure you want to remove '{email}' from team '{team}'?",
         "success_msg": "Successfully removed {email} from team {team}",
         "help": {
@@ -3872,16 +3446,6 @@
               "description": "Team name",
               "required": true,
               "example": "dev-team"
-            },
-            "email": {
-              "description": "User email to remove",
-              "required": true,
-              "example": "former-member@company.com"
-            },
-            "force": {
-              "description": "Skip confirmation prompt",
-              "required": false,
-              "example": "--force"
             }
           },
           "examples": [
@@ -3951,7 +3515,7 @@
       },
       "list": {
         "endpoint": "GetTeamQueueItems",
-        "params": "lambda args: {'teamName': getattr(args, 'team', None), 'machineName': getattr(args, 'machine', None), 'bridgeName': getattr(args, 'bridge', None), 'status': getattr(args, 'status', None), 'priority': getattr(args, 'priority', None), 'minPriority': getattr(args, 'min_priority', None), 'maxPriority': getattr(args, 'max_priority', None), 'dateFrom': getattr(args, 'date_from', None), 'dateTo': getattr(args, 'date_to', None), 'taskId': getattr(args, 'task_id', None), 'includeCompleted': getattr(args, 'include_completed', True), 'includeCancelled': getattr(args, 'include_cancelled', True), 'onlyStale': getattr(args, 'only_stale', False), 'staleThresholdMinutes': getattr(args, 'stale_threshold', None), 'maxRecords': getattr(args, 'max_records', None)}",
+        "params": "lambda args: {'teamName': args.team, 'machineName': args.machine, 'bridgeName': args.bridge, 'status': args.status, 'priority': args.priority, 'minPriority': args.min_priority, 'maxPriority': args.max_priority, 'dateFrom': args.date_from, 'dateTo': args.date_to, 'taskId': args.task_id, 'includeCompleted': args.include_completed, 'includeCancelled': args.include_cancelled, 'onlyStale': args.only_stale, 'staleThresholdMinutes': args.stale_threshold_minutes, 'maxRecords': args.max_records, 'createdByUserEmail': args.created_by_user_email}",
         "help": {
           "description": "List queue items with various filters",
           "details": "View queue items across teams with powerful filtering options. Monitor task status, find stuck items, analyze performance, and track execution history.",
@@ -3981,72 +3545,12 @@
               "required": false,
               "example": "1"
             },
-            "min-priority": {
-              "description": "Minimum priority filter",
-              "required": false,
-              "example": "1"
-            },
-            "max-priority": {
-              "description": "Maximum priority filter",
-              "required": false,
-              "example": "3"
-            },
-            "date-from": {
-              "description": "Start date (ISO format)",
-              "required": false,
-              "example": "2024-01-01T00:00:00Z"
-            },
-            "date-to": {
-              "description": "End date (ISO format)",
-              "required": false,
-              "example": "2024-01-31T23:59:59Z"
-            },
-            "task-id": {
-              "description": "Search for specific task ID",
-              "required": false,
-              "example": "550e8400-e29b-41d4-a716-446655440000"
-            },
-            "no-completed": {
-              "description": "Exclude completed items",
-              "required": false,
-              "example": "--no-completed"
-            },
-            "no-cancelled": {
-              "description": "Exclude cancelled items",
-              "required": false,
-              "example": "--no-cancelled"
-            },
-            "only-stale": {
-              "description": "Show only stale/stuck items",
-              "required": false,
-              "example": "--only-stale"
-            },
-            "stale-threshold": {
-              "description": "Minutes to consider item stale (default: 10)",
-              "required": false,
-              "example": "30"
-            },
-            "max-records": {
-              "description": "Maximum records (default: 1000, max: 10000)",
-              "required": false,
-              "example": "500"
+            "created_by_user_email": {
+              "description": "",
+              "required": true,
+              "example": ""
             }
           },
-          "examples": [
-            {
-              "command": "rediacc-cli queue list --status PENDING,PROCESSING",
-              "description": "Show active queue items"
-            },
-            {
-              "command": "rediacc-cli queue list --only-stale --stale-threshold 60",
-              "description": "Find items stuck for over an hour"
-            },
-            {
-              "command": "rediacc-cli queue list --team prod --priority 1 --no-completed",
-              "description": "Show high priority items for production"
-            }
-          ],
-          "notes": "Default includes all statuses. Stale detection helps find stuck items. Use date filters for historical analysis.",
           "rules": [
             "Requires team member or higher permissions",
             "Shows queue items for specified team only",
@@ -4078,11 +3582,6 @@
               "description": "JSON progress data",
               "required": false,
               "example": "{\"progress\": 50, \"status\": \"Processing file 2 of 4\"}"
-            },
-            "vault-file": {
-              "description": "File containing progress data",
-              "required": false,
-              "example": "progress.json"
             }
           },
           "examples": [
@@ -4112,7 +3611,7 @@
       },
       "complete": {
         "endpoint": "UpdateQueueItemToCompleted",
-        "params": "lambda args: {'taskId': args.task_id, 'finalVault': get_vault_data(args) or '{}'}",
+        "params": "lambda args: {'taskId': args.task_id, 'finalVault': get_vault_data(args) or '{}', 'finalStatus': args.final_status}",
         "success_msg": "Successfully completed queue item: {task_id}",
         "help": {
           "description": "Mark a queue item as completed",
@@ -4128,23 +3627,12 @@
               "required": false,
               "example": "{\"status\": \"success\", \"output\": \"Task completed\"}"
             },
-            "vault-file": {
-              "description": "File containing result data",
-              "required": false,
-              "example": "results.json"
+            "final_status": {
+              "description": "",
+              "required": true,
+              "example": ""
             }
           },
-          "examples": [
-            {
-              "command": "rediacc-cli queue complete 550e8400-e29b-41d4-a716-446655440000",
-              "description": "Mark task as completed"
-            },
-            {
-              "command": "rediacc-cli queue complete 550e8400 --vault '{\"status\":\"success\"}'",
-              "description": "Complete with result data"
-            }
-          ],
-          "notes": "Typically used by bridges. Item must be in PROCESSING state. Result vault is encrypted and stored.",
           "rules": [
             "Requires authentication with appropriate permissions",
             "Task must exist and belong to accessible team",
@@ -4377,7 +3865,7 @@
     "clone": {
       "update-clone-machine-removals": {
         "endpoint": "UpdateCloneMachineRemovals",
-        "params": "lambda args: {'cloneName': args.clone, 'imageName': args.image, 'machineNames': args.machine_names, 'poolName': args.pool, 'snapshotName': args.snapshot, 'teamName': args.team}",
+        "params": "lambda args: {'cloneName': args.clone, 'snapshotName': args.snapshot, 'imageName': args.image, 'poolName': args.pool, 'teamName': args.team, 'machineNames': args.machine_names}",
         "success_msg": "Operation completed successfully"
       },
       "list-available-machines-for-clone": {
@@ -4387,24 +3875,24 @@
       },
       "update-clone-machine-assignments": {
         "endpoint": "UpdateCloneMachineAssignments",
-        "params": "lambda args: {'cloneName': args.clone, 'imageName': args.image, 'machineNames': args.machine_names, 'poolName': args.pool, 'snapshotName': args.snapshot, 'teamName': args.team}",
+        "params": "lambda args: {'cloneName': args.clone, 'snapshotName': args.snapshot, 'imageName': args.image, 'poolName': args.pool, 'teamName': args.team, 'machineNames': args.machine_names}",
         "success_msg": "Operation completed successfully"
       },
       "list-clone-machine-assignment-validation": {
         "endpoint": "GetCloneMachineAssignmentValidation",
-        "params": "lambda args: {'machineNames': args.machine_names, 'teamName': args.team}",
+        "params": "lambda args: {'teamName': args.team, 'machineNames': args.machine_names}",
         "success_msg": "Operation completed successfully"
       },
       "list-clone-machines": {
         "endpoint": "GetCloneMachines",
-        "params": "lambda args: {'cloneName': args.clone, 'imageName': args.image, 'poolName': args.pool, 'snapshotName': args.snapshot, 'teamName': args.team}",
+        "params": "lambda args: {'cloneName': args.clone, 'snapshotName': args.snapshot, 'imageName': args.image, 'poolName': args.pool, 'teamName': args.team}",
         "success_msg": "Operation completed successfully"
       }
     },
     "machine": {
       "update-machine-vault": {
         "endpoint": "UpdateMachineVault",
-        "params": "lambda args: {'machineName': args.machine, 'machineVault': args.vault, 'teamName': args.team, 'vaultVersion': args.vault_version}",
+        "params": "lambda args: {'teamName': args.team, 'machineName': args.machine, 'machineVault': get_vault_data(args) or '{}', 'vaultVersion': args.vault_version}",
         "success_msg": "Operation completed successfully"
       },
       "update-machine-cluster-removal": {
@@ -4433,12 +3921,12 @@
     "misc": {
       "update-image-machine-assignment": {
         "endpoint": "UpdateImageMachineAssignment",
-        "params": "lambda args: {'imageName': args.image, 'newMachineName': args.new_machine_name, 'poolName': args.pool, 'teamName': args.team}",
+        "params": "lambda args: {'imageName': args.image, 'poolName': args.pool, 'teamName': args.team, 'newMachineName': args.new_name}",
         "success_msg": "Operation completed successfully"
       },
       "is-registered": {
         "endpoint": "IsRegistered",
-        "params": "lambda args: {'currentUserEmail': args.current_user_email, 'newUserEmail': args.new_user_email, 'userName': args.user_name}",
+        "params": "lambda args: {'userName': args.user_name}",
         "success_msg": "Operation completed successfully"
       }
     },
