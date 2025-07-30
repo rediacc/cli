@@ -1840,6 +1840,99 @@ class CommandHandler:
         
         return 0
     
+    def handle_dynamic_endpoint(self, endpoint_name, args):
+        """Handle direct endpoint calls without predefined configuration"""
+        # Convert CLI args to API parameters
+        params = {}
+        
+        # Get all attributes from args that are not system attributes
+        for key in vars(args):
+            if key not in ['command', 'output', 'token', 'verbose', 'func', 'help', 'email', 'password']:
+                value = getattr(args, key)
+                if value is not None:
+                    params[key] = value
+        
+        # Check if this endpoint requires special authentication handling
+        # Look for it in CMD_CONFIG to determine auth requirements
+        auth_required = True
+        auth_type = None
+        
+        for main_cmd, sub_cmds in CMD_CONFIG.items():
+            if isinstance(sub_cmds, dict):
+                # Check top-level commands
+                if sub_cmds.get('endpoint') == endpoint_name:
+                    auth_required = sub_cmds.get('auth_required', True)
+                    auth_type = sub_cmds.get('auth_type')
+                    break
+                
+                # Check sub-commands
+                for sub_cmd, config in sub_cmds.items():
+                    if isinstance(config, dict) and config.get('endpoint') == endpoint_name:
+                        auth_required = config.get('auth_required', True) 
+                        auth_type = config.get('auth_type')
+                        break
+            if not auth_required:
+                break
+        
+        # Debug output if verbose
+        if args.verbose:
+            print(f"Dynamic endpoint: {endpoint_name}")
+            print(f"Parameters: {params}")
+            print(f"Auth required: {auth_required}")
+            print(f"Auth type: {auth_type}")
+        
+        # Make API call based on auth requirements
+        if not auth_required and auth_type == 'credentials':
+            # This endpoint uses email/password authentication
+            email = getattr(args, 'email', None)
+            password = getattr(args, 'password', None)
+            
+            if email and password:
+                hash_pwd = pwd_hash(password)
+                response = self.client.auth_request(endpoint_name, email, hash_pwd, params)
+            else:
+                print(format_output(None, self.output_format, None, "Email and password required for this endpoint"))
+                return 1
+        else:
+            # Standard token-based authentication
+            response = self.client.token_request(endpoint_name, params)
+        
+        # Handle response
+        if response.get('error'):
+            print(format_output(None, self.output_format, None, response['error']))
+            return 1
+        
+        # Format success message
+        success_msg = f"Successfully executed {endpoint_name}"
+        
+        # Try to create a more informative success message based on the endpoint name
+        if 'Update' in endpoint_name and 'Name' in endpoint_name:
+            # Extract what's being updated from the endpoint name
+            resource = endpoint_name.replace('Update', '').replace('Name', '')
+            if 'currentStorageName' in params and 'newStorageName' in params:
+                success_msg = f"Successfully updated {resource.lower()} name: {params['currentStorageName']} → {params['newStorageName']}"
+            elif 'current' + resource + 'Name' in params and 'new' + resource + 'Name' in params:
+                current_key = 'current' + resource + 'Name'
+                new_key = 'new' + resource + 'Name'
+                success_msg = f"Successfully updated {resource.lower()} name: {params[current_key]} → {params[new_key]}"
+        
+        if self.output_format in ['json', 'json-full']:
+            # Extract meaningful data from response for JSON output
+            result_data = {'endpoint': endpoint_name, 'parameters': params}
+            
+            # If there's data in the response, include it
+            if 'resultSets' in response and len(response['resultSets']) > 1:
+                for table in response['resultSets'][1:]:
+                    if table.get('data'):
+                        result_data['result'] = table['data']
+                        break
+            
+            print(format_output(result_data, self.output_format, success_msg))
+        else:
+            print(colorize(success_msg, 'GREEN'))
+        
+        return 0
+    
     
     def format_queue_trace(self, response, output_format):
         """Format queue trace response with multiple result sets"""
@@ -3481,7 +3574,110 @@ def reorder_args(argv):
     
     return result
 
+def parse_dynamic_command(argv):
+    """Parse command line for dynamic endpoint calls"""
+    # Create a simple parser for global options
+    parser = argparse.ArgumentParser(add_help=False)
+    parser.add_argument('--output', '-o', choices=['text', 'json', 'json-full'], default='text')
+    parser.add_argument('--token', '-t')
+    parser.add_argument('--verbose', '-v', action='store_true')
+    
+    # Find the command (first non-option argument)
+    command = None
+    remaining_args = []
+    i = 1  # Skip script name
+    while i < len(argv):
+        arg = argv[i]
+        if not arg.startswith('-'):
+            command = arg
+            # Collect remaining arguments after command
+            remaining_args = argv[i+1:]
+            break
+        else:
+            # Skip option and its value if needed
+            if arg in ['--output', '-o', '--token', '-t'] and i + 1 < len(argv):
+                i += 2
+            else:
+                i += 1
+    
+    # Parse global options from original argv
+    global_args, _ = parser.parse_known_args(argv[1:])
+    
+    # Create dynamic args object
+    class DynamicArgs:
+        def __init__(self):
+            self.command = command
+            self.output = global_args.output
+            self.token = global_args.token
+            self.verbose = global_args.verbose
+    
+    args = DynamicArgs()
+    
+    # Parse remaining arguments as key-value pairs
+    i = 0
+    while i < len(remaining_args):
+        arg = remaining_args[i]
+        if arg.startswith('--'):
+            key = arg[2:].replace('-', '_')
+            # Check if next arg is a value or another option
+            if i + 1 < len(remaining_args) and not remaining_args[i + 1].startswith('--'):
+                value = remaining_args[i + 1]
+                setattr(args, key, value)
+                i += 2
+            else:
+                # Boolean flag
+                setattr(args, key, True)
+                i += 1
+        else:
+            i += 1
+    
+    return args, command
+
 def main():
+    # Check if this might be a dynamic command
+    if len(sys.argv) > 1:
+        # Get the first non-option argument
+        potential_command = None
+        for i, arg in enumerate(sys.argv[1:], 1):
+            if not arg.startswith('-'):
+                potential_command = arg
+                break
+        
+        # Check if it's a known command
+        known_commands = set(CMD_CONFIG.keys()) | {'login', 'logout', 'license', 'workflow'}
+        
+        if potential_command and potential_command not in known_commands and potential_command not in ARG_DEFS:
+            # This might be a dynamic endpoint
+            args, command = parse_dynamic_command(sys.argv)
+            
+            if command:
+                # Set up logging
+                setup_logging(verbose=args.verbose)
+                logger = get_logger(__name__)
+                
+                if args.verbose:
+                    logger.debug("Dynamic endpoint detected")
+                    logger.debug(f"Command: {command}")
+                    logger.debug(f"Arguments: {vars(args)}")
+                
+                # Set up config manager
+                config_manager = TokenManager()
+                config_manager.load_vault_info_from_config()
+                
+                if args.token:
+                    if not TokenManager.validate_token(args.token):
+                        error = f"Invalid token format: {TokenManager.mask_token(args.token)}"
+                        print(format_output(None, args.output, None, error))
+                        return 1
+                    os.environ['REDIACC_TOKEN'] = args.token
+                    config_manager.set_token_overridden(True)
+                
+                handler = CommandHandler(config_manager, args.output)
+                
+                # Handle the dynamic endpoint (it will check auth requirements internally)
+                return handler.handle_dynamic_endpoint(command, args)
+    
+    # Normal flow for known commands
     # Reorder arguments to handle global options before command
     sys.argv = reorder_args(sys.argv)
     
@@ -3607,8 +3803,15 @@ def main():
         return handler.update_resource(args.resource, args)
     elif args.command in standalone_commands:
         return handler.generic_command(args.command, args.resource, args)
-    else:
+    elif args.command in CMD_CONFIG:
         return handler.generic_command(args.command, args.resource, args)
+    else:
+        # Check if this could be a direct endpoint call
+        # If command is not in CMD_CONFIG and doesn't have a resource, treat as endpoint
+        if not hasattr(args, 'resource') or not args.resource:
+            return handler.handle_dynamic_endpoint(args.command, args)
+        else:
+            return handler.generic_command(args.command, args.resource, args)
 
 if __name__ == "__main__":
     try:
