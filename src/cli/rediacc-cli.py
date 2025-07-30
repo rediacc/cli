@@ -49,7 +49,7 @@ except ConfigError as e:
 from core import get_config_dir, get_main_config_file
 
 HTTP_PORT = get_required('SYSTEM_HTTP_PORT')
-BASE_URL = get_required('REDIACC_API_URL')
+BASE_URL = get_required('SYSTEM_API_URL')
 API_PREFIX = '/StoredProcedure'
 CONFIG_DIR = str(get_config_dir())
 CONFIG_FILE = str(get_main_config_file())
@@ -3295,9 +3295,21 @@ def setup_parser():
                                                      dest=param_name,
                                                      help=help_text)
                 else:
-                    for arg in subcmd_def:
-                        kwargs = {k: v for k, v in arg.items() if k != 'name'}
-                        subcmd_parser.add_argument(arg['name'], **kwargs)
+                    if isinstance(subcmd_def, list):
+                        for arg in subcmd_def:
+                            if isinstance(arg, dict):
+                                kwargs = {k: v for k, v in arg.items() if k != 'name'}
+                                subcmd_parser.add_argument(arg['name'], **kwargs)
+                            else:
+                                # Handle string arguments
+                                subcmd_parser.add_argument(arg)
+                    elif isinstance(subcmd_def, dict):
+                        for arg_name, arg_def in subcmd_def.items():
+                            if isinstance(arg_def, dict):
+                                kwargs = {k: v for k, v in arg_def.items() if k != 'name'}
+                                subcmd_parser.add_argument(arg_name, **kwargs)
+                            else:
+                                subcmd_parser.add_argument(arg_name, help=str(arg_def))
                     
                     if cmd_name == 'update' and subcmd_name in ['team', 'region', 'bridge', 'machine', 'repository', 'storage', 'schedule']:
                         subcmd_parser.add_argument('--vault', help='JSON vault data')

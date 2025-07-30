@@ -5,7 +5,7 @@ default_timeout: 30
 
 # Test environment
 test_environment:
-  api_url: "${env.REDIACC_API_URL}"
+  api_url: "${env.SYSTEM_API_URL}"
   # Activation code for test accounts
   activation_code: "111111"
 

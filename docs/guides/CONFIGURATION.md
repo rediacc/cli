@@ -27,7 +27,7 @@ Environment variables override configuration file settings:
 export REDIACC_TOKEN="your-token-here"
 
 # API endpoint
-export REDIACC_API_URL="https://api.custom.com"
+export SYSTEM_API_URL="https://api.custom.com"
 
 # Default team
 export REDIACC_DEFAULT_TEAM="Development"
@@ -170,7 +170,7 @@ Create wrapper scripts for common configurations:
 
 export REDIACC_DEFAULT_TEAM="Production"
 export REDIACC_OUTPUT_FORMAT="json"
-export REDIACC_API_URL="https://prod-api.company.com"
+export SYSTEM_API_URL="https://prod-api.company.com"
 
 exec rediacc-cli "$@"
 ```
@@ -293,7 +293,7 @@ env:
 
 ```bash
 # .env.development
-REDIACC_API_URL=http://localhost:8080
+SYSTEM_API_URL=http://localhost:8080
 REDIACC_DEFAULT_TEAM=Development
 REDIACC_VERIFY_SSL=0
 REDIACC_DEV_MODE=1

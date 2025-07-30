@@ -120,7 +120,7 @@ ENV REDIACC_CONFIG_DIR=/home/rediacc/.config
 ENV DISPLAY=:0
 
 # Note: Environment variables can be provided at runtime via -e flags
-# Example: docker run -e REDIACC_API_URL=http://api.example.com:7322/api rediacc/cli:latest
+# Example: docker run -e SYSTEM_API_URL=http://api.example.com:7322/api rediacc/cli:latest
 # Default values are built into the application
 
 # Declare volumes for persistent data

@@ -21,3 +21,6 @@ Thumbs.db
 
 # Config directory
 .config/
+
+# Test Outputs
+test_results/

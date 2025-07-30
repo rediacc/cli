@@ -199,7 +199,7 @@ class Config:
     # Default configuration values
     DEFAULTS = {
         'SYSTEM_HTTP_PORT': '443',
-        'REDIACC_API_URL': 'https://www.rediacc.com/api',
+        'SYSTEM_API_URL': 'https://www.rediacc.com/api',
         'REDIACC_LINUX_USER': 'rediacc',
         'REDIACC_LINUX_GROUP': 'rediacc',
         'REDIACC_USER_UID': '7111',
@@ -215,7 +215,7 @@ class Config:
     # Required configuration keys (must have valid values)
     REQUIRED_KEYS = {
         'SYSTEM_HTTP_PORT': 'Port for the Rediacc API server',
-        'REDIACC_API_URL': 'Full URL to the Rediacc API endpoint',
+        'SYSTEM_API_URL': 'Full URL to the Rediacc API endpoint',
     }
     
     def __init__(self):
@@ -247,8 +247,8 @@ class Config:
                 self._config[key] = os.environ[key]
         
         # Also check for API URL in shared config if not set in environment
-        if 'REDIACC_API_URL' not in os.environ and (api_url := self._load_api_url_from_shared_config()):
-            self._config['REDIACC_API_URL'] = api_url
+        if 'SYSTEM_API_URL' not in os.environ and (api_url := self._load_api_url_from_shared_config()):
+            self._config['SYSTEM_API_URL'] = api_url
     
     def _load_api_url_from_shared_config(self) -> Optional[str]:
         """Load API URL from shared config file (same as desktop app)"""

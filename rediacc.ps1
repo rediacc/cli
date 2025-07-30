@@ -322,7 +322,7 @@ function Test-RequiredConfiguration {
     
     $requiredVars = @(
         @{Name = "SYSTEM_HTTP_PORT"; Description = "Port for the Rediacc API server"},
-        @{Name = "REDIACC_API_URL"; Description = "Full URL to the Rediacc API endpoint"}
+        @{Name = "SYSTEM_API_URL"; Description = "Full URL to the Rediacc API endpoint"}
     )
     
     $missing = @()
