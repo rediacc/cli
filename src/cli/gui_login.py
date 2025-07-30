@@ -3,7 +3,7 @@
 GUI Login Window
 
 This module provides the login window functionality for the Rediacc CLI GUI
-application, including authentication, 2FA support, and language selection.
+application, including authentication, TFA support, and language selection.
 """
 
 import tkinter as tk
@@ -79,7 +79,7 @@ class LoginWindow(BaseWindow):
         self.master_password_entry = ttk.Entry(main_frame, width=ENTRY_WIDTH_DEFAULT, show='*')
         self.master_password_entry.grid(row=4, column=1, sticky='ew', padx=(0, 40), pady=(5, 8))
         
-        # Row 5: 2FA code field (pre-allocated but initially hidden)
+        # Row 5: TFA code field (pre-allocated but initially hidden)
         self.tfa_frame = tk.Frame(main_frame)
         self.tfa_label = tk.Label(self.tfa_frame, text=i18n.get('tfa_code'), font=('Arial', 10, 'bold'))
         self.tfa_label.grid(row=0, column=0, sticky='e', padx=(0, 20), pady=(5, 0))
@@ -91,7 +91,7 @@ class LoginWindow(BaseWindow):
         # Configure tfa_frame columns
         self.tfa_frame.columnconfigure(0, minsize=100)
         self.tfa_frame.columnconfigure(1, weight=1)
-        # Don't grid the frame initially - it will be shown when 2FA is required
+        # Don't grid the frame initially - it will be shown when TFA is required
         
         # Row 6: Login button
         self.login_button = ttk.Button(main_frame, text=i18n.get('login'), command=self.login)
@@ -141,8 +141,8 @@ class LoginWindow(BaseWindow):
                 self.root.after(0, self.login_success)
             else:
                 error = result.get('error', i18n.get('login_failed'))
-                if '2FA_REQUIRED' in error:
-                    self.root.after(0, self.show_2fa_field)
+                if 'TFA_REQUIRED' in error:
+                    self.root.after(0, self.show_tfa_field)
                 else:
                     self.root.after(0, lambda: self.login_error(error))
         except Exception as e:
@@ -161,12 +161,12 @@ class LoginWindow(BaseWindow):
         self.login_button.config(state='normal')
         self.status_label.config(text=f"{i18n.get('error')}: {error}", fg=COLOR_ERROR)
     
-    def show_2fa_field(self):
-        """Show 2FA field when required"""
-        # Grid the 2FA frame in row 5
+    def show_tfa_field(self):
+        """Show TFA field when required"""
+        # Grid the TFA frame in row 5
         self.tfa_frame.grid(row=5, column=0, columnspan=2, sticky='ew', padx=(40, 40), pady=(5, 0))
         
-        # Clear any previous 2FA code
+        # Clear any previous TFA code
         self.tfa_entry.delete(0, tk.END)
         
         # Update status and re-enable login button
@@ -174,7 +174,7 @@ class LoginWindow(BaseWindow):
                                 fg='#FF6B35', font=('Arial', 10))
         self.login_button.config(state='normal')
         
-        # Focus on 2FA field
+        # Focus on TFA field
         self.tfa_entry.focus()
         
         # Update window size if needed to accommodate the new field
@@ -198,7 +198,7 @@ class LoginWindow(BaseWindow):
         self.master_password_label.config(text=i18n.get('master_password'))
         self.login_button.config(text=i18n.get('login'))
         
-        # Update 2FA fields if they exist
+        # Update TFA fields if they exist
         if hasattr(self, 'tfa_label'):
             self.tfa_label.config(text=i18n.get('tfa_code'))
         if hasattr(self, 'tfa_help'):

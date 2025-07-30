@@ -271,6 +271,14 @@ function release() {
     
     # Create a release archive of Python scripts
     echo "Creating release archive..."
+    # Build list of files to include (only if they exist)
+    local tar_files=()
+    for file in src/ rediacc rediacc.ps1 .env.example requirements.txt README.md docs/; do
+        if [ -e "$ROOT_DIR/$file" ]; then
+            tar_files+=("$file")
+        fi
+    done
+    
     tar -czf "$ROOT_DIR/bin/rediacc-cli-${REDIACC_VERSION}.tar.gz" \
         -C "$ROOT_DIR" \
         --exclude="__pycache__" \
@@ -278,13 +286,7 @@ function release() {
         --exclude=".git" \
         --exclude="bin" \
         --exclude=".config" \
-        src/ \
-        rediacc \
-        rediacc.ps1 \
-        .env.example \
-        requirements.txt \
-        README.md \
-        docs/
+        "${tar_files[@]}"
     
     echo ""
     echo "Release created successfully!"

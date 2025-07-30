@@ -27,7 +27,7 @@
 
 ### 3. Advanced Tests (Paid Plans)
 - ✅ **00010.1_company_setup_advanced.yaml** - Company with ADVANCED plan
-- ✅ **00031.2_user_2fa_management.yaml** - 2FA documentation
+- ✅ **00031.2_user_tfa_management.yaml** - TFA documentation
 - ✅ **00040.1_permission_management_advanced.yaml** - Custom permission groups
 - ✅ **00050.1_storage_management.yaml** - Storage resources (Advanced+)
 - ✅ **00060.1_schedule_management.yaml** - Scheduled tasks (Premium+)

@@ -196,7 +196,7 @@
       "auth_required": false,
       "endpoint": "CreateAuthenticationRequest",
       "auth_type": "credentials",
-      "params": "lambda args: {'name': args.session_name or 'CLI Session', '2FACode': args.tfa_code, 'requestedPermissions': args.permissions, 'tokenExpirationHours': args.expiration, 'target': getattr(args, 'target', None)}",
+      "params": "lambda args: {'name': args.session_name or 'CLI Session', 'TFACode': args.tfa_code, 'requestedPermissions': args.permissions, 'tokenExpirationHours': args.expiration, 'target': getattr(args, 'target', None)}",
       "success_msg": "Successfully logged in as {email}",
       "help": {
         "description": "Authenticate with the Rediacc API",
@@ -254,7 +254,7 @@
           },
           {
             "command": "rediacc-cli login --email admin@company.com --tfa-code 123456 --permissions admin",
-            "description": "Admin login with 2FA"
+            "description": "Admin login with TFA"
           }
         ],
         "notes": "Credentials can be provided as arguments or through interactive prompts. Token is saved locally for future use.",
@@ -262,7 +262,7 @@
           "Email and password are required (via args or prompts)",
           "Account must be activated before first login",
           "Failed login attempts are tracked and may lock account",
-          "2FA code required if two-factor authentication is enabled",
+          "TFA code required if two-factor authentication is enabled",
           "Token expires after specified hours (max varies by plan)",
           "Session name helps identify tokens in audit logs",
           "Permission requests may require additional authorization",
@@ -272,16 +272,10 @@
         ]
       },
       "login": {
-        "params": "lambda args: {'2FACode': args.2_f_a_code, 'name': args.name, 'requestedPermissions': args.requested_permissions, 'target': args.target, 'tokenExpirationHours': args.token_expiration_hours}",
+        "params": "lambda args: {'name': args.name, 'tFACode': args.t_f_a_code, 'requestedPermissions': args.requested_permissions, 'tokenExpirationHours': args.token_expiration_hours, 'target': args.target}",
         "help": {
           "parameters": {
             "session_name": {
-              "description": "",
-              "required": true,
-              "example": "",
-              "type": "string"
-            },
-            "tfa_code": {
               "description": "",
               "required": true,
               "example": "",
@@ -298,6 +292,18 @@
               "required": true,
               "example": "",
               "type": "integer"
+            },
+            "2_f_a_code": {
+              "description": "",
+              "required": true,
+              "example": "",
+              "type": "string"
+            },
+            "t_f_a_code": {
+              "description": "",
+              "required": true,
+              "example": "",
+              "type": "string"
             }
           }
         }
@@ -521,7 +527,7 @@
       },
       "bridge": {
         "endpoint": "CreateBridge",
-        "params": "lambda args: {'regionName': args.region, 'bridgeName': args.bridge, 'bridgeVault': get_vault_data(args) or '{}'}",
+        "params": "lambda args: {'regionName': args.region, 'bridgeName': args.name, 'bridgeVault': get_vault_data(args) or '{}'}",
         "success_msg": "Successfully created bridge: {name} in region {region}",
         "help": {
           "description": "Create a new bridge for task processing",
@@ -538,6 +544,12 @@
               "example": "{\"batch_size\": 5, \"poll_interval\": 30}"
             },
             "bridge": {
+              "description": "",
+              "required": true,
+              "example": "",
+              "type": "string"
+            },
+            "name": {
               "description": "",
               "required": true,
               "example": "",
@@ -571,7 +583,7 @@
       },
       "machine": {
         "endpoint": "CreateMachine",
-        "params": "lambda args: {'teamName': args.team, 'bridgeName': args.bridge, 'machineName': args.machine, 'machineVault': get_vault_data(args) or '{}'}",
+        "params": "lambda args: {'teamName': args.team, 'bridgeName': args.bridge, 'machineName': args.name, 'machineVault': get_vault_data(args) or '{}'}",
         "success_msg": "Successfully created machine: {name} for team {team}",
         "help": {
           "description": "Create a new machine in a team",
@@ -593,6 +605,12 @@
               "example": "{\"ip\": \"10.0.0.5\", \"user\": \"rediacc\", \"datastore\": \"/mnt/datastore\"}"
             },
             "machine": {
+              "description": "",
+              "required": true,
+              "example": "",
+              "type": "string"
+            },
+            "name": {
               "description": "",
               "required": true,
               "example": "",
@@ -938,7 +956,7 @@
         "params": "lambda args: {}",
         "help": {
           "description": "List all users in your company",
-          "details": "Shows all user accounts including their email, status (active/inactive), permission groups, 2FA status, and last login information. Useful for user management and audit purposes.",
+          "details": "Shows all user accounts including their email, status (active/inactive), permission groups, TFA status, and last login information. Useful for user management and audit purposes.",
           "parameters": {},
           "examples": [
             {
@@ -1529,7 +1547,7 @@
       },
       "machine": {
         "endpoint": "DeleteMachine",
-        "params": "lambda args: {'teamName': args.team, 'machineName': args.machine}",
+        "params": "lambda args: {'teamName': args.team, 'machineName': args.name}",
         "confirm_msg": "Are you sure you want to delete machine '{name}' from team '{team}'?",
         "success_msg": "Successfully deleted machine: {name}",
         "help": {
@@ -1575,7 +1593,7 @@
       },
       "bridge": {
         "endpoint": "DeleteBridge",
-        "params": "lambda args: {'regionName': args.region, 'bridgeName': args.bridge}",
+        "params": "lambda args: {'regionName': args.region, 'bridgeName': args.name}",
         "confirm_msg": "Are you sure you want to delete bridge '{name}' from region '{region}'?",
         "success_msg": "Successfully deleted bridge: {name}",
         "help": {
@@ -1849,7 +1867,7 @@
     "bridge": {
       "reset-auth": {
         "endpoint": "ResetBridgeAuthorization",
-        "params": "lambda args: {'bridgeName': args.bridge, 'isCloudManaged': args.cloud_managed}",
+        "params": "lambda args: {'bridgeName': args.name, 'isCloudManaged': args.cloud_managed}",
         "confirm_msg": "Are you sure you want to reset authorization for bridge '{name}'? This will generate new credentials.",
         "success_msg": "Successfully reset authorization for bridge: {name}",
         "help": {
@@ -1894,7 +1912,7 @@
       },
       "update-bridge-vault": {
         "endpoint": "UpdateBridgeVault",
-        "params": "lambda args: {'regionName': args.region, 'bridgeName': args.bridge, 'bridgeVault': get_vault_data(args) or '{}', 'vaultVersion': args.vault_version}",
+        "params": "lambda args: {'regionName': args.region, 'bridgeName': args.name, 'bridgeVault': get_vault_data(args) or '{}', 'vaultVersion': args.vault_version}",
         "success_msg": "Operation completed successfully",
         "help": {
           "parameters": {
@@ -2065,7 +2083,7 @@
       },
       "machine-bridge": {
         "endpoint": "UpdateMachineAssignedBridge",
-        "params": "lambda args: {'teamName': args.team, 'machineName': args.machine, 'newBridgeName': args.new_name}",
+        "params": "lambda args: {'teamName': args.team, 'machineName': args.name, 'newBridgeName': args.new_bridge}",
         "success_msg": "Successfully updated machine bridge: {name} → {new_bridge}",
         "help": {
           "description": "Reassign a machine to a different bridge",
@@ -2398,7 +2416,7 @@
       },
       "machine-status": {
         "endpoint": "UpdateMachineStatus",
-        "params": "lambda args: {'teamName': args.team, 'machineName': args.machine, 'machineStatus': args.status}",
+        "params": "lambda args: {'teamName': args.team, 'machineName': args.name, 'machineStatus': args.status}",
         "success_msg": "Successfully updated machine status: {name}",
         "help": {
           "description": "Update the status of a machine",
@@ -3604,7 +3622,7 @@
             "Cannot update if company has Global Bridge with cloud management",
             "All vaults must belong to entities within your company",
             "Cannot update vault if newer version exists",
-            "2FA vaults cannot be updated through this operation",
+            "TFA vaults cannot be updated through this operation",
             "Either all updates succeed or none are applied",
             "Updates are logged with count of vaults modified"
           ]
@@ -3894,66 +3912,6 @@
             "Password change is logged in audit trail"
           ]
         }
-      },
-      "update-2fa": {
-        "endpoint": "UpdateUser2FA",
-        "params": "lambda args: {'enable': args.enable, 'userHash': args.user_hash, 'currentCode': args.current_code, 'generateOnly': args.generate_only, 'verificationCode': args.verification_code, 'secret': args.secret, 'confirmEnable': args.confirm_enable}",
-        "success_msg": "Successfully updated 2FA settings",
-        "help": {
-          "description": "Configure two-factor authentication",
-          "details": "Enables or disables two-factor authentication for your account. When enabling, you'll receive a QR code to scan with your authenticator app. When disabling, you need your current 2FA code.",
-          "parameters": {
-            "enable": {
-              "description": "Enable (1/true) or disable (0/false) 2FA",
-              "required": true,
-              "example": "true"
-            },
-            "generate_only": {
-              "description": "",
-              "required": true,
-              "example": ""
-            },
-            "verification_code": {
-              "description": "",
-              "required": true,
-              "example": ""
-            },
-            "secret": {
-              "description": "",
-              "required": true,
-              "example": ""
-            },
-            "confirm_enable": {
-              "description": "",
-              "required": true,
-              "example": ""
-            },
-            "user_hash": {
-              "description": "",
-              "required": true,
-              "example": "",
-              "type": "string"
-            },
-            "current_code": {
-              "description": "",
-              "required": true,
-              "example": "",
-              "type": "string"
-            }
-          },
-          "rules": [
-            "Must be authenticated with appropriate user management permissions",
-            "Can only update 2FA for users within your company",
-            "When enabling 2FA, system generates a secret key for the user",
-            "User must scan QR code or manually enter secret in authenticator app",
-            "Once enabled, login requires both password and 6-digit TOTP code",
-            "Disabling 2FA removes the requirement but keeps the secret for re-enabling",
-            "Admin users can force-enable or disable 2FA for other users",
-            "2FA status change takes effect on next login attempt",
-            "Compatible with standard TOTP apps (Google Authenticator, Authy, etc.)",
-            "Time window for code acceptance is typically ±30 seconds"
-          ]
-        }
       }
     },
     "auth": {
@@ -3982,7 +3940,7 @@
             "Shows current user email, company, and assigned teams",
             "Displays token creation time and expiration status",
             "Lists all permission groups assigned to the user",
-            "Shows whether 2FA is enabled for the account",
+            "Shows whether TFA is enabled for the account",
             "Indicates if account is activated or pending activation",
             "Returns error if no valid token is present",
             "Token details include the token ID (not the full token value)",
@@ -3993,7 +3951,7 @@
       },
       "privilege": {
         "endpoint": "PrivilegeAuthenticationRequest",
-        "params": "lambda args: {'2FACode': args.2_f_a_code}",
+        "params": "lambda args: {'tFACode': args.t_f_a_code}",
         "success_msg": "Successfully privileged authentication request",
         "help": {
           "description": "Grant special privileges to auth request",
@@ -4002,7 +3960,14 @@
             "2_f_a_code": {
               "description": "",
               "required": true,
-              "example": ""
+              "example": "",
+              "type": "string"
+            },
+            "t_f_a_code": {
+              "description": "",
+              "required": true,
+              "example": "",
+              "type": "string"
             }
           },
           "rules": [
@@ -4903,6 +4868,56 @@
             }
           }
         }
+      },
+      "update-user2-f-a": {
+        "endpoint": "UpdateUserTFA",
+        "params": "lambda args: {'enable': args.enable, 'userHash': args.user_hash, 'currentCode': args.current_code, 'generateOnly': args.generate_only, 'verificationCode': args.verification_code, 'secret': args.secret, 'confirmEnable': args.confirm_enable}",
+        "help": {
+          "parameters": {
+            "enable": {
+              "description": "",
+              "required": true,
+              "example": "",
+              "type": "string"
+            },
+            "user_hash": {
+              "description": "",
+              "required": true,
+              "example": "",
+              "type": "string"
+            },
+            "current_code": {
+              "description": "",
+              "required": true,
+              "example": "",
+              "type": "string"
+            },
+            "generate_only": {
+              "description": "",
+              "required": true,
+              "example": "",
+              "type": "boolean"
+            },
+            "verification_code": {
+              "description": "",
+              "required": true,
+              "example": "",
+              "type": "string"
+            },
+            "secret": {
+              "description": "",
+              "required": true,
+              "example": "",
+              "type": "string"
+            },
+            "confirm_enable": {
+              "description": "",
+              "required": true,
+              "example": "",
+              "type": "boolean"
+            }
+          }
+        }
       }
     },
     "team": {
@@ -5705,10 +5720,10 @@
           "help": "New password"
         }
       ],
-      "update-2fa": [
+      "update-tfa": [
         {
           "name": "enable",
-          "help": "Enable (1/true) or disable (0/false) 2FA",
+          "help": "Enable (1/true) or disable (0/false) TFA",
           "type": "lambda x: bool(int(x) if x in ['0', '1'] else x.lower() == 'true')"
         },
         {
@@ -5717,7 +5732,7 @@
         },
         {
           "name": "--current-code",
-          "help": "Current 2FA code (required when disabling)"
+          "help": "Current TFA code (required when disabling)"
         }
       ]
     },
@@ -6285,6 +6300,41 @@
       "type": "string",
       "required": true,
       "help": "snapshotVault parameter"
+    },
+    "enable": {
+      "type": "string",
+      "required": true,
+      "help": "enable parameter"
+    },
+    "userHash": {
+      "type": "string",
+      "required": true,
+      "help": "userHash parameter"
+    },
+    "currentCode": {
+      "type": "string",
+      "required": true,
+      "help": "currentCode parameter"
+    },
+    "generateOnly": {
+      "type": "string",
+      "required": true,
+      "help": "generateOnly parameter"
+    },
+    "verificationCode": {
+      "type": "string",
+      "required": true,
+      "help": "verificationCode parameter"
+    },
+    "secret": {
+      "type": "string",
+      "required": true,
+      "help": "secret parameter"
+    },
+    "confirmEnable": {
+      "type": "string",
+      "required": true,
+      "help": "confirmEnable parameter"
     }
   }
 }
