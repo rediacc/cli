@@ -1,0 +1,127 @@
+name: "MACHINE_ADVANCED_TEST"
+description: "Test advanced machine operations including bridge assignment"
+executor: "rediacc-cli.py"
+
+# Tests advanced machine management endpoints
+
+# Setup required infrastructure
+setup:
+  - name: "create_test_team"
+    command: ["CreateTeam"]
+    args:
+      teamName: "AdvancedTeam-${TIMESTAMP}"
+      teamVault: '{}'
+    expect:
+      success: true
+  
+  - name: "create_test_region"
+    command: ["CreateRegion"]
+    args:
+      regionName: "AdvancedRegion-${TIMESTAMP}"
+      regionVault: '{}'
+    expect:
+      success: true
+  
+  - name: "create_bridge1"
+    command: ["CreateBridge"]
+    args:
+      regionName: "AdvancedRegion-${TIMESTAMP}"
+      bridgeName: "Bridge1-${TIMESTAMP}"
+      bridgeVault: '{}'
+    expect:
+      success: true
+  
+  - name: "create_bridge2"
+    command: ["CreateBridge"]
+    args:
+      regionName: "AdvancedRegion-${TIMESTAMP}"
+      bridgeName: "Bridge2-${TIMESTAMP}"
+      bridgeVault: '{}'
+    expect:
+      success: true
+  
+  - name: "create_test_machine"
+    command: ["CreateMachine"]
+    args:
+      teamName: "AdvancedTeam-${TIMESTAMP}"
+      bridgeName: "Bridge1-${TIMESTAMP}"
+      machineName: "AdvancedMachine-${TIMESTAMP}"
+      machineVault: '{"ip": "10.0.0.1"}'
+    expect:
+      success: true
+
+tests:
+  # Update machine assigned bridge
+  - name: "update_machine_bridge_assignment"
+    command: ["UpdateMachineAssignedBridge"]
+    args:
+      teamName: "AdvancedTeam-${TIMESTAMP}"
+      machineName: "AdvancedMachine-${TIMESTAMP}"
+      newBridgeName: "Bridge2-${TIMESTAMP}"
+    expect:
+      success: true
+    description: "Assign machine to a different bridge"
+  
+  # Update machine vault
+  - name: "update_machine_vault"
+    command: ["UpdateMachineVault"]
+    args:
+      teamName: "AdvancedTeam-${TIMESTAMP}"
+      machineName: "AdvancedMachine-${TIMESTAMP}"
+      machineVault: '{"ip": "10.0.0.2", "updated": true}'
+      vaultVersion: 1
+    expect:
+      success: true
+    description: "Update machine vault data"
+  
+  # Update machine name
+  - name: "rename_machine"
+    command: ["UpdateMachineName"]
+    args:
+      teamName: "AdvancedTeam-${TIMESTAMP}"
+      currentMachineName: "AdvancedMachine-${TIMESTAMP}"
+      newMachineName: "RenamedMachine-${TIMESTAMP}"
+    expect:
+      success: true
+    description: "Rename the machine"
+  
+  # Clean up - use renamed machine name
+  - name: "delete_machine"
+    command: ["DeleteMachine"]
+    args:
+      teamName: "AdvancedTeam-${TIMESTAMP}"
+      machineName: "RenamedMachine-${TIMESTAMP}"
+    expect:
+      success: true
+
+# Cleanup remaining resources
+teardown:
+  - name: "delete_bridge1"
+    command: ["DeleteBridge"]
+    args:
+      regionName: "AdvancedRegion-${TIMESTAMP}"
+      bridgeName: "Bridge1-${TIMESTAMP}"
+    expect:
+      success: true
+  
+  - name: "delete_bridge2"
+    command: ["DeleteBridge"]
+    args:
+      regionName: "AdvancedRegion-${TIMESTAMP}"
+      bridgeName: "Bridge2-${TIMESTAMP}"
+    expect:
+      success: true
+  
+  - name: "delete_region"
+    command: ["DeleteRegion"]
+    args:
+      regionName: "AdvancedRegion-${TIMESTAMP}"
+    expect:
+      success: true
+  
+  - name: "delete_team"
+    command: ["DeleteTeam"]
+    args:
+      teamName: "AdvancedTeam-${TIMESTAMP}"
+    expect:
+      success: true

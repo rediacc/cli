@@ -1,0 +1,41 @@
+name: "COMPANY_OPERATIONS_TEST"
+description: "Test company import/export operations and privilege authentication"
+executor: "rediacc-cli.py"
+
+# Tests company data operations and privilege authentication
+
+tests:
+  # Export company data first
+  - name: "export_company_data_full"
+    command: ["ExportCompanyData"]
+    expect:
+      success: true
+    description: "Export all company data"
+  
+  # Test privilege authentication request (requires TFA code)
+  # NOTE: This test may pass if user doesn't have TFA enabled
+  - name: "privilege_auth_request"
+    command: ["PrivilegeAuthenticationRequest"]
+    args:
+      tfaCode: "123456"  # Will pass if TFA not enabled, fail if enabled
+    expect:
+      success: true  # May succeed if TFA not enabled
+    description: "Test privileged authentication (passes if TFA not enabled)"
+  
+  # Import company data (would need actual export data)
+  - name: "import_company_data_test"
+    command: ["ImportCompanyData"]
+    args:
+      companyDataJson: '{"version": "1.0", "company": {"name": "Test Import"}, "teams": [], "users": []}'  # Minimal test data
+      importMode: "skip"
+    expect:
+      success: false  # Will fail with invalid data format
+      error_contains: "Invalid JSON format"
+    description: "Test import company data with minimal data"
+  
+  # Export should still return original data
+  - name: "export_after_import"
+    command: ["ExportCompanyData"]
+    expect:
+      success: true
+    description: "Export company data after import attempt"

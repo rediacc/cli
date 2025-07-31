@@ -55,7 +55,7 @@ tests:
   
   # Since all tests are commented out, let's add a simple passing test to avoid empty test file
   - name: "placeholder_test"
-    command: ["list", "teams"]
+    command: ["GetCompanyTeams"]
     expect:
       success: true
       # This is a placeholder test since all audit commands require GUIDs or have SQL errors

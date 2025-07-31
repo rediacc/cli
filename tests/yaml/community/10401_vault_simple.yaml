@@ -1,0 +1,75 @@
+name: "VAULT_SIMPLE_TEST"
+description: "Simplified test for vault update endpoints"
+executor: "rediacc-cli.py"
+
+# Tests vault update endpoints
+
+tests:
+  # Update company vault
+  - name: "update_company_vault"
+    command: ["UpdateCompanyVault"]
+    args:
+      companyVault: '{"TEST_KEY": "test_value", "TIMESTAMP": "${TIMESTAMP}"}'
+      vaultVersion: 1
+    expect:
+      success: true
+  
+  # Verify update
+  - name: "verify_company_vault"
+    command: ["GetCompanyVault"]
+    expect:
+      success: true
+      output_contains: "test_value"
+  
+  # Create team for vault testing
+  - name: "create_vault_team"
+    command: ["CreateTeam"]
+    args:
+      teamName: "VaultTeam-${TIMESTAMP}"
+      teamVault: '{"initial": "data"}'
+    expect:
+      success: true
+  
+  # Update team vault
+  - name: "update_team_vault"
+    command: ["UpdateTeamVault"]
+    args:
+      teamName: "VaultTeam-${TIMESTAMP}"
+      teamVault: '{"updated": "true", "timestamp": "${TIMESTAMP}"}'
+      vaultVersion: 1
+    expect:
+      success: true
+  
+  # Create region for vault testing
+  - name: "create_vault_region"
+    command: ["CreateRegion"]
+    args:
+      regionName: "VaultRegion-${TIMESTAMP}"
+      regionVault: '{"initial": "data"}'
+    expect:
+      success: true
+  
+  # Update region vault
+  - name: "update_region_vault"
+    command: ["UpdateRegionVault"]
+    args:
+      regionName: "VaultRegion-${TIMESTAMP}"
+      regionVault: '{"provider": "updated", "timestamp": "${TIMESTAMP}"}'
+      vaultVersion: 1
+    expect:
+      success: true
+  
+  # Clean up
+  - name: "delete_vault_region"
+    command: ["DeleteRegion"]
+    args:
+      regionName: "VaultRegion-${TIMESTAMP}"
+    expect:
+      success: true
+  
+  - name: "delete_vault_team"
+    command: ["DeleteTeam"]
+    args:
+      teamName: "VaultTeam-${TIMESTAMP}"
+    expect:
+      success: true

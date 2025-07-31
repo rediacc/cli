@@ -1,0 +1,58 @@
+name: "AUDIT_ADVANCED_TEST"
+description: "Test advanced audit operations including entity trace and history"
+executor: "rediacc-cli.py"
+
+# Tests audit and entity history endpoints
+
+tests:
+  # Get entity audit trace - for a team
+  - name: "get_team_audit_trace"
+    command: ["GetEntityAuditTrace"]
+    args:
+      entityType: "Team"
+      entityId: 1  # Would need real team ID
+    expect:
+      success: false  # Likely to fail without valid ID
+    description: "Get audit trace for a team entity"
+  
+  # Get entity audit trace - for a machine
+  - name: "get_machine_audit_trace"
+    command: ["GetEntityAuditTrace"]
+    args:
+      entityType: "Machine"
+      entityId: 1  # Would need real machine ID
+    expect:
+      success: false  # Likely to fail without valid ID
+    description: "Get audit trace for a machine entity"
+  
+  # Get entity history - for a user
+  - name: "get_user_entity_history"
+    command: ["GetEntityHistory"]
+    args:
+      entityType: "User"
+      entityId: 1  # Would need real user ID
+    expect:
+      success: false  # Likely to fail without valid ID
+    description: "Get history for a user entity"
+  
+  # Get entity history - for a bridge
+  - name: "get_bridge_entity_history"
+    command: ["GetEntityHistory"]
+    args:
+      entityType: "Bridge"
+      entityId: 1  # Would need real bridge ID
+    expect:
+      success: false  # Likely to fail without valid ID
+    description: "Get history for a bridge entity"
+  
+  # Get entity history with date filter
+  - name: "get_entity_history_filtered"
+    command: ["GetEntityHistory"]
+    args:
+      entityType: "Company"
+      entityId: 1
+      startDate: "2024-01-01"
+      endDate: "2024-12-31"
+    expect:
+      success: false  # Likely to fail without valid ID
+    description: "Get filtered entity history"

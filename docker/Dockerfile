@@ -112,7 +112,7 @@ USER $REDIACC_LINUX_USER
 
 # Set environment variables
 ENV PATH="/app:${PATH}"
-ENV PYTHONPATH="/app/src/modules:${PYTHONPATH}"
+ENV PYTHONPATH="/app/src/modules"
 ENV PYTHONUNBUFFERED=1
 ENV TMPDIR=/home/rediacc/tmp
 ENV TERM=xterm-256color

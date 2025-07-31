@@ -9,7 +9,7 @@ chain_export:
 tests:
   # Keep at least one passing test - list all permission groups
   - name: "list_all_permission_groups"
-    command: ["permission", "list-groups"]
+    command: ["GetCompanyPermissionGroups"]
     expect:
       success: true
   

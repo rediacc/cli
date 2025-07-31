@@ -17,7 +17,9 @@ tests:
   # Keeping only the list test for now.
   
   - name: "list_team_repositories"
-    command: ["list", "team-repositories", "${chain.test_team_name}"]
+    command: ["GetTeamRepositories"]
+    args:
+      teamName: "${chain.test_team_name}"
     expect:
       success: true
   

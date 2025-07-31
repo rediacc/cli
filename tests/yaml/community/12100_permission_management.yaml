@@ -1,0 +1,171 @@
+name: "PERMISSION_MANAGEMENT_TEST"
+description: "Test permission group and permission management operations"
+executor: "rediacc-cli.py"
+
+# Tests permission management endpoints
+
+setup:
+  # Create test company with administrator access
+  - name: "create_test_company"
+    command: ["CreateNewCompany"]
+    args:
+      companyName: "PermMgmtCompany-${TIMESTAMP}"
+      email: "permmgmt-admin-${TIMESTAMP}@test.com"
+      password: "Test@Pass123!"
+      subscriptionPlan: "PREMIUM"
+    expect:
+      success: true
+  
+  - name: "activate_admin_account"
+    command: ["ActivateUserAccount"]
+    args:
+      email: "permmgmt-admin-${TIMESTAMP}@test.com"
+      activationCode: "111111"
+      password: "Test@Pass123!"
+    expect:
+      success: true
+  
+  - name: "login_as_admin"
+    command: ["login"]
+    args:
+      email: "permmgmt-admin-${TIMESTAMP}@test.com"
+      password: "Test@Pass123!"
+    expect:
+      success: true
+
+tests:
+  # Test CreatePermissionGroup - only accepts permissionGroupName
+  - name: "create_custom_permission_group"
+    command: ["CreatePermissionGroup"]
+    args:
+      permissionGroupName: "CustomGroup-${TIMESTAMP}"
+    expect:
+      success: true
+    description: "Create a new permission group"
+  
+  # Test CreatePermissionInGroup - Add a permission to the group
+  - name: "add_permission_to_group"
+    command: ["CreatePermissionInGroup"]
+    args:
+      permissionGroupName: "CustomGroup-${TIMESTAMP}"
+      permissionName: "GetTeamMachines"
+    expect:
+      success: true
+    description: "Add GetTeamMachines permission to custom group"
+  
+  # Add another permission
+  - name: "add_another_permission"
+    command: ["CreatePermissionInGroup"]
+    args:
+      permissionGroupName: "CustomGroup-${TIMESTAMP}"
+      permissionName: "GetTeamRepositories"
+    expect:
+      success: true
+    description: "Add GetTeamRepositories permission to custom group"
+  
+  # Verify permissions were added
+  - name: "get_permission_group_details"
+    command: ["GetPermissionGroupDetails"]
+    args:
+      permissionGroupName: "CustomGroup-${TIMESTAMP}"
+    expect:
+      success: true
+      output_contains: ["GetTeamMachines", "GetTeamRepositories"]
+    description: "Verify permissions were added to group"
+  
+  # Create a test user to assign permissions
+  - name: "create_test_user"
+    command: ["CreateNewUser"]
+    args:
+      newUserEmail: "permtestuser-${TIMESTAMP}@test.com"
+      newUserHash: "0x5994471abb01112afcc18159f6cc74b4f511b99806da59b3caf5a9c173cacfc5"
+    expect:
+      success: true
+    description: "Create user for permission assignment testing"
+  
+  # Test UpdateUserAssignedPermissions
+  - name: "assign_custom_permissions"
+    command: ["UpdateUserAssignedPermissions"]
+    args:
+      userEmail: "permtestuser-${TIMESTAMP}@test.com"
+      permissionGroupName: "CustomGroup-${TIMESTAMP}"
+    expect:
+      success: true
+    description: "Assign custom permission group to user"
+  
+  # Test DeletePermissionFromGroup
+  - name: "remove_permission_from_group"
+    command: ["DeletePermissionFromGroup"]
+    args:
+      permissionGroupName: "CustomGroup-${TIMESTAMP}"
+      permissionName: "GetTeamRepositories"
+    expect:
+      success: true
+    description: "Remove a permission from the group"
+  
+  # Create another admin to prevent last admin issues
+  - name: "create_second_admin"
+    command: ["CreateNewUser"]
+    args:
+      newUserEmail: "perm-admin2-${TIMESTAMP}@test.com"
+      newUserHash: "0x5994471abb01112afcc18159f6cc74b4f511b99806da59b3caf5a9c173cacfc5"
+    expect:
+      success: true
+  
+  # Activate the second admin account
+  - name: "activate_second_admin"
+    command: ["ActivateUserAccount"]
+    args:
+      email: "perm-admin2-${TIMESTAMP}@test.com"
+      activationCode: "111111"
+      password: "Test@Pass456!"
+    expect:
+      success: true
+    description: "Activate second admin account"
+  
+  # Now assign the second admin to Administrators group
+  - name: "promote_second_admin"
+    command: ["UpdateUserAssignedPermissions"]
+    args:
+      userEmail: "perm-admin2-${TIMESTAMP}@test.com"
+      permissionGroupName: "Administrators"
+    expect:
+      success: true
+    description: "Promote second user to admin"
+  
+  # Now we can safely downgrade the first admin
+  - name: "downgrade_first_admin"
+    command: ["UpdateUserAssignedPermissions"]
+    args:
+      userEmail: "permmgmt-admin-${TIMESTAMP}@test.com"
+      permissionGroupName: "Users"
+    expect:
+      success: true
+    description: "Downgrade first admin to regular user"
+  
+  # Remove user from custom group before deletion
+  - name: "remove_user_from_custom_group"
+    command: ["UpdateUserAssignedPermissions"]
+    args:
+      userEmail: "permtestuser-${TIMESTAMP}@test.com"
+      permissionGroupName: "Users"
+    expect:
+      success: true
+    description: "Move user from custom group to Users group"
+  
+  # Now delete the empty permission group
+  - name: "delete_empty_group"
+    command: ["DeletePermissionGroup"]
+    args:
+      permissionGroupName: "CustomGroup-${TIMESTAMP}"
+    expect:
+      success: true
+    description: "Delete the now-empty permission group"
+  
+  # Verify group was deleted
+  - name: "verify_group_deleted"
+    command: ["GetCompanyPermissionGroups"]
+    expect:
+      success: true
+      output_not_contains: ["CustomGroup-${TIMESTAMP}"]
+    description: "Verify permission group was deleted"

@@ -8,13 +8,17 @@ chain_export:
 
 tests:
   - name: "create_team"
-    command: ["create", "team", "${config.test_data.team.name_pattern}"]
+    command: ["CreateTeam"]
     args:
-      vault: "{\"SSH_USER\": \"deploy\", \"SSH_PORT\": \"22\"}"
+      teamName: "${config.test_data.team.name_pattern}"
+      teamVault: "{\"SSH_USER\": \"deploy\", \"SSH_PORT\": \"22\"}"
     expect:
       success: true
   
   - name: "update_team_name"
-    command: ["update", "team", "${config.test_data.team.name_pattern}", "Updated-${config.test_data.team.name_pattern}"]
+    command: ["UpdateTeamName"]
+    args:
+      currentTeamName: "${config.test_data.team.name_pattern}"
+      newTeamName: "Updated-${config.test_data.team.name_pattern}"
     expect:
       success: true

@@ -1,0 +1,160 @@
+name: "QUEUE_OPERATIONS_ADVANCED_TEST"
+description: "Test advanced queue operations including cancel, retry, trace, and completion"
+executor: "rediacc-cli.py"
+
+# Setup authentication and infrastructure
+setup:
+  - name: "create_test_company"
+    command: ["CreateNewCompany"]
+    args:
+      companyName: "QueueAdvTestCompany-${TIMESTAMP}"
+      email: "queueadv-${TIMESTAMP}@test.com"
+      password: "Test@Pass123!"
+    expect:
+      success: true
+  
+  - name: "activate_account"
+    command: ["ActivateUserAccount"]
+    args:
+      email: "queueadv-${TIMESTAMP}@test.com"
+      activationCode: "111111"
+      password: "Test@Pass123!"
+    expect:
+      success: true
+  
+  - name: "login_admin"
+    command: ["login"]
+    args:
+      email: "queueadv-${TIMESTAMP}@test.com"
+      password: "Test@Pass123!"
+    expect:
+      success: true
+  
+  - name: "create_test_team"
+    command: ["CreateTeam"]
+    args:
+      teamName: "QueueAdvTestTeam-${TIMESTAMP}"
+      teamVault: "{}"
+    expect:
+      success: true
+  
+  - name: "create_test_region"
+    command: ["CreateRegion"]
+    args:
+      regionName: "QueueAdvTestRegion-${TIMESTAMP}"
+      regionVault: "{}"
+    expect:
+      success: true
+  
+  - name: "create_test_bridge"
+    command: ["CreateBridge"]
+    args:
+      regionName: "QueueAdvTestRegion-${TIMESTAMP}"
+      bridgeName: "QueueAdvTestBridge-${TIMESTAMP}"
+      bridgeVault: "{}"
+    expect:
+      success: true
+  
+  - name: "create_test_machine"
+    command: ["CreateMachine"]
+    args:
+      teamName: "QueueAdvTestTeam-${TIMESTAMP}"
+      bridgeName: "QueueAdvTestBridge-${TIMESTAMP}"
+      machineName: "QueueAdvTestMachine-${TIMESTAMP}"
+      machineVault: "{\"ip\": \"10.0.0.1\"}"
+    expect:
+      success: true
+
+# Tests advanced queue management endpoints
+
+tests:
+  # Create a queue item first
+  - name: "create_queue_for_testing"
+    command: ["CreateQueueItem"]
+    args:
+      teamName: "QueueAdvTestTeam-${TIMESTAMP}"
+      machineName: "QueueAdvTestMachine-${TIMESTAMP}"
+      bridgeName: "QueueAdvTestBridge-${TIMESTAMP}"
+      queueVault: '{"function": "test", "command": "echo test", "timeout": 300}'
+      priority: 1
+    expect:
+      success: true
+    description: "Create queue item for testing operations"
+    chain_export:
+      taskId: "${result.data.result[0].taskId}"
+  
+  # Get queue items to extract taskId
+  - name: "get_queue_items_for_task_id"
+    command: ["GetTeamQueueItems"]
+    args:
+      teamName: "QueueAdvTestTeam-${TIMESTAMP}"
+    expect:
+      success: true
+    description: "Get queue items to find task ID"
+  
+  # Note: These operations require a valid taskId from the created queue item
+  # In a real scenario, we would extract the taskId from the previous response
+  
+  # Update queue item response (simulating bridge update)
+  # NOTE: This operation requires bridge token authentication
+  # In real usage, only bridge processes can update queue responses
+  - name: "update_queue_response"
+    command: ["UpdateQueueItemResponse"]
+    args:
+      taskId: "${chain.taskId}"
+      responseVault: '{"response": "Processing started...", "statusCode": 1}'
+    expect:
+      success: false  # Expected to fail - requires bridge token
+      error_contains: "Only bridge tokens can update queue item responses"
+    description: "Attempt to update queue item response (requires bridge token)"
+  
+  # Get queue item trace
+  - name: "get_queue_trace"
+    command: ["GetQueueItemTrace"]
+    args:
+      taskId: "${chain.taskId}"
+    expect:
+      success: true
+    description: "Get trace for queue item"
+  
+  # Retry failed queue item
+  # NOTE: Can only retry FAILED items, not PENDING or CANCELLED
+  # The item is still PENDING, so retry will fail
+  - name: "retry_queue_item"
+    command: ["RetryFailedQueueItem"]
+    args:
+      taskId: "${chain.taskId}"
+    expect:
+      success: false  # Expected to fail - item is PENDING, not FAILED
+      error_contains: "Can only retry failed queue items"
+    description: "Attempt to retry queue item (only works on FAILED status)"
+  
+  # Cancel queue item
+  - name: "cancel_queue_item"
+    command: ["CancelQueueItem"]
+    args:
+      taskId: "${chain.taskId}"
+    expect:
+      success: true
+    description: "Cancel a queue item"
+  
+  # Complete queue item
+  # NOTE: This operation requires bridge token authentication
+  - name: "complete_queue_item"
+    command: ["UpdateQueueItemToCompleted"]
+    args:
+      taskId: "${chain.taskId}"
+      finalVault: '{"response": "Task completed successfully", "statusCode": 0}'
+    expect:
+      success: false  # Expected to fail - requires bridge token
+      error_contains: "Only bridge tokens can complete queue items"
+    description: "Attempt to complete queue item (requires bridge token)"
+  
+  # Delete queue item
+  - name: "delete_queue_item"
+    command: ["DeleteQueueItem"]
+    args:
+      taskId: "${chain.taskId}"
+    expect:
+      success: true
+    description: "Delete a queue item"

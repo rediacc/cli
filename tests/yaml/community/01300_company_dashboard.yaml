@@ -7,17 +7,12 @@ chain_export:
   dashboard_accessed: true
 
 tests:
-  - name: "get_company_resource_limits"
-    command: ["list", "resource-limits"]
-    expect:
-      success: true
-  
-  - name: "get_company_subscription"
-    command: ["list", "subscription"]
+  - name: "get_company_dashboard"
+    command: ["GetCompanyDashboardJson"]
     expect:
       success: true
   
   - name: "get_company_data_graph"
-    command: ["list", "data-graph"]
+    command: ["GetCompanyDataGraphJson"]
     expect:
       success: true

@@ -17,6 +17,29 @@ from typing import Dict, Any, List, Optional, Union
 
 # Add parent directory to path for imports
 sys.path.insert(0, str(Path(__file__).parent.parent / 'src'))
+sys.path.insert(0, str(Path(__file__).parent))  # For totp_helper
+
+# Import TOTP and password helpers
+try:
+    from totp_helper import generate_totp_code, hash_password
+    TOTP_AVAILABLE = True
+    PASSWORD_HASH_AVAILABLE = True
+except ImportError:
+    TOTP_AVAILABLE = False
+    PASSWORD_HASH_AVAILABLE = False
+    print("Warning: TOTP helper not available, TOTP functions will return dummy codes")
+
+# Load environment variables from parent .env file
+env_file = Path(__file__).parent.parent.parent / '.env'
+if env_file.exists():
+    with open(env_file) as f:
+        for line in f:
+            line = line.strip()
+            if line and not line.startswith('#') and '=' in line:
+                key, value = line.split('=', 1)
+                # Remove quotes if present
+                value = value.strip('"').strip("'")
+                os.environ[key] = value
 
 # ANSI color codes
 COLORS = {
@@ -33,13 +56,15 @@ def colorize(text: str, color: str) -> str:
     return f"{COLORS.get(color, '')}{text}{COLORS['RESET']}" if sys.stdout.isatty() else text
 
 class TestRunner:
-    def __init__(self, config_file: str = None, output_dir: str = None):
+    def __init__(self, config_file: str = None, output_dir: str = None, stop_on_failure: bool = False):
         self.config = self._load_config(config_file)
         self.cli_config = self._load_cli_config()
         self.timestamp = datetime.now().strftime('%Y%m%d_%H%M%S')
         self.test_id = f"test_{self.timestamp}"
         self.output_dir = Path(output_dir or "test_results")
         self.output_dir.mkdir(parents=True, exist_ok=True)
+        self.all_test_results = []  # Collect all test results for display
+        self.stop_on_failure = stop_on_failure
         
         # Clean up old test results - keep only last 10
         self._cleanup_old_results()
@@ -98,6 +123,34 @@ class TestRunner:
             
             def replace_var(match):
                 var_path = match.group(1)
+                
+                # Check for function calls like totp(secret)
+                func_match = re.match(r'(\w+)\((.*)\)', var_path)
+                if func_match:
+                    func_name = func_match.group(1)
+                    func_args = func_match.group(2)
+                    
+                    # Handle TOTP function
+                    if func_name == 'totp' and TOTP_AVAILABLE:
+                        # Resolve the argument (could be a variable)
+                        resolved_arg = self._resolve_variables(f'${{{func_args}}}')
+                        try:
+                            return generate_totp_code(resolved_arg)
+                        except Exception as e:
+                            print(f"Warning: Failed to generate TOTP code: {e}")
+                            return "000000"  # Return dummy code on error
+                    # Handle password hash function
+                    elif func_name == 'hash' and PASSWORD_HASH_AVAILABLE:
+                        # Don't double-resolve, func_args is already the raw password
+                        try:
+                            return hash_password(func_args)
+                        except Exception as e:
+                            print(f"Warning: Failed to hash password: {e}")
+                            return "0x" + "0" * 64  # Return dummy hash on error
+                    else:
+                        # Unknown function, return as-is
+                        return match.group(0)
+                
                 parts = var_path.split('.')
                 
                 # Check if it's a config reference
@@ -115,17 +168,30 @@ class TestRunner:
                 
                 # Navigate through context
                 result = self.context
-                for part in parts:
+                for i, part in enumerate(parts):
                     if isinstance(result, dict):
-                        result = result.get(part, match.group(0))
+                        prev_result = result
+                        result = result.get(part, None)
+                        if result is None:
+                            # Debug when resolving chain exports
+                            if var_path.startswith("result.data.result"):
+                                print(f"    DEBUG resolve path: Failed at part '{part}', path so far: {'.'.join(parts[:i+1])}")
+                                print(f"    DEBUG resolve path: Available keys: {list(prev_result.keys())}")
+                            return match.group(0)
                     elif isinstance(result, list):
                         try:
                             idx = int(part)
-                            result = result[idx] if idx < len(result) else match.group(0)
+                            result = result[idx] if idx < len(result) else None
+                            if result is None:
+                                return match.group(0)
                         except (ValueError, IndexError):
                             return match.group(0)
                     else:
                         return match.group(0)
+                
+                # If we get None, return the original variable
+                if result is None:
+                    return match.group(0)
                 
                 return str(result)
             
@@ -166,15 +232,19 @@ class TestRunner:
             
             # Handle boolean flags
             if isinstance(value, bool):
-                if value:
-                    cmd.append(f'--{cli_key}')
+                cmd.append(f'--{cli_key}')
+                cmd.append(str(value).lower())
             # Handle lists
             elif isinstance(value, list):
                 cmd.append(f'--{cli_key}')
                 cmd.extend([str(v) for v in value])
             # Handle other values
             elif value is not None:
-                cmd.extend([f'--{cli_key}', str(value)])
+                # Keep numeric types as-is for proper type handling
+                if isinstance(value, (int, float)):
+                    cmd.extend([f'--{cli_key}', str(value)])
+                else:
+                    cmd.extend([f'--{cli_key}', str(value)])
         
         return cmd
     
@@ -294,7 +364,9 @@ class TestRunner:
     
     def run_test_file(self, test_file: str, base_files: List[Path] = None) -> bool:
         """Run a single test file"""
-        print(f"\n{colorize('Running test file:', 'BOLD')} {test_file}")
+        # Show progress
+        test_file_path = Path(test_file)
+        print(f"Running: {test_file_path.name}", end='', flush=True)
         
         # Start timing for entire test file
         file_start_time = time.time()
@@ -303,18 +375,14 @@ class TestRunner:
         test_spec = self._load_and_merge_test_files(test_file, base_files)
         
         # Debug: show if merging happened
-        if base_files:
-            print(f"  {colorize('Merged with:', 'BLUE')} {', '.join([str(bf.name) for bf in base_files])}")
+        # (suppressed for cleaner output)
         
         # Extract configuration
         name = test_spec.get('name', 'Unnamed Test')
         description = test_spec.get('description', '')
         executor = test_spec.get('executor', 'rediacc-cli.py')
         
-        print(f"\n{colorize(name, 'BLUE')}")
-        if description:
-            print(f"{colorize('Description:', 'YELLOW')} {description}")
-        print()
+        # (test name and description suppressed for cleaner output)
         
         # Extract test file info for output naming
         test_file_path = Path(test_file)
@@ -344,6 +412,7 @@ class TestRunner:
         
         # Run setup if present
         if 'setup' in test_spec:
+            print()  # Add newline after filename when we have setup
             print(colorize('Running setup...', 'YELLOW'))
             for setup_step in test_spec['setup']:
                 result = self._run_test_step(setup_step, executor, is_setup=True, 
@@ -358,6 +427,9 @@ class TestRunner:
         # Run tests
         test_results = []
         for i, test in enumerate(test_spec.get('tests', [])):
+            # Process the test - but first handle any chain exports from THIS test
+            # We need to check before running so we can update chain context
+            
             result = self._run_test_step(test, executor, test_index=i,
                                        test_file_name=test_file_base,
                                        parent_test_name=name,
@@ -365,8 +437,8 @@ class TestRunner:
             test_results.append(result)
             test_file_results['test_results'].append(result)
             
-            # Stop on first failure
-            if not result['success']:
+            # Stop on failure if requested
+            if not result['success'] and self.stop_on_failure:
                 print(f"\n{colorize('STOPPING: Test failed, halting execution', 'RED')}")
                 break
             
@@ -377,15 +449,56 @@ class TestRunner:
             # Extract output from the result.result.output structure
             if result['success'] and 'result' in result and 'output' in result['result']:
                 self.context['tests'][i] = result['result']['output']
+                
+                # Handle chain exports for individual tests IMMEDIATELY
+                if 'chain_export' in test:
+                    # For chain exports, we need a special handling of the result
+                    # The test output structure is result['result']['output'] which contains
+                    # {success, data: {endpoint, parameters, result: [...]}, message}
+                    output_data = result['result']['output']
+                    
+                    # Resolve each export variable
+                    for key, value in test['chain_export'].items():
+                        # Special handling for common patterns
+                        if value == "${result.data.result[0].taskId}":
+                            # Direct extraction for this common case
+                            try:
+                                resolved_value = output_data['data']['result'][0]['taskId']
+                            except (KeyError, IndexError, TypeError):
+                                resolved_value = value  # Keep original if extraction fails
+                        elif value == "${result.data.result[0].secret}":
+                            # Direct extraction for TFA secret
+                            try:
+                                resolved_value = output_data['data']['result'][0]['secret']
+                            except (KeyError, IndexError, TypeError):
+                                resolved_value = value  # Keep original if extraction fails
+                        else:
+                            # For other patterns, create a context with just the output data
+                            temp_context = dict(self.context)
+                            # Add the output data directly under various keys for flexibility
+                            temp_context['result'] = output_data
+                            temp_context['output'] = output_data
+                            temp_context['data'] = output_data.get('data', {})
+                            
+                            # Try to resolve
+                            old_context = self.context
+                            self.context = temp_context
+                            resolved_value = self._resolve_variables(value)
+                            self.context = old_context
+                        
+                        # Update chain context immediately
+                        self.chain_context[key] = resolved_value
+                        self.context['chain'] = self.chain_context
+                        
+                        # Always show chain exports for now
+                        print(f"  Chain export: {key} = {resolved_value}")
         
         # Handle chain exports
         if 'chain_export' in test_spec:
             exports = self._resolve_variables(test_spec['chain_export'])
             self.chain_context.update(exports)
             test_file_results['chain_exports'] = exports
-            print(f"\n{colorize('Chain exports:', 'BLUE')}")
-            for key, value in exports.items():
-                print(f"  {key}: {value}")
+            # Chain exports saved but not displayed
         
         # Calculate total execution time
         total_execution_time = time.time() - file_start_time
@@ -396,17 +509,27 @@ class TestRunner:
         consolidated_path = self.output_dir / consolidated_filename
         with open(consolidated_path, 'w') as f:
             json.dump(test_file_results, f, indent=2)
-        print(f"\n{colorize('Consolidated results saved:', 'GREEN')} {consolidated_filename}")
+        # Results saved silently
         
+        # Collect results for later display
+        for result in test_results:
+            self.all_test_results.append({
+                'suite_name': name,
+                'test_name': result['test_name'],
+                'success': result['success'],
+                'execution_time_seconds': result['execution_time_seconds'],
+                'command': result.get('command_executed', {}).get('command', [])
+            })
+            
         # Summary
         passed = sum(1 for r in test_results if r['success'])
         failed = len(test_results) - passed
         
-        print(f"\n{colorize('Summary:', 'BOLD')}")
-        print(f"  {colorize(f'Passed: {passed}', 'GREEN')}")
-        if failed > 0:
-            print(f"  {colorize(f'Failed: {failed}', 'RED')}")
-        print(f"  {colorize(f'Total time: {total_execution_time:.3f}s', 'BLUE')}")
+        # Complete the progress line
+        if failed == 0:
+            print(f" {colorize('✓', 'GREEN')} ({passed} tests, {total_execution_time:.1f}s)")
+        else:
+            print(f" {colorize('✗', 'RED')} ({passed}/{len(test_results)} passed, {total_execution_time:.1f}s)")
         
         return failed == 0
     
@@ -414,16 +537,14 @@ class TestRunner:
         """Run a single test step"""
         step_name = step.get('name', f'Step {test_index + 1}')
         
-        if is_setup:
-            print(f"\n{colorize('Setup:', 'BOLD')} {step_name}")
-        else:
-            # Just show the test name without "Test N:" prefix
-            print(f"\n{colorize(step_name, 'BOLD')}")
+        # Show progress dot
+        print('.', end='', flush=True)
         
         # Build and execute command
         cmd = self._build_command(step, executor)
         command_display = ' '.join(cmd[2:])  # Skip python and script path
-        print(f"  {colorize('Command:', 'BLUE')} {command_display}")
+        
+        # Command display suppressed for cleaner output
         
         # Store command info for output
         command_info = {
@@ -516,9 +637,7 @@ class TestRunner:
             errors = self._validate_expectation(output, expected)
             
             if errors:
-                print(f"  {colorize('FAILED:', 'RED')} Validation errors ({execution_time:.3f}s):")
-                for error in errors:
-                    print(f"    - {error}")
+                # Validation errors saved but not displayed
                 
                 test_result['success'] = False
                 test_result['errors'] = errors
@@ -532,14 +651,15 @@ class TestRunner:
                 return test_result
             else:
                 # Test passed (expected result matches actual)
-                print(f"  {colorize('PASSED', 'GREEN')} ({execution_time:.3f}s)")
+                pass
         else:
             # No expectations defined, check if command succeeded
             if result['success']:
-                print(f"  {colorize('PASSED', 'GREEN')} ({execution_time:.3f}s)")
+                # Test passed
+                pass
             else:
                 error_msg = result.get('error') or result.get('stderr', 'Unknown error')
-                print(f"  {colorize('FAILED:', 'RED')} {error_msg} ({execution_time:.3f}s)")
+                # Test failed
                 
                 test_result['success'] = False
                 test_result['errors'] = [error_msg]
@@ -560,6 +680,109 @@ class TestRunner:
         
         return test_result
     
+    def _print_tabular_results(self, test_name: str, test_results: List[dict]):
+        """Print test results in tabular format"""
+        if not test_results:
+            return
+            
+        # Calculate column widths
+        name_width = max(len(r['test_name']) for r in test_results)
+        name_width = max(name_width, 20)  # Minimum width
+        
+        # Print header
+        print(f"\n{colorize(test_name, 'BOLD')}")
+        print("-" * (name_width + 45))
+        print(f"{'Test Name':<{name_width}} | {'Status':^10} | {'Time':^8} | {'Endpoint'}")
+        print("-" * (name_width + 45))
+        
+        # Print results
+        for result in test_results:
+            name = result['test_name']
+            if len(name) > name_width:
+                name = name[:name_width-3] + '...'
+            
+            status = 'PASS' if result['success'] else 'FAIL'
+            status_color = 'GREEN' if result['success'] else 'RED'
+            time_str = f"{result['execution_time_seconds']:.3f}s"
+            
+            # Extract endpoint/command
+            command = result.get('command_executed', {}).get('command', [])
+            if isinstance(command, list) and command:
+                endpoint = command[0]
+            else:
+                endpoint = 'N/A'
+                
+            status_display = colorize(f"{status:^10}", status_color)
+            print(f"{name:<{name_width}} | {status_display} | {time_str:^8} | {endpoint}")
+        
+        print("-" * (name_width + 45))
+    
+    def _print_consolidated_table(self):
+        """Print all test results in a single consolidated table"""
+        if not self.all_test_results:
+            return
+            
+        # Calculate column widths
+        suite_width = max(len(r['suite_name']) for r in self.all_test_results)
+        suite_width = max(suite_width, 15)  # Minimum width
+        
+        test_width = max(len(r['test_name']) for r in self.all_test_results)
+        test_width = max(test_width, 25)  # Minimum width
+        
+        total_width = suite_width + test_width + 45
+        
+        # Print header
+        print(f"\n{colorize('Test Results Summary', 'BOLD')}")
+        print("=" * total_width)
+        print(f"{'Test Suite':<{suite_width}} | {'Test Name':<{test_width}} | {'Status':^10} | {'Time':^8} | {'Endpoint'}")
+        print("=" * total_width)
+        
+        # Print results grouped by suite
+        current_suite = None
+        for result in self.all_test_results:
+            suite = result['suite_name']
+            if suite != current_suite:
+                if current_suite is not None:
+                    print("-" * total_width)
+                current_suite = suite
+            
+            # Truncate names if too long
+            suite_display = suite if len(suite) <= suite_width else suite[:suite_width-3] + '...'
+            test_display = result['test_name'] if len(result['test_name']) <= test_width else result['test_name'][:test_width-3] + '...'
+            
+            status = 'PASS' if result['success'] else 'FAIL'
+            status_color = 'GREEN' if result['success'] else 'RED'
+            time_str = f"{result['execution_time_seconds']:.3f}s"
+            
+            # Extract endpoint/command
+            command = result['command']
+            if isinstance(command, list) and command:
+                endpoint = command[0]
+            else:
+                endpoint = 'N/A'
+                
+            status_display = colorize(f"{status:^10}", status_color)
+            
+            # Only show suite name on first test of each suite
+            index = self.all_test_results.index(result)
+            if index > 0 and self.all_test_results[index - 1]['suite_name'] == suite:
+                suite_display = " " * suite_width
+            
+            print(f"{suite_display:<{suite_width}} | {test_display:<{test_width}} | {status_display} | {time_str:^8} | {endpoint}")
+        
+        print("=" * total_width)
+        
+        # Overall summary
+        total_tests = len(self.all_test_results)
+        passed_tests = sum(1 for r in self.all_test_results if r['success'])
+        failed_tests = total_tests - passed_tests
+        total_time = sum(r['execution_time_seconds'] for r in self.all_test_results)
+        
+        print(f"\nTotal: {total_tests} tests, {colorize(f'{passed_tests} passed', 'GREEN')}, ", end="")
+        if failed_tests > 0:
+            print(f"{colorize(f'{failed_tests} failed', 'RED')}, ", end="")
+        print(f"Time: {total_time:.3f}s")
+        
     def generate_coverage_report(self):
         """Generate coverage report showing tested commands and endpoints"""
         print(f"\n{colorize('Test Coverage Report:', 'BOLD')}")
@@ -599,10 +822,6 @@ class TestRunner:
         
         # Show untested commands
         untested_commands = all_commands - self.tested_commands
-        if untested_commands:
-            print(f"\n{colorize('Untested Commands:', 'YELLOW')}")
-            for cmd in sorted(untested_commands):
-                print(f"  - {cmd}")
         
         # Show untested endpoints
         untested_endpoints = all_endpoints - self.tested_endpoints
@@ -850,20 +1069,20 @@ class TestRunner:
                     if main_tier and base_tiers:
                         print(f"  {colorize('Merge:', 'YELLOW')} {main_file.name} from {main_tier} extends {', '.join(base_tiers)}")
             
-            # Debug: show what's in hierarchy
-            print(f"\n  {colorize('Debug - Files found:', 'BLUE')}")
-            for tier in tiers_to_run:
-                tier_files = hierarchy.get(tier, [])
-                if tier_files:
-                    print(f"    {tier}: {', '.join([f.name for f in tier_files])}")
+            # Debug: show what's in hierarchy (disabled in tabular mode)
         
         # Run each test file with its base files
         all_passed = True
         for test_file, base_files in files_to_run:
             if not self.run_test_file(test_file, base_files):
                 all_passed = False
-                print(f"\n{colorize('STOPPING: Halting execution due to test failure', 'RED')}")
-                break  # Stop running further test files
+                # Stop on failure if requested
+                if self.stop_on_failure:
+                    print(f"\n{colorize('STOPPING: Test file failed, halting execution', 'RED')}")
+                    break
+        
+        # Print consolidated table
+        self._print_consolidated_table()
         
         # Final summary
         print(f"\n{colorize('=' * 60, 'BOLD')}")
@@ -886,10 +1105,15 @@ def main():
     parser.add_argument('pattern', nargs='?', help='Test file pattern (e.g., "basic/*.yaml")')
     parser.add_argument('--config', help='Test configuration file')
     parser.add_argument('--output-dir', help='Output directory for test results')
+    parser.add_argument('--stop-on-failure', action='store_true', help='Stop execution on first test failure')
     
     args = parser.parse_args()
     
-    runner = TestRunner(config_file=args.config, output_dir=args.output_dir)
+    runner = TestRunner(
+        config_file=args.config,
+        output_dir=args.output_dir,
+        stop_on_failure=args.stop_on_failure
+    )
     success = runner.run_all_tests(args.pattern)
     
     sys.exit(0 if success else 1)
