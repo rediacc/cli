@@ -170,7 +170,7 @@ function test() {
     # Run test script if it exists
     if [ -f "tests/run_tests.py" ]; then
         echo "Running Python test suite..."
-        "$PYTHON_CMD" tests/run_tests.py
+        "$PYTHON_CMD" tests/run_tests.py "$@"
     else
         echo "⚠️  No tests found at tests/run_tests.py"
     fi
@@ -425,7 +425,8 @@ main() {
             dev "$@"
             ;;
         test)
-            test
+            shift
+            test "$@"
             ;;
         lint)
             lint

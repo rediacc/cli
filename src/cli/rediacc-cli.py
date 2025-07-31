@@ -192,6 +192,11 @@ class APIClient:
         url = f"{BASE_URL}{API_PREFIX}/{endpoint}"
         merged_headers = {**self.base_headers, **(headers or {})}
         
+        # Debug logging
+        if os.environ.get('REDIACC_DEBUG'):
+            print(f"DEBUG: API URL: {url}", file=sys.stderr)
+            print(f"DEBUG: Headers: {merged_headers}", file=sys.stderr)
+        
         if data and self.config_manager and (master_pwd := self.config_manager.get_master_password()):
             try: data = encrypt_vault_fields(data, master_pwd)
             except Exception as e: print(colorize(f"Warning: Failed to encrypt vault fields: {e}", 'YELLOW'))
@@ -1850,7 +1855,12 @@ class CommandHandler:
             if key not in ['command', 'output', 'token', 'verbose', 'func', 'help', 'email', 'password']:
                 value = getattr(args, key)
                 if value is not None:
-                    params[key] = value
+                    # Handle boolean parameters properly
+                    # Check if the value is a string that represents a boolean
+                    if isinstance(value, str) and value.lower() in ['true', 'false']:
+                        params[key] = value.lower() == 'true'
+                    else:
+                        params[key] = value
         
         # Check if this endpoint requires special authentication handling
         # Look for it in CMD_CONFIG to determine auth requirements
@@ -3622,6 +3632,15 @@ def parse_dynamic_command(argv):
             # Check if next arg is a value or another option
             if i + 1 < len(remaining_args) and not remaining_args[i + 1].startswith('--'):
                 value = remaining_args[i + 1]
+                # Try to parse as integer if it looks like one
+                if value.isdigit() or (value.startswith('-') and value[1:].isdigit()):
+                    try:
+                        value = int(value)
+                    except ValueError:
+                        pass  # Keep as string
+                # Handle boolean values explicitly
+                elif value.lower() in ['true', 'false']:
+                    value = value.lower() == 'true'
                 setattr(args, key, value)
                 i += 2
             else:

@@ -12,21 +12,27 @@ chain_export:
 
 tests:
   - name: "create_backup_schedule"
-    command: ["create", "schedule", "${chain.test_team_name}", "${config.test_data.schedule.name_pattern}"]
+    command: ["CreateSchedule"]
     args:
-      vault: "{\"CRON\": \"0 2 * * *\", \"FUNCTION\": \"backup\", \"TARGET_REPOSITORY\": \"main-app\", \"STORAGE\": \"s3-backup\", \"ENABLED\": \"true\"}"
+      teamName: "${chain.test_team_name}"
+      scheduleName: "${config.test_data.schedule.name_pattern}"
+      scheduleVault: "{\"CRON\": \"0 2 * * *\", \"FUNCTION\": \"backup\", \"TARGET_REPOSITORY\": \"main-app\", \"STORAGE\": \"s3-backup\", \"ENABLED\": \"true\"}"
     expect:
       success: true
   
   - name: "create_cleanup_schedule"
-    command: ["create", "schedule", "${chain.test_team_name}", "${config.test_data.schedule.name_pattern}-cleanup"]
+    command: ["CreateSchedule"]
     args:
-      vault: "{\"CRON\": \"0 4 * * 0\", \"FUNCTION\": \"cleanup\", \"RETENTION_DAYS\": \"30\", \"ENABLED\": \"false\"}"
+      teamName: "${chain.test_team_name}"
+      scheduleName: "${config.test_data.schedule.name_pattern}-cleanup"
+      scheduleVault: "{\"CRON\": \"0 4 * * 0\", \"FUNCTION\": \"cleanup\", \"RETENTION_DAYS\": \"30\", \"ENABLED\": \"false\"}"
     expect:
       success: true
   
   - name: "list_team_schedules"
-    command: ["list", "team-schedules", "${chain.test_team_name}"]
+    command: ["GetTeamSchedules"]
+    args:
+      teamName: "${chain.test_team_name}"
     expect:
       success: true
       output_contains:
@@ -34,7 +40,11 @@ tests:
         - "${config.test_data.schedule.name_pattern}-cleanup"
   
   - name: "update_schedule_name"
-    command: ["update", "schedule", "${chain.test_team_name}", "${config.test_data.schedule.name_pattern}", "Updated-${config.test_data.schedule.name_pattern}"]
+    command: ["UpdateScheduleName"]
+    args:
+      teamName: "${chain.test_team_name}"
+      currentScheduleName: "${config.test_data.schedule.name_pattern}"
+      newScheduleName: "Updated-${config.test_data.schedule.name_pattern}"
     expect:
       success: true
   
@@ -55,15 +65,17 @@ tests:
   #     success: true
   
   - name: "delete_cleanup_schedule"
-    command: ["rm", "schedule", "${chain.test_team_name}", "${config.test_data.schedule.name_pattern}-cleanup"]
+    command: ["DeleteSchedule"]
     args:
-      force: true
+      teamName: "${chain.test_team_name}"
+      scheduleName: "${config.test_data.schedule.name_pattern}-cleanup"
     expect:
       success: true
   
   - name: "delete_backup_schedule"
-    command: ["rm", "schedule", "${chain.test_team_name}", "Updated-${config.test_data.schedule.name_pattern}"]
+    command: ["DeleteSchedule"]
     args:
-      force: true
+      teamName: "${chain.test_team_name}"
+      scheduleName: "Updated-${config.test_data.schedule.name_pattern}"
     expect:
       success: true

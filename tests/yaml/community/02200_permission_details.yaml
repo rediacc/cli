@@ -8,13 +8,15 @@ chain_import:
 
 tests:
   - name: "list_all_permission_groups"
-    command: ["permission", "list-groups"]
+    command: ["GetCompanyPermissionGroups"]
     expect:
       success: true
       # Should list all permission groups in the company
   
   - name: "get_administrators_permission_group_details"
-    command: ["permission", "list-group", "Administrators"]
+    command: ["GetPermissionGroupDetails"]
+    args:
+      permissionGroupName: "Administrators"
     expect:
       success: true
       output_contains:
@@ -22,7 +24,9 @@ tests:
       # Administrators permission group should always exist
   
   - name: "get_users_permission_group_details"
-    command: ["permission", "list-group", "Users"]
+    command: ["GetPermissionGroupDetails"]
+    args:
+      permissionGroupName: "Users"
     expect:
       success: true
       output_contains:
@@ -30,7 +34,9 @@ tests:
       # Users permission group should always exist
   
   - name: "get_bridges_permission_group_details"
-    command: ["permission", "list-group", "Bridges"]
+    command: ["GetPermissionGroupDetails"]
+    args:
+      permissionGroupName: "Bridges"
     expect:
       success: true
       output_contains:

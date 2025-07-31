@@ -1,0 +1,100 @@
+name: "MACHINE_OPS_SIMPLE_TEST"
+description: "Simplified test for machine operations"
+executor: "rediacc-cli.py"
+
+# Tests machine operation endpoints
+
+tests:
+  # Create infrastructure
+  - name: "create_ops_team"
+    command: ["CreateTeam"]
+    args:
+      teamName: "OpsTeam-${TIMESTAMP}"
+      teamVault: '{}'
+    expect:
+      success: true
+  
+  - name: "create_ops_region"
+    command: ["CreateRegion"]
+    args:
+      regionName: "OpsRegion-${TIMESTAMP}"
+      regionVault: '{}'
+    expect:
+      success: true
+  
+  - name: "create_ops_bridge"
+    command: ["CreateBridge"]
+    args:
+      regionName: "OpsRegion-${TIMESTAMP}"
+      bridgeName: "OpsBridge-${TIMESTAMP}"
+      bridgeVault: '{}'
+    expect:
+      success: true
+  
+  - name: "create_ops_machine"
+    command: ["CreateMachine"]
+    args:
+      teamName: "OpsTeam-${TIMESTAMP}"
+      bridgeName: "OpsBridge-${TIMESTAMP}"
+      machineName: "OpsMachine-${TIMESTAMP}"
+      machineVault: '{"ip": "10.0.0.1"}'
+    expect:
+      success: true
+  
+  # Update machine status
+  - name: "update_machine_status"
+    command: ["UpdateMachineStatus"]
+    args:
+      teamName: "OpsTeam-${TIMESTAMP}"
+      machineName: "OpsMachine-${TIMESTAMP}"
+      machineStatus: "maintenance"
+    expect:
+      success: true
+  
+  # Get machine assignment status
+  - name: "get_assignment_status"
+    command: ["GetMachineAssignmentStatus"]
+    args:
+      teamName: "OpsTeam-${TIMESTAMP}"
+      machineName: "OpsMachine-${TIMESTAMP}"
+    expect:
+      success: true
+  
+  # Get available machines for clone
+  - name: "get_clone_machines"
+    command: ["GetAvailableMachinesForClone"]
+    args:
+      teamName: "OpsTeam-${TIMESTAMP}"
+    expect:
+      success: true
+  
+  # Clean up
+  - name: "delete_ops_machine"
+    command: ["DeleteMachine"]
+    args:
+      teamName: "OpsTeam-${TIMESTAMP}"
+      machineName: "OpsMachine-${TIMESTAMP}"
+    expect:
+      success: true
+  
+  - name: "delete_ops_bridge"
+    command: ["DeleteBridge"]
+    args:
+      regionName: "OpsRegion-${TIMESTAMP}"
+      bridgeName: "OpsBridge-${TIMESTAMP}"
+    expect:
+      success: true
+  
+  - name: "delete_ops_region"
+    command: ["DeleteRegion"]
+    args:
+      regionName: "OpsRegion-${TIMESTAMP}"
+    expect:
+      success: true
+  
+  - name: "delete_ops_team"
+    command: ["DeleteTeam"]
+    args:
+      teamName: "OpsTeam-${TIMESTAMP}"
+    expect:
+      success: true

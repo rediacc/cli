@@ -8,7 +8,7 @@ chain_export:
 
 tests:
   - name: "export_company_data"
-    command: ["company", "export-data"]
+    command: ["ExportCompanyData"]
     expect:
       success: true
     description: "Export all company data to JSON format - exports complete company configuration"

@@ -1,0 +1,60 @@
+name: "AUDIT_SIMPLE_TEST"
+description: "Simplified test for audit and monitoring endpoints"
+executor: "rediacc-cli.py"
+
+# Tests audit and monitoring endpoints
+
+tests:
+  # Get audit logs
+  - name: "get_audit_logs"
+    command: ["GetAuditLogs"]
+    args:
+      entityFilter: "Company"
+      maxRecords: 5
+    expect:
+      success: true
+  
+  # Get lookup data
+  - name: "get_lookup_data"
+    command: ["GetLookupData"]
+    expect:
+      success: true
+  
+  # Create entity for history tracking
+  - name: "create_history_team"
+    command: ["CreateTeam"]
+    args:
+      teamName: "HistoryTeam-${TIMESTAMP}"
+      teamVault: '{}'
+    expect:
+      success: true
+  
+  # Update to create history
+  - name: "rename_history_team"
+    command: ["UpdateTeamName"]
+    args:
+      currentTeamName: "HistoryTeam-${TIMESTAMP}"
+      newTeamName: "RenamedTeam-${TIMESTAMP}"
+    expect:
+      success: true
+  
+  # Get entity history (requires team ID which we don't have)
+  # Skip for now as it requires dynamic ID extraction
+  
+  # Get recent audit logs
+  - name: "get_recent_logs"
+    command: ["GetAuditLogs"]
+    args:
+      entityFilter: "Team"
+      maxRecords: 10
+    expect:
+      success: true
+      output_contains: "RenamedTeam-${TIMESTAMP}"
+  
+  # Clean up
+  - name: "delete_history_team"
+    command: ["DeleteTeam"]
+    args:
+      teamName: "RenamedTeam-${TIMESTAMP}"
+    expect:
+      success: true

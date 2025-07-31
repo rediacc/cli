@@ -8,11 +8,6 @@ chain_export:
 
 tests:
   - name: "get_company_vault"
-    command: ["list", "company-vault"]
-    expect:
-      success: true
-  
-  - name: "get_company_vaults"
-    command: ["company", "get-vaults"]
+    command: ["GetCompanyVault"]
     expect:
       success: true

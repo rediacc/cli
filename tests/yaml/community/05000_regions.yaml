@@ -8,13 +8,17 @@ chain_export:
 
 tests:
   - name: "create_region"
-    command: ["create", "region", "${config.test_data.region.name_pattern}"]
+    command: ["CreateRegion"]
     args:
-      vault: "{\"provider\": \"aws\", \"zone\": \"us-east-1\"}"
+      regionName: "${config.test_data.region.name_pattern}"
+      regionVault: "{\"provider\": \"aws\", \"zone\": \"us-east-1\"}"
     expect:
       success: true
   
   - name: "update_region_name"
-    command: ["update", "region", "${config.test_data.region.name_pattern}", "Updated-${config.test_data.region.name_pattern}"]
+    command: ["UpdateRegionName"]
+    args:
+      currentRegionName: "${config.test_data.region.name_pattern}"
+      newRegionName: "Updated-${config.test_data.region.name_pattern}"
     expect:
       success: true

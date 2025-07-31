@@ -1,0 +1,60 @@
+name: "PERMISSION_MANAGEMENT_SIMPLE_TEST"
+description: "Simplified test for permission management endpoints"
+executor: "rediacc-cli.py"
+
+# Setup authentication with test user
+setup:
+  - name: "create_test_company"
+    command: ["CreateNewCompany"]
+    args:
+      companyName: "PermTestCompany-${TIMESTAMP}"
+      email: "permtest-${TIMESTAMP}@test.com"
+      password: "Test@Pass123!"
+    expect:
+      success: true
+  
+  - name: "activate_account"
+    command: ["ActivateUserAccount"]
+    args:
+      email: "permtest-${TIMESTAMP}@test.com"
+      activationCode: "111111"
+      password: "Test@Pass123!"
+    expect:
+      success: true
+  
+  - name: "login_admin"
+    command: ["login"]
+    args:
+      email: "permtest-${TIMESTAMP}@test.com"
+      password: "Test@Pass123!"
+    expect:
+      success: true
+
+# Tests permission management endpoints
+# Note: Community edition doesn't support custom permission groups
+# Testing with built-in groups only
+
+tests:
+  # Get company permission groups
+  - name: "list_permission_groups"
+    command: ["GetCompanyPermissionGroups"]
+    expect:
+      success: true
+      output_contains: "Administrators"
+  
+  # Get details of built-in Administrators group
+  - name: "get_admin_group_details"
+    command: ["GetPermissionGroupDetails"]
+    args:
+      permissionGroupName: "Administrators"
+    expect:
+      success: true
+      output_contains: "CreateTeam"
+  
+  # Get details of built-in Users group
+  - name: "get_users_group_details"
+    command: ["GetPermissionGroupDetails"]
+    args:
+      permissionGroupName: "Users"
+    expect:
+      success: true

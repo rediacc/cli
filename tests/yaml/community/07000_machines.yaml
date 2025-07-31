@@ -10,20 +10,28 @@ chain_export:
 
 tests:
   - name: "create_team_for_machine"
-    command: ["create", "team", "MachineTestTeam-${TIMESTAMP}_${TEST_ID}"]
+    command: ["CreateTeam"]
     args:
-      vault: "{\"SSH_PRIVATE_KEY\": \"test-key\"}"
+      teamName: "MachineTestTeam-${TIMESTAMP}_${TEST_ID}"
+      teamVault: "{\"SSH_PRIVATE_KEY\": \"test-key\"}"
     expect:
       success: true
 
   - name: "create_machine"
-    command: ["create", "machine", "MachineTestTeam-${TIMESTAMP}_${TEST_ID}", "Updated-TestBridge-${TIMESTAMP}_${TEST_ID}", "${config.test_data.machine.name_pattern}"]
+    command: ["CreateMachine"]
     args:
-      vault: "{\"ip\": \"10.0.0.5\", \"user\": \"rediacc\", \"datastore\": \"/mnt/datastore\"}"
+      teamName: "MachineTestTeam-${TIMESTAMP}_${TEST_ID}"
+      bridgeName: "Updated-TestBridge-${TIMESTAMP}_${TEST_ID}"
+      machineName: "${config.test_data.machine.name_pattern}"
+      machineVault: "{\"ip\": \"10.0.0.5\", \"user\": \"rediacc\", \"datastore\": \"/mnt/datastore\"}"
     expect:
       success: true
   
   - name: "update_machine_name"
-    command: ["update", "machine", "MachineTestTeam-${TIMESTAMP}_${TEST_ID}", "${config.test_data.machine.name_pattern}", "Updated-${config.test_data.machine.name_pattern}"]
+    command: ["UpdateMachineName"]
+    args:
+      teamName: "MachineTestTeam-${TIMESTAMP}_${TEST_ID}"
+      currentMachineName: "${config.test_data.machine.name_pattern}"
+      newMachineName: "Updated-${config.test_data.machine.name_pattern}"
     expect:
       success: true

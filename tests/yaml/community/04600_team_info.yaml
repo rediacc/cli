@@ -9,13 +9,17 @@ chain_import:
 
 tests:
   - name: "list_team_machines"
-    command: ["list", "team-machines", "${chain.test_team_name}"]
+    command: ["GetTeamMachines"]
+    args:
+      teamName: "${chain.test_team_name}"
     expect:
       success: true
       # Should list all machines assigned to the team (likely empty for new team)
   
   - name: "list_team_members"
-    command: ["list", "team-members", "${chain.test_team_name}"]
+    command: ["GetTeamMembers"]
+    args:
+      teamName: "${chain.test_team_name}"
     expect:
       success: true
       output_contains:

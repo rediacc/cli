@@ -4,3 +4,4 @@
 # Core dependencies
 cryptography>=3.4.0
 requests>=2.25.0
+pyotp>=2.8.0  # For TOTP authentication in tests

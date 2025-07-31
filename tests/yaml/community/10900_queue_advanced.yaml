@@ -1,0 +1,82 @@
+name: "QUEUE_ADVANCED_TEST"
+description: "Test advanced queue operations - create and list queue items"
+executor: "rediacc-cli.py"
+
+# Tests queue management endpoints
+
+setup:
+  # Create test team
+  - name: "create_test_team"
+    command: ["CreateTeam"]
+    args:
+      teamName: "QueueTestTeam-${TIMESTAMP}"
+      teamVault: '{}'
+    expect:
+      success: true
+  
+  # Create test region
+  - name: "create_test_region"
+    command: ["CreateRegion"]
+    args:
+      regionName: "QueueTestRegion-${TIMESTAMP}"
+      regionVault: '{}'
+    expect:
+      success: true
+  
+  # Create test bridge
+  - name: "create_test_bridge"
+    command: ["CreateBridge"]
+    args:
+      regionName: "QueueTestRegion-${TIMESTAMP}"
+      bridgeName: "QueueTestBridge-${TIMESTAMP}"
+      bridgeVault: '{}'
+    expect:
+      success: true
+  
+  # Create test machine
+  - name: "create_test_machine"
+    command: ["CreateMachine"]
+    args:
+      teamName: "QueueTestTeam-${TIMESTAMP}"
+      bridgeName: "QueueTestBridge-${TIMESTAMP}"
+      machineName: "QueueTestMachine-${TIMESTAMP}"
+      machineVault: '{"ip": "10.0.0.1"}'
+    expect:
+      success: true
+
+tests:
+  # Get queue items for team (should be empty)
+  - name: "list_empty_queue_items"
+    command: ["GetTeamQueueItems"]
+    args:
+      teamName: "QueueTestTeam-${TIMESTAMP}"
+    expect:
+      success: true
+    description: "List queue items for the team (empty)"
+  
+  # Create a queue item
+  - name: "create_test_queue_item"
+    command: ["CreateQueueItem"]
+    args:
+      teamName: "QueueTestTeam-${TIMESTAMP}"
+      machineName: "QueueTestMachine-${TIMESTAMP}"
+      bridgeName: "QueueTestBridge-${TIMESTAMP}"
+      queueVault: '{"function": "test", "command": "echo test", "timeout": 300}'
+      priority: 2
+    expect:
+      success: true
+    description: "Create queue item for testing"
+  
+  # List queue items again to verify creation
+  - name: "verify_queue_creation"
+    command: ["GetTeamQueueItems"]
+    args:
+      teamName: "QueueTestTeam-${TIMESTAMP}"
+    expect:
+      success: true
+      output_contains: "test"
+    description: "Verify queue item was created"
+  
+  # Note: GetQueueItemsNext requires a bridge token, so we can't test it with user credentials
+  # Other queue operations like trace, cancel, retry, and complete
+  # require valid task IDs which are dynamically generated.

@@ -9,7 +9,7 @@ chain_import:
 
 tests:
   - name: "get_user_company"
-    command: ["list", "user-company"]
+    command: ["GetUserCompany"]
     expect:
       success: true
       output_contains:
@@ -17,7 +17,7 @@ tests:
       # Should return the current user's company information
   
   - name: "list_user_sessions"
-    command: ["list", "sessions"]
+    command: ["GetUserRequests"]
     expect:
       success: true
       output_contains:

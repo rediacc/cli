@@ -8,21 +8,21 @@ chain_export:
 
 tests:
   - name: "list_company_permission_groups"
-    command: ["permission", "list-groups"]
+    command: ["GetCompanyPermissionGroups"]
     expect:
       success: true
   
   - name: "list_company_regions"
-    command: ["list", "regions"]
+    command: ["GetCompanyRegions"]
     expect:
       success: true
   
   - name: "list_company_teams"
-    command: ["list", "teams"]
+    command: ["GetCompanyTeams"]
     expect:
       success: true
   
   - name: "list_company_users"
-    command: ["list", "users"]
+    command: ["GetCompanyUsers"]
     expect:
       success: true
