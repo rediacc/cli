@@ -1,41 +1,73 @@
-name: "COMPANY_OPERATIONS_TEST"
-description: "Test company import/export operations and privilege authentication"
-executor: "rediacc-cli.py"
-
-# Tests company data operations and privilege authentication
-
+name: COMPANY_OPERATIONS_TEST
+description: Test company import/export operations and privilege authentication
+executor: rediacc-cli.py
+setup:
+- name: create_test_company
+  command:
+  - CreateNewCompany
+  args:
+    companyName: CompanyOpsCompany-${TIMESTAMP}
+    email: companyops-admin-${TIMESTAMP}@test.com
+    password: ${config.test_data.company.admin_password}
+  expect:
+    success: true
+- name: activate_user_account
+  command:
+  - ActivateUserAccount
+  args:
+    email: companyops-admin-${TIMESTAMP}@test.com
+    activationCode: ${config.test_environment.activation_code}
+    password: ${config.test_data.company.admin_password}
+  expect:
+    success: true
+- name: login_as_admin
+  command:
+  - CreateAuthenticationRequest
+  args:
+    email: companyops-admin-${TIMESTAMP}@test.com
+    password: ${config.test_data.company.admin_password}
+  expect:
+    success: true
 tests:
-  # Export company data first
-  - name: "export_company_data_full"
-    command: ["ExportCompanyData"]
-    expect:
-      success: true
-    description: "Export all company data"
-  
-  # Test privilege authentication request (requires TFA code)
-  # NOTE: This test may pass if user doesn't have TFA enabled
-  - name: "privilege_auth_request"
-    command: ["PrivilegeAuthenticationRequest"]
-    args:
-      tfaCode: "123456"  # Will pass if TFA not enabled, fail if enabled
-    expect:
-      success: true  # May succeed if TFA not enabled
-    description: "Test privileged authentication (passes if TFA not enabled)"
-  
-  # Import company data (would need actual export data)
-  - name: "import_company_data_test"
-    command: ["ImportCompanyData"]
-    args:
-      companyDataJson: '{"version": "1.0", "company": {"name": "Test Import"}, "teams": [], "users": []}'  # Minimal test data
-      importMode: "skip"
-    expect:
-      success: false  # Will fail with invalid data format
-      error_contains: "Invalid JSON format"
-    description: "Test import company data with minimal data"
-  
-  # Export should still return original data
-  - name: "export_after_import"
-    command: ["ExportCompanyData"]
-    expect:
-      success: true
-    description: "Export company data after import attempt"
+- name: export_company_data_full
+  command:
+  - ExportCompanyData
+  expect:
+    success: true
+  description: Export all company data
+- name: privilege_auth_request
+  command:
+  - PrivilegeAuthenticationRequest
+  args:
+    tfaCode: '123456'
+  expect:
+    success: true
+  description: Test privileged authentication (passes if TFA not enabled)
+- name: import_company_data_test
+  command:
+  - ImportCompanyData
+  args:
+    companyDataJson: '{"version": "1.0", "company": {"name": "Test Import"}, "teams":
+      [], "users": []}'
+    importMode: skip
+  expect:
+    success: false
+  description: Test import company data with minimal data (expects failure due to invalid format)
+- name: export_after_import
+  command:
+  - ExportCompanyData
+  expect:
+    success: true
+  description: Export company data after import attempt
+- name: verify_cleanup_context
+  command:
+  - GetUserCompany
+  expect:
+    success: true
+  description: Verify we're still authenticated before logout
+- name: logout
+  command:
+  - DeleteUserRequest
+  expect:
+    success: true
+  description: Logout and invalidate authentication token

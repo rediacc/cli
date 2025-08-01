@@ -1,74 +1,108 @@
-name: "STORAGE_TEST"
-description: "Test storage creation, update, and deletion"
-executor: "rediacc-cli.py"
-
-# Import team name from previous test file
-chain_import:
-  - "test_team_name"
-
-# Export storage name for use in subsequent tests
+name: STORAGE_TEST
+description: Test storage creation, update, and deletion
+executor: rediacc-cli.py
+setup:
+- name: create_test_company
+  command:
+  - CreateNewCompany
+  args:
+    companyName: StorageCompany-${TIMESTAMP}
+    email: storage-admin-${TIMESTAMP}@test.com
+    password: ${config.test_data.company.admin_password}
+  expect:
+    success: true
+- name: activate_user_account
+  command:
+  - ActivateUserAccount
+  args:
+    email: storage-admin-${TIMESTAMP}@test.com
+    activationCode: ${config.test_environment.activation_code}
+    password: ${config.test_data.company.admin_password}
+  expect:
+    success: true
+- name: login_as_admin
+  command:
+  - CreateAuthenticationRequest
+  args:
+    email: storage-admin-${TIMESTAMP}@test.com
+    password: ${config.test_data.company.admin_password}
+  expect:
+    success: true
+- name: create_test_team
+  command:
+  - CreateTeam
+  args:
+    teamName: StorageTeam-${TIMESTAMP}
+    teamVault: '{}'
+  expect:
+    success: true
 chain_export:
-  test_storage_name: "${config.test_data.storage.name_pattern}"
-
+  test_storage_name: ${config.test_data.storage.name_pattern}
+  test_team_name: StorageTeam-${TIMESTAMP}
 tests:
-  - name: "create_storage"
-    command: ["CreateStorage"]
-    args:
-      teamName: "${chain.test_team_name}"
-      storageName: "${config.test_data.storage.name_pattern}"
-      storageVault: "{\"TYPE\": \"S3\", \"BUCKET\": \"test-bucket\", \"REGION\": \"us-east-1\", \"ACCESS_KEY_ID\": \"test-key\", \"SECRET_ACCESS_KEY\": \"test-secret\"}"
-    expect:
-      success: true
-  
-  - name: "create_backup_storage"
-    command: ["CreateStorage"]
-    args:
-      teamName: "${chain.test_team_name}"
-      storageName: "${config.test_data.storage.name_pattern}-backup"
-      storageVault: "{\"TYPE\": \"LOCAL\", \"PATH\": \"/mnt/backup\", \"MAX_SIZE\": \"100G\"}"
-    expect:
-      success: true
-  
-  - name: "list_team_storages"
-    command: ["GetTeamStorages"]
-    args:
-      teamName: "${chain.test_team_name}"
-    expect:
-      success: true
-      output_contains:
-        - "${config.test_data.storage.name_pattern}"
-        - "${config.test_data.storage.name_pattern}-backup"
-  
-  - name: "update_storage_name"
-    command: ["UpdateStorageName"]
-    args:
-      teamName: "${chain.test_team_name}"
-      currentStorageName: "${config.test_data.storage.name_pattern}"
-      newStorageName: "Updated-${config.test_data.storage.name_pattern}"
-    expect:
-      success: true
-  
-  # Note: update storage-vault command returns "Unsupported resource type" error
-  # This might be a plan limitation or backend issue
-  # - name: "update_storage_vault"
-  #   command: ["update", "storage-vault", "${chain.test_team_name}", "Updated-${config.test_data.storage.name_pattern}"]
-  #   args:
-  #     vault: "{\"TYPE\": \"S3\", \"BUCKET\": \"prod-bucket\", \"REGION\": \"us-west-2\", \"ACCESS_KEY_ID\": \"prod-key\", \"SECRET_ACCESS_KEY\": \"prod-secret\", \"ENCRYPTION\": \"AES256\"}"
-  #   expect:
-  #     success: true
-  
-  - name: "delete_backup_storage"
-    command: ["DeleteStorage"]
-    args:
-      teamName: "${chain.test_team_name}"
-      storageName: "${config.test_data.storage.name_pattern}-backup"
-    expect:
-      success: true
-  
-  - name: "delete_main_storage"
-    command: ["DeleteStorage"]
-    args:
-      teamName: "${chain.test_team_name}"
-      storageName: "Updated-${config.test_data.storage.name_pattern}"
-    expect:
-      success: true
+- name: create_storage
+  command:
+  - CreateStorage
+  args:
+    teamName: StorageTeam-${TIMESTAMP}
+    storageName: ${config.test_data.storage.name_pattern}
+    storageVault: '{"TYPE": "S3", "BUCKET": "test-bucket", "REGION": "us-east-1",
+      "ACCESS_KEY_ID": "test-key", "SECRET_ACCESS_KEY": "test-secret"}'
+  expect:
+    success: true
+- name: create_backup_storage
+  command:
+  - CreateStorage
+  args:
+    teamName: StorageTeam-${TIMESTAMP}
+    storageName: ${config.test_data.storage.name_pattern}-backup
+    storageVault: '{"TYPE": "LOCAL", "PATH": "/mnt/backup", "MAX_SIZE": "100G"}'
+  expect:
+    success: true
+- name: list_team_storages
+  command:
+  - GetTeamStorages
+  args:
+    teamName: StorageTeam-${TIMESTAMP}
+  expect:
+    success: true
+    output_contains:
+    - ${config.test_data.storage.name_pattern}
+    - ${config.test_data.storage.name_pattern}-backup
+- name: update_storage_name
+  command:
+  - UpdateStorageName
+  args:
+    teamName: StorageTeam-${TIMESTAMP}
+    currentStorageName: ${config.test_data.storage.name_pattern}
+    newStorageName: Updated-${config.test_data.storage.name_pattern}
+  expect:
+    success: true
+- name: delete_backup_storage
+  command:
+  - DeleteStorage
+  args:
+    teamName: StorageTeam-${TIMESTAMP}
+    storageName: ${config.test_data.storage.name_pattern}-backup
+  expect:
+    success: true
+- name: delete_main_storage
+  command:
+  - DeleteStorage
+  args:
+    teamName: StorageTeam-${TIMESTAMP}
+    storageName: Updated-${config.test_data.storage.name_pattern}
+  expect:
+    success: true
+- name: verify_cleanup_context
+  command:
+  - GetUserCompany
+  expect:
+    success: true
+  description: Verify we're still authenticated before logout
+- name: logout
+  command:
+  - DeleteUserRequest
+  expect:
+    success: true
+  description: Logout and invalidate authentication token

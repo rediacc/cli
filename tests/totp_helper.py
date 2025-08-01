@@ -10,7 +10,7 @@ import hashlib
 import hmac
 
 # Static salt used by the Rediacc system for password hashing
-STATIC_SALT = r'Rd!@cc111$ecur3P@$$w0rd$@lt#H@$h'
+STATIC_SALT = r'Rd!@cc111$ecur3P@$w0rd$@lt#H@$h'
 
 
 def hash_password(password):

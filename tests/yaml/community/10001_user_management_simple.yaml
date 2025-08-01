@@ -1,66 +1,70 @@
-name: "USER_MANAGEMENT_SIMPLE_TEST"
-description: "Simplified test for user management endpoints"
-executor: "rediacc-cli.py"
-
-# Setup authentication with test user
+name: USER_MANAGEMENT_SIMPLE_TEST
+description: Simplified test for user management endpoints
+executor: rediacc-cli.py
 setup:
-  - name: "create_test_company"
-    command: ["CreateNewCompany"]
-    args:
-      companyName: "UserMgmtTestCompany-${TIMESTAMP}"
-      email: "usertest-${TIMESTAMP}@test.com"
-      password: "Test@Pass123!"
-    expect:
-      success: true
-  
-  - name: "activate_account"
-    command: ["ActivateUserAccount"]
-    args:
-      email: "usertest-${TIMESTAMP}@test.com"
-      activationCode: "111111"
-      password: "Test@Pass123!"
-    expect:
-      success: true
-  
-  - name: "login_admin"
-    command: ["login"]
-    args:
-      email: "usertest-${TIMESTAMP}@test.com"
-      password: "Test@Pass123!"
-    expect:
-      success: true
-
-# Tests user management endpoints with minimal dependencies
-# Note: Testing team membership is limited as users are auto-added to teams
-# and cannot remove themselves
-
+- name: create_test_company
+  command:
+  - CreateNewCompany
+  args:
+    companyName: UserMgmtTestCompany-${TIMESTAMP}
+    email: usertest-${TIMESTAMP}@test.com
+    password: Test@Pass123!
+  expect:
+    success: true
+- name: activate_account
+  command:
+  - ActivateUserAccount
+  args:
+    email: usertest-${TIMESTAMP}@test.com
+    activationCode: '111111'
+    password: Test@Pass123!
+  expect:
+    success: true
+- name: login_admin
+  command:
+  - CreateAuthenticationRequest
+  args:
+    email: usertest-${TIMESTAMP}@test.com
+    password: Test@Pass123!
+  expect:
+    success: true
 tests:
-  # Test GetTeamMembers - user should be in Private Team automatically
-  - name: "verify_default_membership"
-    command: ["GetTeamMembers"]
-    args:
-      teamName: "Private Team"
-    expect:
-      success: true
-      output_contains: "usertest-${TIMESTAMP}@test.com"
-    description: "Verify user is automatically in Private Team"
-  
-  # Test creating a new team (user becomes member automatically)
-  - name: "create_custom_team"
-    command: ["CreateTeam"]
-    args:
-      teamName: "CustomTeam-${TIMESTAMP}"
-      teamVault: "{}"
-    expect:
-      success: true
-    description: "Create a new team"
-  
-  # Verify creator is automatically member of new team
-  - name: "verify_creator_membership"
-    command: ["GetTeamMembers"]
-    args:
-      teamName: "CustomTeam-${TIMESTAMP}"
-    expect:
-      success: true
-      output_contains: "usertest-${TIMESTAMP}@test.com"
-    description: "Verify creator is automatically team member"
+- name: verify_default_membership
+  command:
+  - GetTeamMembers
+  args:
+    teamName: Private Team
+  expect:
+    success: true
+    output_contains: usertest-${TIMESTAMP}@test.com
+  description: Verify user is automatically in Private Team
+- name: create_custom_team
+  command:
+  - CreateTeam
+  args:
+    teamName: CustomTeam-${TIMESTAMP}
+    teamVault: '{}'
+  expect:
+    success: true
+  description: Create a new team
+- name: verify_creator_membership
+  command:
+  - GetTeamMembers
+  args:
+    teamName: CustomTeam-${TIMESTAMP}
+  expect:
+    success: true
+    output_contains: usertest-${TIMESTAMP}@test.com
+  description: Verify creator is automatically team member
+- name: verify_cleanup_context
+  command:
+  - GetUserCompany
+  expect:
+    success: true
+  description: Verify we're still authenticated before logout
+- name: logout
+  command:
+  - DeleteUserRequest
+  expect:
+    success: true
+  description: Logout and invalidate authentication token

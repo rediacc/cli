@@ -1,69 +1,70 @@
-name: "ADVANCED_OPERATIONS_TEST"
-description: "Test advanced operations - exports and vaults"
-executor: "rediacc-cli.py"
-
-# Tests remaining advanced endpoints
-
+name: ADVANCED_OPERATIONS_TEST
+description: Test advanced operations - exports and vaults
+executor: rediacc-cli.py
 setup:
-  # Create test company
-  - name: "create_test_company"
-    command: ["CreateNewCompany"]
-    args:
-      companyName: "AdvOpsCompany-${TIMESTAMP}"
-      email: "advops-${TIMESTAMP}@test.com"
-      password: "Test@Pass123!"
-      subscriptionPlan: "PREMIUM"
-    expect:
-      success: true
-  
-  - name: "activate_account"
-    command: ["ActivateUserAccount"]
-    args:
-      email: "advops-${TIMESTAMP}@test.com"
-      activationCode: "111111"
-      password: "Test@Pass123!"
-    expect:
-      success: true
-  
-  - name: "login"
-    command: ["login"]
-    args:
-      email: "advops-${TIMESTAMP}@test.com"
-      password: "Test@Pass123!"
-    expect:
-      success: true
-
+- name: create_test_company
+  command:
+  - CreateNewCompany
+  args:
+    companyName: AdvOpsCompany-${TIMESTAMP}
+    email: advops-${TIMESTAMP}@test.com
+    password: Test@Pass123!
+    subscriptionPlan: PREMIUM
+  expect:
+    success: true
+- name: activate_account
+  command:
+  - ActivateUserAccount
+  args:
+    email: advops-${TIMESTAMP}@test.com
+    activationCode: '111111'
+    password: Test@Pass123!
+  expect:
+    success: true
+- name: login
+  command:
+  - CreateAuthenticationRequest
+  args:
+    email: advops-${TIMESTAMP}@test.com
+    password: Test@Pass123!
+  expect:
+    success: true
 tests:
-  # Test export company data
-  - name: "export_company_data"
-    command: ["ExportCompanyData"]
-    expect:
-      success: true
-    description: "Export company data"
-  
-  # Test GetCompanyVaults
-  - name: "get_company_vaults"
-    command: ["GetCompanyVaults"]
-    expect:
-      success: true
-    description: "Get company vaults"
-  
-  # Note: UpdateUserPassword requires special parameter format that doesn't match our test framework
-  # Note: UpdateUserAssignedPermissions also has parameter name mismatches
-  # Note: UpdateCompanyVaults expects JSON in prmUpdates parameter
-  
-  # Test GetCompanyPermissionGroups
-  - name: "get_permission_groups"
-    command: ["GetCompanyPermissionGroups"]
-    expect:
-      success: true
-      output_contains: "Administrators"
-    description: "Get company permission groups"
-  
-  # Test GetUserCompany
-  - name: "get_user_company"
-    command: ["GetUserCompany"]
-    expect:
-      success: true
-      output_contains: "AdvOpsCompany-${TIMESTAMP}"
-    description: "Get user's company information"
+- name: export_company_data
+  command:
+  - ExportCompanyData
+  expect:
+    success: true
+  description: Export company data
+- name: get_company_vaults
+  command:
+  - GetCompanyVaults
+  expect:
+    success: true
+  description: Get company vaults
+- name: get_permission_groups
+  command:
+  - GetCompanyPermissionGroups
+  expect:
+    success: true
+    output_contains: Administrators
+  description: Get company permission groups
+- name: get_user_company
+  command:
+  - GetUserCompany
+  expect:
+    success: true
+    output_contains: AdvOpsCompany-${TIMESTAMP}
+  description: Get user's company information
+- name: verify_cleanup_context
+  command:
+  - GetUserCompany
+  expect:
+    success: true
+  description: Verify we're still authenticated before logout
+- name: logout
+  command:
+  - DeleteUserRequest
+  expect:
+    success: true
+  description: Logout and invalidate authentication token
