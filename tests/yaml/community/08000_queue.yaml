@@ -1,31 +1,50 @@
-name: "QUEUE_TEST"
-description: "Test queue item creation"
-executor: "rediacc-cli.py"
-
-# Export data to chain context for use in subsequent test files
-chain_export:
-  test_queue_created: true
-
+name: QUEUE_TEST
+description: Test queue item creation
+executor: rediacc-cli.py
+setup:
+- name: create_test_company
+  command:
+  - CreateNewCompany
+  args:
+    companyName: QueueCompany-${TIMESTAMP}
+    email: queue-admin-${TIMESTAMP}@test.com
+    password: ${config.test_data.company.admin_password}
+  expect:
+    success: true
+- name: activate_user_account
+  command:
+  - ActivateUserAccount
+  args:
+    email: queue-admin-${TIMESTAMP}@test.com
+    activationCode: ${config.test_environment.activation_code}
+    password: ${config.test_data.company.admin_password}
+  expect:
+    success: true
+- name: login_as_admin
+  command:
+  - CreateAuthenticationRequest
+  args:
+    email: queue-admin-${TIMESTAMP}@test.com
+    password: ${config.test_data.company.admin_password}
+  expect:
+    success: true
 tests:
-  # Note: Queue creation test disabled due to parameter type issue
-  # The API expects priority as an integer but CLI passes it as string
-  # This causes "Parameter 'Priority' must be an integer" error
-  # Commenting out until parameter type handling is fixed
-  # - name: "create_queue_item"
-  #   command: ["CreateQueueItem"]
-  #   args:
-  #     teamName: "MachineTestTeam-${TIMESTAMP}_${TEST_ID}"
-  #     machineName: "Updated-TestMachine-${TIMESTAMP}_${TEST_ID}"
-  #     bridgeName: "Updated-TestBridge-${TIMESTAMP}_${TEST_ID}"
-  #     queueVault: "{\"function\": \"hello\", \"test\": \"true\"}"
-  #     priority: 3
-  #   expect:
-  #     success: true
-  
-  # Placeholder test to keep the test file valid
-  - name: "list_queue_items_placeholder"
-    command: ["GetTeamQueueItems"]
-    args:
-      teamName: "MachineTestTeam-${TIMESTAMP}_${TEST_ID}"
-    expect:
-      success: true
+- name: list_queue_items_placeholder
+  command:
+  - GetTeamQueueItems
+  args:
+    teamName: MachineTestTeam-${TIMESTAMP}_${TEST_ID}
+  expect:
+    success: true
+- name: verify_cleanup_context
+  command:
+  - GetUserCompany
+  expect:
+    success: true
+  description: Verify we're still authenticated before logout
+- name: logout
+  command:
+  - DeleteUserRequest
+  expect:
+    success: true
+  description: Logout and invalidate authentication token

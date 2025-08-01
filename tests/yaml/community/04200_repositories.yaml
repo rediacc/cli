@@ -1,66 +1,62 @@
-name: "REPOSITORIES_TEST"
-description: "Test repository listing - creation tests disabled due to backend SQL error"
-executor: "rediacc-cli.py"
-
-# Import team name from previous test file
-chain_import:
-  - "test_team_name"
-
-# Export repository name for use in subsequent tests
+name: REPOSITORIES_TEST
+description: Test repository listing - creation tests disabled due to backend SQL
+  error
+executor: rediacc-cli.py
+setup:
+- name: create_test_company
+  command:
+  - CreateNewCompany
+  args:
+    companyName: RepoCompany-${TIMESTAMP}
+    email: repo-admin-${TIMESTAMP}@test.com
+    password: ${config.test_data.company.admin_password}
+  expect:
+    success: true
+- name: activate_user_account
+  command:
+  - ActivateUserAccount
+  args:
+    email: repo-admin-${TIMESTAMP}@test.com
+    activationCode: ${config.test_environment.activation_code}
+    password: ${config.test_data.company.admin_password}
+  expect:
+    success: true
+- name: login_as_admin
+  command:
+  - CreateAuthenticationRequest
+  args:
+    email: repo-admin-${TIMESTAMP}@test.com
+    password: ${config.test_data.company.admin_password}
+  expect:
+    success: true
+- name: create_test_team
+  command:
+  - CreateTeam
+  args:
+    teamName: RepoTeam-${TIMESTAMP}
+    teamVault: '{}'
+  expect:
+    success: true
 chain_export:
-  test_repository_name: "${config.test_data.repository.name_pattern}"
-
+  test_repository_name: ${config.test_data.repository.name_pattern}
+  test_team_name: RepoTeam-${TIMESTAMP}
 tests:
-  # Note: Repository creation is failing with SQL error in the backend:
-  # "Implicit conversion from data type sql_variant to uniqueidentifier is not allowed"
-  # This appears to be a stored procedure issue, not a test issue.
-  # Keeping only the list test for now.
-  
-  - name: "list_team_repositories"
-    command: ["GetTeamRepositories"]
-    args:
-      teamName: "${chain.test_team_name}"
-    expect:
-      success: true
-  
-  # Commented out tests that depend on repository creation:
-  
-  # - name: "create_repository"
-  #   command: ["create", "repository", "${chain.test_team_name}", "${config.test_data.repository.name_pattern}"]
-  #   args:
-  #     vault: "{\"MAX_SIZE\": \"10G\", \"AUTO_BACKUP\": \"true\"}"
-  #   expect:
-  #     success: true
-  
-  # - name: "create_second_repository"
-  #   command: ["create", "repository", "${chain.test_team_name}", "${config.test_data.repository.name_pattern}-second"]
-  #   args:
-  #     vault: "{\"MAX_SIZE\": \"5G\", \"AUTO_BACKUP\": \"true\"}"
-  #   expect:
-  #     success: true
-  
-  # - name: "update_repository_name"
-  #   command: ["update", "repository", "${chain.test_team_name}", "${config.test_data.repository.name_pattern}", "Updated-${config.test_data.repository.name_pattern}"]
-  #   expect:
-  #     success: true
-  
-  # - name: "update_repository_vault"
-  #   command: ["update", "repository-vault", "${chain.test_team_name}", "Updated-${config.test_data.repository.name_pattern}"]
-  #   args:
-  #     vault: "{\"MAX_SIZE\": \"20G\", \"AUTO_BACKUP\": \"false\", \"RETENTION_DAYS\": \"30\"}"
-  #   expect:
-  #     success: true
-  
-  # - name: "delete_second_repository"
-  #   command: ["rm", "repository", "${chain.test_team_name}", "${config.test_data.repository.name_pattern}-second"]
-  #   args:
-  #     force: true
-  #   expect:
-  #     success: true
-  
-  # - name: "delete_parent_repository"
-  #   command: ["rm", "repository", "${chain.test_team_name}", "Updated-${config.test_data.repository.name_pattern}"]
-  #   args:
-  #     force: true
-  #   expect:
-  #     success: true
+- name: list_team_repositories
+  command:
+  - GetTeamRepositories
+  args:
+    teamName: RepoTeam-${TIMESTAMP}
+  expect:
+    success: true
+- name: verify_cleanup_context
+  command:
+  - GetUserCompany
+  expect:
+    success: true
+  description: Verify we're still authenticated before logout
+- name: logout
+  command:
+  - DeleteUserRequest
+  expect:
+    success: true
+  description: Logout and invalidate authentication token

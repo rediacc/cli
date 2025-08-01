@@ -1,127 +1,122 @@
-name: "USER_MANAGEMENT_TEST"
-description: "Test user management operations - create, update, deactivate users"
-executor: "rediacc-cli.py"
-
-# Tests user management endpoints
-
+name: USER_MANAGEMENT_TEST
+description: Test user management operations - create, update, deactivate users
+executor: rediacc-cli.py
 setup:
-  # Create test company with administrator access
-  - name: "create_test_company"
-    command: ["CreateNewCompany"]
-    args:
-      companyName: "UserMgmtCompany-${TIMESTAMP}"
-      email: "usermgmt-admin-${TIMESTAMP}@test.com"
-      password: "Test@Pass123!"
-      subscriptionPlan: "PREMIUM"
-    expect:
-      success: true
-  
-  - name: "activate_admin_account"
-    command: ["ActivateUserAccount"]
-    args:
-      email: "usermgmt-admin-${TIMESTAMP}@test.com"
-      activationCode: "111111"
-      password: "Test@Pass123!"
-    expect:
-      success: true
-  
-  - name: "login_as_admin"
-    command: ["login"]
-    args:
-      email: "usermgmt-admin-${TIMESTAMP}@test.com"
-      password: "Test@Pass123!"
-    expect:
-      success: true
-
+- name: create_test_company
+  command:
+  - CreateNewCompany
+  args:
+    companyName: UserMgmtCompany-${TIMESTAMP}
+    email: usermgmt-admin-${TIMESTAMP}@test.com
+    password: Test@Pass123!
+    subscriptionPlan: PREMIUM
+  expect:
+    success: true
+- name: activate_admin_account
+  command:
+  - ActivateUserAccount
+  args:
+    email: usermgmt-admin-${TIMESTAMP}@test.com
+    activationCode: '111111'
+    password: Test@Pass123!
+  expect:
+    success: true
+- name: login_as_admin
+  command:
+  - CreateAuthenticationRequest
+  args:
+    email: usermgmt-admin-${TIMESTAMP}@test.com
+    password: Test@Pass123!
+  expect:
+    success: true
 tests:
-  # Test CreateNewUser - DO NOT send activationCode, it's auto-generated
-  - name: "create_new_user"
-    command: ["CreateNewUser"]
-    args:
-      newUserEmail: "testuser1-${TIMESTAMP}@test.com"
-      newUserHash: "0x5994471abb01112afcc18159f6cc74b4f511b99806da59b3caf5a9c173cacfc5"  # sha256 hash
-    expect:
-      success: true
-    description: "Create a new user in the company"
-    chain:
-      - key: "test_user_email"
-        from: "result[0].UserEmail"
-  
-  # Test UpdateUserEmail
-  - name: "update_user_email"
-    command: ["UpdateUserEmail"]
-    args:
-      currentUserEmail: "testuser1-${TIMESTAMP}@test.com"
-      newUserEmail: "testuser1-updated-${TIMESTAMP}@test.com"
-    expect:
-      success: true
-    description: "Update user's email address"
-    chain:
-      - key: "updated_user_email"
-        from: "result[0].UserEmail"
-  
-  # Create another user for TFA testing
-  - name: "create_tfa_test_user"
-    command: ["CreateNewUser"]
-    args:
-      newUserEmail: "tfauser-${TIMESTAMP}@test.com"
-      newUserHash: "0x5994471abb01112afcc18159f6cc74b4f511b99806da59b3caf5a9c173cacfc5"
-    expect:
-      success: true
-    description: "Create user for TFA testing"
-  
-  # Test UpdateUserTFA (enable 2FA) - Note: this is complex as it requires user's own action
-  # Skipping TFA tests as they require the target user to be logged in
-  - name: "skip_tfa_enable"
-    command: ["GetCompanyUsers"]
-    args: {}
-    expect:
-      success: true
-    description: "Skip TFA enable test - requires user to be logged in"
-  
-  # Skip TFA disable test
-  - name: "skip_tfa_disable"
-    command: ["GetCompanyUsers"]
-    args: {}
-    expect:
-      success: true
-    description: "Skip TFA disable test - requires user to be logged in"
-  
-  # Test UpdateUserPassword (requires special handling due to parameter mismatch)
-  # Note: This endpoint expects prmUserNewPass as parameter, not newPassword
-  # Skipping due to parameter name mismatch in current implementation
-  
-  # Test UpdateUserToDeactivated - this endpoint has NO parameters
-  # It deactivates the currently logged in user, not a specified user
-  - name: "skip_deactivate_user"
-    command: ["GetCompanyUsers"]
-    args: {}
-    expect:
-      success: true
-    description: "Skip deactivate test - would deactivate current user"
-  
-  # Create a second admin
-  - name: "create_second_admin"
-    command: ["CreateNewUser"]
-    args:
-      newUserEmail: "admin2-${TIMESTAMP}@test.com"
-      newUserHash: "0x5994471abb01112afcc18159f6cc74b4f511b99806da59b3caf5a9c173cacfc5"
-    expect:
-      success: true
-    description: "Create a second admin user"
-  
-  # Skip activation - requires auto-generated activation code
-  - name: "skip_activate_second_admin"
-    command: ["GetCompanyUsers"]
-    args: {}
-    expect:
-      success: true
-    description: "Skip activation - would need auto-generated code"
-  
-  # Verify user creation and updates
-  - name: "list_company_users"
-    command: ["GetCompanyUsers"]
-    expect:
-      success: true
-      output_contains: ["usermgmt-admin-${TIMESTAMP}@test.com"]
-    description: "Verify all users were created successfully"
+- name: create_new_user
+  command:
+  - CreateNewUser
+  args:
+    newUserEmail: testuser1-${TIMESTAMP}@test.com
+    newUserHash: '0x5994471abb01112afcc18159f6cc74b4f511b99806da59b3caf5a9c173cacfc5'
+  expect:
+    success: true
+  description: Create a new user in the company
+  chain:
+  - key: test_user_email
+    from: result[0].UserEmail
+- name: update_user_email
+  command:
+  - UpdateUserEmail
+  args:
+    currentUserEmail: testuser1-${TIMESTAMP}@test.com
+    newUserEmail: testuser1-updated-${TIMESTAMP}@test.com
+  expect:
+    success: true
+  description: Update user's email address
+  chain:
+  - key: updated_user_email
+    from: result[0].UserEmail
+- name: create_tfa_test_user
+  command:
+  - CreateNewUser
+  args:
+    newUserEmail: tfauser-${TIMESTAMP}@test.com
+    newUserHash: '0x5994471abb01112afcc18159f6cc74b4f511b99806da59b3caf5a9c173cacfc5'
+  expect:
+    success: true
+  description: Create user for TFA testing
+- name: skip_tfa_enable
+  command:
+  - GetCompanyUsers
+  args: {}
+  expect:
+    success: true
+  description: Skip TFA enable test - requires user to be logged in
+- name: skip_tfa_disable
+  command:
+  - GetCompanyUsers
+  args: {}
+  expect:
+    success: true
+  description: Skip TFA disable test - requires user to be logged in
+- name: skip_deactivate_user
+  command:
+  - GetCompanyUsers
+  args: {}
+  expect:
+    success: true
+  description: Skip deactivate test - would deactivate current user
+- name: create_second_admin
+  command:
+  - CreateNewUser
+  args:
+    newUserEmail: admin2-${TIMESTAMP}@test.com
+    newUserHash: '0x5994471abb01112afcc18159f6cc74b4f511b99806da59b3caf5a9c173cacfc5'
+  expect:
+    success: true
+  description: Create a second admin user
+- name: skip_activate_second_admin
+  command:
+  - GetCompanyUsers
+  args: {}
+  expect:
+    success: true
+  description: Skip activation - would need auto-generated code
+- name: list_company_users
+  command:
+  - GetCompanyUsers
+  expect:
+    success: true
+    output_contains:
+    - usermgmt-admin-${TIMESTAMP}@test.com
+  description: Verify all users were created successfully
+- name: verify_cleanup_context
+  command:
+  - GetUserCompany
+  expect:
+    success: true
+  description: Verify we're still authenticated before logout
+- name: logout
+  command:
+  - DeleteUserRequest
+  expect:
+    success: true
+  description: Logout and invalidate authentication token

@@ -1,45 +1,70 @@
-name: "TEAM_INFO_TEST"
-description: "Test team information retrieval - machines, members, and queue items"
-executor: "rediacc-cli.py"
-
-# Import team name from previous test
-chain_import:
-  - "test_team_name"
-  - "admin_email"
-
+name: TEAM_INFO_TEST
+description: Test team information retrieval - machines, members, and queue items
+executor: rediacc-cli.py
+setup:
+- name: create_test_company
+  command:
+  - CreateNewCompany
+  args:
+    companyName: TeamInfoCompany-${TIMESTAMP}
+    email: teaminfo-admin-${TIMESTAMP}@test.com
+    password: ${config.test_data.company.admin_password}
+  expect:
+    success: true
+- name: activate_user_account
+  command:
+  - ActivateUserAccount
+  args:
+    email: teaminfo-admin-${TIMESTAMP}@test.com
+    activationCode: ${config.test_environment.activation_code}
+    password: ${config.test_data.company.admin_password}
+  expect:
+    success: true
+- name: login_as_admin
+  command:
+  - CreateAuthenticationRequest
+  args:
+    email: teaminfo-admin-${TIMESTAMP}@test.com
+    password: ${config.test_data.company.admin_password}
+  expect:
+    success: true
+- name: create_test_team
+  command:
+  - CreateTeam
+  args:
+    teamName: TeamInfoTest-${TIMESTAMP}
+    teamVault: '{"SSH_USER": "deploy", "SSH_PORT": "22"}'
+  expect:
+    success: true
+chain_export:
+  test_team_name: TeamInfoTest-${TIMESTAMP}
+  admin_email: teaminfo-admin-${TIMESTAMP}@test.com
 tests:
-  - name: "list_team_machines"
-    command: ["GetTeamMachines"]
-    args:
-      teamName: "${chain.test_team_name}"
-    expect:
-      success: true
-      # Should list all machines assigned to the team (likely empty for new team)
-  
-  - name: "list_team_members"
-    command: ["GetTeamMembers"]
-    args:
-      teamName: "${chain.test_team_name}"
-    expect:
-      success: true
-      output_contains:
-        - "${chain.admin_email}"
-      # Admin should be a member of the team
-  
-  # - name: "get_team_queue_items"
-  #   command: ["queue", "list"]
-  #   args:
-  #     team: "${chain.test_team_name}"
-  #   expect:
-  #     success: true
-  #     # Should list queue items for the team (likely empty for new team)
-  # 
-  # - name: "get_team_queue_items_all_statuses"
-  #   command: ["queue", "list"]
-  #   args:
-  #     team: "${chain.test_team_name}"
-  #     status: "ALL"
-  #   expect:
-  #     success: true
-  #     # Should list all queue items regardless of status
-  # Note: Commented out due to SQL error: "Implicit conversion from data type sql_variant to nvarchar is not allowed"
+- name: list_team_machines
+  command:
+  - GetTeamMachines
+  args:
+    teamName: TeamInfoTest-${TIMESTAMP}
+  expect:
+    success: true
+- name: list_team_members
+  command:
+  - GetTeamMembers
+  args:
+    teamName: TeamInfoTest-${TIMESTAMP}
+  expect:
+    success: true
+    output_contains:
+    - teaminfo-admin-${TIMESTAMP}@test.com
+- name: verify_cleanup_context
+  command:
+  - GetUserCompany
+  expect:
+    success: true
+  description: Verify we're still authenticated before logout
+- name: logout
+  command:
+  - DeleteUserRequest
+  expect:
+    success: true
+  description: Logout and invalidate authentication token

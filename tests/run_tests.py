@@ -1109,14 +1109,21 @@ def main():
     
     args = parser.parse_args()
     
-    runner = TestRunner(
-        config_file=args.config,
-        output_dir=args.output_dir,
-        stop_on_failure=args.stop_on_failure
-    )
-    success = runner.run_all_tests(args.pattern)
-    
-    sys.exit(0 if success else 1)
+    # Always use the fast test runner (in-memory API client)
+    try:
+        from run_tests_fast import FastYAMLTestRunner
+        runner = FastYAMLTestRunner()
+        if args.pattern:
+            # Run specific test file
+            results = runner.run_test_file(args.pattern)
+            success = all(test['success'] for test in results.get('test_results', []))
+        else:
+            # Run all tests
+            success = runner.run_all_tests()
+        sys.exit(0 if success else 1)
+    except ImportError:
+        print("Error: Fast test runner not available. Please ensure run_tests_fast.py is in the tests directory.")
+        sys.exit(1)
 
 if __name__ == '__main__':
     main()

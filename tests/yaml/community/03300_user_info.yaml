@@ -1,30 +1,60 @@
-name: "USER_INFO_TEST"
-description: "Test user information retrieval - company and requests"
-executor: "rediacc-cli.py"
-
-# Import user data from previous tests
-chain_import:
-  - "admin_email"
-  - "company_name"
-
+name: USER_INFO_TEST
+description: Test user information retrieval - company and requests
+executor: rediacc-cli.py
+setup:
+- name: create_test_company
+  command:
+  - CreateNewCompany
+  args:
+    companyName: UserInfoCompany-${TIMESTAMP}
+    email: userinfo-admin-${TIMESTAMP}@test.com
+    password: ${config.test_data.company.admin_password}
+  expect:
+    success: true
+- name: activate_user_account
+  command:
+  - ActivateUserAccount
+  args:
+    email: userinfo-admin-${TIMESTAMP}@test.com
+    activationCode: ${config.test_environment.activation_code}
+    password: ${config.test_data.company.admin_password}
+  expect:
+    success: true
+- name: login_as_admin
+  command:
+  - CreateAuthenticationRequest
+  args:
+    email: userinfo-admin-${TIMESTAMP}@test.com
+    password: ${config.test_data.company.admin_password}
+  expect:
+    success: true
+chain_export:
+  company_name: UserInfoCompany-${TIMESTAMP}
+  admin_email: userinfo-admin-${TIMESTAMP}@test.com
 tests:
-  - name: "get_user_company"
-    command: ["GetUserCompany"]
-    expect:
-      success: true
-      output_contains:
-        - "${chain.company_name}"
-      # Should return the current user's company information
-  
-  - name: "list_user_sessions"
-    command: ["GetUserRequests"]
-    expect:
-      success: true
-      output_contains:
-        - "${chain.admin_email}"
-      # Should show active sessions for the user
-  
-  # Note: auth status command requires a request_hash parameter
-  # and is used to check status of a specific authentication request,
-  # not general auth status. The list sessions command above
-  # provides current session information.
+- name: get_user_company
+  command:
+  - GetUserCompany
+  expect:
+    success: true
+    output_contains:
+    - UserInfoCompany-${TIMESTAMP}
+- name: list_user_sessions
+  command:
+  - GetUserRequests
+  expect:
+    success: true
+    output_contains:
+    - userinfo-admin-${TIMESTAMP}@test.com
+- name: verify_cleanup_context
+  command:
+  - GetUserCompany
+  expect:
+    success: true
+  description: Verify we're still authenticated before logout
+- name: logout
+  command:
+  - DeleteUserRequest
+  expect:
+    success: true
+  description: Logout and invalidate authentication token
