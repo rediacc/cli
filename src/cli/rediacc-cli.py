@@ -302,9 +302,22 @@ class APIClient:
             if 'nextRequestCredential' in row:
                 continue
             
+            # Get the vault content and CompanyCredential
+            vault_content = row.get('vaultContent') or row.get('VaultContent', '{}')
+            company_credential = row.get('companyCredential') or row.get('CompanyCredential')
+            
+            # Parse vault content and add COMPANY_ID
+            try:
+                vault_dict = json.loads(vault_content) if vault_content and vault_content != '-' else {}
+                if company_credential:
+                    vault_dict['COMPANY_ID'] = company_credential
+                vault_json = json.dumps(vault_dict)
+            except (json.JSONDecodeError, TypeError):
+                vault_json = vault_content
+            
             company_info = {
-                'companyName': row.get('companyName', ''),
-                'vaultCompany': row.get('vaultCompany') or row.get('VaultCompany', '')
+                'companyName': row.get('companyName') or row.get('CompanyName', ''),
+                'vaultCompany': vault_json
             }
             
             if company_info['companyName']:
@@ -571,10 +584,15 @@ class VaultBuilder:
             for i, table in enumerate(resultSets):
                 if table.get('data') and len(table['data']) > 0:
                     vault_data = table['data'][0]
-                    if 'vaultContent' in vault_data:
-                        vault_content = vault_data.get('vaultContent', '{}')
+                    if 'vaultContent' in vault_data or 'VaultContent' in vault_data:
+                        vault_content = vault_data.get('vaultContent') or vault_data.get('VaultContent', '{}')
+                        company_credential = vault_data.get('companyCredential') or vault_data.get('CompanyCredential')
                         try:
-                            self.company_vault = json.loads(vault_content) if vault_content and vault_content != '-' else {}
+                            parsed_vault = json.loads(vault_content) if vault_content and vault_content != '-' else {}
+                            # Add the CompanyCredential as COMPANY_ID to the vault data
+                            if company_credential:
+                                parsed_vault['COMPANY_ID'] = company_credential
+                            self.company_vault = parsed_vault
                             break
                         except json.JSONDecodeError:
                             self.company_vault = {}
