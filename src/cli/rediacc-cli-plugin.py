@@ -100,8 +100,10 @@ def list_plugins(args):
             conn.connection_info['host_entry'] = original_host_entry
         universal_user = conn.connection_info.get('universal_user', 'rediacc')
         
+        # Use the new plugin_socket_dir for listing sockets
+        plugin_socket_dir = conn.repo_paths.get('plugin_socket_dir', conn.repo_paths['mount_path'])
         ssh_cmd = ['ssh', *ssh_conn.ssh_opts.split(), conn.ssh_destination,
-                   f"sudo -u {universal_user} bash -c 'cd {conn.repo_paths['mount_path']} && ls -la *.sock 2>/dev/null || true'"]
+                   f"sudo -u {universal_user} bash -c 'cd {plugin_socket_dir} && ls -la *.sock 2>/dev/null || true'"]
         
         result = subprocess.run(ssh_cmd, capture_output=True, text=True)
         
@@ -120,7 +122,7 @@ def list_plugins(args):
             if not plugins: print(colorize("  No plugin sockets found", 'YELLOW'))
             else:
                 print(colorize("\nPlugin container status:", 'BLUE'))
-                docker_cmd = f"sudo -u {universal_user} bash -c 'export DOCKER_HOST=\"{conn.repo_paths['docker_socket']}\" && docker ps --format \"table {{{{.Names}}}}\\t{{{{.Image}}}}\\t{{{{.Status}}}}\" | grep plugin || true'"
+                docker_cmd = f"sudo -u {universal_user} bash -c 'export DOCKER_HOST=\"unix://{conn.repo_paths['docker_socket']}\" && docker ps --format \"table {{{{.Names}}}}\\t{{{{.Image}}}}\\t{{{{.Status}}}}\" | grep plugin || true'"
                 
                 ssh_cmd = ['ssh', *ssh_conn.ssh_opts.split(), conn.ssh_destination, docker_cmd]
                 
@@ -193,7 +195,8 @@ def connect_plugin(args):
     try:
         # Verify plugin socket exists
         universal_user = conn.connection_info.get('universal_user', 'rediacc')
-        socket_path = f"{conn.repo_paths['mount_path']}/{args.plugin}.sock"
+        plugin_socket_dir = conn.repo_paths.get('plugin_socket_dir', conn.repo_paths['mount_path'])
+        socket_path = f"{plugin_socket_dir}/{args.plugin}.sock"
         
         check_cmd = ['ssh', *ssh_tunnel_conn.ssh_opts.split(), conn.ssh_destination,
                      f"sudo -u {universal_user} test -S {socket_path} && echo 'exists' || echo 'not found'"]

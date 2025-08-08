@@ -10,7 +10,8 @@ from typing import Dict, Any, Optional, Tuple
 from core import (
     get_config_dir, get_main_config_file,
     TokenManager,
-    get, get_required, get_path
+    get, get_required, get_path,
+    is_encrypted
 )
 
 CLI_TOOL = os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))), 'cli', 'rediacc-cli.py')
@@ -123,14 +124,25 @@ def _retry_with_backoff(func, max_retries=3, initial_delay=0.5, error_msg="Opera
             error_exit(f"{error_msg} after {max_retries} attempts")
         return None
 
-def _get_universal_user_info() -> Tuple[Optional[str], Optional[str]]:
-    if not (config_path := get_main_config_file()).exists(): return None, None
+def _get_universal_user_info() -> Tuple[Optional[str], Optional[str], Optional[str]]:
+    """Get universal user info and company ID from config.
+    Returns: (universal_user_name, universal_user_id, company_id)
+    """
+    if not (config_path := get_main_config_file()).exists(): return None, None, None
     try:
         config = json.load(open(config_path, 'r'))
         if vault_company := config.get('vault_company'):
+            # Handle encrypted vault_company
+            if is_encrypted(vault_company):
+                # Can't decrypt without master password, return None for company_id
+                # The calling code should handle this gracefully
+                return None, None, None
             vault_data = json.loads(vault_company)
-            return vault_data.get('UNIVERSAL_USER_NAME'), vault_data.get('UNIVERSAL_USER_ID')
-    except: return None, None
+            # COMPANY_ID should match the CompanyCredential from the database
+            return (vault_data.get('UNIVERSAL_USER_NAME'), 
+                   vault_data.get('UNIVERSAL_USER_ID'),
+                   vault_data.get('COMPANY_ID'))
+    except: return None, None, None
 
 class _SuppressSysExit:
     def __init__(self): self.exit_called = False; self.original_exit = None
@@ -439,7 +451,7 @@ def get_machine_connection_info(machine_info: Dict[str, Any]) -> Dict[str, Any]:
     if not datastore:
         error_exit(f"Machine vault for '{machine_name}' is missing required 'datastore' field")
     
-    universal_user, universal_user_id = _get_universal_user_info()
+    universal_user, universal_user_id, _ = _get_universal_user_info()
     if not universal_user:
         print(colorize("Warning: Failed to read universal user from config", 'YELLOW'))
     
@@ -467,17 +479,51 @@ def get_machine_connection_info(machine_info: Dict[str, Any]) -> Dict[str, Any]:
         'host_entry': host_entry
     }
 
-def get_repository_paths(repo_guid: str, datastore: str, universal_user_id: str = None) -> Dict[str, str]:
+def get_crc32(text: str) -> str:
+    """Calculate CRC32 for a string, compatible with cksum command."""
+    import zlib
+    # Use zlib.crc32 which is cross-platform
+    crc = zlib.crc32(text.encode('utf-8')) & 0xffffffff
+    return str(crc)
+
+def get_repository_paths(repo_guid: str, datastore: str, universal_user_id: str = None, company_id: str = None) -> Dict[str, str]:
     base_path = f"{datastore}/{universal_user_id}" if universal_user_id else datastore
+    
+    # Add company_id to base path if provided
+    if company_id:
+        base_path = f"{base_path}/{company_id}"
+    
     docker_base = f"{base_path}/{INTERIM_FOLDER_NAME}/{repo_guid}/docker"
+    
+    # Calculate runtime paths for short socket locations
+    runtime_paths = {}
+    if universal_user_id and company_id:
+        company_crc = get_crc32(company_id)
+        repo_crc = get_crc32(repo_guid)
+        runtime_base = f"/var/run/rediacc/{universal_user_id}/{company_crc}/{repo_crc}"
+        runtime_paths = {
+            'runtime_base': runtime_base,
+            'docker_socket': f"{runtime_base}/docker.sock",
+            'plugin_socket_dir': f"{runtime_base}/plugins",
+            'docker_exec': f"{runtime_base}/exec",
+        }
+    else:
+        # Fallback to old paths if company_id not available
+        runtime_paths = {
+            'docker_socket': f"{docker_base}/docker.sock",
+            'plugin_socket_dir': f"{base_path}/{MOUNTS_FOLDER_NAME}/{repo_guid}",
+            'docker_exec': f"{docker_base}/exec",
+        }
     
     return {
         'mount_path': f"{base_path}/{MOUNTS_FOLDER_NAME}/{repo_guid}",
         'image_path': f"{base_path}/{REPOS_FOLDER_NAME}/{repo_guid}",
         'docker_folder': docker_base,
-        'docker_socket': f"{docker_base}/docker.sock",
+        'docker_socket': runtime_paths['docker_socket'],
         'docker_data': f"{docker_base}/data",
-        'docker_exec': f"{docker_base}/exec",
+        'docker_exec': runtime_paths['docker_exec'],
+        'plugin_socket_dir': runtime_paths['plugin_socket_dir'],
+        **runtime_paths  # Include all runtime paths
     }
 
 def initialize_cli_command(args, parser, requires_cli_tool=True):
@@ -655,9 +701,9 @@ class RepositoryConnection:
             print(colorize(f"Repository info: {json.dumps(self._repo_info, indent=2)}", 'YELLOW'))
             error_exit(f"Repository GUID not found for '{self.repo_name}'")
         
-        _, universal_user_id = _get_universal_user_info()
+        _, universal_user_id, company_id = _get_universal_user_info()
         
-        self._repo_paths = get_repository_paths(repo_guid, self._connection_info['datastore'], universal_user_id)
+        self._repo_paths = get_repository_paths(repo_guid, self._connection_info['datastore'], universal_user_id, company_id)
         
         print("Retrieving SSH key...")
         team_name = self._connection_info.get('team', self.team_name)
