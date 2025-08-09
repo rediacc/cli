@@ -1753,6 +1753,67 @@ class TerminalDetector:
             return f'/{drive}{rest}'
         return windows_path.replace('\\', '/')
     
+    def _get_env_exports(self):
+        """Get environment variable export statements for shell commands"""
+        import shlex
+        exports = []
+        # Only export critical environment variables that are set
+        important_vars = [
+            'SYSTEM_API_URL',
+            'SYSTEM_ADMIN_EMAIL', 
+            'SYSTEM_ADMIN_PASSWORD',
+            'SYSTEM_MASTER_PASSWORD',
+            'SYSTEM_HTTP_PORT',
+            'SYSTEM_COMPANY_ID'
+        ]
+        for var in important_vars:
+            value = os.environ.get(var)
+            if value:
+                # Properly escape the value for shell
+                exports.append(f'export {var}={shlex.quote(value)}')
+        
+        return ' && '.join(exports) + ' && ' if exports else ''
+    
+    def _get_env_exports_powershell(self):
+        """Get environment variable export statements for PowerShell"""
+        exports = []
+        important_vars = [
+            'SYSTEM_API_URL',
+            'SYSTEM_ADMIN_EMAIL', 
+            'SYSTEM_ADMIN_PASSWORD',
+            'SYSTEM_MASTER_PASSWORD',
+            'SYSTEM_HTTP_PORT',
+            'SYSTEM_COMPANY_ID'
+        ]
+        for var in important_vars:
+            value = os.environ.get(var)
+            if value:
+                # Escape for PowerShell
+                escaped_value = value.replace("'", "''")
+                exports.append(f"$env:{var}='{escaped_value}'")
+        
+        return '; '.join(exports) + '; ' if exports else ''
+    
+    def _get_env_exports_cmd(self):
+        """Get environment variable export statements for CMD"""
+        exports = []
+        important_vars = [
+            'SYSTEM_API_URL',
+            'SYSTEM_ADMIN_EMAIL', 
+            'SYSTEM_ADMIN_PASSWORD',
+            'SYSTEM_MASTER_PASSWORD',
+            'SYSTEM_HTTP_PORT',
+            'SYSTEM_COMPANY_ID'
+        ]
+        for var in important_vars:
+            value = os.environ.get(var)
+            if value:
+                # CMD doesn't need much escaping but quotes can be problematic
+                escaped_value = value.replace('"', '""')
+                exports.append(f'set {var}={escaped_value}')
+        
+        return ' && '.join(exports) + ' && ' if exports else ''
+    
     # Launch functions for each method
     def _launch_msys2_mintty(self, cli_dir: str, command: str, description: str):
         """Launch using MSYS2 mintty"""
@@ -1777,10 +1838,11 @@ class TerminalDetector:
             args = cmd_parts
         
         escaped_args = ' '.join(shlex.quote(arg) for arg in args)
-        bash_cmd = f'cd "{msys2_cli_dir}" && python3 {cli_script} {escaped_args}'
+        env_exports = self._get_env_exports()
+        bash_cmd = f'{env_exports}cd "{msys2_cli_dir}" && python3 {cli_script} {escaped_args}'
         
         # Launch maximized with -w max option
-        subprocess.Popen([mintty_exe, '-w', 'max', '-e', bash_exe, '-l', '-c', bash_cmd])
+        subprocess.Popen([mintty_exe, '-w', 'max', '-e', bash_exe, '-l', '-c', bash_cmd], env=os.environ.copy())
     
     def _launch_wsl_windows_terminal(self, cli_dir: str, command: str, description: str):
         """Launch using WSL with Windows Terminal"""
@@ -1806,8 +1868,9 @@ class TerminalDetector:
             cli_script = './rediacc'
             args = command
         
-        # Build the WSL command
-        wsl_command = f'cd {cli_dir} && {cli_script} {args}'
+        # Build the WSL command with environment exports
+        env_exports = self._get_env_exports()
+        wsl_command = f'{env_exports}cd {cli_dir} && python3 {cli_script} {args}'
         
         # Launch Windows Terminal maximized with WSL command
         wt_cmd = ['wt.exe', '--maximized', 'new-tab', 'wsl.exe', '-e', 'bash', '-c', wsl_command]
@@ -1818,7 +1881,7 @@ class TerminalDetector:
         except Exception:
             # Fallback to cmd.exe method if direct launch fails
             cmd_str = f'wt.exe --maximized new-tab wsl.exe -e bash -c "{wsl_command}"'
-            subprocess.Popen(['cmd.exe', '/c', cmd_str], cwd=os.environ.get('WINDIR', 'C:\\Windows'))
+            subprocess.Popen(['cmd.exe', '/c', cmd_str], cwd=os.environ.get('WINDIR', 'C:\\Windows'), env=os.environ.copy())
     
     def _launch_wsl_powershell(self, cli_dir: str, command: str, description: str):
         """Launch using WSL with PowerShell"""
@@ -1847,7 +1910,7 @@ class TerminalDetector:
         ps_cmd = f'Start-Process wsl -WindowStyle Maximized -ArgumentList "-e", "bash", "-c", "cd {cli_dir} && {cli_script} {args}"'
         # Set working directory to Windows directory to avoid UNC warning
         subprocess.Popen(['powershell.exe', '-Command', ps_cmd], 
-                        cwd=os.environ.get('WINDIR', 'C:\\Windows'))
+                        cwd=os.environ.get('WINDIR', 'C:\\Windows'), env=os.environ.copy())
     
     def _launch_wsl_cmd(self, cli_dir: str, command: str, description: str):
         """Launch using WSL with cmd.exe"""
@@ -1873,7 +1936,7 @@ class TerminalDetector:
         
         # Use start with /D to set working directory and /max to maximize
         cmd_cmd = f'start /max "WSL Terminal" /D "%WINDIR%" wsl bash -c "cd {cli_dir} && {cli_script} {args}"'
-        subprocess.Popen(['cmd.exe', '/c', cmd_cmd])
+        subprocess.Popen(['cmd.exe', '/c', cmd_cmd], env=os.environ.copy())
     
     def _launch_msys2_windows_terminal(self, cli_dir: str, command: str, description: str):
         """Launch using MSYS2 with Windows Terminal"""
@@ -1897,10 +1960,11 @@ class TerminalDetector:
             args = cmd_parts
         
         escaped_args = ' '.join(shlex.quote(arg) for arg in args)
-        bash_cmd = f'cd "{msys2_cli_dir}" && python3 {cli_script} {escaped_args}'
+        env_exports = self._get_env_exports()
+        bash_cmd = f'{env_exports}cd "{msys2_cli_dir}" && python3 {cli_script} {escaped_args}'
         wt_cmd = f'wt.exe --maximized new-tab "{bash_exe}" -l -c "{bash_cmd}"'
         
-        subprocess.Popen(['cmd.exe', '/c', wt_cmd])
+        subprocess.Popen(['cmd.exe', '/c', wt_cmd], env=os.environ.copy())
     
     def _launch_msys2_bash_direct(self, cli_dir: str, command: str, description: str):
         """Launch using MSYS2 bash directly (no new window)"""
@@ -1924,9 +1988,10 @@ class TerminalDetector:
             args = cmd_parts
         
         escaped_args = ' '.join(shlex.quote(arg) for arg in args)
-        bash_cmd = f'cd "{msys2_cli_dir}" && python3 {cli_script} {escaped_args}'
+        env_exports = self._get_env_exports()
+        bash_cmd = f'{env_exports}cd "{msys2_cli_dir}" && python3 {cli_script} {escaped_args}'
         
-        subprocess.Popen([bash_exe, '-l', '-c', bash_cmd])
+        subprocess.Popen([bash_exe, '-l', '-c', bash_cmd], env=os.environ.copy())
     
     def _launch_powershell_direct(self, cli_dir: str, command: str, description: str):
         """Launch using PowerShell directly"""
@@ -1946,9 +2011,10 @@ class TerminalDetector:
             args = cmd_parts
         
         escaped_args = ' '.join(f'"{arg}"' if ' ' in arg else arg for arg in args)
-        ps_cmd = f'Start-Process powershell -WindowStyle Maximized -ArgumentList "-Command", "cd \\"{cli_dir}\\"; python3 {cli_script} {escaped_args}"'
+        env_exports = self._get_env_exports_powershell()
+        ps_cmd = f'Start-Process powershell -WindowStyle Maximized -ArgumentList "-Command", "{env_exports}cd \\"{cli_dir}\\"; python3 {cli_script} {escaped_args}"'
         
-        subprocess.Popen(['powershell.exe', '-Command', ps_cmd])
+        subprocess.Popen(['powershell.exe', '-Command', ps_cmd], env=os.environ.copy())
     
     def _launch_cmd_direct(self, cli_dir: str, command: str, description: str):
         """Launch using cmd.exe directly"""
@@ -1968,53 +2034,61 @@ class TerminalDetector:
             args = cmd_parts
         
         escaped_args = ' '.join(f'"{arg}"' if ' ' in arg else arg for arg in args)
-        cmd_str = f'cd /d "{cli_dir}" && python {cli_script} {escaped_args}'
+        env_exports = self._get_env_exports_cmd()
+        cmd_str = f'{env_exports}cd /d "{cli_dir}" && python {cli_script} {escaped_args}'
         
         # Launch maximized
-        subprocess.Popen(['cmd.exe', '/c', f'start /max cmd /c {cmd_str}'])
+        subprocess.Popen(['cmd.exe', '/c', f'start /max cmd /c {cmd_str}'], env=os.environ.copy())
     
     def _launch_macos_terminal(self, cli_dir: str, command: str, description: str):
         """Launch using macOS Terminal.app"""
-        cmd_str = f'cd {cli_dir} && ./rediacc {command}'
+        env_exports = self._get_env_exports()
+        cmd_str = f'{env_exports}cd {cli_dir} && ./rediacc {command}'
         # Launch Terminal.app (maximizing is handled by macOS Window Manager)
         # Note: Terminal.app doesn't have a direct maximize flag
-        subprocess.Popen(['open', '-a', 'Terminal', '--', 'bash', '-c', cmd_str])
+        subprocess.Popen(['open', '-a', 'Terminal', '--', 'bash', '-c', cmd_str], env=os.environ.copy())
     
     def _launch_gnome_terminal(self, cli_dir: str, command: str, description: str):
         """Launch using GNOME Terminal"""
-        cmd_str = f'cd {cli_dir} && ./rediacc {command}'
+        env_exports = self._get_env_exports()
+        cmd_str = f'{env_exports}cd {cli_dir} && ./rediacc {command}'
         # Launch maximized
-        subprocess.Popen(['gnome-terminal', '--maximize', '--', 'bash', '-c', cmd_str])
+        subprocess.Popen(['gnome-terminal', '--maximize', '--', 'bash', '-c', cmd_str], env=os.environ.copy())
     
     def _launch_konsole(self, cli_dir: str, command: str, description: str):
         """Launch using KDE Konsole"""
-        cmd_str = f'cd {cli_dir} && ./rediacc {command}'
+        env_exports = self._get_env_exports()
+        cmd_str = f'{env_exports}cd {cli_dir} && ./rediacc {command}'
         # Launch maximized
-        subprocess.Popen(['konsole', '--fullscreen', '-e', 'bash', '-c', cmd_str])
+        subprocess.Popen(['konsole', '--fullscreen', '-e', 'bash', '-c', cmd_str], env=os.environ.copy())
     
     def _launch_xfce4_terminal(self, cli_dir: str, command: str, description: str):
         """Launch using XFCE4 Terminal"""
-        cmd_str = f'cd {cli_dir} && ./rediacc {command}'
+        env_exports = self._get_env_exports()
+        cmd_str = f'{env_exports}cd {cli_dir} && ./rediacc {command}'
         # Launch maximized
-        subprocess.Popen(['xfce4-terminal', '--maximize', '-e', f'bash -c "{cmd_str}"'])
+        subprocess.Popen(['xfce4-terminal', '--maximize', '-e', f'bash -c "{cmd_str}"'], env=os.environ.copy())
     
     def _launch_mate_terminal(self, cli_dir: str, command: str, description: str):
         """Launch using MATE Terminal"""
-        cmd_str = f'cd {cli_dir} && ./rediacc {command}'
+        env_exports = self._get_env_exports()
+        cmd_str = f'{env_exports}cd {cli_dir} && ./rediacc {command}'
         # Launch maximized
-        subprocess.Popen(['mate-terminal', '--maximize', '-e', f'bash -c "{cmd_str}"'])
+        subprocess.Popen(['mate-terminal', '--maximize', '-e', f'bash -c "{cmd_str}"'], env=os.environ.copy())
     
     def _launch_terminator(self, cli_dir: str, command: str, description: str):
         """Launch using Terminator"""
-        cmd_str = f'cd {cli_dir} && ./rediacc {command}'
+        env_exports = self._get_env_exports()
+        cmd_str = f'{env_exports}cd {cli_dir} && ./rediacc {command}'
         # Launch maximized
-        subprocess.Popen(['terminator', '--maximise', '-e', f'bash -c "{cmd_str}"'])
+        subprocess.Popen(['terminator', '--maximise', '-e', f'bash -c "{cmd_str}"'], env=os.environ.copy())
     
     def _launch_xterm(self, cli_dir: str, command: str, description: str):
         """Launch using XTerm"""
-        cmd_str = f'cd {cli_dir} && ./rediacc {command}'
+        env_exports = self._get_env_exports()
+        cmd_str = f'{env_exports}cd {cli_dir} && ./rediacc {command}'
         # Launch maximized with geometry
-        subprocess.Popen(['xterm', '-maximized', '-e', 'bash', '-c', cmd_str])
+        subprocess.Popen(['xterm', '-maximized', '-e', 'bash', '-c', cmd_str], env=os.environ.copy())
 
 
 # ============================================================================

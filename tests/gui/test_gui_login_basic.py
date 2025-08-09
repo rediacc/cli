@@ -364,6 +364,222 @@ class GUITestSuite:
         print("✓ Real login successful")
         return True
     
+    def test_login_and_terminal(self):
+        """Test login and then launch machine terminal from Tools menu"""
+        print("\nTest 6: Login and Terminal Launch")
+        print("-" * 40)
+        
+        # Check if we have real credentials
+        if not os.getenv('SYSTEM_ADMIN_EMAIL'):
+            print("⚠ No SYSTEM_ADMIN_EMAIL in .env, skipping terminal test")
+            return False
+        
+        if not os.getenv('SYSTEM_API_URL'):
+            print("⚠ No SYSTEM_API_URL in .env, skipping terminal test")
+            return False
+        
+        from gui_login import LoginWindow
+        import importlib.util
+        
+        print("Testing login and terminal launch workflow...")
+        
+        # Track results
+        login_success = [False]
+        main_window_created = [False]
+        terminal_launched = [False]
+        test_complete = [False]
+        main_window_instance = [None]
+        
+        def on_login_success():
+            """Handle successful login"""
+            login_success[0] = True
+            print("✓ Login successful, closing login window...")
+            login_window.root.quit()
+        
+        # Create login window
+        login_window = LoginWindow(on_login_success=on_login_success)
+        
+        # Get credentials
+        email = os.getenv('SYSTEM_ADMIN_EMAIL')
+        password = os.getenv('SYSTEM_ADMIN_PASSWORD')
+        
+        print(f"  Using email: {email}")
+        
+        def perform_login():
+            """Fill credentials and login"""
+            # Clear fields first
+            login_window.email_entry.delete(0, 'end')
+            login_window.password_entry.delete(0, 'end')
+            # Insert credentials
+            login_window.email_entry.insert(0, email)
+            login_window.password_entry.insert(0, password)
+            print("  Attempting login...")
+            login_window.login_button.invoke()
+            
+            # Check for success periodically
+            login_window.root.after(2000, check_login_status)
+        
+        def check_login_status():
+            """Check if login succeeded"""
+            if hasattr(login_window, 'status_label'):
+                status = login_window.status_label.cget('text')
+                if 'successful' in status.lower():
+                    print("  ✓ Login completed successfully")
+                    login_window.root.after(500, lambda: login_window.root.quit())
+                elif any(word in status.lower() for word in ['error', 'failed']):
+                    print(f"  ✗ Login failed: {status}")
+                    login_window.root.quit()
+                else:
+                    # Check again
+                    login_window.root.after(1000, check_login_status)
+        
+        # Start login process
+        login_window.root.after(500, perform_login)
+        login_window.root.after(10000, lambda: login_window.root.quit())  # Timeout
+        
+        # Run login window
+        login_window.root.mainloop()
+        
+        # Clean up login window
+        try:
+            login_window.root.destroy()
+        except:
+            pass
+        
+        if not login_success[0]:
+            print("✗ Login failed, cannot test terminal launch")
+            return False
+        
+        print("  Creating MainWindow...")
+        
+        # Import and create MainWindow
+        try:
+            spec = importlib.util.spec_from_file_location(
+                "rediacc_gui", 
+                Path(__file__).parent.parent.parent / 'src' / 'cli' / 'rediacc-gui.py'
+            )
+            rediacc_gui = importlib.util.module_from_spec(spec)
+            spec.loader.exec_module(rediacc_gui)
+            
+            # Create MainWindow
+            main_window = rediacc_gui.MainWindow()
+            main_window_instance[0] = main_window
+            main_window_created[0] = True
+            print("  ✓ MainWindow created")
+            
+            def interact_with_window():
+                """Interact with the main window after it's ready"""
+                print("  Selecting team and machine...")
+                
+                # Wait for teams to load
+                main_window.root.after(1000, select_team_and_machine)
+            
+            def select_team_and_machine():
+                """Select team and machine from dropdowns"""
+                # Check if teams are loaded
+                if hasattr(main_window, 'team_combo'):
+                    teams = main_window.team_combo['values']
+                    if teams and len(teams) > 0:
+                        # Select first team
+                        first_team = teams[0]
+                        main_window.team_combo.set(first_team)
+                        print(f"    Selected team: {first_team}")
+                        
+                        # Trigger team change to load machines
+                        main_window.on_team_changed()
+                        
+                        # Wait for machines to load
+                        main_window.root.after(2000, select_machine)
+                    else:
+                        print("    No teams available, waiting...")
+                        main_window.root.after(1000, select_team_and_machine)
+                else:
+                    print("    Team combo not ready, waiting...")
+                    main_window.root.after(1000, select_team_and_machine)
+            
+            def select_machine():
+                """Select machine from dropdown"""
+                if hasattr(main_window, 'machine_combo'):
+                    machines = main_window.machine_combo['values']
+                    if machines and len(machines) > 0:
+                        # Select first machine
+                        first_machine = machines[0]
+                        main_window.machine_combo.set(first_machine)
+                        print(f"    Selected machine: {first_machine}")
+                        
+                        # Now try to launch terminal
+                        main_window.root.after(1000, launch_terminal)
+                    else:
+                        print("    No machines available")
+                        finish_test()
+                else:
+                    print("    Machine combo not ready")
+                    finish_test()
+            
+            def launch_terminal():
+                """Try to launch machine terminal from Tools menu"""
+                print("  Attempting to launch machine terminal...")
+                
+                try:
+                    # Check if we have valid selection
+                    team = main_window.team_combo.get()
+                    machine = main_window.machine_combo.get()
+                    
+                    if team and machine:
+                        print(f"    Team: {team}, Machine: {machine}")
+                        
+                        # Actually launch the terminal - no mocking!
+                        print("    Launching real terminal window...")
+                        main_window.open_machine_terminal()
+                        
+                        terminal_launched[0] = True
+                        print(f"    ✓ Terminal launch command executed for: term --team \"{team}\" --machine \"{machine}\"")
+                        print("    ✓ Terminal window should be opening...")
+                        
+                        # Give time for terminal to open
+                        main_window.root.after(3000, lambda: print("    Terminal should be visible now"))
+                    else:
+                        print(f"    ✗ Invalid selection - Team: {team}, Machine: {machine}")
+                except Exception as e:
+                    print(f"    ✗ Error launching terminal: {e}")
+                
+                # Finish test after giving time to see the terminal
+                main_window.root.after(5000, finish_test)
+            
+            def finish_test():
+                """Complete the test"""
+                test_complete[0] = True
+                main_window.root.quit()
+            
+            # Start interaction after window is ready
+            main_window.root.after(2000, interact_with_window)
+            
+            # Set timeout
+            main_window.root.after(20000, lambda: main_window.root.quit())
+            
+            # Run main window
+            main_window.root.mainloop()
+            
+            # Clean up
+            try:
+                main_window.root.destroy()
+            except:
+                pass
+            
+        except Exception as e:
+            print(f"✗ Error creating MainWindow: {e}")
+            import traceback
+            traceback.print_exc()
+            return False
+        
+        # Check results
+        if main_window_created[0] and terminal_launched[0]:
+            print("✓ Login and terminal launch test passed")
+            return True
+        else:
+            print(f"✗ Test failed - MainWindow created: {main_window_created[0]}, Terminal launched: {terminal_launched[0]}")
+            return False
+    
     def run_all_tests(self):
         """Run all tests with hybrid window management"""
         print("=" * 60)
@@ -384,7 +600,8 @@ class GUITestSuite:
             ("Widget Presence", self.test_window_widgets),
             ("Login Form Interaction", self.test_login_form),
             ("Wrong Credentials", self.test_wrong_credentials),
-            ("Real Login", self.test_real_login)
+            ("Real Login", self.test_real_login),
+            ("Login and Terminal", self.test_login_and_terminal)
         ]
         
         results = []
