@@ -44,6 +44,11 @@ def test_real_login():
     suite.test_real_login()
 
 
+def test_login_and_terminal():
+    """Test login and launch machine terminal from Tools menu"""
+    suite.test_login_and_terminal()
+
+
 def teardown_module():
     """Clean up after all tests"""
     if suite.shared_window:

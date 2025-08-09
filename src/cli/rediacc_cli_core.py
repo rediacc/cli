@@ -91,8 +91,8 @@ def run_command(cmd, capture_output=True, check=True, quiet=False):
             error_exit(error_msg)
     
     try:
-        if not capture_output: return subprocess.run(cmd, check=check)
-        result = subprocess.run(cmd, capture_output=True, text=True, check=check)
+        if not capture_output: return subprocess.run(cmd, check=check, env=os.environ.copy())
+        result = subprocess.run(cmd, capture_output=True, text=True, check=check, env=os.environ.copy())
         if result.returncode != 0 and check:
             try:
                 error_data = json.loads(result.stdout)
