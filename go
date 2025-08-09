@@ -97,6 +97,85 @@ find_python() {
 # Get Python command
 PYTHON_CMD=$(find_python || echo "python3")
 
+# Function to install host system dependencies
+function host_setup() {
+    echo "Setting up host system for CLI development..."
+    
+    # Detect if we're in a codespace environment
+    local is_codespace=false
+    if [ "${CODESPACES:-}" = "true" ] || [ -d "/workspaces" ]; then
+        is_codespace=true
+        echo "Detected GitHub Codespaces environment"
+    fi
+    
+    # Check if sudo is available
+    if ! command -v sudo &> /dev/null; then
+        echo "❌ sudo is not available. Please install required packages manually:"
+        echo "  - python3 python3-pip python3-venv"
+        echo "  - python3-pytest python3-iniconfig python3-pluggy"
+        echo "  - python3-tk xvfb"
+        echo "  - rsync openssh-client curl jq"
+        exit 1
+    fi
+    
+    echo "Adding NOPASSWD for $USER (if not already set)..."
+    if ! sudo -n true 2>/dev/null; then
+        echo "$USER ALL=(ALL) NOPASSWD: ALL" | sudo tee /etc/sudoers.d/$USER
+    fi
+    
+    echo "Updating package list..."
+    sudo apt-get update
+    
+    echo "Installing core Python packages..."
+    sudo apt-get install -y \
+        python3 \
+        python3-pip \
+        python3-venv \
+        python3-dev
+    
+    echo "Installing Python testing packages..."
+    sudo apt-get install -y \
+        python3-pytest \
+        python3-iniconfig \
+        python3-pluggy \
+        python3-dotenv
+    
+    echo "Installing GUI testing dependencies..."
+    sudo apt-get install -y \
+        python3-tk \
+        xvfb \
+        x11-utils \
+        xfonts-base \
+        xfonts-75dpi \
+        xfonts-100dpi
+    
+    echo "Installing CLI utilities..."
+    sudo apt-get install -y \
+        rsync \
+        openssh-client \
+        curl \
+        jq \
+        git
+    
+    # Only install Docker in native environments
+    if [ "$is_codespace" = false ]; then
+        if ! command -v docker &> /dev/null; then
+            echo "Installing Docker..."
+            sudo apt-get install -y docker.io docker-compose
+            sudo usermod -aG docker $USER
+            echo "You may need to log out and back in for Docker group membership to take effect"
+        else
+            echo "Docker is already installed"
+        fi
+    else
+        echo "Docker is pre-installed in codespace environment"
+    fi
+    
+    echo ""
+    echo "✅ Host setup complete!"
+    echo "You can now run: ./go setup"
+}
+
 # Function to setup development environment
 function setup() {
     echo "Setting up CLI development environment..."
@@ -167,14 +246,63 @@ function test() {
     
     cd "$ROOT_DIR"
     
-    # Run test script if it exists
-    if [ -f "tests/run_tests.py" ]; then
-        echo "Running Python test suite..."
-        "$PYTHON_CMD" tests/run_tests.py "$@"
-    else
-        echo "⚠️  No tests found at tests/run_tests.py"
-    fi
+    # Check if specific test type is requested
+    local test_type="${1:-all}"
+    shift || true
     
+    case "$test_type" in
+        gui)
+            # Run GUI tests only
+            if [ -f "tests/gui/run_gui_tests.py" ]; then
+                echo "Running GUI test suite..."
+                "$PYTHON_CMD" tests/gui/run_gui_tests.py "$@"
+            else
+                echo "⚠️  No GUI tests found at tests/gui/run_gui_tests.py"
+            fi
+            ;;
+        api)
+            # Run API tests only
+            if [ -f "tests/run_tests.py" ]; then
+                echo "Running API test suite..."
+                "$PYTHON_CMD" tests/run_tests.py "$@"
+            else
+                echo "⚠️  No API tests found at tests/run_tests.py"
+            fi
+            ;;
+        all)
+            # Run all tests
+            local exit_code=0
+            
+            # Run API tests
+            if [ -f "tests/run_tests.py" ]; then
+                echo "Running API test suite..."
+                "$PYTHON_CMD" tests/run_tests.py "$@"
+                exit_code=$?
+            fi
+            
+            # Run GUI tests if display is available or in CI
+            if [ -f "tests/gui/run_gui_tests.py" ]; then
+                echo ""
+                echo "Running GUI test suite..."
+                "$PYTHON_CMD" tests/gui/run_gui_tests.py --headless "$@"
+                local gui_exit=$?
+                if [ $gui_exit -ne 0 ]; then
+                    exit_code=$gui_exit
+                fi
+            fi
+            
+            return $exit_code
+            ;;
+        *)
+            # Assume it's a specific test file
+            if [ -f "tests/run_tests.py" ]; then
+                echo "Running Python test suite..."
+                "$PYTHON_CMD" tests/run_tests.py "$test_type" "$@"
+            else
+                echo "⚠️  No tests found at tests/run_tests.py"
+            fi
+            ;;
+    esac
 }
 
 # Function to run linting
@@ -386,10 +514,13 @@ function version() {
 function show_help() {
     echo "Usage: ./go [COMMAND]"
     echo ""
-    echo "Development Commands:"
+    echo "Setup Commands:"
+    echo "  host_setup    Install system dependencies (apt packages)"
     echo "  setup         Setup development environment"
+    echo ""
+    echo "Development Commands:"
     echo "  dev           Run CLI in development mode"
-    echo "  test          Run test suite"
+    echo "  test [type]   Run test suite (all|api|gui) - default: all"
     echo "  lint          Run code linting"
     echo ""
     echo "Build Commands:"
@@ -405,8 +536,9 @@ function show_help() {
     echo "  help          Show this help message"
     echo ""
     echo "Quick Start:"
-    echo "  ./go setup    # Setup environment"
-    echo "  ./go dev      # Run CLI"
+    echo "  ./go host_setup  # Install system dependencies"
+    echo "  ./go setup       # Setup environment"
+    echo "  ./go dev         # Run CLI"
     echo ""
     echo "Docker Usage:"
     echo "  ./go docker-build          # Build image"
@@ -417,6 +549,9 @@ function show_help() {
 # Main function to handle commands
 main() {
     case "$1" in
+        host_setup)
+            host_setup
+            ;;
         setup)
             setup
             ;;
