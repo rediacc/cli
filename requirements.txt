@@ -5,3 +5,9 @@
 cryptography>=3.4.0
 requests>=2.25.0
 pyotp>=2.8.0  # For TOTP authentication in tests
+
+# Testing dependencies
+pytest>=7.0.0
+pytest-mock>=3.0.0
+# Note: pytest-tkinter is not available on PyPI
+# We'll create our own tkinter testing utilities

@@ -219,10 +219,19 @@ class APIClient:
                 
                 return result
         except urllib.error.HTTPError as e:
-            return {"error": f"API Error: {e.code} - {e.read().decode('utf-8') if e.fp else str(e)}", "status_code": e.code}
+            error_msg = f"API Error: {e.code} - {e.read().decode('utf-8') if e.fp else str(e)}"
+            # Always print debug info for 5xx errors
+            if e.code >= 500:
+                print(f"DEBUG: Endpoint URL: {url}", file=sys.stderr)
+                print(f"DEBUG: HTTP Error {e.code} occurred", file=sys.stderr)
+            return {"error": error_msg, "status_code": e.code}
         except urllib.error.URLError as e:
+            print(f"DEBUG: Connection error to endpoint: {url}", file=sys.stderr)
+            print(f"DEBUG: Error details: {str(e)}", file=sys.stderr)
             return {"error": f"Connection error: {str(e)}", "status_code": 500}
         except Exception as e:
+            print(f"DEBUG: Request error for endpoint: {url}", file=sys.stderr)
+            print(f"DEBUG: Error details: {str(e)}", file=sys.stderr)
             return {"error": f"Request error: {str(e)}", "status_code": 500}
     
     def auth_request(self, endpoint, email, pwd_hash, data=None):
@@ -3671,12 +3680,25 @@ def parse_dynamic_command(argv):
     return args, command
 
 def main():
+    # Debug output
+    if os.environ.get('REDIACC_DEBUG_ARGS'):
+        print(f"DEBUG: sys.argv = {sys.argv}", file=sys.stderr)
+    
     # Check if this might be a dynamic command
     if len(sys.argv) > 1:
-        # Get the first non-option argument
+        # Get the first non-option argument (skip option values)
         potential_command = None
+        skip_next = False
         for i, arg in enumerate(sys.argv[1:], 1):
-            if not arg.startswith('-'):
+            if skip_next:
+                skip_next = False
+                continue
+            if arg.startswith('-'):
+                # If this is an option that takes a value, skip the next arg
+                if arg in ['--output', '-o', '--token', '-t'] and i < len(sys.argv) - 1:
+                    skip_next = True
+            else:
+                # This is the command
                 potential_command = arg
                 break
         
@@ -3810,6 +3832,7 @@ def main():
             return 1
     
     auth_not_required_commands = {
+        ('login', None),  # Login doesn't require authentication
         ('user', 'activate'),
         ('create', 'company'),
         ('queue', 'list-functions')
