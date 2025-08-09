@@ -136,15 +136,25 @@ class MainWindow(BaseWindow):
         # Create menu bar after widgets
         self.create_menu_bar()
         
-        # Load initial data
-        self.load_teams()
+        # Schedule initial data load after mainloop starts to prevent blocking
+        self.root.after(100, self.load_initial_data)
         
         # Start auto-refresh for plugin connections
         self.auto_refresh_connections()
         
-        # Load plugins if we have a complete selection
-        current_selection = (self.team_combo.get(), self.machine_combo.get(), self.repo_combo.get())
-        if all(current_selection):
+        # Load plugins if we have a complete valid selection
+        team = self.team_combo.get()
+        machine = self.machine_combo.get()
+        repo = self.repo_combo.get()
+        
+        has_valid_selection = (
+            team and not self._is_placeholder_value(team, 'select_team') and
+            machine and not self._is_placeholder_value(machine, 'select_machine') and
+            repo and not self._is_placeholder_value(repo, 'select_repository')
+        )
+        
+        if has_valid_selection:
+            current_selection = (team, machine, repo)
             self.refresh_plugins()
             self.refresh_connections()
             self.plugins_loaded_for = current_selection
@@ -1139,10 +1149,14 @@ class MainWindow(BaseWindow):
         # Simple tooltip implementation - store reference for updates
         widget._tooltip = type('Tooltip', (), {'text': text, 'config': lambda self, **kw: setattr(self, 'text', kw.get('text', self.text))})()
     
+    def load_initial_data(self):
+        """Load initial data after mainloop starts"""
+        self.load_teams()
+    
     def load_teams(self):
         """Load available teams"""
         self.update_activity_status()
-        self.root.update()
+        # Removed root.update() to prevent issues
         
         result = self.runner.run_cli_command(['--output', 'json', 'list', 'teams'])
         if result['success'] and result.get('data'):
@@ -1161,6 +1175,8 @@ class MainWindow(BaseWindow):
         # Disconnect file browser SSH connection since team changed
         if hasattr(self, 'file_browser') and self.file_browser:
             self.file_browser.disconnect()
+            # Update Connect button state
+            self.file_browser.update_connect_button_state()
         # Update menu states
         self.update_menu_states()
     
@@ -1172,6 +1188,8 @@ class MainWindow(BaseWindow):
         # Disconnect file browser SSH connection since machine changed
         if hasattr(self, 'file_browser') and self.file_browser:
             self.file_browser.disconnect()
+            # Update Connect button state
+            self.file_browser.update_connect_button_state()
         # Update menu states
         self.update_menu_states()
     
@@ -1182,9 +1200,20 @@ class MainWindow(BaseWindow):
         # Disconnect file browser SSH connection since repository changed
         if hasattr(self, 'file_browser') and self.file_browser:
             self.file_browser.disconnect()
-        # Always refresh plugins when repository changes (not just when on plugin tab)
-        current_selection = (self.team_combo.get(), self.machine_combo.get(), self.repo_combo.get())
-        if all(current_selection):
+        
+        # Check if we have valid selections (not placeholders)
+        team = self.team_combo.get()
+        machine = self.machine_combo.get()
+        repo = self.repo_combo.get()
+        
+        has_valid_selection = (
+            team and not self._is_placeholder_value(team, 'select_team') and
+            machine and not self._is_placeholder_value(machine, 'select_machine') and
+            repo and not self._is_placeholder_value(repo, 'select_repository')
+        )
+        
+        if has_valid_selection:
+            current_selection = (team, machine, repo)
             self.refresh_plugins()
             self.refresh_connections()
             # If we're on the file browser tab, reconnect immediately (but not during startup)
@@ -1192,6 +1221,11 @@ class MainWindow(BaseWindow):
                 # This will trigger auto-connect in the file browser
                 self.file_browser.connect_if_needed()
             self.plugins_loaded_for = current_selection
+        
+        # Update Connect button state in file browser
+        if hasattr(self, 'file_browser') and self.file_browser:
+            self.file_browser.update_connect_button_state()
+        
         # Update menu states
         self.update_menu_states()
     
@@ -1212,7 +1246,7 @@ class MainWindow(BaseWindow):
             return
         
         self.activity_status_label.config(text=i18n.get('loading_machines', team=team))
-        self.root.update()
+        # Removed root.update() to prevent issues during initialization
         
         result = self.runner.run_cli_command(['--output', 'json', 'list', 'team-machines', team])
         if result['success'] and result.get('data'):
@@ -1248,7 +1282,7 @@ class MainWindow(BaseWindow):
             return
         
         self.activity_status_label.config(text=i18n.get('loading_repositories', team=team))
-        self.root.update()
+        # Removed root.update() to prevent issues during initialization
         
         # Get all team repositories
         result = self.runner.run_cli_command(['--output', 'json', 'list', 'team-repositories', team])
@@ -1542,7 +1576,13 @@ class MainWindow(BaseWindow):
         machine = self.machine_combo.get()
         repo = self.repo_combo.get()
         
-        if team and machine and repo:
+        has_valid_selection = (
+            team and not self._is_placeholder_value(team, 'select_team') and
+            machine and not self._is_placeholder_value(machine, 'select_machine') and
+            repo and not self._is_placeholder_value(repo, 'select_repository')
+        )
+        
+        if has_valid_selection:
             self.refresh_connections()
         
         # Schedule next refresh
@@ -2757,10 +2797,8 @@ def launch_gui():
         else:
             logger.debug("No valid token, showing login window...")
             def on_login_success():
-                logger.debug("Login successful, launching main window...")
-                nonlocal main_window_instance
-                main_window_instance = MainWindow()
-                main_window_instance.root.mainloop()
+                logger.debug("Login successful, closing login window...")
+                login_window.root.quit()  # Stop the login window's mainloop
             
             login_window = LoginWindow(on_login_success)
             # Make the main loop check for interrupts periodically
@@ -2771,6 +2809,12 @@ def launch_gui():
                     pass
             check_interrupt()
             login_window.root.mainloop()
+            
+            # After login window closes, destroy it and create main window
+            logger.debug("Login window closed, launching main window...")
+            login_window.root.destroy()
+            main_window_instance = MainWindow()
+            main_window_instance.root.mainloop()
     except Exception as e:
         logger.error(f"Critical error in main execution: {e}")
         import traceback

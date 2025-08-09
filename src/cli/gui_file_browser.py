@@ -223,6 +223,9 @@ class DualPaneFileBrowser:
         
         # Now that all widgets are created, refresh the local directory
         self.refresh_local()
+        
+        # Set initial Connect button state based on repository selection
+        self.update_connect_button_state()
     
     def create_local_pane(self):
         """Create the local file browser pane"""
@@ -1027,6 +1030,21 @@ class DualPaneFileBrowser:
         """Update transfer button states based on selections"""
         self.upload_button.config(state='normal' if self.local_selected and self.ssh_connection else 'disabled')
         self.download_button.config(state='normal' if self.remote_selected and self.ssh_connection else 'disabled')
+    
+    def update_connect_button_state(self):
+        """Update Connect button state based on repository selection"""
+        team = self.main_window.team_combo.get()
+        machine = self.main_window.machine_combo.get()
+        repo = self.main_window.repo_combo.get()
+        
+        # Enable Connect button only if we have valid selections
+        has_valid_selection = (
+            team and not self.main_window._is_placeholder_value(team, 'select_team') and
+            machine and not self.main_window._is_placeholder_value(machine, 'select_machine') and
+            repo and not self.main_window._is_placeholder_value(repo, 'select_repository')
+        )
+        
+        self.connect_button.config(state='normal' if has_valid_selection else 'disabled')
     
     def get_selected_paths(self, tree: ttk.Treeview, base_path) -> List[Tuple[str, bool]]:
         """Get selected file paths from tree"""
