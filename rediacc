@@ -124,6 +124,7 @@ print_help() {
     echo "    sync        File synchronization operations"
     echo "    term        Terminal access to repositories"
     echo "    plugin      Manage plugin connections (SSH tunnels)"
+    echo "    cli         Direct access to CLI (bypass wrapper)"
     echo "    gui [mode]  Launch Rediacc Desktop (graphical interface)"
     echo "                  native: Run natively (default)"
     echo "                  docker: Run in Docker (auto-builds)"
@@ -226,21 +227,37 @@ setup() {
 
 # Test function
 test_cli() {
-    echo -e "${GREEN}Running CLI tests...${NC}"
-    
     # Change to CLI root
     cd "$CLI_ROOT"
     
-    # Run test script if it exists
-    if [ -f "test.sh" ]; then
-        bash test.sh
-    elif [ -d "tests" ]; then
-        # Run Python tests
-        python3 -m pytest tests/ -v
-    else
-        echo -e "${YELLOW}No tests found${NC}"
-        echo "Create test.sh or add tests in tests/ directory"
-    fi
+    # Check for specific test type
+    case "$1" in
+        gui)
+            echo -e "${GREEN}Running GUI tests...${NC}"
+            shift
+            python3 -m pytest tests/gui/ -v "$@"
+            ;;
+        workflow)
+            echo -e "${GREEN}Running workflow tests...${NC}"
+            shift
+            python3 -m pytest tests/workflow/ -v "$@"
+            ;;
+        yaml)
+            echo -e "${GREEN}Running YAML tests...${NC}"
+            shift
+            python3 tests/run_tests.py "$@"
+            ;;
+        "")
+            echo -e "${GREEN}Running all CLI tests...${NC}"
+            # Run all tests
+            python3 -m pytest tests/ -v
+            ;;
+        *)
+            echo -e "${GREEN}Running CLI tests with options...${NC}"
+            # Pass arguments to pytest
+            python3 -m pytest tests/ "$@"
+            ;;
+    esac
 }
 
 # Release function
@@ -580,6 +597,12 @@ case "$1" in
         desktop_docker "$@"
         ;;
         
+    cli)
+        # Direct pass-through to CLI without token injection
+        shift
+        "$PYTHON_CMD" "$CLI_ROOT/src/cli/rediacc-cli.py" "$@"
+        ;;
+        
     version|--version)
         # Show version of main CLI
         "$PYTHON_CMD" "$CLI_ROOT/src/cli/rediacc-cli.py" --version
@@ -596,13 +619,15 @@ case "$1" in
         
     *)
         # Pass through to main CLI with token injection if needed
-        token_arg=""
         if [[ ! " $@ " =~ " --token " ]]; then
-            token=$(python3 -c "import sys; sys.path.insert(0, '$CLI_ROOT/src/modules'); from token_manager import TokenManager; print(TokenManager().get_token() or '')" 2>/dev/null)
+            token=$(python3 -c "import sys; sys.path.insert(0, '$CLI_ROOT/src/modules'); from token_manager import TokenManager; print(TokenManager().get_token() or '')" 2>/dev/null || true)
             if [ -n "$token" ]; then
-                token_arg="--token $token"
+                "$PYTHON_CMD" "$CLI_ROOT/src/cli/rediacc-cli.py" --token "$token" "$@"
+            else
+                "$PYTHON_CMD" "$CLI_ROOT/src/cli/rediacc-cli.py" "$@"
             fi
+        else
+            "$PYTHON_CMD" "$CLI_ROOT/src/cli/rediacc-cli.py" "$@"
         fi
-        "$PYTHON_CMD" "$CLI_ROOT/src/cli/rediacc-cli.py" $token_arg "$@"
         ;;
 esac

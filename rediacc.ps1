@@ -4,7 +4,7 @@
 [CmdletBinding()]
 param(
     [Parameter(Position=0)]
-    [ValidateSet('setup', 'login', 'sync', 'term', 'test', 'gui', 'help', 'version')]
+    [ValidateSet('setup', 'login', 'sync', 'term', 'test', 'gui', 'cli', 'workflow', 'help', 'version')]
     [string]$Command = 'help',
     
     [Parameter(Position=1, ValueFromRemainingArguments=$true)]
@@ -1008,7 +1008,8 @@ function Get-SavedToken {
 function Invoke-RediaccCLI {
     param(
         [string]$Tool,
-        [string[]]$Arguments
+        [string[]]$Arguments,
+        [switch]$NoTokenInjection
     )
     
     # Find Python using our enhanced detection
@@ -1033,16 +1034,26 @@ function Invoke-RediaccCLI {
         }
     }
     
-    # Auto-inject token if not provided and tool needs it
-    $needsToken = $Tool -in @("rediacc-cli-sync", "rediacc-cli-term")
-    if ($needsToken -and -not ($Arguments -contains "--token")) {
-        $token = Get-SavedToken
-        if ($token) {
-            $Arguments = @("--token", $token) + $Arguments
-        } else {
-            Write-ColorOutput "ERROR: No token provided and no saved token found" -Color Red
-            Write-ColorOutput "Please login first: .\rediacc.ps1 login" -Color Yellow
-            exit 1
+    # Auto-inject token if not provided and tool needs it (unless NoTokenInjection is set)
+    if (-not $NoTokenInjection) {
+        $needsToken = $Tool -in @("rediacc-cli-sync", "rediacc-cli-term")
+        if ($needsToken -and -not ($Arguments -contains "--token")) {
+            $token = Get-SavedToken
+            if ($token) {
+                $Arguments = @("--token", $token) + $Arguments
+            } else {
+                Write-ColorOutput "ERROR: No token provided and no saved token found" -Color Red
+                Write-ColorOutput "Please login first: .\rediacc.ps1 login" -Color Yellow
+                exit 1
+            }
+        }
+        
+        # Also inject token for main CLI if available and not provided
+        if ($Tool -eq "rediacc-cli" -and -not ($Arguments -contains "--token")) {
+            $token = Get-SavedToken
+            if ($token) {
+                $Arguments = @("--token", $token) + $Arguments
+            }
         }
     }
     
@@ -1067,6 +1078,8 @@ COMMANDS:
     term        Terminal access to repositories
     test        Test Windows compatibility
     gui         Launch graphical user interface
+    cli         Direct access to CLI (bypass wrapper)
+    workflow    High-level workflow commands
     help        Show this help message
 
 SETUP:
@@ -1093,6 +1106,16 @@ TEST INSTALLATION:
 
 GRAPHICAL USER INTERFACE:
     .\rediacc-cli.ps1 gui
+
+WORKFLOW COMMANDS:
+    .\rediacc-cli.ps1 workflow --help
+    .\rediacc-cli.ps1 workflow repo-create --team Default --name myrepo --machine server --size 1G
+    .\rediacc-cli.ps1 workflow hello-test --team Default --machine server --wait
+
+DIRECT CLI ACCESS:
+    .\rediacc-cli.ps1 cli <any-command> [arguments]
+    .\rediacc-cli.ps1 cli list teams
+    .\rediacc-cli.ps1 cli create machine --name prod-01 --team Production
 
 EXAMPLES:
     # First time setup
@@ -1153,6 +1176,16 @@ switch ($Command) {
         Invoke-RediaccCLI -Tool "rediacc-gui" -Arguments $Arguments
     }
     
+    'cli' {
+        # Direct pass-through to CLI without any wrapper logic
+        Invoke-RediaccCLI -Tool "rediacc-cli" -Arguments $Arguments -NoTokenInjection
+    }
+    
+    'workflow' {
+        # Pass workflow command to main CLI
+        Invoke-RediaccCLI -Tool "rediacc-cli" -Arguments (@('workflow') + $Arguments)
+    }
+    
     'version' {
         Invoke-RediaccCLI -Tool "rediacc-cli" -Arguments @('--version')
     }
@@ -1162,6 +1195,7 @@ switch ($Command) {
     }
     
     default {
-        Show-Help
+        # Pass through any unrecognized commands to main CLI
+        Invoke-RediaccCLI -Tool "rediacc-cli" -Arguments (@($Command) + $Arguments)
     }
 }
