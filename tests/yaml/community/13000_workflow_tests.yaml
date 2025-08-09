@@ -1,0 +1,43 @@
+# Workflow Command Tests
+# Tests high-level workflow commands including hello-test
+
+test_file: "13000_workflow_tests"
+description: "Test workflow commands for queue-based operations"
+
+tests:
+  - name: "Test workflow hello-test without wait"
+    command: ["workflow", "hello-test", "--team", "Private Team", "--machine", "rediacc11"]
+    output: "json"
+    expect:
+      success: true
+    
+  - name: "Test workflow hello-test with wait"
+    command: ["workflow", "hello-test", "--team", "Private Team", "--machine", "rediacc11", "--wait", "--poll-interval", "2", "--wait-timeout", "30"]
+    output: "json"
+    expect:
+      success: true
+    
+  - name: "Test workflow connectivity-test"
+    command: ["workflow", "connectivity-test", "--team", "Private Team", "--machines", "rediacc11"]
+    output: "json"
+    expect:
+      success: true
+    
+  - name: "Test workflow with invalid machine (negative test)"
+    command: ["workflow", "hello-test", "--team", "Private Team", "--machine", "nonexistent-machine-99999"]
+    output: "json"
+    expect:
+      success: false
+    
+  - name: "Test workflow with invalid team (negative test)"
+    command: ["workflow", "hello-test", "--team", "NonExistentTeam-99999", "--machine", "rediacc11"]
+    output: "json"
+    expect:
+      success: false
+    
+  - name: "List available workflow functions"
+    command: ["workflow", "--help"]
+    output: "text"
+    expect:
+      success: true
+      output_contains: ["repo-create", "hello-test", "machine-setup"]
