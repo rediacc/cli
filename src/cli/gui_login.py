@@ -153,7 +153,7 @@ class LoginWindow(BaseWindow):
         self.status_label.config(text=i18n.get('login_successful'), fg=COLOR_SUCCESS)
         # Unregister observer before closing
         i18n.unregister_observer(self.update_texts)
-        self.root.withdraw()
+        # Call the success callback which will handle closing the window
         self.on_login_success()
     
     def login_error(self, error: str):
