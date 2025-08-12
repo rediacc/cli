@@ -67,8 +67,8 @@ class MainWindow(BaseWindow):
         super().__init__(tk.Tk(), title)
         self.logger = get_logger(__name__)
         self.runner = SubprocessRunner()
-        # Start maximized
-        self._maximize_window()
+        # Center window at default size
+        self.center_window(MAIN_WINDOW_DEFAULT_SIZE[0], MAIN_WINDOW_DEFAULT_SIZE[1])
         
         # Initialize plugin tracking
         self.plugins_loaded_for = None
@@ -120,6 +120,7 @@ class MainWindow(BaseWindow):
         # Session tracking
         self.session_start_time = time.time()
         self.session_timer_id = None
+        self.auto_refresh_timer_id = None
         
         # Transfer tracking
         self.active_transfers = {}
@@ -1037,6 +1038,13 @@ class MainWindow(BaseWindow):
     
     def update_session_timer(self):
         """Update the session timer every second"""
+        # Safety check: ensure window still exists
+        try:
+            if not self.root.winfo_exists():
+                return
+        except:
+            return
+            
         elapsed = int(time.time() - self.session_start_time)
         hours = elapsed // 3600
         minutes = (elapsed % 3600) // 60
@@ -1062,6 +1070,13 @@ class MainWindow(BaseWindow):
     
     def animate_activity_spinner(self):
         """Animate the activity spinner"""
+        # Safety check: ensure window still exists
+        try:
+            if not self.root.winfo_exists():
+                return
+        except:
+            return
+            
         if self.activity_animation_active:
             self.activity_spinner_index = (self.activity_spinner_index + 1) % len(self.activity_spinner_chars)
             # Trigger activity status update to show new spinner frame
@@ -1570,6 +1585,13 @@ class MainWindow(BaseWindow):
     
     def auto_refresh_connections(self):
         """Auto-refresh connections every 5 seconds"""
+        # Safety check: ensure window still exists
+        try:
+            if not self.root.winfo_exists():
+                return
+        except:
+            return
+            
         # Always refresh connections to keep plugin menu updated
         # Check if we have a valid selection to refresh
         team = self.team_combo.get()
@@ -1586,7 +1608,7 @@ class MainWindow(BaseWindow):
             self.refresh_connections()
         
         # Schedule next refresh
-        self.root.after(AUTO_REFRESH_INTERVAL, self.auto_refresh_connections)
+        self.auto_refresh_timer_id = self.root.after(AUTO_REFRESH_INTERVAL, self.auto_refresh_connections)
     
     # Plugin menu helper methods
     def refresh_plugins_menu(self):
@@ -2721,6 +2743,22 @@ Version: 1.0.0
         # Cancel any background operations
         self.logger.info("Canceling background operations...")
         # The threads are daemon threads, so they'll be terminated automatically
+        
+        # Cancel timers
+        if self.session_timer_id:
+            self.root.after_cancel(self.session_timer_id)
+            self.session_timer_id = None
+            self.logger.debug("Canceled session timer")
+        
+        if self.auto_refresh_timer_id:
+            self.root.after_cancel(self.auto_refresh_timer_id)
+            self.auto_refresh_timer_id = None
+            self.logger.debug("Canceled auto-refresh timer")
+            
+        if self.activity_animation_id:
+            self.root.after_cancel(self.activity_animation_id)
+            self.activity_animation_id = None
+            self.logger.debug("Canceled activity animation timer")
         
         self.logger.info("Cleanup complete, exiting application")
         

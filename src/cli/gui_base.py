@@ -71,12 +71,30 @@ class BaseWindow:
     
     def center_window(self, width: int = 800, height: int = 600):
         """Center window on screen"""
+        # First set the geometry to ensure proper size
+        self.root.geometry(f'{width}x{height}')
+        
+        # Force update to calculate actual window size
         self.root.update_idletasks()
+        
+        # Get screen dimensions
         screen_width = self.root.winfo_screenwidth()
         screen_height = self.root.winfo_screenheight()
+        
+        # Calculate centered position
         x = (screen_width - width) // 2
         y = (screen_height - height) // 2
+        
+        # Set final geometry with position
         self.root.geometry(f'{width}x{height}+{x}+{y}')
+        
+        # Force another update to ensure proper placement
+        self.root.update_idletasks()
+    
+    def refresh_window(self):
+        """Force window to refresh its display"""
+        self.root.update_idletasks()
+        self.root.update()
     
     def on_closing(self):
         """Handle window close event"""
