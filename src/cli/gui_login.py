@@ -25,12 +25,23 @@ class LoginWindow(BaseWindow):
     def __init__(self, on_login_success: Callable):
         super().__init__(tk.Tk(), i18n.get('login_title'))
         self.on_login_success = on_login_success
-        self.center_window(LOGIN_WINDOW_SIZE[0], LOGIN_WINDOW_SIZE[1])
+        
+        # Set minimum window size to prevent issues
+        self.root.minsize(LOGIN_WINDOW_SIZE[0], LOGIN_WINDOW_SIZE[1])
         
         # Register for language changes
         i18n.register_observer(self.update_texts)
         
         self.create_widgets()
+        
+        # Force geometry update before centering
+        self.root.update_idletasks()
+        
+        # Center window after widgets are created
+        self.center_window(LOGIN_WINDOW_SIZE[0], LOGIN_WINDOW_SIZE[1])
+        
+        # Force another update to ensure proper rendering
+        self.root.update()
     
     def create_widgets(self):
         """Create login form widgets"""
@@ -103,6 +114,9 @@ class LoginWindow(BaseWindow):
         
         # Bind Enter key to login
         self.root.bind('<Return>', lambda e: self.login())
+        
+        # Force layout update
+        main_frame.update_idletasks()
         
         # Focus on email field
         self.email_entry.focus()
