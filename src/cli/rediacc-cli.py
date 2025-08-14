@@ -987,6 +987,11 @@ class CommandHandler:
         
         self.config_manager.set_token_with_auth(token, email, company, vault_company)
         
+        # Immediately fetch and update vault_company with COMPANY_ID after login
+        if company_info := self.client.get_company_vault():
+            if updated_vault := company_info.get('vaultCompany'):
+                self.config_manager.set_token_with_auth(token, email, company, updated_vault)
+        
         # Check if company has vault encryption enabled
         if vault_company and is_encrypted(vault_company):
             # Company requires master password
