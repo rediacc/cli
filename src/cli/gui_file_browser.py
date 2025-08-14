@@ -721,8 +721,11 @@ class DualPaneFileBrowser:
         def do_connect():
             try:
                 # Create repository connection
-                self.ssh_connection = RepositoryConnection(team, machine, repo)
-                self.ssh_connection.connect()
+                conn = RepositoryConnection(team, machine, repo)
+                conn.connect()
+                
+                # Assign to self only after successful connection
+                self.ssh_connection = conn
                 
                 # Get repository mount path
                 if self.ssh_connection and hasattr(self.ssh_connection, 'repo_paths') and self.ssh_connection.repo_paths:
