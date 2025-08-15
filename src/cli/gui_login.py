@@ -158,7 +158,8 @@ class LoginWindow(BaseWindow):
         """Perform login in background thread using direct API call"""
         try:
             # Set up config manager with master password
-            config_manager = SimpleConfigManager()
+            from core import get_default_config_manager
+            config_manager = get_default_config_manager()
             if master_password.strip():
                 config_manager.set_master_password(master_password)
             client.set_config_manager(config_manager)
@@ -183,7 +184,7 @@ class LoginWindow(BaseWindow):
                     return
                 
                 auth_data = response['resultSets'][0]['data'][0]
-                token = auth_data.get('nextRequestCredential')
+                token = auth_data.get('nextRequestToken')
                 is_authorized = auth_data.get('isAuthorized', True)
                 authentication_status = auth_data.get('authenticationStatus', '')
                 

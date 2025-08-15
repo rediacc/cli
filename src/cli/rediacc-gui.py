@@ -63,11 +63,6 @@ from gui_utilities import (
     COLOR_SUCCESS, COLOR_ERROR, COLOR_INFO, AUTO_REFRESH_INTERVAL
 )
 
-
-
-
-
-
 class MainWindow(BaseWindow):
     """Main window with Terminal and File Sync tools"""
     
@@ -81,6 +76,10 @@ class MainWindow(BaseWindow):
         
         # Use global API client instance
         self.api_client = client
+        
+        # Ensure config manager is set for token rotation
+        from core import get_default_config_manager
+        self.api_client.set_config_manager(get_default_config_manager())
         
         # Center window at default size
         self.center_window(MAIN_WINDOW_DEFAULT_SIZE[0], MAIN_WINDOW_DEFAULT_SIZE[1])

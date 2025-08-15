@@ -153,6 +153,8 @@ def check_token_validity() -> bool:
         logger.debug("Testing token validity with direct API call...")
         
         # Test token with a simple API call
+        # Ensure client has config manager for token rotation
+        client.ensure_config_manager()
         response = client.token_request('GetCompanyTeams', {})
         
         if response.get('error'):

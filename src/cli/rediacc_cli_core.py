@@ -91,15 +91,15 @@ def run_command(cmd, capture_output=True, check=True, quiet=False):
             error_exit(error_msg)
     
     try:
-        if not capture_output: return subprocess.run(cmd, check=check, env=os.environ.copy())
-        result = subprocess.run(cmd, capture_output=True, text=True, check=check, env=os.environ.copy())
+        if not capture_output: return subprocess.run(cmd, check=False, env=os.environ.copy())
+        result = subprocess.run(cmd, capture_output=True, text=True, check=False, env=os.environ.copy())
         if result.returncode != 0 and check:
-            try:
-                error_data = json.loads(result.stdout)
-                if error_data.get('error') and not quiet: 
-                    error_exit(f"API Error: {error_data['error']}")
-            except: pass
-            handle_error(result.stderr)
+                try:
+                    error_data = json.loads(result.stdout)
+                    if error_data.get('error') and not quiet: 
+                        error_exit(f"API Error: {error_data['error']}")
+                except: pass
+                handle_error(result.stderr)
         return result.stdout.strip() if result.returncode == 0 else None
     except subprocess.CalledProcessError as e:
         if check: handle_error(getattr(e, 'stderr', None))
@@ -127,6 +127,8 @@ def _retry_with_backoff(func, max_retries=3, initial_delay=0.5, error_msg="Opera
 def _create_api_client():
     """Create a minimal API client for fetching company vault"""
     from api_client import client
+    # Ensure the client has a config manager for token rotation
+    client.ensure_config_manager()
     return client
 
 def _get_universal_user_info() -> Tuple[Optional[str], Optional[str], Optional[str]]:
@@ -138,7 +140,10 @@ def _get_universal_user_info() -> Tuple[Optional[str], Optional[str], Optional[s
         try:
             config = json.load(open(config_path, 'r'))
             
-            if vault_company := config.get('vault_company'):
+            # Try to get vault_company from config, or initialize it
+            vault_company = config.get('vault_company')
+            
+            if vault_company:
                 # Handle encrypted vault_company
                 if not is_encrypted(vault_company):
                     try:
@@ -146,35 +151,82 @@ def _get_universal_user_info() -> Tuple[Optional[str], Optional[str], Optional[s
                         company_id = vault_data.get('COMPANY_ID')
                         universal_user_name = vault_data.get('UNIVERSAL_USER_NAME')
                         universal_user_id = vault_data.get('UNIVERSAL_USER_ID')
-                        
-                        # If we have valid values from config, use them
-                        if universal_user_name and universal_user_id:
-                            # If COMPANY_ID is missing, try to fetch it
-                            if not company_id and TokenManager.get_token():
-                                try:
-                                    from core import TokenManager as TM
-                                    client = _create_api_client()
-                                    response = client.token_request("GetCompanyVault", {})
-                                    
-                                    if not response.get('error'):
-                                        for table in response.get('resultSets', []):
-                                            if data := table.get('data', []):
-                                                for row in data:
-                                                    if 'companyCredential' in row or 'CompanyCredential' in row:
-                                                        company_id = row.get('companyCredential') or row.get('CompanyCredential')
-                                                        if company_id:
-                                                            # Update vault_company with COMPANY_ID
-                                                            vault_data['COMPANY_ID'] = company_id
-                                                            config['vault_company'] = json.dumps(vault_data)
-                                                            with open(config_path, 'w') as f:
-                                                                json.dump(config, f, indent=2)
-                                                            break
-                                except Exception:
-                                    pass  # Silently fail if COMPANY_ID cannot be fetched
-                            
-                            return (universal_user_name, universal_user_id, company_id)
                     except json.JSONDecodeError:
-                        pass  # Fall through to environment fallback
+                        vault_data = {}
+                        company_id = None
+                        universal_user_name = None
+                        universal_user_id = None
+                else:
+                    # If encrypted, we can't use it
+                    vault_data = {}
+                    company_id = None
+                    universal_user_name = None
+                    universal_user_id = None
+            else:
+                # No vault_company in config, initialize empty
+                vault_data = {}
+                company_id = None
+                universal_user_name = None
+                universal_user_id = None
+            
+            # If we don't have company_id, try to fetch it from API
+            if not company_id and TokenManager.get_token():
+                try:
+                    from core import TokenManager as TM
+                    client = _create_api_client()
+                    current_token = TokenManager.get_token()
+                    response = client.token_request("GetCompanyVault", {})
+                    new_token = TokenManager.get_token()
+                    
+                    # Force save the token to ensure subprocess gets the updated token
+                    if new_token != current_token:
+                        # Get current config to preserve other fields
+                        config_path = get_main_config_file()
+                        if config_path.exists():
+                            config = json.load(open(config_path, 'r'))
+                            # Ensure token is saved
+                            config['token'] = new_token
+                            with open(config_path, 'w') as f:
+                                json.dump(config, f, indent=2)
+                    
+                    if not response.get('error'):
+                        for table in response.get('resultSets', []):
+                            if data := table.get('data', []):
+                                for row in data:
+                                    if 'companyCredential' in row or 'CompanyCredential' in row:
+                                        company_id = row.get('companyCredential') or row.get('CompanyCredential')
+                                        
+                                        # Also parse vault content if available
+                                        if vault_content := row.get('vaultContent'):
+                                            try:
+                                                vault_from_api = json.loads(vault_content)
+                                                if not universal_user_name:
+                                                    universal_user_name = vault_from_api.get('UNIVERSAL_USER_NAME')
+                                                if not universal_user_id:
+                                                    universal_user_id = vault_from_api.get('UNIVERSAL_USER_ID')
+                                                # Merge API vault data with local
+                                                vault_data.update(vault_from_api)
+                                            except json.JSONDecodeError:
+                                                pass
+                                        
+                                        if company_id:
+                                            # Update vault_company with COMPANY_ID and merged data
+                                            vault_data['COMPANY_ID'] = company_id
+                                            config['vault_company'] = json.dumps(vault_data)
+                                            with open(config_path, 'w') as f:
+                                                json.dump(config, f, indent=2)
+                                            break
+                except Exception:
+                    pass  # Silently fail if COMPANY_ID cannot be fetched
+            
+            # If we still don't have the values, get from environment
+            if not universal_user_name or not universal_user_id:
+                from env_config import EnvironmentConfig
+                universal_user_name, universal_user_id, env_company_id = EnvironmentConfig.get_universal_user_info()
+                if not company_id:
+                    company_id = env_company_id
+            
+            return (universal_user_name, universal_user_id, company_id)
         except Exception:
             pass  # Fall through to environment fallback
     
@@ -238,10 +290,10 @@ def get_repository_info(team_name: str, repo_name: str) -> Dict[str, Any]:
             output = run_command(cmd, quiet=quiet)
             return output, ctx.exit_called
     
-    inspect_output = _retry_with_backoff(
-        try_inspect,
-        error_msg=f"Failed to inspect repository {repo_name}"
-    )
+    # Single attempt only, no retry
+    inspect_output, exit_called = try_inspect(quiet=False)
+    if not inspect_output or exit_called:
+        error_exit(f"Failed to inspect repository {repo_name}")
     
     try:
         inspect_data = json.loads(inspect_output)

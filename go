@@ -334,21 +334,26 @@ function lint() {
 function build() {
     echo "Building Rediacc CLI Docker image..."
     
-    # Default to no-cache
-    local no_cache="--no-cache"
+    # Default to using cache
+    local build_args=""
     
     # Parse arguments
     for arg in "$@"; do
         case $arg in
+            --no-cache)
+                build_args="$build_args --no-cache"
+                ;;
             --cache)
-                no_cache=""
-                echo "Building with Docker cache enabled"
+                # Cache is now default, kept for compatibility
+                ;;
+            *)
+                build_args="$build_args $arg"
                 ;;
         esac
     done
     
     # Use the existing build script
-    "$ROOT_DIR/scripts/build-docker.sh" $no_cache --version="$REDIACC_VERSION"
+    "$ROOT_DIR/scripts/build-docker.sh" $build_args --version="$REDIACC_VERSION"
 }
 
 # Function to build Docker image (alias for consistency)

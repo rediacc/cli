@@ -72,6 +72,12 @@ class EnvironmentConfig:
             return cls.DEFAULT_COMPANY_VAULT.copy()
         
         try:
+            # Handle escaped JSON strings (e.g., from shell escaping)
+            if vault_json.startswith('{') and '\\' in vault_json:
+                # Remove escape characters from the JSON string
+                vault_json = vault_json.replace('\\"', '"')
+                vault_json = vault_json.replace('\\\\', '\\')
+            
             # Parse the JSON string
             vault_data = json.loads(vault_json)
             
@@ -91,6 +97,7 @@ class EnvironmentConfig:
             # If parsing fails, return defaults
             import sys
             print(f"Warning: Failed to parse SYSTEM_COMPANY_VAULT_DEFAULTS: {e}", file=sys.stderr)
+            print(f"Debug: The string that failed to parse was: {repr(vault_json)}", file=sys.stderr)
             return cls.DEFAULT_COMPANY_VAULT.copy()
     
     @classmethod

@@ -292,7 +292,7 @@ def format_dynamic_tables(response, output_format='text', skip_fields=None):
     if len(resultSets) <= 1:
         return format_output("No records found", output_format)
     
-    skip_fields = skip_fields or ['nextRequestCredential', 'newUserHash']
+    skip_fields = skip_fields or ['nextRequestToken', 'newUserHash']
     
     def process_table_data(table):
         data = table.get('data', [])
@@ -753,7 +753,7 @@ class CommandHandler:
         if response.get('error'): print(format_output(None, self.output_format, None, f"Login failed: {response['error']}")); return 1
         if not (resultSets := response.get('resultSets', [])) or not resultSets[0].get('data'): print(format_output(None, self.output_format, None, "Login failed: Could not get authentication token")); return 1
         auth_data = resultSets[0]['data'][0]
-        if not (token := auth_data.get('nextRequestCredential')): print(format_output(None, self.output_format, None, "Login failed: Invalid authentication token")); return 1
+        if not (token := auth_data.get('nextRequestToken')): print(format_output(None, self.output_format, None, "Login failed: Invalid authentication token")); return 1
         
         is_authorized = auth_data.get('isAuthorized', True)
         authentication_status = auth_data.get('authenticationStatus', '')
@@ -781,7 +781,7 @@ class CommandHandler:
                     return 1
                 
                 auth_data = resultSets[0]['data'][0]
-                token = auth_data.get('nextRequestCredential')
+                token = auth_data.get('nextRequestToken')
                 if not token:
                     print(format_output(None, self.output_format, None, "TFA verification failed: Invalid authentication token"))
                     return 1
@@ -2428,7 +2428,7 @@ class CommandHandler:
                 continue
             
             # GetQueueItemTrace returns multiple resultSets
-            # We include all resultSets except table 0 (which contains nextRequestCredential)
+            # We include all resultSets except table 0 (which contains nextRequestToken)
             resultSets = response.get('resultSets', [])
             if len(resultSets) > 1:
                 # Get status from table 1 (queue details)

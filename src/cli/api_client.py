@@ -101,8 +101,10 @@ class SuperClient:
         if os.environ.get('REDIACC_DEBUG'):
             prefix = "[REQUESTS]" if self.use_requests else "[URLLIB]"
             print(f"DEBUG: {prefix} {method} {url}", file=sys.stderr)
-            if not self.use_requests:
-                print(f"DEBUG: Headers: {merged_headers}", file=sys.stderr)
+            print(f"DEBUG: Headers: {merged_headers}", file=sys.stderr)
+            if data:
+                import json
+                print(f"DEBUG: Payload: {json.dumps(data, indent=2)}", file=sys.stderr)
         
         if self.use_requests:
             return self._execute_with_requests(url, method, data, merged_headers, timeout)
@@ -227,6 +229,12 @@ class SuperClient:
         if config_manager and hasattr(config_manager, 'load_vault_info_from_config'):
             config_manager.load_vault_info_from_config()
     
+    def ensure_config_manager(self):
+        """Ensure a config manager is set, using default if none exists"""
+        if self.config_manager is None:
+            from core import get_default_config_manager
+            self.set_config_manager(get_default_config_manager())
+    
     def request(self, endpoint, data=None, headers=None):
         """Make a basic HTTP request to the API"""
         url, prepared_data, merged_headers = self._prepare_request_for_api(endpoint, data, headers)
@@ -308,24 +316,30 @@ class SuperClient:
             self._vault_warning_shown = True
     
     def _extract_token_from_response(self, response):
-        """Extract nextRequestCredential from various response structures"""
+        """Extract nextRequestToken from various response structures"""
         # Path 1: Standard success response structure
         if (resultSets := response.get('resultSets', [])) and resultSets:
             for result_set in resultSets:
                 if result_set and result_set.get('data'):
                     for data_row in result_set['data']:
                         if data_row and isinstance(data_row, dict):
-                            token = data_row.get('nextRequestCredential') or data_row.get('NextRequestCredential')
+                            token = data_row.get('nextRequestToken') or data_row.get('NextRequestToken')
                             if token:
                                 return token
         
         # Path 2: Direct response field (fallback)
-        return response.get('nextRequestCredential') or response.get('NextRequestCredential')
+        return response.get('nextRequestToken') or response.get('NextRequestToken')
     
     def _update_token_if_needed(self, response, current_token):
         """Update authentication token if a new one is provided in the response"""
-        if not (response and self.config_manager):
+        if not response:
             return
+        
+        # Ensure we have a config manager for token rotation
+        if not self.config_manager:
+            if os.environ.get('REDIACC_DEBUG'):
+                print("DEBUG: No config manager, initializing default for token rotation", file=sys.stderr)
+            self.ensure_config_manager()
         
         new_token = self._extract_token_from_response(response)
         
@@ -335,6 +349,21 @@ class SuperClient:
                 print(f"DEBUG: Found new token in response (length: {len(new_token)})", file=sys.stderr)
             else:
                 print("DEBUG: No new token found in response", file=sys.stderr)
+                # Show response structure for debugging
+                if response:
+                    import json
+                    print(f"DEBUG: Response structure: {json.dumps(response, indent=2)}", file=sys.stderr)
+        
+        # Debug: Check why token might not be updated
+        if os.environ.get('REDIACC_DEBUG'):
+            if not new_token:
+                print(f"DEBUG: Token update skipped - no new token found", file=sys.stderr)
+            elif new_token == current_token:
+                print(f"DEBUG: Token update skipped - new token same as current", file=sys.stderr)
+            elif os.environ.get('REDIACC_TOKEN'):
+                print(f"DEBUG: Token update skipped - REDIACC_TOKEN env var set", file=sys.stderr)
+            elif hasattr(self.config_manager, 'is_token_overridden') and self.config_manager.is_token_overridden():
+                print(f"DEBUG: Token update skipped - token was overridden", file=sys.stderr)
         
         if (not new_token or new_token == current_token or 
             os.environ.get('REDIACC_TOKEN') or 
@@ -342,7 +371,11 @@ class SuperClient:
              self.config_manager.is_token_overridden())):
             return
         
-        if TokenManager.get_token() == current_token:
+        stored_token = TokenManager.get_token()
+        if os.environ.get('REDIACC_DEBUG'):
+            print(f"DEBUG: Checking token update condition: stored={stored_token[:8] if stored_token else 'None'}... vs current={current_token[:8] if current_token else 'None'}...", file=sys.stderr)
+        
+        if stored_token == current_token:
             if os.environ.get('REDIACC_DEBUG'):
                 print(f"DEBUG: Updating token from {current_token[:8]}... to {new_token[:8]}...", file=sys.stderr)
             
@@ -401,7 +434,7 @@ class SuperClient:
                 continue
             
             row = data[0]
-            if 'nextRequestCredential' in row:
+            if 'nextRequestToken' in row:
                 continue
             
             # Get the vault content and CompanyCredential
@@ -549,7 +582,7 @@ class SuperClient:
     
     def _format_response(self, endpoint: str, raw_response: Dict[str, Any], args: Dict[str, Any]) -> Dict[str, Any]:
         """Format API response to match test expectations"""
-        # Extract data from resultSets format (skip first resultSet with nextRequestCredential)
+        # Extract data from resultSets format (skip first resultSet with nextRequestToken)
         data_rows = []
         if 'resultSets' in raw_response:
             for i, result_set in enumerate(raw_response['resultSets']):
