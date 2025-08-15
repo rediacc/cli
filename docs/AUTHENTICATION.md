@@ -69,7 +69,7 @@ Tokens are used in the following priority order:
 ### Token Rotation
 
 The Rediacc API uses automatic token rotation for security:
-- Each API response includes a new token (`nextRequestCredential`)
+- Each API response includes a new token (`nextRequestToken`)
 - The CLI automatically updates stored tokens after each request
 - Old tokens are invalidated after use
 

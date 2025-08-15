@@ -884,6 +884,12 @@ def get_default_token_manager() -> TokenManager:
     """Get the default token manager instance"""
     return TokenManager()
 
+def get_default_config_manager() -> TokenManager:
+    """Get the default config manager instance (TokenManager implements config manager interface)"""
+    config_manager = TokenManager()
+    config_manager.load_vault_info_from_config()
+    return config_manager
+
 
 # ============================================================================
 # I18N MODULE (from i18n.py)
@@ -1203,7 +1209,7 @@ class SubprocessRunner:
                     if not response_data and data.get('resultSets'):
                         response_data = next(
                             (table['data'] for table in data['resultSets']
-                             if table.get('data') and not any('nextRequestCredential' in row for row in table['data'])),
+                             if table.get('data') and not any('nextRequestToken' in row for row in table['data'])),
                             None
                         )
                     
@@ -2153,6 +2159,7 @@ __all__ = [
     # Token manager
     'TokenManager',
     'get_default_token_manager',
+    'get_default_config_manager',
     'is_encrypted',
     'decrypt_string',
     

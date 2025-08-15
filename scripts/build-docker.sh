@@ -5,16 +5,21 @@ set -e
 
 echo "Building Rediacc CLI Docker images..."
 
-# Default to no-cache
-no_cache="--no-cache"
+# Default to using cache for better performance
+no_cache=""
 version="dev"
 
 # Parse arguments
 for arg in "$@"; do
     case $arg in
+        --no-cache)
+            no_cache="--no-cache"
+            echo "Building without Docker cache"
+            ;;
         --cache)
+            # Kept for backward compatibility but cache is now default
             no_cache=""
-            echo "Building with Docker cache enabled"
+            echo "Building with Docker cache (default)"
             ;;
         --version=*)
             version="${arg#*=}"
@@ -24,9 +29,9 @@ for arg in "$@"; do
 done
 
 if [ -z "$no_cache" ]; then
-    :
+    echo "Building with cache enabled (default behavior)"
 else
-    echo "Building without cache (default behavior)"
+    echo "Building without cache (--no-cache specified)"
 fi
 
 # Get the CLI root directory (parent of scripts)
