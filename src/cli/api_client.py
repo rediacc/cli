@@ -21,7 +21,6 @@ from env_config import EnvironmentConfig
 
 
 class InMemoryTokenStore:
-    """In-memory token storage for test sessions"""
     def __init__(self):
         self.tokens: Dict[str, str] = {}
         self.active_session: Optional[str] = None
@@ -47,8 +46,6 @@ class InMemoryTokenStore:
 
 
 class SuperClient:
-    """Universal API client for all Rediacc components - Singleton pattern"""
-    
     PASSWORD_SALT = 'Rd!@cc111$ecur3P@$w0rd$@lt#H@$h'
     USER_AGENT = "rediacc-cli/1.0"
     MIDDLEWARE_ERROR_HELP = "\nPlease ensure the middleware is running.\nTry: ./go system up middleware"
@@ -83,18 +80,15 @@ class SuperClient:
         self.token_store = InMemoryTokenStore()
     
     def _should_use_requests(self):
-        """Auto-detect if we should use requests library (testing environment)"""
         if any(test_indicator in sys.argv[0] for test_indicator in ['test', 'pytest']):
             return True
         try:
             import requests
-            base_url = self.base_url
-            return any(indicator in base_url for indicator in ['localhost', '127.0.0.1', ':7322'])
+            return any(indicator in self.base_url for indicator in ['localhost', '127.0.0.1', ':7322'])
         except ImportError:
             return False
     
     def _execute_http_request(self, url, method='POST', data=None, headers=None, timeout=None):
-        """Central HTTP request function that handles both urllib and requests"""
         timeout = timeout or self.request_timeout
         merged_headers = {**self.base_headers, **(headers or {})}
         
@@ -103,55 +97,42 @@ class SuperClient:
             print(f"DEBUG: {prefix} {method} {url}", file=sys.stderr)
             print(f"DEBUG: Headers: {merged_headers}", file=sys.stderr)
             if data:
-                import json
                 print(f"DEBUG: Payload: {json.dumps(data, indent=2)}", file=sys.stderr)
         
-        if self.use_requests:
-            return self._execute_with_requests(url, method, data, merged_headers, timeout)
-        else:
-            return self._execute_with_urllib(url, method, data, merged_headers, timeout)
+        return (self._execute_with_requests(url, method, data, merged_headers, timeout) 
+               if self.use_requests else 
+               self._execute_with_urllib(url, method, data, merged_headers, timeout))
     
     def _execute_with_requests(self, url, method, data, headers, timeout):
-        """Execute HTTP request using requests library"""
         try:
-            response = getattr(self.session, method.lower())(
-                url, json=data, headers=headers, timeout=timeout)
+            response = getattr(self.session, method.lower())(url, json=data, headers=headers, timeout=timeout)
             return response.text, response.status_code, dict(response.headers)
         except self.requests.exceptions.RequestException as e:
             raise Exception(f"Request error: {str(e)}")
     
     def _execute_with_urllib(self, url, method, data, headers, timeout):
-        """Execute HTTP request using urllib"""
-        import urllib.request
-        import urllib.error
+        import urllib.request, urllib.error
         
         try:
             req_data = json.dumps(data).encode('utf-8') if data else None
             req = urllib.request.Request(url, data=req_data, headers=headers, method=method.upper())
             
             with urllib.request.urlopen(req, timeout=timeout) as response:
-                response_text = response.read().decode('utf-8')
-                status_code = response.getcode()
-                response_headers = dict(response.info())
-                return response_text, status_code, response_headers
+                return response.read().decode('utf-8'), response.getcode(), dict(response.info())
                 
         except urllib.error.HTTPError as e:
-            error_body = e.read().decode('utf-8') if e.fp else str(e)
-            raise Exception(f"HTTP {e.code}: {error_body}")
+            raise Exception(f"HTTP {e.code}: {e.read().decode('utf-8') if e.fp else str(e)}")
         except urllib.error.URLError as e:
             raise Exception(f"Connection error: {str(e)}")
         except Exception as e:
             raise Exception(f"Request error: {str(e)}")
     
     def _prepare_request_for_api(self, endpoint, data=None, headers=None):
-        """Prepare request data and headers for API calls"""
         url = f"{self.base_url}{self.api_prefix}/{endpoint}"
         prepared_data = data
         merged_headers = {**self.base_headers, **(headers or {})}
         
-        # Handle vault encryption if auto-detected
-        if (data and self.should_use_vault_encryption and 
-            (master_pwd := self.config_manager.get_master_password())):
+        if data and self.should_use_vault_encryption and (master_pwd := self.config_manager.get_master_password()):
             try:
                 from core import encrypt_vault_fields
                 prepared_data = encrypt_vault_fields(data, master_pwd)
@@ -162,22 +143,18 @@ class SuperClient:
         return url, prepared_data, merged_headers
     
     def _process_api_response(self, response_text, status_code):
-        """Process API response with error handling and vault decryption"""
         try:
             result = json.loads(response_text) if isinstance(response_text, str) else response_text
         except json.JSONDecodeError:
             return {"error": f"Invalid JSON response: {response_text}", "status_code": 500}
         
-        # Check for API failure
         if result.get('failure') and result.get('failure') != 0:
             errors = result.get('errors', [])
             error_msg = f"API Error: {'; '.join(errors) if errors else result.get('message', 'Request failed')}"
             result.update({'error': error_msg, 'status_code': result.get('failure', 400)})
             return result
         
-        # Handle vault decryption if auto-detected
-        if (self.should_use_vault_encryption and 
-            (master_pwd := self.config_manager.get_master_password())):
+        if self.should_use_vault_encryption and (master_pwd := self.config_manager.get_master_password()):
             try:
                 from core import decrypt_vault_fields
                 result = decrypt_vault_fields(result, master_pwd)
@@ -188,16 +165,13 @@ class SuperClient:
         return result
     
     def _handle_http_error(self, error_msg, status_code):
-        """Handle HTTP errors with consistent error response format"""
         try:
             error_json = json.loads(error_msg)
-            # Extract meaningful error message
-            error_text = (error_json.get('errors', []) and '; '.join(error_json['errors']) or
-                        error_json.get('message') or error_json.get('error'))
-            error_json.update({
-                'error': error_text or f"API Error: {status_code}",
-                'status_code': status_code
-            })
+            error_text = ('; '.join(error_json.get('errors', [])) or 
+                         error_json.get('message') or 
+                         error_json.get('error') or 
+                         f"API Error: {status_code}")
+            error_json.update({'error': error_text, 'status_code': status_code})
             return error_json
         except json.JSONDecodeError:
             return {"error": f"API Error: {status_code} - {error_msg}", "status_code": status_code}
@@ -219,9 +193,7 @@ class SuperClient:
     
     @property
     def should_use_vault_encryption(self):
-        """Auto-detect if vault encryption should be used based on master password"""
-        return (self.config_manager and 
-                self.config_manager.get_master_password() and
+        return (self.config_manager and self.config_manager.get_master_password() and
                 getattr(self.config_manager, 'has_vault_encryption', lambda: True)())
     
     def set_config_manager(self, config_manager):
@@ -230,13 +202,11 @@ class SuperClient:
             config_manager.load_vault_info_from_config()
     
     def ensure_config_manager(self):
-        """Ensure a config manager is set, using default if none exists"""
         if self.config_manager is None:
             from core import get_default_config_manager
             self.set_config_manager(get_default_config_manager())
     
     def request(self, endpoint, data=None, headers=None):
-        """Make a basic HTTP request to the API"""
         url, prepared_data, merged_headers = self._prepare_request_for_api(endpoint, data, headers)
         
         try:
@@ -246,16 +216,14 @@ class SuperClient:
             if status_code >= 500:
                 print(f"DEBUG: Endpoint URL: {url}\nDEBUG: HTTP Error {status_code} occurred", file=sys.stderr)
             
-            if status_code == 200:
-                return self._process_api_response(response_text, status_code)
-            else:
-                return self._handle_http_error(response_text, status_code)
+            return (self._process_api_response(response_text, status_code) 
+                   if status_code == 200 else 
+                   self._handle_http_error(response_text, status_code))
                 
         except Exception as e:
             error_msg = str(e)
             print(f"DEBUG: Request error for endpoint: {url}\nDEBUG: Error details: {error_msg}", file=sys.stderr)
             
-            # Extract status code from error message if available
             if "HTTP " in error_msg and ":" in error_msg:
                 try:
                     status_code = int(error_msg.split("HTTP ")[1].split(":")[0])
@@ -317,58 +285,48 @@ class SuperClient:
     
     def _extract_token_from_response(self, response):
         """Extract nextRequestToken from various response structures"""
-        # Path 1: Standard success response structure
-        if (resultSets := response.get('resultSets', [])) and resultSets:
-            for result_set in resultSets:
-                if result_set and result_set.get('data'):
-                    for data_row in result_set['data']:
-                        if data_row and isinstance(data_row, dict):
-                            token = data_row.get('nextRequestToken') or data_row.get('NextRequestToken')
-                            if token:
-                                return token
+        for result_set in response.get('resultSets', []):
+            if result_set and result_set.get('data'):
+                for data_row in result_set['data']:
+                    if data_row and isinstance(data_row, dict):
+                        if token := (data_row.get('nextRequestToken') or data_row.get('NextRequestToken')):
+                            return token
         
-        # Path 2: Direct response field (fallback)
         return response.get('nextRequestToken') or response.get('NextRequestToken')
     
     def _update_token_if_needed(self, response, current_token):
         """Update authentication token if a new one is provided in the response"""
-        if not response:
-            return
+        if not response: return
         
-        # Ensure we have a config manager for token rotation
         if not self.config_manager:
-            if os.environ.get('REDIACC_DEBUG'):
-                print("DEBUG: No config manager, initializing default for token rotation", file=sys.stderr)
+            if os.environ.get('REDIACC_DEBUG'): print("DEBUG: No config manager, initializing default for token rotation", file=sys.stderr)
             self.ensure_config_manager()
         
         new_token = self._extract_token_from_response(response)
         
-        # Debug logging for token extraction
         if os.environ.get('REDIACC_DEBUG'):
-            if new_token:
-                print(f"DEBUG: Found new token in response (length: {len(new_token)})", file=sys.stderr)
+            if new_token: print(f"DEBUG: Found new token in response (length: {len(new_token)})", file=sys.stderr)
             else:
                 print("DEBUG: No new token found in response", file=sys.stderr)
-                # Show response structure for debugging
                 if response:
                     import json
                     print(f"DEBUG: Response structure: {json.dumps(response, indent=2)}", file=sys.stderr)
         
-        # Debug: Check why token might not be updated
         if os.environ.get('REDIACC_DEBUG'):
-            if not new_token:
-                print(f"DEBUG: Token update skipped - no new token found", file=sys.stderr)
-            elif new_token == current_token:
-                print(f"DEBUG: Token update skipped - new token same as current", file=sys.stderr)
-            elif os.environ.get('REDIACC_TOKEN'):
-                print(f"DEBUG: Token update skipped - REDIACC_TOKEN env var set", file=sys.stderr)
-            elif hasattr(self.config_manager, 'is_token_overridden') and self.config_manager.is_token_overridden():
-                print(f"DEBUG: Token update skipped - token was overridden", file=sys.stderr)
+            skip_reasons = {
+                not new_token: "no new token found", 
+                new_token == current_token: "new token same as current",
+                bool(os.environ.get('REDIACC_TOKEN')): "REDIACC_TOKEN env var set",
+                hasattr(self.config_manager, 'is_token_overridden') and self.config_manager.is_token_overridden(): "token was overridden"
+            }
+            for condition, reason in skip_reasons.items():
+                if condition:
+                    print(f"DEBUG: Token update skipped - {reason}", file=sys.stderr)
+                    break
         
         if (not new_token or new_token == current_token or 
             os.environ.get('REDIACC_TOKEN') or 
-            (hasattr(self.config_manager, 'is_token_overridden') and 
-             self.config_manager.is_token_overridden())):
+            (hasattr(self.config_manager, 'is_token_overridden') and self.config_manager.is_token_overridden())):
             return
         
         stored_token = TokenManager.get_token()
@@ -376,29 +334,22 @@ class SuperClient:
             print(f"DEBUG: Checking token update condition: stored={stored_token[:8] if stored_token else 'None'}... vs current={current_token[:8] if current_token else 'None'}...", file=sys.stderr)
         
         if stored_token == current_token:
-            if os.environ.get('REDIACC_DEBUG'):
-                print(f"DEBUG: Updating token from {current_token[:8]}... to {new_token[:8]}...", file=sys.stderr)
+            if os.environ.get('REDIACC_DEBUG'): print(f"DEBUG: Updating token from {current_token[:8]}... to {new_token[:8]}...", file=sys.stderr)
             
-            # Get auth info for token update
             if hasattr(self.config_manager, 'config') and self.config_manager.config:
-                # CLI-style config manager
-                TokenManager.set_token(
-                    new_token,
-                    email=self.config_manager.config.get('email'),
-                    company=self.config_manager.config.get('company'),
-                    vault_company=self.config_manager.config.get('vault_company')
-                )
+                config = self.config_manager.config
+                TokenManager.set_token(new_token, 
+                                     email=config.get('email'),
+                                     company=config.get('company'),
+                                     vault_company=config.get('vault_company'))
                 if os.environ.get('REDIACC_DEBUG'):
                     print("DEBUG: Token updated via CLI config manager", file=sys.stderr)
             else:
-                # GUI-style config manager
                 auth_info = TokenManager.get_auth_info()
-                TokenManager.set_token(
-                    new_token,
-                    email=auth_info.get('email') if auth_info else None,
-                    company=auth_info.get('company') if auth_info else None,
-                    vault_company=auth_info.get('vault_company') if auth_info else None
-                )
+                TokenManager.set_token(new_token, 
+                                     email=auth_info.get('email') if auth_info else None,
+                                     company=auth_info.get('company') if auth_info else None,
+                                     vault_company=auth_info.get('vault_company') if auth_info else None)
                 if os.environ.get('REDIACC_DEBUG'):
                     print("DEBUG: Token updated via GUI auth info", file=sys.stderr)
         elif os.environ.get('REDIACC_DEBUG'):
@@ -429,15 +380,14 @@ class SuperClient:
             return None
         
         for table in response.get('resultSets', []):
-            data = table.get('data', [])
-            if not data:
+            if not (data := table.get('data', [])):
                 continue
             
             row = data[0]
             if 'nextRequestToken' in row:
                 continue
             
-            # Get the vault content and CompanyCredential
+            # Get vault content and company credential
             vault_content = row.get('vaultContent') or row.get('VaultContent', '{}')
             company_credential = row.get('companyCredential') or row.get('CompanyCredential')
             
@@ -582,15 +532,13 @@ class SuperClient:
     
     def _format_response(self, endpoint: str, raw_response: Dict[str, Any], args: Dict[str, Any]) -> Dict[str, Any]:
         """Format API response to match test expectations"""
-        # Extract data from resultSets format (skip first resultSet with nextRequestToken)
         data_rows = []
         if 'resultSets' in raw_response:
             for i, result_set in enumerate(raw_response['resultSets']):
                 if i > 0 and 'data' in result_set:
                     data_rows.extend(result_set['data'])
         
-        # Special formatting for specific endpoints
-        response_data = {
+        special_responses = {
             'CreateAuthenticationRequest': {
                 'email': args.get('email'),
                 'company': None,
@@ -598,9 +546,9 @@ class SuperClient:
                 'master_password_set': False
             },
             'DeleteUserRequest': {}
-        }.get(endpoint, data_rows)
+        }
         
-        return {'success': True, 'data': response_data}
+        return {'success': True, 'data': special_responses.get(endpoint, data_rows)}
     
     def _map_command_to_endpoint(self, command: str) -> str:
         """Map CLI command to API endpoint"""
@@ -621,11 +569,7 @@ class SuperClient:
             }
         }
         
-        # These endpoints expect empty body (auth in headers only)
-        if endpoint in ['GetRequestAuthenticationStatus']:
-            return {}
-            
-        return endpoint_data.get(endpoint, args)
+        return {} if endpoint in ['GetRequestAuthenticationStatus'] else endpoint_data.get(endpoint, args)
     
     def _get_special_headers(self, endpoint: str, args: Dict[str, Any]) -> Optional[Dict[str, str]]:
         """Get special headers for certain endpoints"""
@@ -647,7 +591,9 @@ class SuperClient:
         
         # Other special cases
         special_headers = {
-            'GetRequestAuthenticationStatus': {'Rediacc-UserEmail': args.get('email', '')},
+            'GetRequestAuthenticationStatus': {
+                'Rediacc-UserEmail': args.get('email', '')
+            },
             'PrivilegeAuthenticationRequest': {
                 'Rediacc-UserEmail': args.get('email', ''),
                 'totp': args.get('totp', '')

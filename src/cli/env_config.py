@@ -57,11 +57,7 @@ class EnvironmentConfig:
     @classmethod
     def get_env(cls, key: str, default: Optional[str] = None) -> Optional[str]:
         """Get environment variable with fallback to defaults"""
-        # First check actual environment
-        if value := os.environ.get(key):
-            return value
-        # Then check our defaults
-        return cls.ENV_DEFAULTS.get(key, default)
+        return os.environ.get(key, cls.ENV_DEFAULTS.get(key, default))
     
     @classmethod
     def get_company_vault_defaults(cls) -> Dict[str, Any]:
@@ -72,93 +68,62 @@ class EnvironmentConfig:
             return cls.DEFAULT_COMPANY_VAULT.copy()
         
         try:
-            # Handle escaped JSON strings (e.g., from shell escaping)
+            # Handle escaped JSON strings from shell
             if vault_json.startswith('{') and '\\' in vault_json:
-                # Remove escape characters from the JSON string
-                vault_json = vault_json.replace('\\"', '"')
-                vault_json = vault_json.replace('\\\\', '\\')
+                vault_json = vault_json.replace('\\"', '"').replace('\\\\', '\\')
             
-            # Parse the JSON string
             vault_data = json.loads(vault_json)
             
-            # Ensure essential fields exist with defaults
-            if 'UNIVERSAL_USER_ID' not in vault_data:
-                vault_data['UNIVERSAL_USER_ID'] = cls.DEFAULT_COMPANY_VAULT['UNIVERSAL_USER_ID']
-            if 'UNIVERSAL_USER_NAME' not in vault_data:
-                vault_data['UNIVERSAL_USER_NAME'] = cls.DEFAULT_COMPANY_VAULT['UNIVERSAL_USER_NAME']
+            # Ensure essential fields with defaults
+            for key in ['UNIVERSAL_USER_ID', 'UNIVERSAL_USER_NAME']:
+                vault_data.setdefault(key, cls.DEFAULT_COMPANY_VAULT[key])
             
-            # Handle variable substitution (e.g., ${DOCKER_REGISTRY})
+            # Variable substitution for ${DOCKER_REGISTRY}
             docker_registry = cls.get_env('DOCKER_REGISTRY', '192.168.111.1:5000')
-            vault_str = json.dumps(vault_data)
-            vault_str = vault_str.replace('${DOCKER_REGISTRY}', docker_registry)
-            
+            vault_str = json.dumps(vault_data).replace('${DOCKER_REGISTRY}', docker_registry)
             return json.loads(vault_str)
         except (json.JSONDecodeError, TypeError) as e:
-            # If parsing fails, return defaults
             import sys
-            print(f"Warning: Failed to parse SYSTEM_COMPANY_VAULT_DEFAULTS: {e}", file=sys.stderr)
-            print(f"Debug: The string that failed to parse was: {repr(vault_json)}", file=sys.stderr)
+            print(f"Warning: Failed to parse SYSTEM_COMPANY_VAULT_DEFAULTS: {e}\n"
+                  f"Debug: The string was: {repr(vault_json)}", file=sys.stderr)
             return cls.DEFAULT_COMPANY_VAULT.copy()
     
     @classmethod
     def get_universal_user_info(cls) -> Tuple[str, str, Optional[str]]:
-        """
-        Get universal user info from environment or defaults.
+        """Get universal user info from environment or defaults.
         Returns: (universal_user_name, universal_user_id, company_id)
         """
-        vault_defaults = cls.get_company_vault_defaults()
-        
-        # Get values with fallbacks
-        universal_user_name = vault_defaults.get('UNIVERSAL_USER_NAME', 'rediacc')
-        universal_user_id = vault_defaults.get('UNIVERSAL_USER_ID', '7111')
-        company_id = vault_defaults.get('COMPANY_ID')  # May be None
-        
-        return (universal_user_name, universal_user_id, company_id)
+        vault = cls.get_company_vault_defaults()
+        return (vault.get('UNIVERSAL_USER_NAME', 'rediacc'), 
+                vault.get('UNIVERSAL_USER_ID', '7111'), 
+                vault.get('COMPANY_ID'))
     
     @classmethod
     def get_universal_user_name(cls) -> str:
         """Get universal user name with guaranteed fallback"""
-        name, _, _ = cls.get_universal_user_info()
-        return name or 'rediacc'
+        return cls.get_universal_user_info()[0] or 'rediacc'
     
     @classmethod
     def get_universal_user_id(cls) -> str:
         """Get universal user ID with guaranteed fallback"""
-        _, uid, _ = cls.get_universal_user_info()
-        return uid or '7111'
+        return cls.get_universal_user_info()[1] or '7111'
     
     @classmethod
     def get_system_defaults(cls) -> Dict[str, str]:
         """Get all system default values"""
-        defaults = {}
-        for key in cls.ENV_DEFAULTS:
-            defaults[key] = cls.get_env(key)
-        return defaults
+        return {key: cls.get_env(key) for key in cls.ENV_DEFAULTS}
     
     @classmethod
     def get_important_env_vars(cls) -> Dict[str, str]:
         """Get environment variables that should be exported to subprocesses"""
         important_vars = [
-            'SYSTEM_API_URL',
-            'SYSTEM_ADMIN_EMAIL',
-            'SYSTEM_ADMIN_PASSWORD',
-            'SYSTEM_MASTER_PASSWORD',
-            'SYSTEM_HTTP_PORT',
-            'SYSTEM_COMPANY_ID',
-            'SYSTEM_COMPANY_VAULT_DEFAULTS',
-            'SYSTEM_COMPANY_NAME',
-            'SYSTEM_DEFAULT_TEAM_NAME',
-            'SYSTEM_DEFAULT_REGION_NAME',
-            'SYSTEM_DEFAULT_BRIDGE_NAME',
-            'DOCKER_REGISTRY',
+            'SYSTEM_API_URL', 'SYSTEM_ADMIN_EMAIL', 'SYSTEM_ADMIN_PASSWORD', 
+            'SYSTEM_MASTER_PASSWORD', 'SYSTEM_HTTP_PORT', 'SYSTEM_COMPANY_ID',
+            'SYSTEM_COMPANY_VAULT_DEFAULTS', 'SYSTEM_COMPANY_NAME',
+            'SYSTEM_DEFAULT_TEAM_NAME', 'SYSTEM_DEFAULT_REGION_NAME',
+            'SYSTEM_DEFAULT_BRIDGE_NAME', 'DOCKER_REGISTRY'
         ]
-        
-        env_vars = {}
-        for var in important_vars:
-            if value := cls.get_env(var):
-                env_vars[var] = value
-        
-        return env_vars
+        return {var: value for var in important_vars if (value := cls.get_env(var))}
 
 
 # Convenience functions for backward compatibility

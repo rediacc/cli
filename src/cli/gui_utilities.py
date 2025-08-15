@@ -32,16 +32,10 @@ from api_client import client, SimpleConfigManager
 # ===== UTILITY FUNCTIONS =====
 
 def center_window(window, width: int, height: int) -> None:
-    """Center a window on the screen
-    
-    Args:
-        window: The tkinter window or Toplevel to center
-        width: The width of the window
-        height: The height of the window
-    """
+    """Center a window on the screen"""
     window.update_idletasks()
-    x = (window.winfo_screenwidth() - width) // 2
-    y = (window.winfo_screenheight() - height) // 2
+    screen_width, screen_height = window.winfo_screenwidth(), window.winfo_screenheight()
+    x, y = (screen_width - width) // 2, (screen_height - height) // 2
     window.geometry(f'{width}x{height}+{x}+{y}')
 
 
@@ -179,24 +173,19 @@ class GUIConfig:
     _config = None
     
     def __new__(cls):
-        if cls._instance is None:
-            cls._instance = super().__new__(cls)
+        if cls._instance is None: cls._instance = super().__new__(cls)
         return cls._instance
     
     def __init__(self):
-        if self._config is None:
-            self.load_config()
+        if self._config is None: self.load_config()
     
     def load_config(self):
         """Load configuration from JSON file"""
         config_path = Path(__file__).parent.parent / 'config' / 'rediacc-gui-config.json'
         
         try:
-            with open(config_path, 'r') as f:
-                self._config = json.load(f)
-        except FileNotFoundError:
-            # Fallback to default values if config file not found
-            self._config = self._get_default_config()
+            with open(config_path, 'r') as f: self._config = json.load(f)
+        except FileNotFoundError: self._config = self._get_default_config()
         except json.JSONDecodeError as e:
             print(f"Error parsing config file: {e}")
             self._config = self._get_default_config()
@@ -242,10 +231,8 @@ class GUIConfig:
         """Get a configuration value by key path"""
         result = self._config
         for key in keys:
-            if isinstance(result, dict) and key in result:
-                result = result[key]
-            else:
-                return default
+            if isinstance(result, dict) and key in result: result = result[key]
+            else: return default
         return result
 
 
@@ -255,12 +242,13 @@ config = GUIConfig()
 # ===== CONSTANTS =====
 
 # Window dimensions
-LOGIN_WINDOW_SIZE = tuple(config.get('window_dimensions', 'login_window', default=[480, 520]))
-MAIN_WINDOW_DEFAULT_SIZE = tuple(config.get('window_dimensions', 'main_window_default', default=[1024, 768]))
-PROGRESS_DIALOG_SIZE = tuple(config.get('window_dimensions', 'progress_dialog', default=[700, 600]))
-PROGRESS_DIALOG_SIZE_SMALL = tuple(config.get('window_dimensions', 'progress_dialog_small', default=[600, 500]))
-TRANSFER_OPTIONS_DIALOG_SIZE = tuple(config.get('window_dimensions', 'transfer_options_dialog', default=[700, 700]))
-CENTER_WINDOW_DEFAULT_SIZE = tuple(config.get('window_dimensions', 'center_window_default', default=[800, 600]))
+window_dims = config.get('window_dimensions', default={})
+LOGIN_WINDOW_SIZE = tuple(window_dims.get('login_window', [480, 520]))
+MAIN_WINDOW_DEFAULT_SIZE = tuple(window_dims.get('main_window_default', [1024, 768]))
+PROGRESS_DIALOG_SIZE = tuple(window_dims.get('progress_dialog', [700, 600]))
+PROGRESS_DIALOG_SIZE_SMALL = tuple(window_dims.get('progress_dialog_small', [600, 500]))
+TRANSFER_OPTIONS_DIALOG_SIZE = tuple(window_dims.get('transfer_options_dialog', [700, 700]))
+CENTER_WINDOW_DEFAULT_SIZE = tuple(window_dims.get('center_window_default', [800, 600]))
 
 # Minimum window sizes
 PROGRESS_DIALOG_MIN_SIZE = tuple(config.get('minimum_sizes', 'progress_dialog', default=[500, 400]))
@@ -268,28 +256,38 @@ PROGRESS_DIALOG_MIN_SIZE_SMALL = tuple(config.get('minimum_sizes', 'progress_dia
 TRANSFER_OPTIONS_MIN_SIZE = tuple(config.get('minimum_sizes', 'transfer_options', default=[500, 400]))
 
 # Widget dimensions
-COMBO_WIDTH_SMALL = config.get('widget_dimensions', 'combo_width', 'small', default=15)
-COMBO_WIDTH_MEDIUM = config.get('widget_dimensions', 'combo_width', 'medium', default=20)
-COMBO_WIDTH_LARGE = config.get('widget_dimensions', 'combo_width', 'large', default=40)
-ENTRY_WIDTH_SMALL = config.get('widget_dimensions', 'entry_width', 'small', default=10)
-ENTRY_WIDTH_DEFAULT = config.get('widget_dimensions', 'entry_width', 'default', default=50)
-BUTTON_WIDTH_TINY = config.get('widget_dimensions', 'button_width', 'tiny', default=3)
-BUTTON_WIDTH_SMALL = config.get('widget_dimensions', 'button_width', 'small', default=15)
-BUTTON_WIDTH_MEDIUM = config.get('widget_dimensions', 'button_width', 'medium', default=20)
-LABEL_WIDTH_DEFAULT = config.get('widget_dimensions', 'label_width', 'default', default=12)
-TEXT_HEIGHT_SMALL = config.get('widget_dimensions', 'text_height', 'small', default=6)
-TEXT_HEIGHT_MEDIUM = config.get('widget_dimensions', 'text_height', 'medium', default=8)
-TEXT_HEIGHT_LARGE = config.get('widget_dimensions', 'text_height', 'large', default=10)
-TEXT_HEIGHT_XLARGE = config.get('widget_dimensions', 'text_height', 'xlarge', default=15)
+widget_dims = config.get('widget_dimensions', default={})
+combo_widths = widget_dims.get('combo_width', {})
+COMBO_WIDTH_SMALL = combo_widths.get('small', 15)
+COMBO_WIDTH_MEDIUM = combo_widths.get('medium', 20)
+COMBO_WIDTH_LARGE = combo_widths.get('large', 40)
+
+entry_widths = widget_dims.get('entry_width', {})
+ENTRY_WIDTH_SMALL = entry_widths.get('small', 10)
+ENTRY_WIDTH_DEFAULT = entry_widths.get('default', 50)
+
+button_widths = widget_dims.get('button_width', {})
+BUTTON_WIDTH_TINY = button_widths.get('tiny', 3)
+BUTTON_WIDTH_SMALL = button_widths.get('small', 15)
+BUTTON_WIDTH_MEDIUM = button_widths.get('medium', 20)
+
+LABEL_WIDTH_DEFAULT = widget_dims.get('label_width', {}).get('default', 12)
+
+text_heights = widget_dims.get('text_height', {})
+TEXT_HEIGHT_SMALL = text_heights.get('small', 6)
+TEXT_HEIGHT_MEDIUM = text_heights.get('medium', 8)
+TEXT_HEIGHT_LARGE = text_heights.get('large', 10)
+TEXT_HEIGHT_XLARGE = text_heights.get('xlarge', 15)
 
 # Treeview column widths
-COLUMN_WIDTH_NAME = config.get('column_widths', 'name', default=250)
-COLUMN_WIDTH_SIZE = config.get('column_widths', 'size', default=80)
-COLUMN_WIDTH_MODIFIED = config.get('column_widths', 'modified', default=150)
-COLUMN_WIDTH_TYPE = config.get('column_widths', 'type', default=80)
-COLUMN_WIDTH_PLUGIN = config.get('column_widths', 'plugin', default=120)
-COLUMN_WIDTH_URL = config.get('column_widths', 'url', default=200)
-COLUMN_WIDTH_STATUS = config.get('column_widths', 'status', default=80)
+column_widths = config.get('column_widths', default={})
+COLUMN_WIDTH_NAME = column_widths.get('name', 250)
+COLUMN_WIDTH_SIZE = column_widths.get('size', 80)
+COLUMN_WIDTH_MODIFIED = column_widths.get('modified', 150)
+COLUMN_WIDTH_TYPE = column_widths.get('type', 80)
+COLUMN_WIDTH_PLUGIN = column_widths.get('plugin', 120)
+COLUMN_WIDTH_URL = column_widths.get('url', 200)
+COLUMN_WIDTH_STATUS = column_widths.get('status', 80)
 
 # Layout constraints
 PANED_MIN_SIZE_TINY = config.get('layout_constraints', 'paned_min_size', 'tiny', default=120)

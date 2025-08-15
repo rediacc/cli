@@ -238,50 +238,28 @@ class Config:
         self._loaded = True
     
     def _load_defaults(self):
-        """Load default configuration values"""
-        # Start with all defaults
-        self._config = self.DEFAULTS.copy()
-        
-        # Filter out None values for optional configs
-        self._config = {k: v for k, v in self._config.items() if v is not None}
+        self._config = {k: v for k, v in self.DEFAULTS.items() if v is not None}
     
     def _load_from_environment(self):
-        """Load configuration from environment variables, overriding defaults"""
-        # Override with any environment variables that are set
-        for key in self.DEFAULTS.keys():
-            if key in os.environ:
-                self._config[key] = os.environ[key]
+        self._config.update({k: v for k, v in os.environ.items() if k in self.DEFAULTS})
         
-        # Also check for API URL in shared config if not set in environment
         if 'SYSTEM_API_URL' not in os.environ and (api_url := self._load_api_url_from_shared_config()):
             self._config['SYSTEM_API_URL'] = api_url
     
     def _load_api_url_from_shared_config(self) -> Optional[str]:
-        """Load API URL from shared config file (same as desktop app)"""
         try:
             config_path = get_config_dir() / 'config.json'
             if config_path.exists():
                 with open(config_path, 'r') as f:
                     config = json.load(f)
-                    # Support both snake_case and camelCase
                     return config.get('api_url') or config.get('apiUrl')
         except Exception:
             pass
         return None
     
     def _validate(self):
-        """Validate that all required configuration is present"""
-        missing = [
-            f"  {key}: {description}"
-            for key, description in self.REQUIRED_KEYS.items()
-            if key not in self._config
-        ]
-        
-        if missing:
-            raise ConfigError(
-                "Missing required configuration:\n" + "\n".join(missing) +
-                "\n\nPlease set these environment variables."
-            )
+        if missing := [f"  {key}: {description}" for key, description in self.REQUIRED_KEYS.items() if key not in self._config]:
+            raise ConfigError(f"Missing required configuration:\n{chr(10).join(missing)}\n\nPlease set these environment variables.")
     
     def get(self, key: str, default: Optional[str] = None) -> Optional[str]:
         """Get a configuration value"""
@@ -289,39 +267,41 @@ class Config:
         return self._config.get(key, default)
     
     def get_required(self, key: str) -> str:
-        """Get a required configuration value"""
-        if (value := self.get(key)) is None: raise ConfigError(f"Required configuration '{key}' is not set")
+        if (value := self.get(key)) is None: 
+            raise ConfigError(f"Required configuration '{key}' is not set")
         return value
     
     def get_int(self, key: str, default: Optional[int] = None) -> Optional[int]:
-        """Get a configuration value as integer"""
         if (value := self.get(key)) is None: return default
         try: return int(value)
         except ValueError: raise ConfigError(f"Configuration '{key}' must be an integer, got: {value}")
     
     def get_bool(self, key: str, default: bool = False) -> bool:
-        """Get a configuration value as boolean"""
-        return self.get(key, '').lower() in ('true', '1', 'yes', 'on') if self.get(key) is not None else default
+        value = self.get(key)
+        return value.lower() in ('true', '1', 'yes', 'on') if value is not None else default
     
     def get_path(self, key: str, default: Optional[str] = None) -> Optional[Path]:
-        """Get a configuration value as Path, expanding ~ and variables"""
         return Path(os.path.expandvars(os.path.expanduser(value))) if (value := self.get(key, default)) else None
     
     def print_config(self):
         """Print current configuration (for debugging)"""
         if not self._loaded: self.load()
         
-        self.logger.debug("Current configuration:"); self.logger.debug("-" * 40)
+        self.logger.debug("Current configuration:")
+        self.logger.debug("-" * 40)
         self.logger.debug("Required:")
-        for key in self.REQUIRED_KEYS: self.logger.debug(f"  {key}={self._config.get(key, '<NOT SET>')}")
+        for key in self.REQUIRED_KEYS:
+            self.logger.debug(f"  {key}={self._config.get(key, '<NOT SET>')}")
         
         self.logger.debug("\nOptional (set):")
-        for key in self.OPTIONAL_KEYS:
-            if key in self._config: self.logger.debug(f"  {key}={self._config[key]}")
+        for key in getattr(self, 'OPTIONAL_KEYS', []):
+            if key in self._config:
+                self.logger.debug(f"  {key}={self._config[key]}")
         
-        if unset := [k for k in self.OPTIONAL_KEYS if k not in self._config]:
+        if hasattr(self, 'OPTIONAL_KEYS') and (unset := [k for k in self.OPTIONAL_KEYS if k not in self._config]):
             self.logger.debug("\nOptional (not set):")
-            for key in unset: self.logger.debug(f"  {key}")
+            for key in unset:
+                self.logger.debug(f"  {key}")
 
 # Global config instance
 _config = Config()
@@ -388,10 +368,8 @@ class APIMutex:
                 except IOError as e:
                     if e.errno != errno.EAGAIN:
                         raise
-                    
                     if time.time() - start_time > timeout:
                         raise TimeoutError(f"Could not acquire API lock after {timeout}s")
-                    
                     time.sleep(0.05)
             
             yield
@@ -428,10 +406,8 @@ if not HAS_FCNTL and HAS_MSVCRT:
                         if file_handle:
                             file_handle.close()
                             file_handle = None
-                        
                         if time.time() - start_time > timeout:
                             raise TimeoutError(f"Could not acquire API lock after {timeout}s")
-                        
                         time.sleep(0.05)
                 
                 yield
@@ -512,7 +488,8 @@ class TokenManager:
         """Ensure only one instance exists"""
         if cls._instance is None:
             with cls._lock:
-                if cls._instance is None: cls._instance = super().__new__(cls)
+                if cls._instance is None:
+                    cls._instance = super().__new__(cls)
         return cls._instance
     
     def __init__(self):
@@ -636,25 +613,29 @@ class TokenManager:
     
     @classmethod
     def get_token(cls, override_token: Optional[str] = None) -> Optional[str]:
-        if not cls._initialized: TokenManager()
+        if not cls._initialized:
+            TokenManager()
         
         if override_token:
-            return override_token if cls.validate_token(override_token) else (logger.warning("Invalid override token format"), None)[1]
+            if cls.validate_token(override_token):
+                return override_token
+            logger.warning("Invalid override token format")
+            return None
         
         if env_token := os.environ.get('REDIACC_TOKEN'):
-            if cls.validate_token(env_token): return env_token
-            else: logger.warning("Invalid token in REDIACC_TOKEN environment variable")
+            if cls.validate_token(env_token):
+                return env_token
+            logger.warning("Invalid token in REDIACC_TOKEN environment variable")
         
         try:
             config = cls._load_from_config()
-            token = config.get('token')
-            if token and cls.validate_token(token):
+            if (token := config.get('token')) and cls.validate_token(token):
                 return token
-            else:
-                logger.debug(f"No valid token found in config file")
-                logger.debug(f"Config contains: {list(config.keys())}")
-                if token:
-                    logger.debug(f"Token validation failed for token: {token[:8]}...")
+            
+            logger.debug("No valid token found in config file")
+            logger.debug(f"Config contains: {list(config.keys())}")
+            if token:
+                logger.debug(f"Token validation failed for token: {token[:8]}...")
         except Exception as e:
             logger.error(f"Error loading config: {e}")
             import traceback
@@ -1372,10 +1353,7 @@ class TerminalDetector:
     
     def _is_cache_valid(self, platform: str) -> bool:
         """Check if cached results are still valid"""
-        if platform not in self.cache:
-            return False
-        
-        if not (cached_time := self.cache[platform].get('timestamp')):
+        if platform not in self.cache or not (cached_time := self.cache[platform].get('timestamp')):
             return False
         
         try:
@@ -1387,21 +1365,14 @@ class TerminalDetector:
     def _find_msys2_installation(self) -> Optional[str]:
         """Find MSYS2 installation path"""
         msys2_paths = [
-            'C:\\msys64',
-            'C:\\msys2',
-            os.path.expanduser('~\\msys64'),
-            os.path.expanduser('~\\msys2'),
+            'C:\\msys64', 'C:\\msys2',
+            os.path.expanduser('~\\msys64'), os.path.expanduser('~\\msys2')
         ]
         
-        # Check MSYS2_ROOT environment variable
-        msys2_root = os.environ.get('MSYS2_ROOT')
-        if msys2_root:
+        if msys2_root := os.environ.get('MSYS2_ROOT'):
             msys2_paths.insert(0, msys2_root)
         
-        for path in msys2_paths:
-            if os.path.exists(path):
-                return path
-        return None
+        return next((path for path in msys2_paths if os.path.exists(path)), None)
     
     def _is_wsl(self) -> bool:
         """Check if running in WSL"""
@@ -1523,20 +1494,14 @@ class TerminalDetector:
         if not os.path.exists(mintty_exe):
             return (False, "mintty.exe not found")
         
-        # Simple test: just check if mintty can be launched
         try:
-            test_cmd = [mintty_exe, '--version']
             process = subprocess.Popen(
-                test_cmd,
-                stdout=subprocess.PIPE,
-                stderr=subprocess.PIPE,
+                [mintty_exe, '--version'], stdout=subprocess.PIPE, stderr=subprocess.PIPE,
                 creationflags=subprocess.CREATE_NO_WINDOW if sys.platform == 'win32' else 0
             )
             stdout, stderr = process.communicate(timeout=2)
-            return (
-                (True, "mintty is available") if process.returncode == 0
-                else (False, f"mintty test failed with code {process.returncode}")
-            )
+            return ((True, "mintty is available") if process.returncode == 0
+                   else (False, f"mintty test failed with code {process.returncode}"))
         except Exception as e:
             return (False, f"Failed to test mintty: {str(e)}")
     
