@@ -13,13 +13,20 @@ import time
 from pathlib import Path
 from typing import Dict, Any, List
 from datetime import datetime
+import urllib.request
+import urllib.parse
+import urllib.error
 
 # Import from consolidated core module
 from core import (
     SubprocessRunner,
     TokenManager,
-    get_logger
+    get_logger,
+    get_required,
+    get,
+    api_mutex
 )
+from api_client import client, SimpleConfigManager
 
 
 # ===== UTILITY FUNCTIONS =====
@@ -133,24 +140,28 @@ def parse_ls_output(output: str) -> List[Dict[str, Any]]:
     return files
 
 
+
+
 def check_token_validity() -> bool:
-    """Check if authentication token is valid"""
+    """Check if authentication token is valid using direct API call"""
     logger = get_logger(__name__)
     try:
         if not TokenManager.is_authenticated():
             logger.debug("Not authenticated")
             return False
         
-        logger.debug("Testing token validity with API call...")
-        runner = SubprocessRunner()
-        result = runner.run_cli_command(['--output', 'json', 'list', 'teams'])
-        token_valid = result.get('success', False)
+        logger.debug("Testing token validity with direct API call...")
         
-        if not token_valid:
-            logger.debug(f"Token validation failed: {result.get('error', 'Unknown error')}")
+        # Test token with a simple API call
+        response = client.token_request('GetCompanyTeams', {})
+        
+        if response.get('error'):
+            logger.debug(f"Token validation failed: {response.get('error', 'Unknown error')}")
             TokenManager.clear_token()
+            return False
         
-        return token_valid
+        logger.debug("Token is valid")
+        return True
     except Exception as e:
         logger.error(f"Error checking authentication: {e}")
         import traceback

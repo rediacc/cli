@@ -13,9 +13,6 @@ import hashlib
 import json
 import os
 import sys
-import urllib.request
-import urllib.parse
-import urllib.error
 import base64
 from typing import Dict, Any, Optional, List, Union
 from pathlib import Path
@@ -28,6 +25,7 @@ from core import (
 )
 
 from rediacc_cli_core import colorize, COLORS
+from api_client import client
 
 try:
     from cryptography.hazmat.primitives import hashes
@@ -180,159 +178,10 @@ def reconstruct_arg_defs():
 CMD_CONFIG = reconstruct_cmd_config()
 ARG_DEFS = reconstruct_arg_defs()
 
-class APIClient:
-    def __init__(self, config_manager):
-        if not config_manager: raise ValueError("config_manager is required for APIClient to ensure proper token management")
-        self.config_manager = config_manager
-        self.config = config_manager.config if hasattr(config_manager, 'config') else {}
-        self.base_headers = {"Content-Type": "application/json", "User-Agent": "rediacc-cli/1.0"}
-        self.config_manager.load_vault_info_from_config()
-    
-    def request(self, endpoint, data=None, headers=None):
-        url = f"{BASE_URL}{API_PREFIX}/{endpoint}"
-        merged_headers = {**self.base_headers, **(headers or {})}
-        
-        # Debug logging
-        if os.environ.get('REDIACC_DEBUG'):
-            print(f"DEBUG: API URL: {url}", file=sys.stderr)
-            print(f"DEBUG: Headers: {merged_headers}", file=sys.stderr)
-        
-        if data and self.config_manager and (master_pwd := self.config_manager.get_master_password()):
-            try: data = encrypt_vault_fields(data, master_pwd)
-            except Exception as e: print(colorize(f"Warning: Failed to encrypt vault fields: {e}", 'YELLOW'))
-        
-        req = urllib.request.Request(url, json.dumps(data or {}).encode('utf-8'), merged_headers, method='POST')
-        
-        try:
-            with urllib.request.urlopen(req, timeout=REQUEST_TIMEOUT) as response:
-                response_data = response.read().decode('utf-8')
-                if response.status != 200: return {"error": f"API Error: {response.status} - {response_data}", "status_code": response.status}
-                
-                result = json.loads(response_data)
-                if result.get('failure') and result.get('failure') != 0:
-                    errors = result.get('errors', [])
-                    return {"error": f"API Error: {'; '.join(errors) if errors else result.get('message', 'Request failed')}", "status_code": 400}
-                
-                if self.config_manager and (master_pwd := self.config_manager.get_master_password()):
-                    try: result = decrypt_vault_fields(result, master_pwd)
-                    except Exception as e: print(colorize(f"Warning: Failed to decrypt vault fields: {e}", 'YELLOW'))
-                
-                return result
-        except urllib.error.HTTPError as e:
-            error_msg = f"API Error: {e.code} - {e.read().decode('utf-8') if e.fp else str(e)}"
-            # Always print debug info for 5xx errors
-            if e.code >= 500:
-                print(f"DEBUG: Endpoint URL: {url}", file=sys.stderr)
-                print(f"DEBUG: HTTP Error {e.code} occurred", file=sys.stderr)
-            return {"error": error_msg, "status_code": e.code}
-        except urllib.error.URLError as e:
-            print(f"DEBUG: Connection error to endpoint: {url}", file=sys.stderr)
-            print(f"DEBUG: Error details: {str(e)}", file=sys.stderr)
-            return {"error": f"Connection error: {str(e)}", "status_code": 500}
-        except Exception as e:
-            print(f"DEBUG: Request error for endpoint: {url}", file=sys.stderr)
-            print(f"DEBUG: Error details: {str(e)}", file=sys.stderr)
-            return {"error": f"Request error: {str(e)}", "status_code": 500}
-    
-    def auth_request(self, endpoint, email, pwd_hash, data=None):
-        return self.request(endpoint, data, {"Rediacc-UserEmail": email, "Rediacc-UserHash": pwd_hash})
-    
-    def token_request(self, endpoint, data=None, retry_count=0):
-        try:
-            with api_mutex.acquire(timeout=30.0): return self._token_request_impl(endpoint, data, retry_count)
-        except TimeoutError as e: return {"error": f"API call timeout: {str(e)}", "status_code": 408}
-        except Exception as e: return {"error": f"API call error: {str(e)}", "status_code": 500}
-    
-    def _token_request_impl(self, endpoint, data=None, retry_count=0):
-        if not (token := TokenManager.get_token()): return {"error": "Not authenticated. Please login first.", "status_code": 401}
-        
-        if endpoint != 'GetCompanyVault': self._ensure_vault_info(); self._show_vault_warning_if_needed()
-        
-        response = self.request(endpoint, data, {"Rediacc-RequestToken": token})
-        
-        if response and response.get('status_code') == 401 and retry_count < 2:
-            import time; time.sleep(0.1 * (retry_count + 1))
-            if TokenManager.get_token() != token: return self._token_request_impl(endpoint, data, retry_count + 1)
-        
-        self._update_token_if_needed(response, token)
-        return response
-    
-    def _show_vault_warning_if_needed(self):
-        if self.config_manager and self.config_manager.has_vault_encryption() and not self.config_manager.get_master_password() and not hasattr(self, '_vault_warning_shown'):
-            print(colorize("Warning: Your company requires vault encryption but no master password is set.", 'YELLOW'))
-            print(colorize("Vault fields will not be decrypted. Use 'rediacc vault set-password' to set it.", 'YELLOW'))
-            self._vault_warning_shown = True
-    
-    def _update_token_if_needed(self, response, current_token):
-        if not (response and not response.get('error') and self.config_manager): return
-        if not (resultSets := response.get('resultSets', [])) or not resultSets[0].get('data'): return
-        if not (new_token := resultSets[0]['data'][0].get('nextRequestCredential')) or new_token == current_token: return
-        if os.environ.get('REDIACC_TOKEN') or self.config_manager.is_token_overridden(): return
-        if TokenManager.get_token() == current_token:
-            TokenManager.set_token(
-                new_token,
-                email=self.config_manager.config.get('email'),
-                company=self.config_manager.config.get('company'),
-                vault_company=self.config_manager.config.get('vault_company')
-            )
-    
-    def _ensure_vault_info(self):
-        if not (self.config_manager and self.config_manager.needs_vault_info_fetch()):
-            return
-        
-        self.config_manager.mark_vault_info_fetched()
-        
-        company_info = self.get_company_vault()
-        if not company_info:
-            return
-        
-        email = self.config_manager.config.get('email')
-        token = TokenManager.get_token()
-        if email and token:
-            self.config_manager.set_auth(
-                email,
-                token,
-                company_info.get('companyName'),
-                company_info.get('vaultCompany')
-            )
-    
-    def get_company_vault(self):
-        response = self.token_request("GetCompanyVault", {})
-        
-        if response.get('error'):
-            return None
-        
-        for table in response.get('resultSets', []):
-            data = table.get('data', [])
-            if not data:
-                continue
-            
-            row = data[0]
-            if 'nextRequestCredential' in row:
-                continue
-            
-            # Get the vault content and CompanyCredential
-            vault_content = row.get('vaultContent') or row.get('VaultContent', '{}')
-            company_credential = row.get('companyCredential') or row.get('CompanyCredential')
-            
-            # Parse vault content and add COMPANY_ID
-            try:
-                vault_dict = json.loads(vault_content) if vault_content and vault_content != '-' else {}
-                if company_credential:
-                    vault_dict['COMPANY_ID'] = company_credential
-                vault_json = json.dumps(vault_dict)
-            except (json.JSONDecodeError, TypeError):
-                vault_json = vault_content
-            
-            company_info = {
-                'companyName': row.get('companyName') or row.get('CompanyName', ''),
-                'vaultCompany': vault_json
-            }
-            
-            if company_info['companyName']:
-                return company_info
-        
-        return None
+def APIClient(config_manager):
+    """Create CLI client instance by setting config manager on singleton"""
+    client.set_config_manager(config_manager)
+    return client
 
 def format_output(data, format_type, message=None, error=None):
     if format_type in ['json', 'json-full']:
@@ -508,43 +357,12 @@ def build_queue_vault_data(function_name, args):
     return json.dumps(vault_data)
 
 def generate_hardware_id():
-    # Use the API URL from environment/config
-    api_base_url = BASE_URL.removesuffix('/api/StoredProcedure').removesuffix('/api')
-    hardware_id_url = f"{api_base_url}/api/health/hardware-id"
-    
-    try:
-        req = urllib.request.Request(hardware_id_url)
-        with urllib.request.urlopen(req, timeout=5) as response:
-            data = json.loads(response.read().decode('utf-8'))
-            return data['hardwareId']
-    except (urllib.error.URLError, Exception) as e:
-        raise Exception(
-            f"Failed to generate hardware ID from {hardware_id_url}. Please ensure the middleware is running.\n"
-            f"Try: ./go system up middleware\n"
-            f"Error: {str(e)}"
-        )
+    """Generate hardware ID using SuperClient"""
+    return client.get_hardware_id()
 
 def request_license_from_server(hardware_id, base_url=None):
-    base_url = base_url or BASE_URL
-    
-    base_url = base_url.removesuffix('/api/StoredProcedure').removesuffix('/api')
-    license_url = f"{base_url}/api/license/request"
-    
-    data = json.dumps({"HardwareId": hardware_id})
-    req = urllib.request.Request(
-        license_url,
-        data=data.encode('utf-8'),
-        headers={'Content-Type': 'application/json'}
-    )
-    
-    try:
-        with urllib.request.urlopen(req, timeout=REQUEST_TIMEOUT) as response:
-            return json.loads(response.read().decode('utf-8'))
-    except urllib.error.HTTPError as e:
-        error_body = e.read().decode('utf-8')
-        raise Exception(f"License server error {e.code}: {error_body}")
-    except Exception as e:
-        raise Exception(f"Failed to connect to license server: {str(e)}")
+    """Request license from server using SuperClient"""
+    return client.request_license(hardware_id, base_url)
 
 def install_license_file(license_file, target_path=None):
     if not os.path.exists(license_file):
@@ -702,24 +520,6 @@ class VaultBuilder:
         func_def = QUEUE_FUNCTIONS.get(function_name, {})
         requirements = func_def.get('requirements', {})
         
-        # Hardcode requirements for known functions until we update the config
-        # Based on console's functions.json
-        known_requirements = {
-            'hello': {'machine': True, 'team': True},
-            'ping': {'machine': True, 'team': True},
-            'setup': {'machine': True, 'team': True},
-            'new': {'machine': True, 'team': True},  # new doesn't need repository requirement during init
-            'push': {'machine': True, 'team': True, 'repository': True},
-            'pull': {'machine': True, 'team': True, 'repository': True},
-            'mount': {'machine': True, 'team': True, 'repository': True},
-            'unmount': {'machine': True, 'team': True, 'repository': True},
-            'up': {'machine': True, 'team': True, 'repository': True},
-            'down': {'machine': True, 'team': True, 'repository': True},
-            'ssh_test': {'team': True}  # Bridge-only, no specific machine
-        }
-        
-        if function_name in known_requirements:
-            requirements = known_requirements[function_name]
         
         # Fetch company vault if not already fetched
         if not self._vault_fetched:
@@ -935,8 +735,12 @@ class CommandHandler:
         return True
     
     def login(self, args):
-        email = args.email or input("Email: ")
-        password = args.password or getpass.getpass("Password: ")
+        # Check for environment variables and use them as defaults
+        env_email = os.environ.get('SYSTEM_ADMIN_EMAIL')
+        env_password = os.environ.get('SYSTEM_ADMIN_PASSWORD')
+        
+        email = args.email or env_email or input("Email: ")
+        password = args.password or env_password or getpass.getpass("Password: ")
         hash_pwd = pwd_hash(password)
         
         login_params = {'name': args.session_name or "CLI Session"}

@@ -126,99 +126,61 @@ def _retry_with_backoff(func, max_retries=3, initial_delay=0.5, error_msg="Opera
 
 def _create_api_client():
     """Create a minimal API client for fetching company vault"""
-    from core import TokenManager, get_required
-    
-    class MinimalAPIClient:
-        def __init__(self):
-            self.token_manager = TokenManager()
-        
-        def token_request(self, endpoint, data):
-            import urllib.request
-            import json
-            
-            # Use the same API URL as the main CLI
-            BASE_URL = get_required('SYSTEM_API_URL')
-            url = f"{BASE_URL}/StoredProcedure/{endpoint}"
-            
-            if not (token := TokenManager.get_token()):
-                return {"error": "Not authenticated"}
-            
-            headers = {
-                "Content-Type": "application/json",
-                "Rediacc-RequestToken": token
-            }
-            
-            req = urllib.request.Request(url, json.dumps(data).encode('utf-8'), headers, method='POST')
-            
-            try:
-                with urllib.request.urlopen(req, timeout=10) as response:
-                    if response.status != 200:
-                        return {"error": f"HTTP {response.status}"}
-                    result = json.loads(response.read().decode('utf-8'))
-                    
-                    # Update token if provided
-                    if next_token := next((row.get('nextRequestCredential') for table in result.get('resultSets', []) 
-                                          for row in table.get('data', []) if row.get('nextRequestCredential')), None):
-                        TokenManager.set_token(next_token)
-                    
-                    return result
-            except Exception as e:
-                return {"error": str(e)}
-    
-    return MinimalAPIClient()
+    from api_client import client
+    return client
 
 def _get_universal_user_info() -> Tuple[Optional[str], Optional[str], Optional[str]]:
-    """Get universal user info and company ID from config.
+    """Get universal user info and company ID from config or environment.
     Returns: (universal_user_name, universal_user_id, company_id)
     """
-    if not (config_path := get_main_config_file()).exists():
-        return None, None, None
+    # First try to get from config file
+    if (config_path := get_main_config_file()).exists():
+        try:
+            config = json.load(open(config_path, 'r'))
+            
+            if vault_company := config.get('vault_company'):
+                # Handle encrypted vault_company
+                if not is_encrypted(vault_company):
+                    try:
+                        vault_data = json.loads(vault_company)
+                        company_id = vault_data.get('COMPANY_ID')
+                        universal_user_name = vault_data.get('UNIVERSAL_USER_NAME')
+                        universal_user_id = vault_data.get('UNIVERSAL_USER_ID')
+                        
+                        # If we have valid values from config, use them
+                        if universal_user_name and universal_user_id:
+                            # If COMPANY_ID is missing, try to fetch it
+                            if not company_id and TokenManager.get_token():
+                                try:
+                                    from core import TokenManager as TM
+                                    client = _create_api_client()
+                                    response = client.token_request("GetCompanyVault", {})
+                                    
+                                    if not response.get('error'):
+                                        for table in response.get('resultSets', []):
+                                            if data := table.get('data', []):
+                                                for row in data:
+                                                    if 'companyCredential' in row or 'CompanyCredential' in row:
+                                                        company_id = row.get('companyCredential') or row.get('CompanyCredential')
+                                                        if company_id:
+                                                            # Update vault_company with COMPANY_ID
+                                                            vault_data['COMPANY_ID'] = company_id
+                                                            config['vault_company'] = json.dumps(vault_data)
+                                                            with open(config_path, 'w') as f:
+                                                                json.dump(config, f, indent=2)
+                                                            break
+                                except Exception:
+                                    pass  # Silently fail if COMPANY_ID cannot be fetched
+                            
+                            return (universal_user_name, universal_user_id, company_id)
+                    except json.JSONDecodeError:
+                        pass  # Fall through to environment fallback
+        except Exception:
+            pass  # Fall through to environment fallback
     
-    try:
-        config = json.load(open(config_path, 'r'))
-        
-        if vault_company := config.get('vault_company'):
-            # Handle encrypted vault_company
-            if is_encrypted(vault_company):
-                return None, None, None
-            
-            try:
-                vault_data = json.loads(vault_company)
-            except json.JSONDecodeError:
-                return None, None, None
-            
-            company_id = vault_data.get('COMPANY_ID')
-            universal_user_name = vault_data.get('UNIVERSAL_USER_NAME')
-            universal_user_id = vault_data.get('UNIVERSAL_USER_ID')
-            
-            # If COMPANY_ID is missing, try to fetch it
-            if not company_id and TokenManager.get_token():
-                try:
-                    from core import TokenManager as TM
-                    client = _create_api_client()
-                    response = client.token_request("GetCompanyVault", {})
-                    
-                    if not response.get('error'):
-                        for table in response.get('resultSets', []):
-                            if data := table.get('data', []):
-                                for row in data:
-                                    if 'companyCredential' in row or 'CompanyCredential' in row:
-                                        company_id = row.get('companyCredential') or row.get('CompanyCredential')
-                                        if company_id:
-                                            # Update vault_company with COMPANY_ID
-                                            vault_data['COMPANY_ID'] = company_id
-                                            config['vault_company'] = json.dumps(vault_data)
-                                            with open(config_path, 'w') as f:
-                                                json.dump(config, f, indent=2)
-                                            break
-                except Exception:
-                    pass  # Silently fail if COMPANY_ID cannot be fetched
-            
-            return (universal_user_name, universal_user_id, company_id)
-        else:
-            return None, None, None
-    except Exception:
-        return None, None, None
+    # Fall back to environment configuration
+    from env_config import EnvironmentConfig
+    return EnvironmentConfig.get_universal_user_info()
 
 class _SuppressSysExit:
     def __init__(self): self.exit_called = False; self.original_exit = None
@@ -229,38 +191,41 @@ class _SuppressSysExit:
     def __exit__(self, exc_type, exc_val, exc_tb): sys.exit = self.original_exit
 
 def get_machine_info_with_team(team_name: str, machine_name: str) -> Dict[str, Any]:
+    """Get machine info using the API client directly"""
+    from api_client import client
+    from core import TokenManager
+    
     if not TokenManager.get_token(): 
         error_exit("No authentication token available")
     
-    def try_inspect(quiet: bool = False):
-        with _SuppressSysExit() as ctx:
-            cmd = get_cli_command() + ['--output', 'json', 'inspect', 'machine', team_name, machine_name]
-            output = run_command(cmd, quiet=quiet)
-            return output, ctx.exit_called
+    # Use API client directly instead of spawning CLI subprocess
+    response = client.token_request("GetTeamMachines", {"teamName": team_name})
     
-    inspect_output = _retry_with_backoff(
-        try_inspect,
-        error_msg=f"Failed to inspect machine {machine_name} in team {team_name}"
-    )
+    if response.get('error'):
+        error_exit(f"Failed to get machines for team {team_name}: {response['error']}")
     
-    try:
-        inspect_data = json.loads(inspect_output)
-        if not inspect_data.get('success'):
-            error_exit(f"inspecting machine: {inspect_data.get('error', 'Unknown error')}")
-        
-        data_list = inspect_data.get('data', [])
-        if not data_list:
-            error_exit(f"No machine data found for '{machine_name}' in team '{team_name}'")
-        machine_info = data_list[0]
-        
-        # Parse vault content if available
-        if vault_content := machine_info.get('vaultContent'):
-            try: machine_info['vault'] = json.loads(vault_content) if isinstance(vault_content, str) else vault_content
-            except json.JSONDecodeError: pass
-        
-        return machine_info
-    except (json.JSONDecodeError, KeyError) as e:
-        error_exit(f"parsing machine data: {str(e)}")
+    # Find the specific machine in the response
+    machines = []
+    for result_set in response.get('resultSets', []):
+        machines.extend(result_set.get('data', []))
+    
+    machine_info = None
+    for machine in machines:
+        if machine.get('machineName') == machine_name:
+            machine_info = machine
+            break
+    
+    if not machine_info:
+        error_exit(f"No machine data found for '{machine_name}' in team '{team_name}'")
+    
+    # Parse vault content if available
+    if vault_content := machine_info.get('vaultContent'):
+        try: 
+            machine_info['vault'] = json.loads(vault_content) if isinstance(vault_content, str) else vault_content
+        except json.JSONDecodeError: 
+            pass
+    
+    return machine_info
 
 
 def get_repository_info(team_name: str, repo_name: str) -> Dict[str, Any]:
@@ -297,50 +262,40 @@ def get_repository_info(team_name: str, repo_name: str) -> Dict[str, Any]:
         error_exit(f"Failed to parse JSON response: {e}")
 
 def get_ssh_key_from_vault(team_name: Optional[str] = None) -> Optional[str]:
+    """Get SSH key from team vault using the API client directly"""
+    from api_client import client
+    from core import TokenManager
+    
     token = TokenManager.get_token()
     if not token:
         print(colorize("No authentication token available", 'RED'))
         return None
     
-    def try_get_teams(quiet: bool = False):
-        with _SuppressSysExit() as ctx:
-            cmd = get_cli_command() + ['--output', 'json', 'list', 'teams']
-            output = run_command(cmd, quiet=quiet)
-            return output, ctx.exit_called
+    # Use API client directly to get teams
+    response = client.token_request("GetCompanyTeams", {})
     
-    teams_output = _retry_with_backoff(
-        try_get_teams,
-        error_msg="Failed to get teams list",
-        exit_on_failure=False
-    )
-    
-    if not teams_output:
-        # TEMPORARY FIX: Use hardcoded SSH key when API is down
-        if os.path.exists('/tmp/test_ssh_key.pem'):
-            with open('/tmp/test_ssh_key.pem', 'r') as f:
-                return f.read()
+    if response.get('error'):
         return None
     
-    try:
-        result = json.loads(teams_output)
-        if not (result.get('success') and result.get('data')):
-            return None
+    # Extract teams from response (GetCompanyTeams returns teams in resultSets[1])
+    teams = []
+    result_sets = response.get('resultSets', [])
+    if len(result_sets) > 1:
+        teams = result_sets[1].get('data', [])
+    
+    for team in teams:
+        if team_name and team.get('teamName') != team_name:
+            continue
         
-        for team in result.get('data', []):
-            if team_name and team.get('teamName') != team_name:
-                continue
-            
-            if not (vault_content := team.get('vaultContent')):
-                continue
-            
-            try:
-                vault_data = json.loads(vault_content) if isinstance(vault_content, str) else vault_content
-                if ssh_key := vault_data.get('SSH_PRIVATE_KEY'):
-                    return ssh_key
-            except json.JSONDecodeError:
-                continue
-    except json.JSONDecodeError:
-        pass
+        if not (vault_content := team.get('vaultContent')):
+            continue
+        
+        try:
+            vault_data = json.loads(vault_content) if isinstance(vault_content, str) else vault_content
+            if ssh_key := vault_data.get('SSH_PRIVATE_KEY'):
+                return ssh_key
+        except json.JSONDecodeError:
+            continue
     
     return None
 
@@ -532,8 +487,15 @@ def get_machine_connection_info(machine_info: Dict[str, Any]) -> Dict[str, Any]:
         error_exit(f"Machine vault for '{machine_name}' is missing required 'datastore' field")
     
     universal_user, universal_user_id, _ = _get_universal_user_info()
+    
+    # Use defaults if values are None
     if not universal_user:
-        print(colorize("Warning: Failed to read universal user from config", 'YELLOW'))
+        universal_user = 'rediacc'
+        print(colorize("Warning: Using default universal user 'rediacc'", 'YELLOW'))
+    
+    if not universal_user_id:
+        universal_user_id = '7111'
+        print(colorize("Warning: Using default universal user ID '7111'", 'YELLOW'))
     
     if not ssh_user:
         print(colorize(f"ERROR: SSH user not found in machine vault. Vault contents: {vault}", 'RED'))

@@ -60,20 +60,8 @@ else
 fi
 echo
 
-# Run YAML-based workflow test
-echo -e "${BLUE}=== YAML-based Workflow Tests ===${NC}"
-if [ -f "$TESTS_DIR/run_tests.py" ]; then
-    if python3 "$TESTS_DIR/run_tests.py" "$TESTS_DIR/yaml/community/13000_workflow_tests.yaml"; then
-        echo -e "${GREEN}✓ YAML workflow tests passed${NC}"
-        ((TESTS_PASSED++))
-    else
-        echo -e "${RED}✗ YAML workflow tests failed${NC}"
-        ((TESTS_FAILED++))
-    fi
-else
-    echo -e "${YELLOW}⚠ YAML test runner not found${NC}"
-    ((TESTS_FAILED++))
-fi
+# Note: YAML-based workflow tests have been removed
+# The 13000_workflow_tests.yaml file is no longer needed
 echo
 
 # Summary

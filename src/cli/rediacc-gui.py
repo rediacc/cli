@@ -25,6 +25,9 @@ from typing import Callable, Optional, Dict, Any, List, Tuple
 import time
 import datetime
 import re
+import urllib.request
+import urllib.parse
+import urllib.error
 
 # Import from consolidated core module
 from core import (
@@ -33,8 +36,12 @@ from core import (
     i18n,
     TerminalDetector,
     get_logger,
-    setup_logging
+    setup_logging,
+    get_required,
+    get,
+    api_mutex
 )
+from api_client import client
 
 # Import core functionality for SSH operations
 from rediacc_cli_core import (
@@ -57,6 +64,10 @@ from gui_utilities import (
 )
 
 
+
+
+
+
 class MainWindow(BaseWindow):
     """Main window with Terminal and File Sync tools"""
     
@@ -67,6 +78,10 @@ class MainWindow(BaseWindow):
         super().__init__(tk.Tk(), title)
         self.logger = get_logger(__name__)
         self.runner = SubprocessRunner()
+        
+        # Use global API client instance
+        self.api_client = client
+        
         # Center window at default size
         self.center_window(MAIN_WINDOW_DEFAULT_SIZE[0], MAIN_WINDOW_DEFAULT_SIZE[1])
         
@@ -1171,16 +1186,22 @@ class MainWindow(BaseWindow):
     def load_teams(self):
         """Load available teams"""
         self.update_activity_status()
-        # Removed root.update() to prevent issues
         
-        result = self.runner.run_cli_command(['--output', 'json', 'list', 'teams'])
-        if result['success'] and result.get('data'):
-            teams = [self._get_name(team, 'teamName', 'name') for team in result['data']]
-            self.update_teams(teams)
-        else:
-            error_msg = result.get('error', i18n.get('failed_to_load_teams'))
+        # Direct API call to get teams
+        response = self.api_client.token_request('GetCompanyTeams', {})
+        
+        if response.get('error'):
+            error_msg = response.get('error', i18n.get('failed_to_load_teams'))
             if not self._handle_api_error(error_msg):
                 self.activity_status_label.config(text=f"{i18n.get('error')}: {error_msg}", fg=COLOR_ERROR)
+        else:
+            # Extract teams from resultSets - second table contains the actual data
+            teams_data = []
+            if response.get('resultSets') and len(response['resultSets']) > 1:
+                teams_data = response['resultSets'][1].get('data', [])
+            
+            teams = [self._get_name(team, 'teamName', 'name') for team in teams_data]
+            self.update_teams(teams)
     
     def on_team_changed(self):
         """Handle team selection change"""
@@ -1261,20 +1282,26 @@ class MainWindow(BaseWindow):
             return
         
         self.activity_status_label.config(text=i18n.get('loading_machines', team=team))
-        # Removed root.update() to prevent issues during initialization
         
-        result = self.runner.run_cli_command(['--output', 'json', 'list', 'team-machines', team])
-        if result['success'] and result.get('data'):
-            # Store full machine data with vault content
-            self.machines_data = {m.get('machineName', ''): m for m in result['data'] if m.get('machineName')}
-            machines = [self._get_name(m, 'machineName', 'name') for m in result['data']]
-            self.update_machines(machines)
-        else:
+        # Direct API call to get team machines
+        response = self.api_client.token_request('GetTeamMachines', {'teamName': team})
+        
+        if response.get('error'):
             # Clear machine data on error
             self.machines_data = {}
-            error_msg = result.get('error', i18n.get('failed_to_load_machines'))
+            error_msg = response.get('error', i18n.get('failed_to_load_machines'))
             if not self._handle_api_error(error_msg):
                 self.activity_status_label.config(text=f"{i18n.get('error')}: {error_msg}", fg=COLOR_ERROR)
+        else:
+            # Extract machines from resultSets - second table contains the actual data
+            machines_data = []
+            if response.get('resultSets') and len(response['resultSets']) > 1:
+                machines_data = response['resultSets'][1].get('data', [])
+            
+            # Store full machine data with vault content
+            self.machines_data = {m.get('machineName', ''): m for m in machines_data if m.get('machineName')}
+            machines = [self._get_name(m, 'machineName', 'name') for m in machines_data]
+            self.update_machines(machines)
     
     def update_machines(self, machines: list):
         """Update machine dropdown"""
@@ -1297,12 +1324,19 @@ class MainWindow(BaseWindow):
             return
         
         self.activity_status_label.config(text=i18n.get('loading_repositories', team=team))
-        # Removed root.update() to prevent issues during initialization
         
-        # Get all team repositories
-        result = self.runner.run_cli_command(['--output', 'json', 'list', 'team-repositories', team])
-        if result['success'] and result.get('data'):
-            all_repos = result['data']
+        # Direct API call to get team repositories
+        response = self.api_client.token_request('GetTeamRepositories', {'teamName': team})
+        
+        if response.get('error'):
+            error_msg = response.get('error', i18n.get('failed_to_load_repositories'))
+            if not self._handle_api_error(error_msg):
+                self.activity_status_label.config(text=f"{i18n.get('error')}: {error_msg}", fg=COLOR_ERROR)
+        else:
+            # Extract repositories from resultSets - second table contains the actual data
+            all_repos = []
+            if response.get('resultSets') and len(response['resultSets']) > 1:
+                all_repos = response['resultSets'][1].get('data', [])
             
             # Try to filter by machine if we have vaultStatus data
             if machine and machine in self.machines_data:
@@ -1362,10 +1396,6 @@ class MainWindow(BaseWindow):
             repos = [self._get_name(r, 'repositoryName', 'name', 'repoName') for r in all_repos]
             self.repo_filter_label.config(text="(all team repos)", fg='#666666')
             self.update_repositories(repos)
-        else:
-            error_msg = result.get('error', i18n.get('failed_to_load_repositories'))
-            if not self._handle_api_error(error_msg):
-                self.activity_status_label.config(text=f"{i18n.get('error')}: {error_msg}", fg=COLOR_ERROR)
     
     def update_repositories(self, repos: list):
         """Update repository dropdown"""

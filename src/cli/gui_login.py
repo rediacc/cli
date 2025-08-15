@@ -9,14 +9,30 @@ application, including authentication, TFA support, and language selection.
 import tkinter as tk
 from tkinter import ttk, messagebox
 import threading
-from typing import Callable
+from typing import Callable, Dict, Any
+import hashlib
+import json
+import os
+import time
+import urllib.request
+import urllib.parse
+import urllib.error
 
-from core import SubprocessRunner, i18n
+from core import SubprocessRunner, i18n, TokenManager, get_required, get, api_mutex
 from gui_base import BaseWindow
 from gui_utilities import (
     LOGIN_WINDOW_SIZE, COMBO_WIDTH_SMALL, ENTRY_WIDTH_DEFAULT,
     COLOR_SUCCESS, COLOR_ERROR
 )
+from api_client import client, SimpleConfigManager
+
+# Password hashing
+STATIC_SALT = 'Rd!@cc111$ecur3P@$$w0rd$@lt#H@$h'
+
+def pwd_hash(pwd):
+    """Hash password with static salt"""
+    salted_password = pwd + STATIC_SALT
+    return "0x" + hashlib.sha256(salted_password.encode()).digest().hex()
 
 
 class LoginWindow(BaseWindow):
@@ -139,26 +155,60 @@ class LoginWindow(BaseWindow):
         thread.start()
     
     def _do_login(self, email: str, password: str, master_password: str, tfa_code: str = ""):
-        """Perform login in background thread"""
+        """Perform login in background thread using direct API call"""
         try:
-            runner = SubprocessRunner()
-            cmd = ['--output', 'json', 'login', '--email', email, '--password', password]
-            
+            # Set up config manager with master password
+            config_manager = SimpleConfigManager()
             if master_password.strip():
-                cmd.extend(['--master-password', master_password])
+                config_manager.set_master_password(master_password)
+            client.set_config_manager(config_manager)
+            
+            # Prepare login parameters
+            hash_pwd = pwd_hash(password)
+            login_params = {'name': 'GUI Session'}
             if tfa_code:
-                cmd.extend(['--tfa-code', tfa_code])
+                login_params['TFACode'] = tfa_code
             
-            result = runner.run_cli_command(cmd)
+            # Make authentication request
+            response = client.auth_request("CreateAuthenticationRequest", email, hash_pwd, login_params)
             
-            if result['success']:
-                self.root.after(0, self.login_success)
+            if response.get('error'):
+                error = response.get('error', i18n.get('login_failed'))
+                # Check if it's a TFA required error
+                self.root.after(0, lambda: self.login_error(error))
             else:
-                error = result.get('error', i18n.get('login_failed'))
-                if 'TFA_REQUIRED' in error:
+                # Extract authentication data from response
+                if not response.get('resultSets') or not response['resultSets'][0].get('data'):
+                    self.root.after(0, lambda: self.login_error(i18n.get('login_failed')))
+                    return
+                
+                auth_data = response['resultSets'][0]['data'][0]
+                token = auth_data.get('nextRequestCredential')
+                is_authorized = auth_data.get('isAuthorized', True)
+                authentication_status = auth_data.get('authenticationStatus', '')
+                
+                # Check for TFA requirement
+                if authentication_status == 'TFA_REQUIRED' and not is_authorized:
                     self.root.after(0, self.show_tfa_field)
+                elif token and is_authorized:
+                    # Save token and complete login
+                    company = auth_data.get('companyName', '')
+                    vault_company = auth_data.get('vaultCompanyName')
+                    
+                    TokenManager.set_token(
+                        token,
+                        email=email,
+                        company=company,
+                        vault_company=vault_company
+                    )
+                    
+                    # Save master password if provided
+                    if master_password.strip() and vault_company:
+                        TokenManager.set_master_password(master_password)
+                    
+                    self.root.after(0, self.login_success)
                 else:
-                    self.root.after(0, lambda: self.login_error(error))
+                    self.root.after(0, lambda: self.login_error(i18n.get('login_failed')))
         except Exception as e:
             self.root.after(0, lambda: self.login_error(str(e)))
     
