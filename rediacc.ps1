@@ -274,7 +274,16 @@ function Load-EnvFile {
             Get-Content $envPath | ForEach-Object {
                 if ($_ -match '^([^#][^=]+)=(.*)$') {
                     $key = $matches[1].Trim()
-                    $value = $matches[2].Trim().Trim('"''')
+                    $value = $matches[2].Trim()
+                    
+                    # Special handling for JSON values like SYSTEM_COMPANY_VAULT_DEFAULTS
+                    # Only trim quotes if they're at both ends, preserving JSON structure
+                    if ($value -match '^".*"$') {
+                        $value = $value.Substring(1, $value.Length - 2)
+                    } elseif ($value -match "^'.*'$") {
+                        $value = $value.Substring(1, $value.Length - 2)
+                    }
+                    
                     if (-not [Environment]::GetEnvironmentVariable($key)) {
                         [Environment]::SetEnvironmentVariable($key, $value)
                     }
@@ -300,7 +309,16 @@ function Load-EnvFile {
                 Get-Content $targetPath | ForEach-Object {
                     if ($_ -match '^([^#][^=]+)=(.*)$') {
                         $key = $matches[1].Trim()
-                        $value = $matches[2].Trim().Trim('"''')
+                        $value = $matches[2].Trim()
+                        
+                        # Special handling for JSON values like SYSTEM_COMPANY_VAULT_DEFAULTS
+                        # Only trim quotes if they're at both ends, preserving JSON structure
+                        if ($value -match '^".*"$') {
+                            $value = $value.Substring(1, $value.Length - 2)
+                        } elseif ($value -match "^'.*'$") {
+                            $value = $value.Substring(1, $value.Length - 2)
+                        }
+                        
                         if (-not [Environment]::GetEnvironmentVariable($key)) {
                             [Environment]::SetEnvironmentVariable($key, $value)
                         }

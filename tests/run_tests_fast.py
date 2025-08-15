@@ -19,7 +19,8 @@ sys.path.insert(0, str(Path(__file__).parent.parent / 'src'))
 sys.path.insert(0, str(Path(__file__).parent))  # For helpers
 
 # Import API client and helpers
-from rediacc_api_client import RediaccAPIClient
+sys.path.insert(0, str(Path(__file__).parent.parent / 'src' / 'cli'))  # Add CLI source to path
+from api_client import SuperClient
 from totp_helper import generate_totp_code, hash_password
 
 # Load environment variables from parent .env file
@@ -59,7 +60,12 @@ class FastYAMLTestRunner:
     
     def __init__(self, base_url: str = None):
         self.base_url = base_url or os.environ.get('REDIACC_API_URL', 'http://localhost:7322')
-        self.api_client = RediaccAPIClient(self.base_url)
+        
+        # Set environment variable for base URL if provided
+        if base_url:
+            os.environ['SYSTEM_API_URL'] = base_url
+        
+        self.api_client = SuperClient()
         
         # Test context
         self.test_dir = Path(__file__).parent

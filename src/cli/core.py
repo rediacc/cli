@@ -200,6 +200,12 @@ class Config:
     DEFAULTS = {
         'SYSTEM_HTTP_PORT': '443',
         'SYSTEM_API_URL': 'https://www.rediacc.com/api',
+        'SYSTEM_COMPANY_NAME': 'REDIACC.IO',
+        'SYSTEM_DEFAULT_TEAM_NAME': 'Private Team',
+        'SYSTEM_DEFAULT_REGION_NAME': 'Default Region',
+        'SYSTEM_DEFAULT_BRIDGE_NAME': 'Global Bridges',
+        'SYSTEM_COMPANY_VAULT_DEFAULTS': '{"UNIVERSAL_USER_ID":"7111","UNIVERSAL_USER_NAME":"rediacc","PLUGINS":{},"DOCKER_JSON_CONF":{}}',
+        'DOCKER_REGISTRY': '192.168.111.1:5000',
         'REDIACC_LINUX_USER': 'rediacc',
         'REDIACC_LINUX_GROUP': 'rediacc',
         'REDIACC_USER_UID': '7111',
@@ -1167,7 +1173,10 @@ class SubprocessRunner:
             return {'success': False, 'output': '', 'error': str(e), 'returncode': -1}
     
     def run_cli_command(self, args: List[str], timeout: Optional[int] = None) -> Dict[str, Any]:
-        """Run rediacc-cli command and parse JSON output if applicable"""
+        """DEPRECATED: Use direct API calls instead.
+        This method is kept for backward compatibility with plugin operations.
+        For API operations, use the APIClient class directly."""
+        self.logger.warning("run_cli_command is deprecated. Use direct API calls for better performance.")
         try:
             # Don't pass token via command line - let rediacc-cli read it from TokenManager
             # This avoids issues with token rotation and ensures fresh tokens are always used
@@ -1764,7 +1773,11 @@ class TerminalDetector:
             'SYSTEM_ADMIN_PASSWORD',
             'SYSTEM_MASTER_PASSWORD',
             'SYSTEM_HTTP_PORT',
-            'SYSTEM_COMPANY_ID'
+            'SYSTEM_COMPANY_ID',
+            'SYSTEM_COMPANY_VAULT_DEFAULTS',
+            'SYSTEM_COMPANY_NAME',
+            'SYSTEM_DEFAULT_TEAM_NAME',
+            'DOCKER_REGISTRY'
         ]
         for var in important_vars:
             value = os.environ.get(var)
@@ -1783,7 +1796,11 @@ class TerminalDetector:
             'SYSTEM_ADMIN_PASSWORD',
             'SYSTEM_MASTER_PASSWORD',
             'SYSTEM_HTTP_PORT',
-            'SYSTEM_COMPANY_ID'
+            'SYSTEM_COMPANY_ID',
+            'SYSTEM_COMPANY_VAULT_DEFAULTS',
+            'SYSTEM_COMPANY_NAME',
+            'SYSTEM_DEFAULT_TEAM_NAME',
+            'DOCKER_REGISTRY'
         ]
         for var in important_vars:
             value = os.environ.get(var)
@@ -1803,7 +1820,11 @@ class TerminalDetector:
             'SYSTEM_ADMIN_PASSWORD',
             'SYSTEM_MASTER_PASSWORD',
             'SYSTEM_HTTP_PORT',
-            'SYSTEM_COMPANY_ID'
+            'SYSTEM_COMPANY_ID',
+            'SYSTEM_COMPANY_VAULT_DEFAULTS',
+            'SYSTEM_COMPANY_NAME',
+            'SYSTEM_DEFAULT_TEAM_NAME',
+            'DOCKER_REGISTRY'
         ]
         for var in important_vars:
             value = os.environ.get(var)
