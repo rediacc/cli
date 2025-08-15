@@ -1,197 +1,5 @@
 {
-  "QUEUE_FUNCTIONS": {
-    "os_setup": {
-      "description": "Setup operating system with required tools and configurations",
-      "params": {
-        "datastore_size": {
-          "type": "string",
-          "default": "95%",
-          "help": "Datastore size (e.g., 95%, 100G)"
-        },
-        "source": {
-          "type": "string",
-          "default": "apt-repo",
-          "help": "Package source"
-        }
-      }
-    },
-    "hello": {
-      "description": "Simple test function that prints hello from hostname",
-      "params": {}
-    },
-    "uninstall": {
-      "description": "Cleanup and uninstall system components",
-      "params": {}
-    },
-    "repo_new": {
-      "description": "Create a new repository",
-      "params": {
-        "repo": {
-          "type": "string",
-          "required": true,
-          "help": "Repository name"
-        },
-        "size": {
-          "type": "string",
-          "required": true,
-          "help": "Repository size (e.g., 10G)"
-        }
-      }
-    },
-    "repo_mount": {
-      "description": "Mount repository filesystems",
-      "params": {
-        "repo": {
-          "type": "string",
-          "required": true,
-          "help": "Repository name(s), comma-separated"
-        },
-        "from": {
-          "type": "string",
-          "help": "Remote machine to mount from"
-        }
-      }
-    },
-    "repo_unmount": {
-      "description": "Unmount repository filesystems",
-      "params": {
-        "repo": {
-          "type": "string",
-          "required": true,
-          "help": "Repository name(s), comma-separated"
-        },
-        "from": {
-          "type": "string",
-          "help": "Remote machine to unmount from"
-        }
-      }
-    },
-    "repo_up": {
-      "description": "Start repository services using Rediaccfile",
-      "params": {
-        "repo": {
-          "type": "string",
-          "required": true,
-          "help": "Repository name(s), comma-separated"
-        },
-        "option": {
-          "type": "string",
-          "help": "Options (e.g., prep-only)"
-        }
-      }
-    },
-    "repo_down": {
-      "description": "Stop repository services",
-      "params": {
-        "repo": {
-          "type": "string",
-          "required": true,
-          "help": "Repository name(s), comma-separated"
-        }
-      }
-    },
-    "repo_resize": {
-      "description": "Resize repository storage",
-      "params": {
-        "repo": {
-          "type": "string",
-          "required": true,
-          "help": "Repository name"
-        },
-        "size": {
-          "type": "string",
-          "required": true,
-          "help": "New size (e.g., 20G)"
-        }
-      }
-    },
-    "repo_rm": {
-      "description": "Delete repository",
-      "params": {
-        "repo": {
-          "type": "string",
-          "required": true,
-          "help": "Repository name"
-        }
-      }
-    },
-    "repo_ownership": {
-      "description": "Change repository ownership",
-      "params": {
-        "repo": {
-          "type": "string",
-          "required": true,
-          "help": "Repository name"
-        },
-        "from": {
-          "type": "string",
-          "required": true,
-          "help": "Current owner"
-        },
-        "to": {
-          "type": "string",
-          "help": "New owner (default: universal user)"
-        }
-      }
-    },
-    "list_system": {
-      "description": "List repositories",
-      "params": {
-        "kind": {
-          "type": "string",
-          "default": "repo",
-          "help": "Type to list"
-        },
-        "format": {
-          "type": "string",
-          "help": "Output format (json)"
-        }
-      }
-    },
-    "repo_push": {
-      "description": "Push repository to remote storage",
-      "params": {
-        "repo": {
-          "type": "string",
-          "required": true,
-          "help": "Repository name(s), comma-separated"
-        },
-        "dest": {
-          "type": "string",
-          "required": true,
-          "help": "Destination filename"
-        },
-        "to": {
-          "type": "string",
-          "help": "Destination machine/storage"
-        },
-        "state": {
-          "type": "string",
-          "help": "Required repository state (online/offline)"
-        },
-        "option": {
-          "type": "string",
-          "help": "Options (e.g., override)"
-        }
-      }
-    },
-    "repo_pull": {
-      "description": "Pull repository from remote storage",
-      "params": {
-        "from": {
-          "type": "string",
-          "required": true,
-          "help": "Source machine/storage"
-        },
-        "repo": {
-          "type": "string",
-          "required": true,
-          "help": "Repository name(s), comma-separated"
-        }
-      }
-    }
-  },
-  "CMD_CONFIG": {
+  "API_ENDPOINTS": {
     "login": {
       "auth_required": false,
       "endpoint": "CreateAuthenticationRequest",
@@ -1564,6 +1372,12 @@
               "required": true,
               "example": "",
               "type": "string"
+            },
+            "name": {
+              "description": "",
+              "required": true,
+              "example": "",
+              "type": "string"
             }
           },
           "examples": [
@@ -1606,6 +1420,12 @@
               "example": "us-east"
             },
             "bridge": {
+              "description": "",
+              "required": true,
+              "example": "",
+              "type": "string"
+            },
+            "name": {
               "description": "",
               "required": true,
               "example": "",
@@ -1933,6 +1753,12 @@
               "required": false,
               "example": "",
               "type": "string"
+            },
+            "name": {
+              "description": "",
+              "required": true,
+              "example": "",
+              "type": "string"
             }
           }
         }
@@ -2101,6 +1927,18 @@
               "type": "string"
             },
             "new_name": {
+              "description": "",
+              "required": true,
+              "example": "",
+              "type": "string"
+            },
+            "name": {
+              "description": "",
+              "required": true,
+              "example": "",
+              "type": "string"
+            },
+            "new_bridge": {
               "description": "",
               "required": true,
               "example": "",
@@ -2433,6 +2271,12 @@
               "example": ""
             },
             "machine": {
+              "description": "",
+              "required": true,
+              "example": "",
+              "type": "string"
+            },
+            "name": {
               "description": "",
               "required": true,
               "example": "",
@@ -4950,7 +4794,378 @@
       }
     }
   },
-  "ARG_DEFS": {
+  "CLI_COMMANDS": {
+    "license": {
+      "description": "License management commands",
+      "subcommands": {
+        "generate-id": {
+          "description": "Generate hardware ID for offline licensing",
+          "parameters": {
+            "output": {
+              "short": "-o",
+              "help": "Output file (default: hardware-id.txt)",
+              "required": false
+            }
+          }
+        },
+        "request": {
+          "description": "Request license using hardware ID",
+          "parameters": {
+            "hardware-id": {
+              "short": "-i",
+              "help": "Hardware ID or file containing it",
+              "required": true
+            },
+            "output": {
+              "short": "-o",
+              "help": "Output file (default: license.lic)",
+              "required": false
+            },
+            "server-url": {
+              "short": "-s",
+              "help": "License server URL (optional)",
+              "required": false
+            }
+          }
+        },
+        "install": {
+          "description": "Install license file",
+          "parameters": {
+            "file": {
+              "short": "-f",
+              "help": "License file to install",
+              "required": true
+            },
+            "target": {
+              "short": "-t",
+              "help": "Target directory (default: auto-detect)",
+              "required": false
+            }
+          }
+        }
+      }
+    },
+    "workflow": {
+      "description": "High-level workflow commands",
+      "subcommands": {
+        "repo-create": {
+          "description": "Create and initialize repository on machine",
+          "parameters": {
+            "team": {
+              "help": "Team name",
+              "required": true
+            },
+            "name": {
+              "help": "Repository name",
+              "required": true
+            },
+            "machine": {
+              "help": "Machine to initialize repository on",
+              "required": true
+            },
+            "size": {
+              "help": "Repository size (e.g., 1G, 500M, 10G)",
+              "required": true
+            },
+            "vault": {
+              "help": "Repository vault data (JSON)",
+              "required": false
+            },
+            "parent": {
+              "help": "Parent repository name",
+              "required": false
+            },
+            "trace": {
+              "action": "store_true",
+              "help": "Show task ID for tracking",
+              "required": false
+            },
+            "wait": {
+              "action": "store_true",
+              "help": "Wait for completion",
+              "required": false
+            },
+            "poll-interval": {
+              "type": "int",
+              "default": 2,
+              "help": "Polling interval in seconds when waiting (default: 2)",
+              "required": false
+            },
+            "wait-timeout": {
+              "type": "int",
+              "default": 300,
+              "help": "Timeout in seconds when waiting (default: 300)",
+              "required": false
+            }
+          }
+        },
+        "repo-push": {
+          "description": "Push repository with automatic destination creation",
+          "parameters": {
+            "source-team": {
+              "help": "Source team name",
+              "required": true
+            },
+            "source-machine": {
+              "help": "Source machine name",
+              "required": true
+            },
+            "source-repo": {
+              "help": "Source repository name",
+              "required": true
+            },
+            "source-path": {
+              "default": "/",
+              "help": "Source path within repository (default: /)",
+              "required": false
+            },
+            "dest-team": {
+              "help": "Destination team name",
+              "required": true
+            },
+            "dest-repo": {
+              "help": "Destination repository name",
+              "required": true
+            },
+            "dest-type": {
+              "choices": [
+                "machine",
+                "storage"
+              ],
+              "default": "machine",
+              "help": "Destination type",
+              "required": false
+            },
+            "dest-machine": {
+              "help": "Destination machine name (required for machine destination)",
+              "required": false
+            },
+            "dest-storage": {
+              "help": "Destination storage name (required for storage destination)",
+              "required": false
+            },
+            "trace": {
+              "action": "store_true",
+              "help": "Show task ID for tracking",
+              "required": false
+            },
+            "wait": {
+              "action": "store_true",
+              "help": "Wait for completion",
+              "required": false
+            },
+            "poll-interval": {
+              "type": "int",
+              "default": 2,
+              "help": "Polling interval in seconds when waiting (default: 2)",
+              "required": false
+            },
+            "wait-timeout": {
+              "type": "int",
+              "default": 300,
+              "help": "Timeout in seconds when waiting (default: 300)",
+              "required": false
+            }
+          }
+        },
+        "connectivity-test": {
+          "description": "Test connectivity to multiple machines",
+          "parameters": {
+            "team": {
+              "help": "Team name",
+              "required": true
+            },
+            "machines": {
+              "nargs": "+",
+              "help": "Machine names to test",
+              "required": true
+            },
+            "wait": {
+              "action": "store_true",
+              "help": "Wait for completion",
+              "required": false
+            },
+            "poll-interval": {
+              "type": "int",
+              "default": 2,
+              "help": "Polling interval in seconds when waiting (default: 2)",
+              "required": false
+            },
+            "wait-timeout": {
+              "type": "int",
+              "default": 30,
+              "help": "Timeout in seconds per machine when waiting (default: 30)",
+              "required": false
+            }
+          }
+        },
+        "hello-test": {
+          "description": "Execute hello function on machine",
+          "parameters": {
+            "team": {
+              "help": "Team name",
+              "required": true
+            },
+            "machine": {
+              "help": "Machine name",
+              "required": true
+            },
+            "wait": {
+              "action": "store_true",
+              "help": "Wait for completion",
+              "required": false
+            },
+            "poll-interval": {
+              "type": "int",
+              "default": 2,
+              "help": "Polling interval in seconds when waiting (default: 2)",
+              "required": false
+            },
+            "wait-timeout": {
+              "type": "int",
+              "default": 30,
+              "help": "Timeout in seconds when waiting (default: 30)",
+              "required": false
+            }
+          }
+        },
+        "ssh-test": {
+          "description": "Test SSH connectivity through bridge",
+          "parameters": {
+            "team": {
+              "help": "Team name (required by API)",
+              "required": true
+            },
+            "bridge": {
+              "help": "Bridge name",
+              "required": true
+            },
+            "host": {
+              "help": "Target host to test",
+              "required": true
+            },
+            "user": {
+              "help": "SSH username",
+              "required": true
+            },
+            "password": {
+              "help": "SSH password (optional)",
+              "required": false
+            },
+            "wait": {
+              "action": "store_true",
+              "help": "Wait for completion",
+              "required": false
+            },
+            "poll-interval": {
+              "type": "int",
+              "default": 2,
+              "help": "Polling interval in seconds when waiting (default: 2)",
+              "required": false
+            },
+            "wait-timeout": {
+              "type": "int",
+              "default": 30,
+              "help": "Timeout in seconds when waiting (default: 30)",
+              "required": false
+            }
+          }
+        },
+        "machine-setup": {
+          "description": "Setup machine with datastore",
+          "parameters": {
+            "team": {
+              "help": "Team name",
+              "required": true
+            },
+            "machine": {
+              "help": "Machine name",
+              "required": true
+            },
+            "datastore-size": {
+              "default": "default",
+              "help": "Datastore size (default: default)",
+              "required": false
+            },
+            "wait": {
+              "action": "store_true",
+              "help": "Wait for completion",
+              "required": false
+            },
+            "poll-interval": {
+              "type": "int",
+              "default": 2,
+              "help": "Polling interval in seconds when waiting (default: 2)",
+              "required": false
+            },
+            "wait-timeout": {
+              "type": "int",
+              "default": 300,
+              "help": "Timeout in seconds when waiting (default: 300)",
+              "required": false
+            }
+          }
+        },
+        "add-machine": {
+          "description": "Create machine with SSH connection test",
+          "parameters": {
+            "team": {
+              "help": "Team name",
+              "required": true
+            },
+            "name": {
+              "help": "Machine name",
+              "required": true
+            },
+            "bridge": {
+              "help": "Bridge name",
+              "required": true
+            },
+            "vault": {
+              "help": "Machine vault data (JSON) with ip, user, ssh_password, etc.",
+              "required": false
+            },
+            "no-test": {
+              "action": "store_true",
+              "help": "Skip SSH connection test",
+              "required": false
+            },
+            "auto-setup": {
+              "action": "store_true",
+              "help": "Automatically run machine setup if SSH test passes",
+              "required": false
+            },
+            "datastore-size": {
+              "default": "95%",
+              "help": "Datastore size for auto-setup (default: 95%%)",
+              "required": false
+            },
+            "wait": {
+              "action": "store_true",
+              "help": "Wait for SSH test completion",
+              "required": false
+            },
+            "trace": {
+              "action": "store_true",
+              "help": "Show task IDs for tracking",
+              "required": false
+            },
+            "poll-interval": {
+              "type": "int",
+              "default": 2,
+              "help": "Polling interval in seconds when waiting (default: 2)",
+              "required": false
+            },
+            "wait-timeout": {
+              "type": "int",
+              "default": 30,
+              "help": "Timeout in seconds when waiting for SSH test (default: 30)",
+              "required": false
+            }
+          }
+        }
+      }
+    },
     "login": [
       {
         "name": "--email",
@@ -6185,156 +6400,221 @@
           "help": "Privilege level to grant"
         }
       ]
+    }
+  },
+  "QUEUE_FUNCTIONS": {
+    "os_setup": {
+      "description": "Setup operating system with required tools and configurations",
+      "params": {
+        "datastore_size": {
+          "type": "string",
+          "default": "95%",
+          "help": "Datastore size (e.g., 95%, 100G)"
+        },
+        "source": {
+          "type": "string",
+          "default": "apt-repo",
+          "help": "Package source"
+        }
+      }
     },
-    "bridgeName": {
-      "type": "string",
-      "required": true,
-      "help": "bridgeName parameter"
+    "hello": {
+      "description": "Simple test function that prints hello from hostname",
+      "params": {}
     },
-    "bridgeVault": {
-      "type": "string",
-      "required": true,
-      "help": "bridgeVault parameter"
+    "uninstall": {
+      "description": "Cleanup and uninstall system components",
+      "params": {}
     },
-    "regionName": {
-      "type": "string",
-      "required": true,
-      "help": "regionName parameter"
+    "repo_new": {
+      "description": "Create a new repository",
+      "params": {
+        "repo": {
+          "type": "string",
+          "required": true,
+          "help": "Repository name"
+        },
+        "size": {
+          "type": "string",
+          "required": true,
+          "help": "Repository size (e.g., 10G)"
+        }
+      }
     },
-    "vaultVersion": {
-      "type": "string",
-      "required": true,
-      "help": "vaultVersion parameter"
+    "repo_mount": {
+      "description": "Mount repository filesystems",
+      "params": {
+        "repo": {
+          "type": "string",
+          "required": true,
+          "help": "Repository name(s), comma-separated"
+        },
+        "from": {
+          "type": "string",
+          "help": "Remote machine to mount from"
+        }
+      }
     },
-    "cloneName": {
-      "type": "string",
-      "required": true,
-      "help": "cloneName parameter"
+    "repo_unmount": {
+      "description": "Unmount repository filesystems",
+      "params": {
+        "repo": {
+          "type": "string",
+          "required": true,
+          "help": "Repository name(s), comma-separated"
+        },
+        "from": {
+          "type": "string",
+          "help": "Remote machine to unmount from"
+        }
+      }
     },
-    "imageName": {
-      "type": "string",
-      "required": true,
-      "help": "imageName parameter"
+    "repo_up": {
+      "description": "Start repository services using Rediaccfile",
+      "params": {
+        "repo": {
+          "type": "string",
+          "required": true,
+          "help": "Repository name(s), comma-separated"
+        },
+        "option": {
+          "type": "string",
+          "help": "Options (e.g., prep-only)"
+        }
+      }
     },
-    "machineNames": {
-      "type": "string",
-      "required": true,
-      "help": "machineNames parameter"
+    "repo_down": {
+      "description": "Stop repository services",
+      "params": {
+        "repo": {
+          "type": "string",
+          "required": true,
+          "help": "Repository name(s), comma-separated"
+        }
+      }
     },
-    "poolName": {
-      "type": "string",
-      "required": true,
-      "help": "poolName parameter"
+    "repo_resize": {
+      "description": "Resize repository storage",
+      "params": {
+        "repo": {
+          "type": "string",
+          "required": true,
+          "help": "Repository name"
+        },
+        "size": {
+          "type": "string",
+          "required": true,
+          "help": "New size (e.g., 20G)"
+        }
+      }
     },
-    "snapshotName": {
-      "type": "string",
-      "required": true,
-      "help": "snapshotName parameter"
+    "repo_rm": {
+      "description": "Delete repository",
+      "params": {
+        "repo": {
+          "type": "string",
+          "required": true,
+          "help": "Repository name"
+        }
+      }
     },
-    "teamName": {
-      "type": "string",
-      "required": true,
-      "help": "teamName parameter"
+    "repo_ownership": {
+      "description": "Change repository ownership",
+      "params": {
+        "repo": {
+          "type": "string",
+          "required": true,
+          "help": "Repository name"
+        },
+        "from": {
+          "type": "string",
+          "required": true,
+          "help": "Current owner"
+        },
+        "to": {
+          "type": "string",
+          "help": "New owner (default: universal user)"
+        }
+      }
     },
-    "machineName": {
-      "type": "string",
-      "required": true,
-      "help": "machineName parameter"
+    "list_system": {
+      "description": "List repositories",
+      "params": {
+        "kind": {
+          "type": "string",
+          "default": "repo",
+          "help": "Type to list"
+        },
+        "format": {
+          "type": "string",
+          "help": "Output format (json)"
+        }
+      }
     },
-    "machineVault": {
-      "type": "string",
-      "required": true,
-      "help": "machineVault parameter"
+    "repo_push": {
+      "description": "Push repository to remote storage",
+      "params": {
+        "repo": {
+          "type": "string",
+          "required": true,
+          "help": "Repository name(s), comma-separated"
+        },
+        "dest": {
+          "type": "string",
+          "required": true,
+          "help": "Destination filename"
+        },
+        "to": {
+          "type": "string",
+          "help": "Destination machine/storage"
+        },
+        "state": {
+          "type": "string",
+          "help": "Required repository state (online/offline)"
+        },
+        "option": {
+          "type": "string",
+          "help": "Options (e.g., override)"
+        }
+      }
     },
-    "clusterName": {
-      "type": "string",
-      "required": true,
-      "help": "clusterName parameter"
-    },
-    "imageVault": {
-      "type": "string",
-      "required": true,
-      "help": "imageVault parameter"
-    },
-    "regionVault": {
-      "type": "string",
-      "required": true,
-      "help": "regionVault parameter"
-    },
-    "cloneVault": {
-      "type": "string",
-      "required": true,
-      "help": "cloneVault parameter"
-    },
-    "newMachineName": {
-      "type": "string",
-      "required": true,
-      "help": "newMachineName parameter"
-    },
-    "teamVault": {
-      "type": "string",
-      "required": true,
-      "help": "teamVault parameter"
-    },
-    "poolVault": {
-      "type": "string",
-      "required": true,
-      "help": "poolVault parameter"
-    },
-    "currentUserEmail": {
-      "type": "string",
-      "required": true,
-      "help": "currentUserEmail parameter"
-    },
-    "newUserEmail": {
-      "type": "string",
-      "required": true,
-      "help": "newUserEmail parameter"
-    },
-    "userName": {
-      "type": "string",
-      "required": true,
-      "help": "userName parameter"
-    },
-    "snapshotVault": {
-      "type": "string",
-      "required": true,
-      "help": "snapshotVault parameter"
-    },
-    "enable": {
-      "type": "string",
-      "required": true,
-      "help": "enable parameter"
-    },
-    "userHash": {
-      "type": "string",
-      "required": true,
-      "help": "userHash parameter"
-    },
-    "currentCode": {
-      "type": "string",
-      "required": true,
-      "help": "currentCode parameter"
-    },
-    "generateOnly": {
-      "type": "string",
-      "required": true,
-      "help": "generateOnly parameter"
-    },
-    "verificationCode": {
-      "type": "string",
-      "required": true,
-      "help": "verificationCode parameter"
-    },
-    "secret": {
-      "type": "string",
-      "required": true,
-      "help": "secret parameter"
-    },
-    "confirmEnable": {
-      "type": "string",
-      "required": true,
-      "help": "confirmEnable parameter"
+    "repo_pull": {
+      "description": "Pull repository from remote storage",
+      "params": {
+        "from": {
+          "type": "string",
+          "required": true,
+          "help": "Source machine/storage"
+        },
+        "repo": {
+          "type": "string",
+          "required": true,
+          "help": "Repository name(s), comma-separated"
+        }
+      }
+    }
+  },
+  "METADATA": {
+    "version": "2.0.0",
+    "reorganized": "2025-01-15T00:00:00Z",
+    "description": "Reorganized structure separating generated API endpoints from manual CLI commands",
+    "sections": {
+      "API_ENDPOINTS": {
+        "description": "Generated from procedures.json via proc.sh synchronization",
+        "source": "database stored procedures",
+        "last_sync": null,
+        "modification_allowed": false
+      },
+      "CLI_COMMANDS": {
+        "description": "Manually defined CLI commands with their complete configuration",
+        "source": "manual configuration",
+        "modification_allowed": true
+      },
+      "QUEUE_FUNCTIONS": {
+        "description": "Queue function definitions for bash script operations",
+        "source": "manual configuration",
+        "modification_allowed": true
+      }
     }
   }
 }

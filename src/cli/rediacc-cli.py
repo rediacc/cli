@@ -26,6 +26,7 @@ from core import (
 
 from rediacc_cli_core import colorize, COLORS
 from api_client import client
+from workflow import WorkflowHandler
 
 try:
     from cryptography.hazmat.primitives import hashes
@@ -66,8 +67,8 @@ try:
     with open(CLI_CONFIG_PATH, 'r') as f:
         cli_config = json.load(f)
         QUEUE_FUNCTIONS = cli_config['QUEUE_FUNCTIONS']
-        CMD_CONFIG_JSON = cli_config['CMD_CONFIG']
-        ARG_DEFS_JSON = cli_config['ARG_DEFS']
+        API_ENDPOINTS_JSON = cli_config['API_ENDPOINTS']
+        CLI_COMMANDS_JSON = cli_config['CLI_COMMANDS']
 except Exception as e:
     print(colorize(f"Error loading CLI configuration from {CLI_CONFIG_PATH}: {e}", 'RED'))
     sys.exit(1)
@@ -159,7 +160,7 @@ def reconstruct_cmd_config():
         if 'params' in value and isinstance(value['params'], str) and value['params'].startswith('lambda'):
             value = value.copy(); value['params'] = eval(value['params']); return value
         return {k: process_value(v) if isinstance(v, dict) else v for k, v in value.items()}
-    return {key: process_value(value) for key, value in CMD_CONFIG_JSON.items()}
+    return {key: process_value(value) for key, value in API_ENDPOINTS_JSON.items()}
 
 def reconstruct_arg_defs():
     def process_arg(arg):
@@ -173,10 +174,10 @@ def reconstruct_arg_defs():
         return [process_arg(arg) for arg in value] if isinstance(value, list) else \
                {k: process_value(v) if isinstance(v, (list, dict)) else v for k, v in value.items()} if isinstance(value, dict) else value
     
-    return {key: process_value(value) for key, value in ARG_DEFS_JSON.items()}
+    return {key: process_value(value) for key, value in CLI_COMMANDS_JSON.items()}
 
-CMD_CONFIG = reconstruct_cmd_config()
-ARG_DEFS = reconstruct_arg_defs()
+API_ENDPOINTS = reconstruct_cmd_config()
+CLI_COMMANDS = reconstruct_arg_defs()
 
 def APIClient(config_manager):
     """Create CLI client instance by setting config manager on singleton"""
@@ -1072,10 +1073,10 @@ class CommandHandler:
         """Generate help text dynamically from configuration"""
         if not resource_type:
             # List all resources for command type
-            if cmd_type not in CMD_CONFIG:
+            if cmd_type not in API_ENDPOINTS:
                 return f"\nNo resources available for command '{cmd_type}'\n"
             
-            resources = CMD_CONFIG.get(cmd_type, {})
+            resources = API_ENDPOINTS.get(cmd_type, {})
             help_text = f"\nAvailable resources for '{colorize(cmd_type, 'BLUE')}':\n\n"
             
             # Calculate max width for alignment
@@ -1090,10 +1091,10 @@ class CommandHandler:
             return help_text
         
         # Generate help for specific command
-        if cmd_type not in CMD_CONFIG or resource_type not in CMD_CONFIG[cmd_type]:
+        if cmd_type not in API_ENDPOINTS or resource_type not in API_ENDPOINTS[cmd_type]:
             return f"\nNo help available for: {cmd_type} {resource_type}\n"
         
-        config = CMD_CONFIG[cmd_type][resource_type]
+        config = API_ENDPOINTS[cmd_type][resource_type]
         help_info = config.get('help', {})
         
         # Start with command description
@@ -1146,11 +1147,11 @@ class CommandHandler:
         if handler := special_handlers.get((cmd_type, resource_type)):
             return handler(args)
         
-        if cmd_type not in CMD_CONFIG or resource_type not in CMD_CONFIG[cmd_type]:
+        if cmd_type not in API_ENDPOINTS or resource_type not in API_ENDPOINTS[cmd_type]:
             print(format_output(None, self.output_format, None, f"Unsupported command: {cmd_type} {resource_type}"))
             return 1
         
-        cmd_config = CMD_CONFIG[cmd_type][resource_type]
+        cmd_config = API_ENDPOINTS[cmd_type][resource_type]
         auth_required = cmd_config.get('auth_required', True)
         
         password_prompts = [
@@ -1575,7 +1576,7 @@ class CommandHandler:
     def vault_set(self, args):
         """Set vault data for a resource"""
         resource_type = args.resource_type
-        endpoints = CMD_CONFIG['vault']['set']['endpoints']
+        endpoints = API_ENDPOINTS['vault']['set']['endpoints']
         
         if resource_type not in endpoints:
             print(format_output(None, self.output_format, None, f"Unsupported resource type: {resource_type}"))
@@ -1699,11 +1700,11 @@ class CommandHandler:
                         params[key] = value
         
         # Check if this endpoint requires special authentication handling
-        # Look for it in CMD_CONFIG to determine auth requirements
+        # Look for it in API_ENDPOINTS to determine auth requirements
         auth_required = True
         auth_type = None
         
-        for main_cmd, sub_cmds in CMD_CONFIG.items():
+        for main_cmd, sub_cmds in API_ENDPOINTS.items():
             if isinstance(sub_cmds, dict):
                 # Check top-level commands
                 if sub_cmds.get('endpoint') == endpoint_name:
@@ -1916,1279 +1917,41 @@ class CommandHandler:
             
             return '\n'.join(output_parts)
     
+    # Workflow delegate methods
     def workflow_repo_create(self, args):
-        """Create repository and initialize it on machine"""
-        try:
-            # Step 1: Create repository record in database
-            # Handle vault data - if not provided or empty, create with random credential
-            vault_data = getattr(args, 'vault', '{}')
-            if vault_data == '{}' or not vault_data:
-                # Generate a random credential
-                import secrets
-                import string
-                alphabet = string.ascii_letters + string.digits + string.punctuation
-                random_credential = ''.join(secrets.choice(alphabet) for i in range(32))
-                vault_data = json.dumps({"credential": random_credential})
-            
-            create_params = {
-                'teamName': args.team,
-                'repoName': args.name,
-                'repoVault': vault_data
-            }
-            # Only add parentRepoName if provided
-            if hasattr(args, 'parent') and args.parent:
-                create_params['parentRepoName'] = args.parent
-                
-            repo_response = self.client.token_request("CreateRepository", create_params)
-            
-            if repo_response.get('error'):
-                print(format_output(None, self.output_format, None, f"Failed to create repository: {repo_response['error']}"))
-                return 1
-            
-            # Step 2: Get repository GUID by fetching team repositories
-            repos_response = self.client.token_request("GetTeamRepositories", {
-                'teamName': args.team
-            })
-            
-            if repos_response.get('error'):
-                # Rollback repository creation
-                self._cleanup_repository(args.team, args.name)
-                print(format_output(None, self.output_format, None, f"Failed to get repository list: {repos_response['error']}"))
-                return 1
-            
-            # Find our repository and extract GUID
-            repo_guid = None
-            if len(repos_response.get('resultSets', [])) > 1:
-                repos = repos_response['resultSets'][1].get('data', [])
-                for repo in repos:
-                    if repo.get('repoName') == args.name or repo.get('repositoryName') == args.name:
-                        repo_guid = repo.get('repoGuid') or repo.get('repositoryGuid')
-                        break
-            
-            if not repo_guid:
-                # Rollback repository creation
-                self._cleanup_repository(args.team, args.name)
-                print(format_output(None, self.output_format, None, "Failed to get repository GUID"))
-                return 1
-            
-            # Get machine data using helper method
-            machine_data = self._get_machine_data(args.team, args.machine)
-            if not machine_data:
-                # Rollback repository creation
-                self._cleanup_repository(args.team, args.name)
-                return 1
-            
-            bridge_name = machine_data.get('bridgeName')
-            machine_vault = machine_data.get('vaultContent', '{}')
-            
-            if not bridge_name:
-                # Rollback repository creation
-                self.client.token_request("DeleteRepository", {
-                    'teamName': args.team,
-                    'repoName': args.name
-                })
-                print(format_output(None, self.output_format, None, "Machine does not have an assigned bridge"))
-                return 1
-            
-            # Get team vault data with SSH keys
-            team_vault = self._get_team_vault(args.team)
-            
-            # Step 2: Build queue vault for 'new' function
-            vault_builder = VaultBuilder(self.client)
-            queue_vault = vault_builder.build_for_repo_create(
-                team_name=args.team,
-                machine_name=args.machine,
-                repo_name=args.name,
-                repo_guid=repo_guid,
-                size=args.size,
-                team_vault=team_vault,
-                machine_vault=machine_vault
-            )
-            
-            # Step 3: Create queue item to initialize repository on machine
-            queue_response = self.client.token_request("CreateQueueItem", {
-                'teamName': args.team,
-                'machineName': args.machine,
-                'bridgeName': bridge_name,
-                'queueVault': queue_vault
-            })
-            
-            if queue_response.get('error'):
-                # Rollback repository creation
-                self.client.token_request("DeleteRepository", {
-                    'teamName': args.team,
-                    'repoName': args.name
-                })
-                print(format_output(None, self.output_format, None, f"Failed to create queue item: {queue_response['error']}"))
-                return 1
-            
-            # Extract task ID
-            task_id = None
-            if len(queue_response.get('resultSets', [])) > 1 and queue_response['resultSets'][1].get('data'):
-                task_id = queue_response['resultSets'][1]['data'][0].get('taskId') or queue_response['resultSets'][1]['data'][0].get('TaskId')
-            
-            # Prepare result data
-            result = {
-                'repository_name': args.name,
-                'repository_guid': repo_guid,
-                'task_id': task_id,
-                'team': args.team,
-                'machine': args.machine,
-                'size': args.size
-            }
-            
-            # Output results
-            if self.output_format in ['json', 'json-full']:
-                if not getattr(args, 'wait', False):
-                    print(format_output(result, self.output_format, f"Repository '{args.name}' created and initialization queued"))
-            else:
-                print(colorize(f"Repository '{args.name}' created successfully", 'GREEN'))
-                print(f"Repository GUID: {repo_guid}")
-                if task_id:
-                    print(f"Initialization Task ID: {task_id}")
-                    if getattr(args, 'trace', False):
-                        print(colorize("Use 'rediacc queue trace' command to track progress", 'BLUE'))
-            
-            # Wait for completion if requested
-            if getattr(args, 'wait', False) and task_id:
-                if self.output_format != 'json':
-                    print(colorize("Waiting for repository initialization...", 'BLUE'))
-                poll_interval = getattr(args, 'poll_interval', 2)
-                wait_timeout = getattr(args, 'wait_timeout', 300)
-                completion_result = self._wait_for_task_completion(task_id, args.team, timeout=wait_timeout, poll_interval=poll_interval)
-                
-                if self.output_format in ['json', 'json-full']:
-                    result = self._format_completion_result(result, completion_result)
-                    print(format_output(result, self.output_format))
-                else:
-                    if completion_result['completed']:
-                        print(colorize("Repository initialization completed successfully", 'GREEN'))
-                        # Display command output if available
-                        command_output = self._extract_command_output(completion_result)
-                        if command_output:
-                            print(colorize("\nCommand Output:", 'BLUE'))
-                            # Clean up the output (replace \n with actual newlines)
-                            clean_output = command_output.replace('\\n', '\n')
-                            print(clean_output)
-                    else:
-                        print(colorize(f"Repository initialization {completion_result['status'].lower()}", 'RED'))
-                        if completion_result.get('error'):
-                            print(f"Error: {completion_result['error']}")
-                        # Try to show command output even for failed tasks
-                        command_output = self._extract_command_output(completion_result)
-                        if command_output:
-                            print(colorize("\nCommand Output:", 'YELLOW'))
-                            clean_output = command_output.replace('\\n', '\n')
-                            print(clean_output)
-                        return 1
-            
-            return 0
-            
-        except Exception as e:
-            print(format_output(None, self.output_format, None, f"Workflow error: {str(e)}"))
-            return 1
+        """Delegate to workflow handler"""
+        workflow = WorkflowHandler(self)
+        return workflow.workflow_repo_create(args)
     
     def workflow_repo_push(self, args):
-        """Push repository with automatic destination creation"""
-        try:
-            # Get source repository data
-            source_repo_response = self.client.token_request("GetTeamRepositories", {'teamName': args.source_team})
-            if source_repo_response.get('error'):
-                print(format_output(None, self.output_format, None, f"Failed to get source repositories: {source_repo_response['error']}"))
-                return 1
-            
-            source_repo = None
-            if len(source_repo_response.get('resultSets', [])) > 1:
-                repos = source_repo_response['resultSets'][1].get('data', [])
-                source_repo = next((r for r in repos if r.get('repoName') == args.source_repo), None)
-            
-            if not source_repo:
-                print(format_output(None, self.output_format, None, f"Source repository '{args.source_repo}' not found"))
-                return 1
-            
-            source_guid = source_repo.get('repoGuid')
-            grand_guid = source_repo.get('grandGuid', source_guid)
-            
-            # Check if destination is machine or storage
-            dest_type = getattr(args, 'dest_type', 'machine')
-            dest_guid = None
-            created_repo_name = None
-            
-            if dest_type == 'machine':
-                # Check if destination repository exists
-                dest_repo_response = self.client.token_request("GetTeamRepositories", {'teamName': args.dest_team})
-                dest_repo = None
-                if not dest_repo_response.get('error') and len(dest_repo_response.get('resultSets', [])) > 1:
-                    repos = dest_repo_response['resultSets'][1].get('data', [])
-                    dest_repo = next((r for r in repos if r.get('repoName') == args.dest_repo), None)
-                
-                if not dest_repo:
-                    # Create destination repository
-                    create_response = self.client.token_request("CreateRepository", {
-                        'teamName': args.dest_team,
-                        'repoName': args.dest_repo,
-                        'repoVault': '{}',
-                        'parentRepoName': args.source_repo
-                    })
-                    
-                    if create_response.get('error'):
-                        print(format_output(None, self.output_format, None, f"Failed to create destination repository: {create_response['error']}"))
-                        return 1
-                    
-                    created_repo_name = args.dest_repo
-                    
-                    # Refetch to get the new repository GUID
-                    dest_repo_response = self.client.token_request("GetTeamRepositories", {'teamName': args.dest_team})
-                    if not dest_repo_response.get('error') and len(dest_repo_response.get('resultSets', [])) > 1:
-                        repos = dest_repo_response['resultSets'][1].get('data', [])
-                        dest_repo = next((r for r in repos if r.get('repoName') == args.dest_repo), None)
-                
-                if dest_repo:
-                    dest_guid = dest_repo.get('repoGuid')
-            
-            # Get machine and vault data
-            source_machine_data = self._get_machine_data(args.source_team, args.source_machine)
-            if not source_machine_data:
-                if created_repo_name:
-                    self._cleanup_repository(args.dest_team, created_repo_name)
-                return 1
-            
-            # Build push parameters
-            push_params = {
-                'src': args.source_path or '/',
-                'dest': dest_guid if dest_type == 'machine' else args.dest_repo,
-                'repo': source_guid,
-                'grand': grand_guid,
-                'destinationType': dest_type,
-                'to': args.dest_machine if dest_type == 'machine' else args.dest_storage
-            }
-            
-            # Get additional vault data if needed
-            team_vault = self._get_team_vault(args.source_team)
-            dest_machine_vault = None
-            dest_storage_vault = None
-            
-            if dest_type == 'machine':
-                dest_machine_data = self._get_machine_data(args.dest_team, args.dest_machine)
-                if dest_machine_data:
-                    dest_machine_vault = dest_machine_data.get('vaultContent', '{}')
-            else:
-                # Get storage vault data
-                dest_storage_vault = self._get_storage_vault(args.dest_team, args.dest_storage)
-            
-            # Build queue vault
-            vault_builder = VaultBuilder(self.client)
-            context = {
-                'teamName': args.source_team,
-                'machineName': args.source_machine,
-                'params': push_params,
-                'teamVault': team_vault,
-                'machineVault': source_machine_data.get('vaultContent', '{}'),
-                'repositoryGuid': source_guid,
-                'repositoryVault': source_repo.get('vaultContent', '{}'),
-                'destinationGuid': dest_guid,
-                'grandGuid': grand_guid
-            }
-            
-            if dest_machine_vault:
-                context['destinationMachineVault'] = dest_machine_vault
-            if dest_storage_vault:
-                context['destinationStorageVault'] = dest_storage_vault
-            
-            queue_vault = vault_builder.build_for_repo_push(context)
-            
-            # Create queue item
-            queue_response = self.client.token_request("CreateQueueItem", {
-                'teamName': args.source_team,
-                'machineName': args.source_machine,
-                'bridgeName': source_machine_data['bridgeName'],
-                'queueVault': queue_vault
-            })
-            
-            if queue_response.get('error'):
-                if created_repo_name:
-                    self._cleanup_repository(args.dest_team, created_repo_name)
-                print(format_output(None, self.output_format, None, f"Failed to create queue item: {queue_response['error']}"))
-                return 1
-            
-            # Extract task ID
-            task_id = None
-            if len(queue_response.get('resultSets', [])) > 1 and queue_response['resultSets'][1].get('data'):
-                task_id = queue_response['resultSets'][1]['data'][0].get('taskId') or queue_response['resultSets'][1]['data'][0].get('TaskId')
-            
-            # Prepare result data
-            result = {
-                'source': f"{args.source_team}/{args.source_machine}/{args.source_repo}",
-                'destination': f"{args.dest_team}/{args.dest_machine if dest_type == 'machine' else args.dest_storage}/{args.dest_repo}",
-                'task_id': task_id,
-                'created_destination': bool(created_repo_name)
-            }
-            
-            # Output results
-            if self.output_format in ['json', 'json-full']:
-                if not getattr(args, 'wait', False):
-                    print(format_output(result, self.output_format, "Repository push queued successfully"))
-            else:
-                print(colorize("Repository push queued successfully", 'GREEN'))
-                print(f"Source: {args.source_team}/{args.source_machine}/{args.source_repo}")
-                print(f"Destination: {args.dest_team}/{args.dest_machine if dest_type == 'machine' else args.dest_storage}/{args.dest_repo}")
-                if created_repo_name:
-                    print(colorize(f"Created destination repository: {created_repo_name}", 'BLUE'))
-                if task_id:
-                    print(f"Push Task ID: {task_id}")
-                    if getattr(args, 'trace', False):
-                        print(colorize("Use 'rediacc queue trace' command to track progress", 'BLUE'))
-            
-            # Wait for completion if requested
-            if getattr(args, 'wait', False) and task_id:
-                if self.output_format != 'json':
-                    print(colorize("Waiting for push operation...", 'BLUE'))
-                poll_interval = getattr(args, 'poll_interval', 2)
-                wait_timeout = getattr(args, 'wait_timeout', 300)
-                completion_result = self._wait_for_task_completion(task_id, args.source_team, timeout=wait_timeout, poll_interval=poll_interval)
-                
-                if self.output_format in ['json', 'json-full']:
-                    result = self._format_completion_result(result, completion_result)
-                    print(format_output(result, self.output_format))
-                else:
-                    if completion_result['completed']:
-                        print(colorize("Push operation completed successfully", 'GREEN'))
-                        # Display command output if available
-                        command_output = self._extract_command_output(completion_result)
-                        if command_output:
-                            print("\nCommand output:")
-                            print("-" * 50)
-                            # Clean up the output (replace \n with actual newlines)
-                            clean_output = command_output.replace('\\n', '\n')
-                            print(clean_output)
-                    else:
-                        print(colorize(f"Push operation {completion_result['status'].lower()}", 'RED'))
-                        if completion_result.get('error'):
-                            print(f"Error: {completion_result['error']}")
-                        return 1
-            
-            return 0
-            
-        except Exception as e:
-            print(format_output(None, self.output_format, None, f"Workflow error: {str(e)}"))
-            return 1
-    
-    def _get_machine_data(self, team_name, machine_name):
-        """Helper to get machine data including bridge and vault"""
-        # Get all machines for the team and find the specific one
-        response = self.client.token_request("GetTeamMachines", {'teamName': team_name})
-        
-        if response.get('error'):
-            print(format_output(None, self.output_format, None, f"Failed to get machine data: {response['error']}"))
-            return None
-        
-        if len(response.get('resultSets', [])) > 1 and response['resultSets'][1].get('data'):
-            machines = response['resultSets'][1]['data']
-            machine_data = next((m for m in machines if m.get('machineName') == machine_name), None)
-            
-            if not machine_data:
-                print(format_output(None, self.output_format, None, f"Machine '{machine_name}' not found in team '{team_name}'"))
-                return None
-                
-            if not machine_data.get('bridgeName'):
-                print(format_output(None, self.output_format, None, f"Machine '{machine_name}' does not have an assigned bridge"))
-                return None
-            return machine_data
-        
-        print(format_output(None, self.output_format, None, f"No machines found for team '{team_name}'"))
-        return None
-    
-    def _get_team_vault(self, team_name):
-        """Helper to get team vault data"""
-        # Use GetCompanyTeams which returns teams with vaultContent
-        response = self.client.token_request("GetCompanyTeams", {})
-        if not response.get('error') and len(response.get('resultSets', [])) > 1:
-            teams = response['resultSets'][1].get('data', [])
-            for team in teams:
-                if team.get('teamName') == team_name:
-                    vault = team.get('vaultContent') or team.get('teamVault', '{}')
-                    if os.environ.get('REDIACC_VERBOSE'):
-                        print(f"DEBUG: _get_team_vault found team '{team_name}'")
-                        print(f"DEBUG: Team vault length: {len(str(vault))}")
-                        # Parse and check for SSH keys
-                        try:
-                            parsed = json.loads(vault) if isinstance(vault, str) else vault
-                            print(f"DEBUG: Team vault has SSH_PRIVATE_KEY: {'SSH_PRIVATE_KEY' in parsed}")
-                            print(f"DEBUG: Team vault has SSH_PUBLIC_KEY: {'SSH_PUBLIC_KEY' in parsed}")
-                        except:
-                            print("DEBUG: Failed to parse team vault")
-                    return vault
-        
-        return '{}'
-    
-    def _get_storage_vault(self, team_name, storage_name):
-        """Helper to get storage vault data"""
-        response = self.client.token_request("GetTeamStorageSystems", {'teamName': team_name})
-        if not response.get('error') and len(response.get('resultSets', [])) > 1:
-            storages = response['resultSets'][1].get('data', [])
-            storage = next((s for s in storages if s.get('storageName') == storage_name), None)
-            if storage:
-                return storage.get('vaultContent') or storage.get('storageVault', '{}')
-        return None
-    
-    def _cleanup_repository(self, team_name, repo_name):
-        """Helper to cleanup created repository on error"""
-        try:
-            self.client.token_request("DeleteRepository", {
-                'teamName': team_name,
-                'repoName': repo_name
-            })
-        except:
-            pass
-    
-    def _extract_command_output(self, completion_result):
-        """Extract command output from completion result"""
-        # Don't check for completed status - we want output even for failed tasks
-        if not completion_result.get('resultSets'):
-            return None
-            
-        # Response vault is at table index 2 (resultSets array index 2)
-        if len(completion_result['resultSets']) > 2:
-            response_vault = completion_result['resultSets'][2]
-            if response_vault and len(response_vault) > 0:
-                vault_data = response_vault[0]
-                if vault_data.get('vaultContent'):
-                    try:
-                        vault_content = json.loads(vault_data['vaultContent'])
-                        if vault_content.get('result'):
-                            result_data = json.loads(vault_content['result'])
-                            return result_data.get('command_output', '')
-                    except json.JSONDecodeError:
-                        pass
-        return None
-    
-    def _extract_bridge_result(self, completion_result):
-        """Extract structured result data from bridge-only task completion"""
-        if not completion_result.get('completed') or not completion_result.get('resultSets'):
-            return None
-            
-        # Response vault is at table index 2 (resultSets array index 2)
-        if len(completion_result['resultSets']) > 2:
-            response_vault = completion_result['resultSets'][2]
-            if response_vault and len(response_vault) > 0:
-                vault_data = response_vault[0]
-                if vault_data.get('vaultContent'):
-                    try:
-                        vault_content = json.loads(vault_data['vaultContent'])
-                        if vault_content.get('result'):
-                            return json.loads(vault_content['result'])
-                    except json.JSONDecodeError:
-                        pass
-        return None
-    
-    def _format_completion_result(self, result, completion_result):
-        """Format completion result based on output format"""
-        if self.output_format == 'json-full':
-            # Full output with all server resultSets
-            result['completed'] = completion_result['completed']
-            result['final_status'] = completion_result['status'].lower()
-            result['server_tables'] = completion_result['resultSets']
-            if completion_result.get('error'):
-                result['error'] = completion_result['error']
-        elif self.output_format == 'json':
-            # Concise output with just essential info
-            result['completed'] = completion_result['completed']
-            result['final_status'] = completion_result['status'].lower()
-            if completion_result.get('error'):
-                result['error'] = completion_result['error']
-            
-            # Add command output or bridge result if available
-            command_output = self._extract_command_output(completion_result)
-            if command_output:
-                result['command_output'] = command_output
-            else:
-                # Check for bridge result (structured data)
-                bridge_result = self._extract_bridge_result(completion_result)
-                if bridge_result:
-                    result['result'] = bridge_result
-        
-        return result
-    
-    def _wait_for_task_completion(self, task_id, team_name, timeout=300, poll_interval=2):
-        """Wait for a task to complete with timeout, returning full response data"""
-        start_time = time.time()
-        last_status = None
-        
-        while time.time() - start_time < timeout:
-            # Use GetQueueItemTrace to get status of specific task
-            response = self.client.token_request("GetQueueItemTrace", {
-                'taskId': task_id
-            })
-            
-            if response.get('error'):
-                if os.environ.get('REDIACC_VERBOSE'):
-                    print(f"DEBUG: Error getting queue trace: {response.get('error')}")
-                # Continue polling even on error - task might still be running
-                time.sleep(poll_interval)
-                continue
-            
-            # GetQueueItemTrace returns multiple resultSets
-            # We include all resultSets except table 0 (which contains nextRequestToken)
-            resultSets = response.get('resultSets', [])
-            if len(resultSets) > 1:
-                # Get status from table 1 (queue details)
-                task_data = resultSets[1].get('data', [{}])[0] if resultSets[1].get('data') else {}
-                status = task_data.get('status', '').upper()
-                
-                if status != last_status:
-                    last_status = status
-                    if self.output_format not in ['json', 'json-full']:
-                        print(f"  Status: {status}")
-                
-                # Check if task is done
-                if status in ['COMPLETED', 'FAILED', 'CANCELLED', 'ERROR']:
-                    # Return all resultSets except table 0
-                    result = {
-                        'completed': status == 'COMPLETED',
-                        'status': status,
-                        'resultSets': []
-                    }
-                    
-                    # Include all resultSets except table 0 (credentials)
-                    for i in range(1, len(resultSets)):
-                        result['resultSets'].append(resultSets[i].get('data', []))
-                    
-                    return result
-            
-            time.sleep(poll_interval)  # Poll at specified interval
-        
-        if os.environ.get('REDIACC_VERBOSE'):
-            print(f"DEBUG: Task timed out after {timeout} seconds")
-        
-        # Return timeout result
-        return {
-            'completed': False,
-            'status': 'TIMEOUT',
-            'resultSets': [],
-            'error': f'Task timed out after {timeout} seconds'
-        }
+        """Delegate to workflow handler"""
+        workflow = WorkflowHandler(self)
+        return workflow.workflow_repo_push(args)
     
     def workflow_connectivity_test(self, args):
-        """Test connectivity for multiple machines"""
-        try:
-            # Get machines for the specified team(s)
-            team_filter = getattr(args, 'team', None)
-            if isinstance(team_filter, str):
-                teams = [team_filter]
-            else:
-                teams = team_filter if team_filter else []
-            
-            all_machines = []
-            for team in teams:
-                machines_response = self.client.token_request("GetTeamMachines", {'teamName': team})
-                if not machines_response.get('error') and len(machines_response.get('resultSets', [])) > 1:
-                    machines = machines_response['resultSets'][1].get('data', [])
-                    all_machines.extend(machines)
-            
-            if not all_machines:
-                print(format_output(None, self.output_format, None, "No machines found for the specified team(s)"))
-                return 1
-            
-            # Filter by specific machines if provided
-            if hasattr(args, 'machines') and args.machines:
-                machine_names = args.machines if isinstance(args.machines, list) else args.machines.split(',')
-                all_machines = [m for m in all_machines if m.get('machineName') in machine_names]
-            
-            results = []
-            total = len(all_machines)
-            
-            if self.output_format not in ['json', 'json-full']:
-                print(colorize(f"Testing connectivity for {total} machine(s)...", 'BLUE'))
-            
-            # Test each machine sequentially
-            for i, machine in enumerate(all_machines):
-                machine_name = machine.get('machineName')
-                team_name = machine.get('teamName')
-                bridge_name = machine.get('bridgeName')
-                
-                if not bridge_name:
-                    results.append({
-                        'machineName': machine_name,
-                        'teamName': team_name,
-                        'status': 'failed',
-                        'message': 'No bridge assigned',
-                        'duration': 0
-                    })
-                    continue
-                
-                start_time = time.time()
-                
-                if self.output_format not in ['json', 'json-full']:
-                    print(f"\n[{i+1}/{total}] Testing {machine_name}...")
-                
-                # Get machine vault data
-                machine_vault = machine.get('vaultContent', '{}')
-                team_vault = self._get_team_vault(team_name)
-                
-                # Build ping vault
-                vault_builder = VaultBuilder(self.client)
-                queue_vault = vault_builder.build_for_ping(
-                    team_name=team_name,
-                    machine_name=machine_name,
-                    bridge_name=bridge_name,
-                    team_vault=team_vault,
-                    machine_vault=machine_vault
-                )
-                
-                # Create queue item
-                queue_response = self.client.token_request("CreateQueueItem", {
-                    'teamName': team_name,
-                    'machineName': machine_name,
-                    'bridgeName': bridge_name,
-                    'queueVault': queue_vault
-                })
-                
-                if queue_response.get('error'):
-                    results.append({
-                        'machineName': machine_name,
-                        'teamName': team_name,
-                        'status': 'failed',
-                        'message': queue_response['error'],
-                        'duration': time.time() - start_time
-                    })
-                    continue
-                
-                # Get task ID
-                task_id = None
-                if len(queue_response.get('resultSets', [])) > 1 and queue_response['resultSets'][1].get('data'):
-                    task_id = queue_response['resultSets'][1]['data'][0].get('taskId') or queue_response['resultSets'][1]['data'][0].get('TaskId')
-                
-                if not task_id:
-                    results.append({
-                        'machineName': machine_name,
-                        'teamName': team_name,
-                        'status': 'failed',
-                        'message': 'No task ID returned',
-                        'duration': time.time() - start_time
-                    })
-                    continue
-                
-                # Wait for completion
-                if getattr(args, 'wait', True):  # Default to waiting
-                    poll_interval = getattr(args, 'poll_interval', 1)  # Faster polling for connectivity tests
-                    wait_timeout = getattr(args, 'wait_timeout', 30)  # Shorter timeout for ping
-                    
-                    completion_result = self._wait_for_task_completion(task_id, team_name, timeout=wait_timeout, poll_interval=poll_interval)
-                    
-                    results.append({
-                        'machineName': machine_name,
-                        'teamName': team_name,
-                        'bridgeName': bridge_name,
-                        'taskId': task_id,
-                        'status': 'success' if completion_result['completed'] else 'failed',
-                        'message': 'Connected' if completion_result['completed'] else completion_result.get('error', 'Connection failed'),
-                        'duration': time.time() - start_time,
-                        'server_tables': completion_result.get('resultSets', []) if getattr(args, 'wait', False) else None
-                    })
-                else:
-                    results.append({
-                        'machineName': machine_name,
-                        'teamName': team_name,
-                        'bridgeName': bridge_name,
-                        'taskId': task_id,
-                        'status': 'queued',
-                        'message': 'Test queued',
-                        'duration': time.time() - start_time
-                    })
-            
-            # Output results
-            if self.output_format in ['json', 'json-full']:
-                successful = len([r for r in results if r['status'] == 'success'])
-                failed = len([r for r in results if r['status'] == 'failed'])
-                output = {
-                    'total': total,
-                    'successful': successful,
-                    'failed': failed,
-                    'results': results
-                }
-                # For concise JSON, remove server_tables from results
-                if self.output_format == 'json':
-                    for result in output['results']:
-                        if 'server_tables' in result:
-                            # Extract command output if available
-                            if result.get('server_tables'):
-                                # Try to extract command output
-                                command_output = None
-                                if len(result['server_tables']) > 2:
-                                    response_vault = result['server_tables'][2]
-                                    if response_vault and len(response_vault) > 0:
-                                        vault_data = response_vault[0]
-                                        if vault_data.get('vaultContent'):
-                                            try:
-                                                vault_content = json.loads(vault_data['vaultContent'])
-                                                if vault_content.get('result'):
-                                                    result_data = json.loads(vault_content['result'])
-                                                    command_output = result_data.get('command_output', '')
-                                            except json.JSONDecodeError:
-                                                pass
-                                if command_output:
-                                    result['command_output'] = command_output
-                            del result['server_tables']
-                print(format_output(output, self.output_format))
-            else:
-                # Summary
-                print(colorize("\nConnectivity Test Results", 'HEADER'))
-                print("=" * 50)
-                
-                # Table format
-                successful = 0
-                failed = 0
-                for result in results:
-                    status_color = 'GREEN' if result['status'] == 'success' else 'RED'
-                    status_text = '✓' if result['status'] == 'success' else '✗'
-                    duration = f"{result['duration']:.1f}s" if result['duration'] < 10 else f"{result['duration']:.0f}s"
-                    
-                    print(f"{colorize(status_text, status_color)} {result['machineName']:<20} {result['teamName']:<15} {duration:<6} {result['message']}")
-                    
-                    if result['status'] == 'success':
-                        successful += 1
-                    elif result['status'] == 'failed':
-                        failed += 1
-                
-                print("\n" + "-" * 50)
-                print(f"Total: {total} | " + 
-                      colorize(f"Success: {successful}", 'GREEN') + " | " +
-                      colorize(f"Failed: {failed}", 'RED'))
-                
-                # Average response time for successful tests
-                successful_results = [r for r in results if r['status'] == 'success']
-                if successful_results:
-                    avg_duration = sum(r['duration'] for r in successful_results) / len(successful_results)
-                    print(f"Average response time: {avg_duration:.1f}s")
-            
-            return 0
-            
-        except Exception as e:
-            print(format_output(None, self.output_format, None, f"Workflow error: {str(e)}"))
-            return 1
+        """Delegate to workflow handler"""
+        workflow = WorkflowHandler(self)
+        return workflow.workflow_connectivity_test(args)
     
     def workflow_hello_test(self, args):
-        """Simple hello test for machine connectivity"""
-        try:
-            # Get machine data
-            machine_data = self._get_machine_data(args.team, args.machine)
-            if not machine_data:
-                return 1
-            
-            # Get vault data
-            team_vault = self._get_team_vault(args.team)
-            machine_vault = machine_data.get('vaultContent', '{}')
-            bridge_name = machine_data.get('bridgeName')
-            
-            # Build hello vault
-            vault_builder = VaultBuilder(self.client)
-            queue_vault = vault_builder.build_for_hello(
-                team_name=args.team,
-                machine_name=args.machine,
-                bridge_name=bridge_name,
-                team_vault=team_vault,
-                machine_vault=machine_vault
-            )
-            
-            # Create queue item
-            queue_response = self.client.token_request("CreateQueueItem", {
-                'teamName': args.team,
-                'machineName': args.machine,
-                'bridgeName': bridge_name,
-                'queueVault': queue_vault
-            })
-            
-            if queue_response.get('error'):
-                print(format_output(None, self.output_format, None, f"Failed to create queue item: {queue_response['error']}"))
-                return 1
-            
-            # Extract task ID
-            task_id = None
-            if len(queue_response.get('resultSets', [])) > 1 and queue_response['resultSets'][1].get('data'):
-                task_id = queue_response['resultSets'][1]['data'][0].get('taskId') or queue_response['resultSets'][1]['data'][0].get('TaskId')
-            
-            # Prepare result data
-            result = {
-                'machine': args.machine,
-                'team': args.team,
-                'task_id': task_id
-            }
-            
-            # Output results
-            if self.output_format in ['json', 'json-full']:
-                if not getattr(args, 'wait', False):
-                    print(format_output(result, self.output_format, "Hello test queued successfully"))
-            else:
-                print(colorize(f"Hello test queued for machine '{args.machine}'", 'GREEN'))
-                if task_id:
-                    print(f"Task ID: {task_id}")
-            
-            # Wait for completion if requested
-            if getattr(args, 'wait', False) and task_id:
-                if self.output_format not in ['json', 'json-full']:
-                    print(colorize("Waiting for hello response...", 'BLUE'))
-                poll_interval = getattr(args, 'poll_interval', 2)
-                wait_timeout = getattr(args, 'wait_timeout', 30)
-                
-                completion_result = self._wait_for_task_completion(task_id, args.team, timeout=wait_timeout, poll_interval=poll_interval)
-                
-                if self.output_format in ['json', 'json-full']:
-                    result = self._format_completion_result(result, completion_result)
-                    print(format_output(result, self.output_format))
-                else:
-                    if completion_result['completed']:
-                        print(colorize("Hello test completed successfully", 'GREEN'))
-                        # Display command output if available
-                        command_output = self._extract_command_output(completion_result)
-                        if command_output:
-                            print("\nCommand output:")
-                            print("-" * 50)
-                            # Clean up the output (replace \n with actual newlines)
-                            clean_output = command_output.replace('\\n', '\n')
-                            print(clean_output)
-                    else:
-                        print(colorize(f"Hello test {completion_result['status'].lower()}", 'RED'))
-                        if completion_result.get('error'):
-                            print(f"Error: {completion_result['error']}")
-                        return 1
-            
-            return 0
-            
-        except Exception as e:
-            print(format_output(None, self.output_format, None, f"Workflow error: {str(e)}"))
-            return 1
+        """Delegate to workflow handler"""
+        workflow = WorkflowHandler(self)
+        return workflow.workflow_hello_test(args)
     
     def workflow_ssh_test(self, args):
-        """Test SSH connectivity for bridge"""
-        try:
-            # For SSH test, we need bridge information and SSH credentials
-            # This is a special case where we might not need a specific machine
-            
-            # Build machine vault with SSH credentials
-            machine_vault = {
-                'ip': args.host,
-                'user': args.user,
-                'datastore': getattr(args, 'datastore', '/mnt/datastore')
-            }
-            
-            # Add SSH password if provided
-            if hasattr(args, 'password') and args.password:
-                machine_vault['ssh_password'] = args.password
-            
-            machine_vault_str = json.dumps(machine_vault)
-            
-            # Get team vault for SSH keys
-            team_vault = self._get_team_vault(args.team) if hasattr(args, 'team') and args.team else '{}'
-            
-            # Build SSH test vault with team context for SSH keys
-            vault_builder = VaultBuilder(self.client)
-            queue_vault = vault_builder.build_for_ssh_test(
-                bridge_name=args.bridge,
-                machine_vault=machine_vault_str,
-                team_name=args.team,
-                team_vault=team_vault
-            )
-            
-            # Debug: Print the generated vault length only
-            if os.environ.get('REDIACC_VERBOSE') and self.output_format != 'json':
-                print(f"DEBUG: Generated vault length: {len(queue_vault)} characters")
-            
-            # Create queue item (bridge-only, no machine specified)
-            # Note: API still requires teamName even for bridge-only tasks
-            if not hasattr(args, 'team') or not args.team:
-                print(format_output(None, self.output_format, None, "Error: --team is required for ssh-test workflow"))
-                return 1
-            
-            queue_response = self.client.token_request("CreateQueueItem", {
-                'teamName': args.team,
-                'bridgeName': args.bridge,
-                'queueVault': queue_vault
-            })
-            
-            if queue_response.get('error'):
-                print(format_output(None, self.output_format, None, f"Failed to create queue item: {queue_response['error']}"))
-                return 1
-            
-            # Extract task ID
-            task_id = None
-            if len(queue_response.get('resultSets', [])) > 1 and queue_response['resultSets'][1].get('data'):
-                task_id = queue_response['resultSets'][1]['data'][0].get('taskId') or queue_response['resultSets'][1]['data'][0].get('TaskId')
-            
-            # Prepare result data
-            result = {
-                'bridge': args.bridge,
-                'host': args.host,
-                'user': args.user,
-                'task_id': task_id
-            }
-            
-            # Output results
-            if self.output_format in ['json', 'json-full']:
-                if not getattr(args, 'wait', False):
-                    print(format_output(result, self.output_format, "SSH test queued successfully"))
-            else:
-                print(colorize(f"SSH test queued for {args.user}@{args.host} via bridge '{args.bridge}'", 'GREEN'))
-                if task_id:
-                    print(f"Task ID: {task_id}")
-            
-            # Wait for completion if requested
-            if getattr(args, 'wait', False) and task_id:
-                if self.output_format not in ['json', 'json-full']:
-                    print(colorize("Waiting for SSH test...", 'BLUE'))
-                poll_interval = getattr(args, 'poll_interval', 2)
-                wait_timeout = getattr(args, 'wait_timeout', 30)
-                
-                # For bridge-only tasks, we might not have a team name
-                team_name = getattr(args, 'team', '')
-                
-                completion_result = self._wait_for_task_completion(task_id, team_name, timeout=wait_timeout, poll_interval=poll_interval)
-                
-                if self.output_format in ['json', 'json-full']:
-                    result = self._format_completion_result(result, completion_result)
-                    print(format_output(result, self.output_format))
-                else:
-                    if completion_result['completed']:
-                        print(colorize("SSH test completed successfully", 'GREEN'))
-                        # For bridge-only tasks, display structured result data
-                        bridge_result = self._extract_bridge_result(completion_result)
-                        if bridge_result:
-                            print("\nSSH Test Results:")
-                            print("-" * 50)
-                            print(f"Status: {bridge_result.get('status', 'unknown')}")
-                            print(f"Message: {bridge_result.get('message', 'No message')}")
-                            print(f"Auth Method: {bridge_result.get('auth_method', 'unknown')}")
-                            if 'kernel_compatibility' in bridge_result:
-                                kernel_info = bridge_result['kernel_compatibility']
-                                if 'os_info' in kernel_info:
-                                    print(f"OS: {kernel_info['os_info'].get('pretty_name', 'Unknown')}")
-                                print(f"Kernel: {kernel_info.get('kernel_version', 'Unknown')}")
-                                print(f"Compatibility: {kernel_info.get('compatibility_status', 'unknown')}")
-                    else:
-                        print(colorize(f"SSH test {completion_result['status'].lower()}", 'RED'))
-                        if completion_result.get('error'):
-                            print(f"Error: {completion_result['error']}")
-                        return 1
-            
-            return 0
-            
-        except Exception as e:
-            print(format_output(None, self.output_format, None, f"Workflow error: {str(e)}"))
-            return 1
+        """Delegate to workflow handler"""
+        workflow = WorkflowHandler(self)
+        return workflow.workflow_ssh_test(args)
     
     def workflow_machine_setup(self, args):
-        """Setup a new machine with datastore and dependencies"""
-        try:
-            # Get machine data
-            machine_data = self._get_machine_data(args.team, args.machine)
-            if not machine_data:
-                return 1
-            
-            # Get vault data
-            team_vault = self._get_team_vault(args.team)
-            machine_vault = machine_data.get('vaultContent', '{}')
-            bridge_name = machine_data.get('bridgeName')
-            
-            # Build setup parameters
-            setup_params = {
-                'datastore_size': getattr(args, 'datastore_size', '95%'),
-                'source': getattr(args, 'source', 'apt-repo'),
-                'rclone_source': getattr(args, 'rclone_source', 'install-script'),
-                'docker_source': getattr(args, 'docker_source', 'docker-repo'),
-                'install_amd_driver': getattr(args, 'install_amd_driver', 'auto'),
-                'install_nvidia_driver': getattr(args, 'install_nvidia_driver', 'auto'),
-                'kernel_module_mode': getattr(args, 'kernel_module_mode', 'auto')
-            }
-            
-            # Build setup vault
-            vault_builder = VaultBuilder(self.client)
-            queue_vault = vault_builder.build_for_setup(
-                team_name=args.team,
-                machine_name=args.machine,
-                bridge_name=bridge_name,
-                params=setup_params,
-                team_vault=team_vault,
-                machine_vault=machine_vault
-            )
-            
-            # Create queue item
-            queue_response = self.client.token_request("CreateQueueItem", {
-                'teamName': args.team,
-                'machineName': args.machine,
-                'bridgeName': bridge_name,
-                'queueVault': queue_vault
-            })
-            
-            if queue_response.get('error'):
-                print(format_output(None, self.output_format, None, f"Failed to create queue item: {queue_response['error']}"))
-                return 1
-            
-            # Extract task ID
-            task_id = None
-            if len(queue_response.get('resultSets', [])) > 1 and queue_response['resultSets'][1].get('data'):
-                task_id = queue_response['resultSets'][1]['data'][0].get('taskId') or queue_response['resultSets'][1]['data'][0].get('TaskId')
-            
-            # Prepare result data
-            result = {
-                'machine': args.machine,
-                'team': args.team,
-                'task_id': task_id,
-                'datastore_size': setup_params['datastore_size']
-            }
-            
-            # Output results
-            if self.output_format in ['json', 'json-full']:
-                if not getattr(args, 'wait', False):
-                    print(format_output(result, self.output_format, "Machine setup queued successfully"))
-            else:
-                print(colorize(f"Machine setup queued for '{args.machine}'", 'GREEN'))
-                print(f"Datastore size: {setup_params['datastore_size']}")
-                if task_id:
-                    print(f"Task ID: {task_id}")
-                    if getattr(args, 'trace', False):
-                        print(colorize("Use 'rediacc queue trace' command to track progress", 'BLUE'))
-            
-            # Wait for completion if requested
-            if getattr(args, 'wait', False) and task_id:
-                if self.output_format != 'json':
-                    print(colorize("Waiting for machine setup... (this may take several minutes)", 'BLUE'))
-                poll_interval = getattr(args, 'poll_interval', 5)  # Slower polling for long operations
-                wait_timeout = getattr(args, 'wait_timeout', 600)  # 10 minutes default for setup
-                
-                completion_result = self._wait_for_task_completion(task_id, args.team, timeout=wait_timeout, poll_interval=poll_interval)
-                
-                if self.output_format in ['json', 'json-full']:
-                    result = self._format_completion_result(result, completion_result)
-                    print(format_output(result, self.output_format))
-                else:
-                    if completion_result['completed']:
-                        print(colorize("Machine setup completed successfully", 'GREEN'))
-                        # Display command output if available
-                        command_output = self._extract_command_output(completion_result)
-                        if command_output:
-                            print("\nCommand output:")
-                            print("-" * 50)
-                            # Clean up the output (replace \n with actual newlines)
-                            clean_output = command_output.replace('\\n', '\n')
-                            print(clean_output)
-                    else:
-                        print(colorize(f"Machine setup {completion_result['status'].lower()}", 'RED'))
-                        if completion_result.get('error'):
-                            print(f"Error: {completion_result['error']}")
-                        return 1
-            
-            return 0
-            
-        except Exception as e:
-            print(format_output(None, self.output_format, None, f"Workflow error: {str(e)}"))
-            return 1
+        """Delegate to workflow handler"""
+        workflow = WorkflowHandler(self)
+        return workflow.workflow_machine_setup(args)
     
     def workflow_add_machine(self, args):
-        """Create machine and test SSH connection"""
-        try:
-            # Step 1: Create machine record in database using existing create command infrastructure
-            vault_data = getattr(args, 'vault', '{}')
-            if vault_data == '{}' or not vault_data:
-                # Create basic machine vault with common fields
-                vault_data = json.dumps({
-                    "ip": "",
-                    "user": "",
-                    "datastore": "/mnt/datastore"
-                })
-            
-            # Create a fake args object for the create machine command
-            class CreateArgs:
-                def __init__(self, team, bridge, name, vault):
-                    self.team = team
-                    self.bridge = bridge
-                    self.name = name
-                    self.vault = vault
-                    self.vault_file = None
-            
-            create_args = CreateArgs(args.team, args.bridge, args.name, vault_data)
-            
-            # Use the existing create machine command
-            create_result = self.generic_command('create', 'machine', create_args)
-            
-            if create_result != 0:
-                print(format_output(None, self.output_format, None, f"Failed to create machine: {args.name}"))
-                return 1
-            
-            # Log machine creation success
-            if self.output_format not in ['json', 'json-full']:
-                print(colorize(f"Machine '{args.name}' created in team '{args.team}'", 'GREEN'))
-            
-            # Step 2: Test connection if not skipped and SSH credentials are available
-            test_connection_success = False
-            ssh_test_task_id = None
-            
-            if not getattr(args, 'no_test', False):
-                # Parse vault data to check for SSH credentials
-                try:
-                    vault_json = json.loads(vault_data)
-                    has_ssh_creds = vault_json.get('ip') and vault_json.get('user')
-                    
-                    if has_ssh_creds:
-                        # Get team vault for SSH keys
-                        team_vault = self._get_team_vault(args.team)
-                        
-                        # Build SSH test vault
-                        vault_builder = VaultBuilder(self.client)
-                        ssh_queue_vault = vault_builder.build_for_ssh_test(
-                            bridge_name=args.bridge,
-                            machine_vault=vault_data,
-                            team_name=args.team,
-                            team_vault=team_vault
-                        )
-                        
-                        # Create SSH test queue item
-                        ssh_response = self.client.token_request("CreateQueueItem", {
-                            'teamName': args.team,
-                            'bridgeName': args.bridge,
-                            'queueVault': ssh_queue_vault
-                        })
-                        
-                        if ssh_response.get('error'):
-                            if self.output_format not in ['json', 'json-full']:
-                                print(colorize(f"Warning: SSH test failed to queue: {ssh_response['error']}", 'YELLOW'))
-                        else:
-                            # Extract SSH test task ID
-                            if len(ssh_response.get('resultSets', [])) > 1 and ssh_response['resultSets'][1].get('data'):
-                                ssh_test_task_id = ssh_response['resultSets'][1]['data'][0].get('taskId') or ssh_response['resultSets'][1]['data'][0].get('TaskId')
-                            
-                            if self.output_format not in ['json', 'json-full']:
-                                print(colorize("SSH connectivity test queued", 'BLUE'))
-                                if ssh_test_task_id:
-                                    print(f"SSH Test Task ID: {ssh_test_task_id}")
-                            
-                            # Wait for SSH test if requested
-                            if getattr(args, 'wait', False) and ssh_test_task_id:
-                                if self.output_format not in ['json', 'json-full']:
-                                    print(colorize("Waiting for SSH test...", 'BLUE'))
-                                
-                                ssh_completion = self._wait_for_task_completion(
-                                    ssh_test_task_id, 
-                                    args.team, 
-                                    timeout=getattr(args, 'wait_timeout', 30),
-                                    poll_interval=getattr(args, 'poll_interval', 2)
-                                )
-                                
-                                if ssh_completion['completed']:
-                                    test_connection_success = True
-                                    if self.output_format not in ['json', 'json-full']:
-                                        print(colorize("SSH test completed successfully", 'GREEN'))
-                                        
-                                        # Display SSH test results
-                                        bridge_result = self._extract_bridge_result(ssh_completion)
-                                        if bridge_result:
-                                            print("\nSSH Test Results:")
-                                            print("-" * 50)
-                                            print(f"Status: {bridge_result.get('status', 'unknown')}")
-                                            print(f"Auth Method: {bridge_result.get('auth_method', 'unknown')}")
-                                            if 'kernel_compatibility' in bridge_result:
-                                                kernel_info = bridge_result['kernel_compatibility']
-                                                if 'os_info' in kernel_info:
-                                                    print(f"OS: {kernel_info['os_info'].get('pretty_name', 'Unknown')}")
-                                                print(f"Kernel: {kernel_info.get('kernel_version', 'Unknown')}")
-                                                print(f"Compatibility: {kernel_info.get('compatibility_status', 'unknown')}")
-                                else:
-                                    if self.output_format not in ['json', 'json-full']:
-                                        print(colorize(f"SSH test {ssh_completion['status'].lower()}", 'YELLOW'))
-                                        if ssh_completion.get('error'):
-                                            print(f"SSH Test Error: {ssh_completion['error']}")
-                    else:
-                        if self.output_format not in ['json', 'json-full']:
-                            print(colorize("SSH test skipped: No SSH credentials in machine vault", 'YELLOW'))
-                        
-                except json.JSONDecodeError:
-                    if self.output_format not in ['json', 'json-full']:
-                        print(colorize("SSH test skipped: Invalid vault JSON", 'YELLOW'))
-            else:
-                if self.output_format not in ['json', 'json-full']:
-                    print(colorize("SSH test skipped (--no-test specified)", 'YELLOW'))
-            
-            # Step 3: Run machine setup if connection test succeeded and auto-setup requested
-            setup_task_id = None
-            if test_connection_success and getattr(args, 'auto_setup', False):
-                if self.output_format not in ['json', 'json-full']:
-                    print(colorize("Starting automatic machine setup...", 'BLUE'))
-                
-                # Build setup parameters
-                setup_params = {
-                    'datastore_size': getattr(args, 'datastore_size', '95%'),
-                    'source': 'apt-repo',
-                    'rclone_source': 'install-script',
-                    'docker_source': 'docker-repo',
-                    'install_amd_driver': 'auto',
-                    'install_nvidia_driver': 'auto',
-                    'kernel_module_mode': 'auto'
-                }
-                
-                # Get machine and team vault data  
-                team_vault = self._get_team_vault(args.team)
-                
-                # Build setup vault
-                vault_builder = VaultBuilder(self.client)
-                setup_queue_vault = vault_builder.build_for_setup(
-                    team_name=args.team,
-                    machine_name=args.name,
-                    bridge_name=args.bridge,
-                    params=setup_params,
-                    team_vault=team_vault,
-                    machine_vault=vault_data
-                )
-                
-                # Create setup queue item
-                setup_response = self.client.token_request("CreateQueueItem", {
-                    'teamName': args.team,
-                    'machineName': args.name,
-                    'bridgeName': args.bridge,
-                    'queueVault': setup_queue_vault
-                })
-                
-                if setup_response.get('error'):
-                    if self.output_format not in ['json', 'json-full']:
-                        print(colorize(f"Warning: Machine setup failed to queue: {setup_response['error']}", 'YELLOW'))
-                else:
-                    # Extract setup task ID
-                    if len(setup_response.get('resultSets', [])) > 1 and setup_response['resultSets'][1].get('data'):
-                        setup_task_id = setup_response['resultSets'][1]['data'][0].get('taskId') or setup_response['resultSets'][1]['data'][0].get('TaskId')
-                    
-                    if self.output_format not in ['json', 'json-full']:
-                        print(colorize("Machine setup queued", 'GREEN'))
-                        if setup_task_id:
-                            print(f"Setup Task ID: {setup_task_id}")
-            
-            # Prepare result data
-            result = {
-                'machine': args.name,
-                'team': args.team,
-                'bridge': args.bridge,
-                'ssh_test_success': test_connection_success,
-                'ssh_test_task_id': ssh_test_task_id,
-                'setup_task_id': setup_task_id
-            }
-            
-            # Output final results
-            if self.output_format in ['json', 'json-full']:
-                print(format_output(result, self.output_format, "Machine creation workflow completed"))
-            else:
-                print(colorize("\nMachine Creation Workflow Summary:", 'HEADER'))
-                print("=" * 50)
-                print(f"Machine: {args.name}")
-                print(f"Team: {args.team}")
-                print(f"Bridge: {args.bridge}")
-                print(f"SSH Test: {'Passed' if test_connection_success else 'Skipped/Failed'}")
-                if ssh_test_task_id:
-                    print(f"SSH Test Task ID: {ssh_test_task_id}")
-                if setup_task_id:
-                    print(f"Setup Task ID: {setup_task_id}")
-                    print(colorize("Tip: Use 'rediacc queue trace' to monitor setup progress", 'BLUE'))
-            
-            return 0
-            
-        except Exception as e:
-            print(format_output(None, self.output_format, None, f"Workflow error: {str(e)}"))
-            return 1
+        """Delegate to workflow handler"""
+        workflow = WorkflowHandler(self)
+        return workflow.workflow_add_machine(args)
 
 def setup_parser():
     parser = argparse.ArgumentParser(
@@ -3204,7 +1967,15 @@ def setup_parser():
     
     subparsers = parser.add_subparsers(dest='command', help='Command')
     
-    for cmd_name, cmd_def in ARG_DEFS.items():
+    for cmd_name, cmd_def in CLI_COMMANDS.items():
+        # Skip individual parameter definitions (they have 'type' and 'help' but no subcommands)
+        if isinstance(cmd_def, dict) and 'type' in cmd_def and 'help' in cmd_def and len(cmd_def) <= 3:
+            continue
+        
+        # Skip commands that have subcommands (they're handled in the CLI_COMMANDS section above)
+        if isinstance(cmd_def, dict) and 'subcommands' in cmd_def:
+            continue
+            
         if isinstance(cmd_def, list):
             cmd_parser = subparsers.add_parser(cmd_name, help=f"{cmd_name} command")
             for arg in cmd_def:
@@ -3258,103 +2029,60 @@ def setup_parser():
                         if subcmd_name == 'machine':
                             subcmd_parser.add_argument('--new-bridge', help='New bridge name for machine')
     
-    license_parser = subparsers.add_parser('license', help='License management commands')
-    license_subparsers = license_parser.add_subparsers(dest='license_command', help='License commands')
-    
-    generate_id_parser = license_subparsers.add_parser('generate-id', help='Generate hardware ID for offline licensing')
-    generate_id_parser.add_argument('--output', '-o', help='Output file (default: hardware-id.txt)')
-    
-    request_parser = license_subparsers.add_parser('request', help='Request license using hardware ID')
-    request_parser.add_argument('--hardware-id', '-i', required=True, help='Hardware ID or file containing it')
-    request_parser.add_argument('--output', '-o', help='Output file (default: license.lic)')
-    request_parser.add_argument('--server-url', '-s', help='License server URL (optional)')
-    
-    install_parser = license_subparsers.add_parser('install', help='Install license file')
-    install_parser.add_argument('--file', '-f', required=True, help='License file to install')
-    install_parser.add_argument('--target', '-t', help='Target directory (default: auto-detect)')
-    
-    # Add workflow commands
-    workflow_parser = subparsers.add_parser('workflow', help='High-level workflow commands')
-    workflow_subparsers = workflow_parser.add_subparsers(dest='workflow_type', help='Workflow commands')
-    
-    # Repository creation workflow
-    repo_create_parser = workflow_subparsers.add_parser('repo-create', help='Create and initialize repository on machine')
-    repo_create_parser.add_argument('--team', required=True, help='Team name')
-    repo_create_parser.add_argument('--name', required=True, help='Repository name')
-    repo_create_parser.add_argument('--machine', required=True, help='Machine to initialize repository on')
-    repo_create_parser.add_argument('--size', required=True, help='Repository size (e.g., 1G, 500M, 10G)')
-    repo_create_parser.add_argument('--vault', help='Repository vault data (JSON)')
-    repo_create_parser.add_argument('--parent', help='Parent repository name')
-    repo_create_parser.add_argument('--trace', action='store_true', help='Show task ID for tracking')
-    repo_create_parser.add_argument('--wait', action='store_true', help='Wait for completion')
-    repo_create_parser.add_argument('--poll-interval', type=int, default=2, help='Polling interval in seconds when waiting (default: 2)')
-    repo_create_parser.add_argument('--wait-timeout', type=int, default=300, help='Timeout in seconds when waiting (default: 300)')
-    
-    # Repository push workflow
-    repo_push_parser = workflow_subparsers.add_parser('repo-push', help='Push repository with automatic destination creation')
-    repo_push_parser.add_argument('--source-team', required=True, help='Source team name')
-    repo_push_parser.add_argument('--source-machine', required=True, help='Source machine name')
-    repo_push_parser.add_argument('--source-repo', required=True, help='Source repository name')
-    repo_push_parser.add_argument('--source-path', default='/', help='Source path within repository (default: /)')
-    repo_push_parser.add_argument('--dest-team', required=True, help='Destination team name')
-    repo_push_parser.add_argument('--dest-repo', required=True, help='Destination repository name')
-    repo_push_parser.add_argument('--dest-type', choices=['machine', 'storage'], default='machine', help='Destination type')
-    repo_push_parser.add_argument('--dest-machine', help='Destination machine name (required for machine destination)')
-    repo_push_parser.add_argument('--dest-storage', help='Destination storage name (required for storage destination)')
-    repo_push_parser.add_argument('--trace', action='store_true', help='Show task ID for tracking')
-    repo_push_parser.add_argument('--wait', action='store_true', help='Wait for completion')
-    repo_push_parser.add_argument('--poll-interval', type=int, default=2, help='Polling interval in seconds when waiting (default: 2)')
-    repo_push_parser.add_argument('--wait-timeout', type=int, default=300, help='Timeout in seconds when waiting (default: 300)')
-    
-    # Connectivity test workflow
-    connectivity_parser = workflow_subparsers.add_parser('connectivity-test', help='Test connectivity to multiple machines')
-    connectivity_parser.add_argument('--team', required=True, help='Team name')
-    connectivity_parser.add_argument('--machines', nargs='+', required=True, help='Machine names to test')
-    connectivity_parser.add_argument('--wait', action='store_true', help='Wait for completion')
-    connectivity_parser.add_argument('--poll-interval', type=int, default=2, help='Polling interval in seconds when waiting (default: 2)')
-    connectivity_parser.add_argument('--wait-timeout', type=int, default=30, help='Timeout in seconds per machine when waiting (default: 30)')
-    
-    # Hello test workflow
-    hello_parser = workflow_subparsers.add_parser('hello-test', help='Execute hello function on machine')
-    hello_parser.add_argument('--team', required=True, help='Team name')
-    hello_parser.add_argument('--machine', required=True, help='Machine name')
-    hello_parser.add_argument('--wait', action='store_true', help='Wait for completion')
-    hello_parser.add_argument('--poll-interval', type=int, default=2, help='Polling interval in seconds when waiting (default: 2)')
-    hello_parser.add_argument('--wait-timeout', type=int, default=30, help='Timeout in seconds when waiting (default: 30)')
-    
-    # SSH test workflow
-    ssh_test_parser = workflow_subparsers.add_parser('ssh-test', help='Test SSH connectivity through bridge')
-    ssh_test_parser.add_argument('--team', required=True, help='Team name (required by API)')
-    ssh_test_parser.add_argument('--bridge', required=True, help='Bridge name')
-    ssh_test_parser.add_argument('--host', required=True, help='Target host to test')
-    ssh_test_parser.add_argument('--user', required=True, help='SSH username')
-    ssh_test_parser.add_argument('--password', help='SSH password (optional)')
-    ssh_test_parser.add_argument('--wait', action='store_true', help='Wait for completion')
-    ssh_test_parser.add_argument('--poll-interval', type=int, default=2, help='Polling interval in seconds when waiting (default: 2)')
-    ssh_test_parser.add_argument('--wait-timeout', type=int, default=30, help='Timeout in seconds when waiting (default: 30)')
-    
-    # Machine setup workflow
-    setup_parser = workflow_subparsers.add_parser('machine-setup', help='Setup machine with datastore')
-    setup_parser.add_argument('--team', required=True, help='Team name')
-    setup_parser.add_argument('--machine', required=True, help='Machine name')
-    setup_parser.add_argument('--datastore-size', default='default', help='Datastore size (default: default)')
-    setup_parser.add_argument('--wait', action='store_true', help='Wait for completion')
-    setup_parser.add_argument('--poll-interval', type=int, default=2, help='Polling interval in seconds when waiting (default: 2)')
-    setup_parser.add_argument('--wait-timeout', type=int, default=300, help='Timeout in seconds when waiting (default: 300)')
-    
-    # Add machine workflow
-    add_machine_parser = workflow_subparsers.add_parser('add-machine', help='Create machine with SSH connection test')
-    add_machine_parser.add_argument('--team', required=True, help='Team name')
-    add_machine_parser.add_argument('--name', required=True, help='Machine name')
-    add_machine_parser.add_argument('--bridge', required=True, help='Bridge name')
-    add_machine_parser.add_argument('--vault', help='Machine vault data (JSON) with ip, user, ssh_password, etc.')
-    add_machine_parser.add_argument('--no-test', action='store_true', help='Skip SSH connection test')
-    add_machine_parser.add_argument('--auto-setup', action='store_true', help='Automatically run machine setup if SSH test passes')
-    add_machine_parser.add_argument('--datastore-size', default='95%', help='Datastore size for auto-setup (default: 95%%)')
-    add_machine_parser.add_argument('--wait', action='store_true', help='Wait for SSH test completion')
-    add_machine_parser.add_argument('--trace', action='store_true', help='Show task IDs for tracking')
-    add_machine_parser.add_argument('--poll-interval', type=int, default=2, help='Polling interval in seconds when waiting (default: 2)')
-    add_machine_parser.add_argument('--wait-timeout', type=int, default=30, help='Timeout in seconds when waiting for SSH test (default: 30)')
+    # Add CLI commands from JSON configuration
+    if 'CLI_COMMANDS' in cli_config:
+        for cmd_name, cmd_def in cli_config['CLI_COMMANDS'].items():
+            # Only process commands with subcommands structure (license, workflow)
+            if isinstance(cmd_def, dict) and 'subcommands' in cmd_def:
+                cmd_parser = subparsers.add_parser(cmd_name, help=cmd_def.get('description', f'{cmd_name} commands'))
+                
+                cmd_subparsers = cmd_parser.add_subparsers(
+                    dest=f'{cmd_name}_command' if cmd_name == 'license' else f'{cmd_name}_type',
+                    help=f'{cmd_name.title()} commands'
+                )
+                
+                for subcmd_name, subcmd_def in cmd_def['subcommands'].items():
+                    subcmd_parser = cmd_subparsers.add_parser(
+                        subcmd_name, 
+                        help=subcmd_def.get('description', f'{subcmd_name} command')
+                    )
+                    
+                    # Add parameters for this subcommand
+                    if 'parameters' in subcmd_def:
+                        for param_name, param_def in subcmd_def['parameters'].items():
+                            # Convert parameter name to CLI format
+                            cli_param_name = f'--{param_name}'
+                            
+                            # Build argument kwargs
+                            kwargs = {}
+                            
+                            # Add short form if specified
+                            if 'short' in param_def:
+                                args = [param_def['short'], cli_param_name]
+                            else:
+                                args = [cli_param_name]
+                            
+                            # Convert parameter definition to argparse kwargs
+                            if 'help' in param_def:
+                                kwargs['help'] = param_def['help']
+                            if 'required' in param_def:
+                                kwargs['required'] = param_def['required']
+                            if 'default' in param_def:
+                                kwargs['default'] = param_def['default']
+                            if 'type' in param_def:
+                                if param_def['type'] == 'int':
+                                    kwargs['type'] = int
+                            if 'action' in param_def:
+                                kwargs['action'] = param_def['action']
+                            if 'choices' in param_def:
+                                kwargs['choices'] = param_def['choices']
+                            if 'nargs' in param_def:
+                                kwargs['nargs'] = param_def['nargs']
+                            
+                            # Set destination to replace hyphens with underscores
+                            kwargs['dest'] = param_name.replace('-', '_')
+                            
+                            subcmd_parser.add_argument(*args, **kwargs)
     
     return parser
 
@@ -3512,9 +2240,9 @@ def main():
                 break
         
         # Check if it's a known command
-        known_commands = set(CMD_CONFIG.keys()) | {'login', 'logout', 'license', 'workflow'}
+        known_commands = set(API_ENDPOINTS.keys()) | {'login', 'logout', 'license', 'workflow'}
         
-        if potential_command and potential_command not in known_commands and potential_command not in ARG_DEFS:
+        if potential_command and potential_command not in known_commands and potential_command not in CLI_COMMANDS:
             # This might be a dynamic endpoint
             args, command = parse_dynamic_command(sys.argv)
             
@@ -3581,7 +2309,7 @@ def main():
     handler = CommandHandler(config_manager, output_format)
     
     # Check if user is requesting help for a generic command
-    if hasattr(args, 'help') and args.help and args.command in CMD_CONFIG:
+    if hasattr(args, 'help') and args.help and args.command in API_ENDPOINTS:
         # Show help for command or resource
         resource = getattr(args, 'resource', None)
         help_text = handler.generate_dynamic_help(args.command, resource)
@@ -3658,7 +2386,7 @@ def main():
     
     if not hasattr(args, 'resource') or not args.resource:
         # Show available resources for the command if no resource specified
-        if args.command in CMD_CONFIG:
+        if args.command in API_ENDPOINTS:
             help_text = handler.generate_dynamic_help(args.command)
             print(help_text)
             return 0
@@ -3672,11 +2400,11 @@ def main():
         return handler.update_resource(args.resource, args)
     elif args.command in standalone_commands:
         return handler.generic_command(args.command, args.resource, args)
-    elif args.command in CMD_CONFIG:
+    elif args.command in API_ENDPOINTS:
         return handler.generic_command(args.command, args.resource, args)
     else:
         # Check if this could be a direct endpoint call
-        # If command is not in CMD_CONFIG and doesn't have a resource, treat as endpoint
+        # If command is not in API_ENDPOINTS and doesn't have a resource, treat as endpoint
         if not hasattr(args, 'resource') or not args.resource:
             return handler.handle_dynamic_endpoint(args.command, args)
         else:
