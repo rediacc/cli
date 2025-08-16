@@ -1,6 +1,6 @@
 name: USER_INFO_TEST
 description: Test user information retrieval - company and requests
-executor: rediacc-cli.py
+executor: "commands/cli.py"
 setup:
 - name: create_test_company
   command:

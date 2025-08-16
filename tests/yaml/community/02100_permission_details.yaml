@@ -1,6 +1,6 @@
 name: Permission Details
 description: 'Test retrieving permission group details - stored procedure: public_GetPermissionGroupDetails'
-executor: rediacc-cli.py
+executor: "commands/cli.py"
 chain_export:
   permission_details_tested: true
 setup:

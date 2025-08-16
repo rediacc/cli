@@ -1,6 +1,6 @@
 name: BRIDGES_TEST
 description: Test bridge creation, renaming, and operations
-executor: rediacc-cli.py
+executor: "commands/cli.py"
 setup:
 - name: create_test_company
   command:

@@ -304,7 +304,7 @@ test_python_modules() {
     fi
     
     # Test if our modules work
-    if $PYTHON_CMD -c "import rediacc_cli_core" 2>/dev/null; then
+    if $PYTHON_CMD -c "import sys; sys.path.insert(0, '$CLI_ROOT/src/cli'); from core import config" 2>/dev/null; then
         print_success "Rediacc CLI modules load correctly"
     else
         print_error "Failed to import Rediacc CLI modules"

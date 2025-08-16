@@ -1,6 +1,6 @@
 name: ADVANCED_OPERATIONS_TEST
 description: Test advanced operations - exports and vaults
-executor: rediacc-cli.py
+executor: "commands/cli.py"
 setup:
 - name: create_test_company
   command:

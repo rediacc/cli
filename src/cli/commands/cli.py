@@ -17,16 +17,16 @@ import base64
 from typing import Dict, Any, Optional, List, Union
 from pathlib import Path
 
-sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
+sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
-from core import (
+from core.config import (
     load_config, get_required, get, get_path, ConfigError,
     TokenManager, api_mutex, setup_logging, get_logger
 )
 
-from rediacc_cli_core import colorize, COLORS
-from api_client import client
-from workflow import WorkflowHandler
+from core.shared import colorize, COLORS
+from core.api_client import client
+from commands.workflow import WorkflowHandler
 
 try:
     from cryptography.hazmat.primitives import hashes
@@ -45,7 +45,7 @@ except ConfigError as e:
     print(f"Configuration error: {e}", file=sys.stderr)
     sys.exit(1)
 
-from core import get_config_dir, get_main_config_file
+from core.config import get_config_dir, get_main_config_file
 
 HTTP_PORT = get_required('SYSTEM_HTTP_PORT')
 BASE_URL = get_required('SYSTEM_API_URL')
@@ -62,7 +62,7 @@ if not CRYPTO_AVAILABLE:
     else:
         print(colorize("Install with: pip install cryptography", 'YELLOW'), file=sys.stderr)
 
-CLI_CONFIG_PATH = Path(__file__).parent.parent / 'config' / 'rediacc-cli.json'
+CLI_CONFIG_PATH = Path(__file__).parent.parent.parent / 'config' / 'rediacc-cli.json'
 try:
     with open(CLI_CONFIG_PATH, 'r') as f:
         cli_config = json.load(f)
@@ -762,7 +762,7 @@ class CommandHandler:
         if authentication_status == 'TFA_REQUIRED' and not is_authorized:
             if not hasattr(args, 'tfa_code') or not args.tfa_code:
                 if self.output_format not in ['json', 'json-full']:
-                    from core import I18n
+                    from core.config import I18n
                     i18n = I18n()
                     tfa_code = input(i18n.get('enter_tfa_code'))
                 else:

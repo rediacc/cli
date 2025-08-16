@@ -1,6 +1,6 @@
 name: QUEUE_OPERATIONS_ADVANCED_TEST
 description: Test advanced queue operations including cancel, retry, trace, and completion
-executor: rediacc-cli.py
+executor: "commands/cli.py"
 setup:
 - name: create_test_company
   command:

@@ -116,7 +116,9 @@ COPY --chown=$REDIACC_LINUX_USER:$REDIACC_LINUX_GROUP docs/ ./docs/
 # ========================================
 # Replace version in Python files
 RUN find ./src/cli -name "*.py" -exec sed -i "s/__version__ = \"dev\"/__version__ = \"$VERSION\"/g" {} \; && \
-    chmod +x rediacc src/cli/*
+    chmod +x rediacc && \
+    find ./src/cli/commands -name "*.py" -exec chmod +x {} \; && \
+    find ./src/cli/gui -name "*.py" -exec chmod +x {} \;
 
 # ========================================
 # Final configuration
@@ -125,7 +127,7 @@ USER $REDIACC_LINUX_USER
 
 # Set environment variables
 ENV PATH="/app:${PATH}"
-ENV PYTHONPATH="/app/src/modules"
+ENV PYTHONPATH="/app/src/cli"
 ENV PYTHONUNBUFFERED=1
 ENV TMPDIR=/home/rediacc/tmp
 ENV TERM=xterm-256color
@@ -147,7 +149,7 @@ LABEL org.opencontainers.image.version="${VERSION}"
 
 # Health check
 HEALTHCHECK --interval=30s --timeout=3s --start-period=5s --retries=3 \
-    CMD python3 -c "import sys; sys.path.insert(0, '/app/src/modules'); import rediacc_cli_core; sys.exit(0)" || exit 1
+    CMD python3 -c "import sys; sys.path.insert(0, '/app/src/cli'); from core import config; sys.exit(0)" || exit 1
 
 # Use ENTRYPOINT so arguments are passed correctly
 ENTRYPOINT ["./rediacc"]

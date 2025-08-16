@@ -40,7 +40,7 @@ class GUITestSuite:
     def setup_shared_window(self):
         """Create shared window for simple tests"""
         if not self.shared_window:
-            from gui_login import LoginWindow
+            from gui.login import LoginWindow
             self.shared_window = LoginWindow(on_login_success=lambda: None)
             print("✓ Created shared window for non-login tests")
     
@@ -146,7 +146,7 @@ class GUITestSuite:
         print("\nTest 4: Wrong Credentials")
         print("-" * 40)
         
-        from gui_login import LoginWindow
+        from gui.login import LoginWindow
         
         print("Creating dedicated window for login test...")
         
@@ -238,7 +238,7 @@ class GUITestSuite:
             print("⚠ No SYSTEM_API_URL in .env, skipping real login test")
             return False
         
-        from gui_login import LoginWindow
+        from gui.login import LoginWindow
         
         print("Creating dedicated window for login test...")
         print("Testing with real credentials from .env (NO MOCKING)...")
@@ -255,8 +255,8 @@ class GUITestSuite:
             try:
                 import importlib.util
                 spec = importlib.util.spec_from_file_location(
-                    "rediacc_gui", 
-                    Path(__file__).parent.parent.parent / 'src' / 'cli' / 'rediacc-gui.py'
+                    "gui.main", 
+                    Path(__file__).parent.parent.parent / 'src' / 'cli' / 'gui' / 'main.py'
                 )
                 rediacc_gui = importlib.util.module_from_spec(spec)
                 if 'rediacc_gui' not in sys.modules:
@@ -378,7 +378,7 @@ class GUITestSuite:
             print("⚠ No SYSTEM_API_URL in .env, skipping terminal test")
             return False
         
-        from gui_login import LoginWindow
+        from gui.login import LoginWindow
         import importlib.util
         
         print("Testing login and terminal launch workflow...")
@@ -455,8 +455,8 @@ class GUITestSuite:
         # Import and create MainWindow
         try:
             spec = importlib.util.spec_from_file_location(
-                "rediacc_gui", 
-                Path(__file__).parent.parent.parent / 'src' / 'cli' / 'rediacc-gui.py'
+                "gui.main", 
+                Path(__file__).parent.parent.parent / 'src' / 'cli' / 'gui' / 'main.py'
             )
             rediacc_gui = importlib.util.module_from_spec(spec)
             spec.loader.exec_module(rediacc_gui)

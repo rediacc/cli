@@ -329,7 +329,7 @@ docker_run() {
         -w /workspace \
         --network host \
         rediacc-cli:latest \
-        python3 /app/src/cli/rediacc-cli.py "$@"
+        "$@"
 }
 
 docker_shell() {
@@ -381,7 +381,7 @@ desktop() {
     fi
     
     # Run Desktop GUI directly
-    "$PYTHON_CMD" "$CLI_ROOT/src/cli/rediacc-gui.py" "$@"
+    "$PYTHON_CMD" "$CLI_ROOT/src/cli/gui/main.py" "$@"
 }
 
 desktop_docker_build() {
@@ -510,7 +510,7 @@ desktop_docker() {
         -v "$CLI_ROOT/.env:/app/.env:ro" \
         --network host \
         rediacc/cli:latest \
-        python3 /app/src/cli/rediacc-gui.py
+        python3 /app/src/cli/gui/main.py
     
     # Copy config back if it was updated
     if [ -f "$REDIACC_VOLUME/config.json" ]; then
@@ -537,24 +537,24 @@ case "$1" in
         
     login)
         shift
-        "$PYTHON_CMD" "$CLI_ROOT/src/cli/rediacc-cli.py" login "$@"
+        "$PYTHON_CMD" "$CLI_ROOT/src/cli/commands/cli.py" login "$@"
         ;;
         
     sync)
         shift
-        "$PYTHON_CMD" "$CLI_ROOT/src/cli/rediacc-cli-sync.py" "$@"
+        "$PYTHON_CMD" "$CLI_ROOT/src/cli/commands/sync.py" "$@"
         ;;
         
     term|terminal)
         shift
         # Don't inject token - let the term command manage its own token from config
-        "$PYTHON_CMD" "$CLI_ROOT/src/cli/rediacc-cli-term.py" "$@"
+        "$PYTHON_CMD" "$CLI_ROOT/src/cli/commands/term.py" "$@"
         ;;
         
     plugin)
         shift
         # Don't inject token - let the plugin command manage its own token from config
-        "$PYTHON_CMD" "$CLI_ROOT/src/cli/rediacc-cli-plugin.py" "$@"
+        "$PYTHON_CMD" "$CLI_ROOT/src/cli/commands/plugin.py" "$@"
         ;;
         
     gui|desktop|--gui)
@@ -600,12 +600,12 @@ case "$1" in
     cli)
         # Direct pass-through to CLI without token injection
         shift
-        "$PYTHON_CMD" "$CLI_ROOT/src/cli/rediacc-cli.py" "$@"
+        "$PYTHON_CMD" "$CLI_ROOT/src/cli/commands/cli.py" "$@"
         ;;
         
     version|--version)
         # Show version of main CLI
-        "$PYTHON_CMD" "$CLI_ROOT/src/cli/rediacc-cli.py" --version
+        "$PYTHON_CMD" "$CLI_ROOT/src/cli/commands/cli.py" --version
         ;;
         
     help|--help|-h)
@@ -614,20 +614,20 @@ case "$1" in
         
     "")
         # When no arguments provided, run the CLI directly (shows its own help)
-        "$PYTHON_CMD" "$CLI_ROOT/src/cli/rediacc-cli.py"
+        "$PYTHON_CMD" "$CLI_ROOT/src/cli/commands/cli.py"
         ;;
         
     *)
         # Pass through to main CLI with token injection if needed
         if [[ ! " $@ " =~ " --token " ]]; then
-            token=$(python3 -c "import sys; sys.path.insert(0, '$CLI_ROOT/src/modules'); from token_manager import TokenManager; print(TokenManager().get_token() or '')" 2>/dev/null || true)
+            token=$(python3 -c "import sys; sys.path.insert(0, '$CLI_ROOT/src/cli'); from core.config import TokenManager; print(TokenManager().get_token() or '')" 2>/dev/null || true)
             if [ -n "$token" ]; then
-                "$PYTHON_CMD" "$CLI_ROOT/src/cli/rediacc-cli.py" --token "$token" "$@"
+                "$PYTHON_CMD" "$CLI_ROOT/src/cli/commands/cli.py" --token "$token" "$@"
             else
-                "$PYTHON_CMD" "$CLI_ROOT/src/cli/rediacc-cli.py" "$@"
+                "$PYTHON_CMD" "$CLI_ROOT/src/cli/commands/cli.py" "$@"
             fi
         else
-            "$PYTHON_CMD" "$CLI_ROOT/src/cli/rediacc-cli.py" "$@"
+            "$PYTHON_CMD" "$CLI_ROOT/src/cli/commands/cli.py" "$@"
         fi
         ;;
 esac

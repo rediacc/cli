@@ -887,7 +887,7 @@ class I18n:
     
     def _load_config(self):
         """Load languages and translations from JSON configuration file"""
-        config_path = Path(__file__).parent.parent / 'config' / 'rediacc-gui-translations.json'
+        config_path = Path(__file__).parent.parent.parent / 'config' / 'rediacc-gui-translations.json'
         
         if not config_path.exists():
             raise FileNotFoundError(f"Translation configuration file not found: {config_path}")
@@ -1017,10 +1017,10 @@ class SubprocessRunner:
         # Store original Windows paths
         base_dir = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
         self.cli_dir = base_dir
-        self.cli_path = os.path.join(base_dir, 'cli', 'rediacc-cli.py')
-        self.sync_path = os.path.join(base_dir, 'cli', 'rediacc-cli-sync.py')
-        self.term_path = os.path.join(base_dir, 'cli', 'rediacc-cli-term.py')
-        self.plugin_path = os.path.join(base_dir, 'cli', 'rediacc-cli-plugin.py')
+        self.cli_path = os.path.join(base_dir, 'cli', 'commands', 'cli.py')
+        self.sync_path = os.path.join(base_dir, 'cli', 'commands', 'sync.py')
+        self.term_path = os.path.join(base_dir, 'cli', 'commands', 'term.py')
+        self.plugin_path = os.path.join(base_dir, 'cli', 'commands', 'plugin.py')
         self.wrapper_path = os.path.join(os.path.dirname(base_dir), 'rediacc')
         
         # Check for MSYS2 on Windows for better compatibility
@@ -1818,15 +1818,15 @@ class TerminalDetector:
         
         cmd_parts = shlex.split(command)
         script_map = {
-            'term': f'{msys2_cli_dir}/src/cli/rediacc-cli-term.py',
-            'sync': f'{msys2_cli_dir}/src/cli/rediacc-cli-sync.py'
+            'term': f'{msys2_cli_dir}/src/cli/commands/term.py',
+            'sync': f'{msys2_cli_dir}/src/cli/commands/sync.py'
         }
         
         if cmd_parts[0] in script_map:
             cli_script = script_map[cmd_parts[0]]
             args = cmd_parts[1:]
         else:
-            cli_script = f'{msys2_cli_dir}/src/cli/rediacc-cli.py'
+            cli_script = f'{msys2_cli_dir}/src/cli/commands/cli.py'
             args = cmd_parts
         
         escaped_args = ' '.join(shlex.quote(arg) for arg in args)
@@ -1848,8 +1848,8 @@ class TerminalDetector:
             cmd_parts = command.split()
         
         script_map = {
-            'term': './src/cli/rediacc-cli-term.py',
-            'sync': './src/cli/rediacc-cli-sync.py'
+            'term': 'src/cli/commands/term.py',
+            'sync': 'src/cli/commands/sync.py'
         }
         
         # Determine the correct CLI script based on command
@@ -1886,8 +1886,8 @@ class TerminalDetector:
             cmd_parts = command.split()
         
         script_map = {
-            'term': './src/cli/rediacc-cli-term.py',
-            'sync': './src/cli/rediacc-cli-sync.py'
+            'term': 'src/cli/commands/term.py',
+            'sync': 'src/cli/commands/sync.py'
         }
         
         # Determine the correct CLI script
@@ -1915,8 +1915,8 @@ class TerminalDetector:
             cmd_parts = command.split()
         
         script_map = {
-            'term': './src/cli/rediacc-cli-term.py',
-            'sync': './src/cli/rediacc-cli-sync.py'
+            'term': 'src/cli/commands/term.py',
+            'sync': 'src/cli/commands/sync.py'
         }
         
         # Determine the correct CLI script
@@ -1940,15 +1940,15 @@ class TerminalDetector:
         
         cmd_parts = shlex.split(command)
         script_map = {
-            'term': f'{msys2_cli_dir}/src/cli/rediacc-cli-term.py',
-            'sync': f'{msys2_cli_dir}/src/cli/rediacc-cli-sync.py'
+            'term': f'{msys2_cli_dir}/src/cli/commands/term.py',
+            'sync': f'{msys2_cli_dir}/src/cli/commands/sync.py'
         }
         
         if cmd_parts[0] in script_map:
             cli_script = script_map[cmd_parts[0]]
             args = cmd_parts[1:]
         else:
-            cli_script = f'{msys2_cli_dir}/src/cli/rediacc-cli.py'
+            cli_script = f'{msys2_cli_dir}/src/cli/commands/cli.py'
             args = cmd_parts
         
         escaped_args = ' '.join(shlex.quote(arg) for arg in args)
@@ -1968,15 +1968,15 @@ class TerminalDetector:
         
         cmd_parts = shlex.split(command)
         script_map = {
-            'term': f'{msys2_cli_dir}/src/cli/rediacc-cli-term.py',
-            'sync': f'{msys2_cli_dir}/src/cli/rediacc-cli-sync.py'
+            'term': f'{msys2_cli_dir}/src/cli/commands/term.py',
+            'sync': f'{msys2_cli_dir}/src/cli/commands/sync.py'
         }
         
         if cmd_parts[0] in script_map:
             cli_script = script_map[cmd_parts[0]]
             args = cmd_parts[1:]
         else:
-            cli_script = f'{msys2_cli_dir}/src/cli/rediacc-cli.py'
+            cli_script = f'{msys2_cli_dir}/src/cli/commands/cli.py'
             args = cmd_parts
         
         escaped_args = ' '.join(shlex.quote(arg) for arg in args)
@@ -1991,15 +1991,15 @@ class TerminalDetector:
         
         cmd_parts = shlex.split(command)
         script_map = {
-            'term': f'{cli_dir}\\src\\cli\\rediacc-cli-term.py',
-            'sync': f'{cli_dir}\\src\\cli\\rediacc-cli-sync.py'
+            'term': f'{cli_dir}\\src\\cli\\commands\\term.py',
+            'sync': f'{cli_dir}\\src\\cli\\commands\\sync.py'
         }
         
         if cmd_parts[0] in script_map:
             cli_script = script_map[cmd_parts[0]]
             args = cmd_parts[1:]
         else:
-            cli_script = f'{cli_dir}\\src\\cli\\rediacc-cli.py'
+            cli_script = f'{cli_dir}\\src\\cli\\commands\\cli.py'
             args = cmd_parts
         
         escaped_args = ' '.join(f'"{arg}"' if ' ' in arg else arg for arg in args)
@@ -2014,15 +2014,15 @@ class TerminalDetector:
         
         cmd_parts = shlex.split(command)
         script_map = {
-            'term': f'{cli_dir}\\src\\cli\\rediacc-cli-term.py',
-            'sync': f'{cli_dir}\\src\\cli\\rediacc-cli-sync.py'
+            'term': f'{cli_dir}\\src\\cli\\commands\\term.py',
+            'sync': f'{cli_dir}\\src\\cli\\commands\\sync.py'
         }
         
         if cmd_parts[0] in script_map:
             cli_script = script_map[cmd_parts[0]]
             args = cmd_parts[1:]
         else:
-            cli_script = f'{cli_dir}\\src\\cli\\rediacc-cli.py'
+            cli_script = f'{cli_dir}\\src\\cli\\commands\\cli.py'
             args = cmd_parts
         
         escaped_args = ' '.join(f'"{arg}"' if ' ' in arg else arg for arg in args)

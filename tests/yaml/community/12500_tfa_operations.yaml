@@ -1,6 +1,6 @@
 name: TFA_OPERATIONS_TEST
 description: Test Two-Factor Authentication operations - UpdateUserTFA
-executor: rediacc-cli.py
+executor: "commands/cli.py"
 setup:
 - name: create_test_company
   command:

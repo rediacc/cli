@@ -17,9 +17,9 @@ from pathlib import Path
 from typing import Dict, Any, Optional, List, Tuple
 from datetime import datetime
 
-sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
+sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
-from rediacc_cli_core import (
+from core.shared import (
     colorize,
     add_common_arguments,
     error_exit,
@@ -31,7 +31,7 @@ from rediacc_cli_core import (
     get_ssh_key_from_vault
 )
 
-from core import (
+from core.config import (
     get_config_dir, get_plugin_connections_file, get_ssh_control_dir
 )
 

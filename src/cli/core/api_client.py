@@ -15,9 +15,9 @@ import time
 from typing import Dict, Any, Optional, Tuple
 
 # Import from core module
-from core import TokenManager, get_required, api_mutex
+from .config import TokenManager, get_required, api_mutex
 # Import environment configuration
-from env_config import EnvironmentConfig
+from .env_config import EnvironmentConfig
 
 
 class InMemoryTokenStore:
@@ -134,10 +134,10 @@ class SuperClient:
         
         if data and self.should_use_vault_encryption and (master_pwd := self.config_manager.get_master_password()):
             try:
-                from core import encrypt_vault_fields
+                from .config import encrypt_vault_fields
                 prepared_data = encrypt_vault_fields(data, master_pwd)
             except Exception as e:
-                from core import colorize
+                from .config import colorize
                 print(colorize(f"Warning: Failed to encrypt vault fields: {e}", 'YELLOW'))
         
         return url, prepared_data, merged_headers
@@ -156,10 +156,10 @@ class SuperClient:
         
         if self.should_use_vault_encryption and (master_pwd := self.config_manager.get_master_password()):
             try:
-                from core import decrypt_vault_fields
+                from .config import decrypt_vault_fields
                 result = decrypt_vault_fields(result, master_pwd)
             except Exception as e:
-                from core import colorize
+                from .config import colorize
                 print(colorize(f"Warning: Failed to decrypt vault fields: {e}", 'YELLOW'))
         
         return result
@@ -203,7 +203,7 @@ class SuperClient:
     
     def ensure_config_manager(self):
         if self.config_manager is None:
-            from core import get_default_config_manager
+            from .config import get_default_config_manager
             self.set_config_manager(get_default_config_manager())
     
     def request(self, endpoint, data=None, headers=None):
@@ -278,7 +278,7 @@ class SuperClient:
             self.config_manager.has_vault_encryption() and 
             not self.config_manager.get_master_password() and 
             not self._vault_warning_shown):
-            from core import colorize
+            from .config import colorize
             print(colorize("Warning: Your company requires vault encryption but no master password is set.", 'YELLOW'))
             print(colorize("Vault fields will not be decrypted. Use 'rediacc vault set-password' to set it.", 'YELLOW'))
             self._vault_warning_shown = True

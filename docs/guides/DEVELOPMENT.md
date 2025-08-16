@@ -199,7 +199,7 @@ curl -H "Rediacc-RequestToken: $TOKEN" \
 time ./rediacc-cli list teams
 
 # Detailed profiling
-python3 -m cProfile -o profile.stats rediacc_cli_core.py list teams
+python3 -m cProfile -o profile.stats src/cli/commands/cli.py list teams
 python3 -m pstats profile.stats
 ```
 
@@ -210,7 +210,7 @@ python3 -m pstats profile.stats
 pip install memory_profiler
 
 # Run with memory profiling
-python3 -m memory_profiler rediacc_cli_core.py list teams
+python3 -m memory_profiler src/cli/commands/cli.py list teams
 ```
 
 ## Custom Extensions

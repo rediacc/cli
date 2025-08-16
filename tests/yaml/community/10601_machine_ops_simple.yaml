@@ -1,6 +1,6 @@
 name: MACHINE_OPS_SIMPLE_TEST
 description: Simplified test for machine operations
-executor: rediacc-cli.py
+executor: "commands/cli.py"
 setup:
 - name: create_test_company
   command:

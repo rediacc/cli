@@ -7,14 +7,14 @@ import tempfile
 import platform
 from pathlib import Path
 from typing import Dict, Any, Optional, Tuple
-from core import (
+from .config import (
     get_config_dir, get_main_config_file,
     TokenManager,
     get, get_required, get_path,
     is_encrypted
 )
 
-CLI_TOOL = os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))), 'cli', 'rediacc-cli.py')
+CLI_TOOL = os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))), 'commands', 'cli.py')
 
 def get_cli_command() -> list:
     if not is_windows(): return [CLI_TOOL]
@@ -126,7 +126,7 @@ def _retry_with_backoff(func, max_retries=3, initial_delay=0.5, error_msg="Opera
 
 def _create_api_client():
     """Create a minimal API client for fetching company vault"""
-    from api_client import client
+    from .api_client import client
     # Ensure the client has a config manager for token rotation
     client.ensure_config_manager()
     return client
@@ -172,7 +172,7 @@ def _get_universal_user_info() -> Tuple[Optional[str], Optional[str], Optional[s
             # If we don't have company_id, try to fetch it from API
             if not company_id and TokenManager.get_token():
                 try:
-                    from core import TokenManager as TM
+                    from .config import TokenManager as TM
                     client = _create_api_client()
                     current_token = TokenManager.get_token()
                     response = client.token_request("GetCompanyVault", {})
@@ -221,7 +221,7 @@ def _get_universal_user_info() -> Tuple[Optional[str], Optional[str], Optional[s
             
             # If we still don't have the values, get from environment
             if not universal_user_name or not universal_user_id:
-                from env_config import EnvironmentConfig
+                from .env_config import EnvironmentConfig
                 universal_user_name, universal_user_id, env_company_id = EnvironmentConfig.get_universal_user_info()
                 if not company_id:
                     company_id = env_company_id
@@ -231,7 +231,7 @@ def _get_universal_user_info() -> Tuple[Optional[str], Optional[str], Optional[s
             pass  # Fall through to environment fallback
     
     # Fall back to environment configuration
-    from env_config import EnvironmentConfig
+    from .env_config import EnvironmentConfig
     return EnvironmentConfig.get_universal_user_info()
 
 class _SuppressSysExit:
@@ -244,8 +244,8 @@ class _SuppressSysExit:
 
 def get_machine_info_with_team(team_name: str, machine_name: str) -> Dict[str, Any]:
     """Get machine info using the API client directly"""
-    from api_client import client
-    from core import TokenManager
+    from .api_client import client
+    from .config import TokenManager
     
     if not TokenManager.get_token(): 
         error_exit("No authentication token available")
@@ -315,8 +315,8 @@ def get_repository_info(team_name: str, repo_name: str) -> Dict[str, Any]:
 
 def get_ssh_key_from_vault(team_name: Optional[str] = None) -> Optional[str]:
     """Get SSH key from team vault using the API client directly"""
-    from api_client import client
-    from core import TokenManager
+    from .api_client import client
+    from .config import TokenManager
     
     token = TokenManager.get_token()
     if not token:

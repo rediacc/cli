@@ -1,6 +1,6 @@
 name: TEAM_MEMBERSHIP_TEST
 description: Test team membership operations - add and remove users from teams
-executor: rediacc-cli.py
+executor: "commands/cli.py"
 setup:
 - name: create_test_company
   command:

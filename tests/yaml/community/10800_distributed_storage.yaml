@@ -1,6 +1,6 @@
 name: DISTRIBUTED_STORAGE_TEST
 description: Test distributed storage cluster, pool, and RBD operations
-executor: rediacc-cli.py
+executor: "commands/cli.py"
 setup:
 - name: create_test_company
   command:

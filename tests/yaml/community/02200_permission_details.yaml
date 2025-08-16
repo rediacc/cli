@@ -1,6 +1,6 @@
 name: PERMISSION_DETAILS_TEST
 description: Test retrieving permission group details
-executor: rediacc-cli.py
+executor: "commands/cli.py"
 setup:
 - name: create_test_company
   command:

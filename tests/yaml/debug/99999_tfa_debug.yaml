@@ -1,6 +1,6 @@
 name: "TFA_DEBUG_TEST"
 description: "Minimal test to debug TFA enable issue"
-executor: "rediacc-cli.py"
+executor: "commands/cli.py"
 
 setup:
   - name: "create_test_company"

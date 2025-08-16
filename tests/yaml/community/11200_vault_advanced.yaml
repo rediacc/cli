@@ -1,6 +1,6 @@
 name: VAULT_ADVANCED_TEST
 description: Test advanced vault operations for all entity types
-executor: rediacc-cli.py
+executor: "commands/cli.py"
 setup:
 - name: create_test_company
   command:

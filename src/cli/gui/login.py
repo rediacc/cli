@@ -17,14 +17,20 @@ import time
 import urllib.request
 import urllib.parse
 import urllib.error
+import sys
+import os
 
-from core import SubprocessRunner, i18n, TokenManager, get_required, get, api_mutex
-from gui_base import BaseWindow
-from gui_utilities import (
+# Add parent directory to path for imports if running directly
+if __name__ == "__main__":
+    sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
+
+from core.config import SubprocessRunner, i18n, TokenManager, get_required, get, api_mutex
+from gui.base import BaseWindow
+from gui.utilities import (
     LOGIN_WINDOW_SIZE, COMBO_WIDTH_SMALL, ENTRY_WIDTH_DEFAULT,
     COLOR_SUCCESS, COLOR_ERROR
 )
-from api_client import client, SimpleConfigManager
+from core.api_client import client, SimpleConfigManager
 
 # Password hashing
 STATIC_SALT = 'Rd!@cc111$ecur3P@$$w0rd$@lt#H@$h'
@@ -158,7 +164,7 @@ class LoginWindow(BaseWindow):
         """Perform login in background thread using direct API call"""
         try:
             # Set up config manager with master password
-            from core import get_default_config_manager
+            from core.config import get_default_config_manager
             config_manager = get_default_config_manager()
             if master_password.strip():
                 config_manager.set_master_password(master_password)
