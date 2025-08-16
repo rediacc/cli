@@ -1,6 +1,6 @@
 name: VAULT_SIMPLE_TEST
 description: Simplified test for vault update endpoints
-executor: rediacc-cli.py
+executor: "commands/cli.py"
 setup:
 - name: create_test_company
   command:

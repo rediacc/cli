@@ -11,8 +11,8 @@ import secrets
 import string
 from typing import Optional, Dict, Any
 
-from rediacc_cli_core import colorize
-from api_client import client
+from core.shared import colorize
+from core.api_client import client
 
 
 def format_output(data, format_type, message=None, error=None):

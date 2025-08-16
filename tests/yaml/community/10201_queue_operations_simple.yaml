@@ -1,6 +1,6 @@
 name: QUEUE_OPERATIONS_SIMPLE_TEST
 description: Simplified test for queue operations
-executor: rediacc-cli.py
+executor: "commands/cli.py"
 setup:
 - name: create_test_company
   command:

@@ -1075,8 +1075,15 @@ function Invoke-RediaccCLI {
         }
     }
     
-    # Build script path
-    $scriptPath = Join-Path (Join-Path $PSScriptRoot "src\cli") "$Tool.py"
+    # Build script path based on tool type
+    switch ($Tool) {
+        "rediacc-cli" { $scriptPath = Join-Path (Join-Path $PSScriptRoot "src\cli\commands") "cli.py" }
+        "rediacc-cli-sync" { $scriptPath = Join-Path (Join-Path $PSScriptRoot "src\cli\commands") "sync.py" }
+        "rediacc-cli-term" { $scriptPath = Join-Path (Join-Path $PSScriptRoot "src\cli\commands") "term.py" }
+        "rediacc-cli-plugin" { $scriptPath = Join-Path (Join-Path $PSScriptRoot "src\cli\commands") "plugin.py" }
+        "rediacc-gui" { $scriptPath = Join-Path (Join-Path $PSScriptRoot "src\cli\gui") "main.py" }
+        default { $scriptPath = Join-Path (Join-Path $PSScriptRoot "src\cli") "$Tool.py" }
+    }
     
     # Execute
     & $python.Command $scriptPath $Arguments

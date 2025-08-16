@@ -24,7 +24,7 @@ Create a test file `my_test.yaml`:
 
 ```yaml
 name: "My Test"
-executor: "rediacc-cli.py"
+executor: "commands/cli.py"
 
 tests:
   - name: "Create team"
@@ -87,7 +87,7 @@ tests:
 
 ```yaml
 name: "Test Name"
-executor: "rediacc-cli.py"    # Or rediacc-cli-term.py, etc.
+executor: "commands/cli.py"    # Or commands/term.py, etc.
 
 tests:
   - name: "Step 1"

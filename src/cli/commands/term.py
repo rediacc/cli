@@ -12,20 +12,20 @@ import os
 import json
 from pathlib import Path
 
-sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
+sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
-from rediacc_cli_core import (
+from core.shared import (
     colorize, add_common_arguments,
     error_exit, initialize_cli_command, RepositoryConnection, INTERIM_FOLDER_NAME, 
     get_ssh_key_from_vault, SSHConnection
 )
 
-from core import setup_logging, get_logger
+from core.config import setup_logging, get_logger
 
 # Load configuration
 def load_config():
     """Load configuration from JSON file"""
-    config_path = Path(__file__).parent.parent / 'config' / 'rediacc-cli-term-config.json'
+    config_path = Path(__file__).parent.parent.parent / 'config' / 'rediacc-cli-term-config.json'
     try: return json.load(open(config_path, 'r'))
     except (FileNotFoundError, json.JSONDecodeError) as e:
         print(f"Warning: Could not load config file: {e}")
@@ -53,7 +53,7 @@ def get_config_value(*keys, default=''):
 def connect_to_machine(args):
     print_message('connecting_machine', 'HEADER', machine=args.machine)
     
-    from rediacc_cli_core import get_machine_info_with_team, get_machine_connection_info, validate_machine_accessibility, handle_ssh_exit_code
+    from core.shared import get_machine_info_with_team, get_machine_connection_info, validate_machine_accessibility, handle_ssh_exit_code
     
     print(MESSAGES.get('fetching_info', 'Fetching machine information...'))
     machine_info = get_machine_info_with_team(args.team, args.machine)
@@ -94,7 +94,7 @@ def connect_to_machine(args):
 def connect_to_terminal(args):
     print_message('connecting_repository', 'HEADER', repo=args.repo, machine=args.machine)
     
-    from rediacc_cli_core import validate_machine_accessibility, handle_ssh_exit_code
+    from core.shared import validate_machine_accessibility, handle_ssh_exit_code
     
     conn = RepositoryConnection(args.team, args.machine, args.repo); conn.connect()
     validate_machine_accessibility(args.machine, args.team, conn.connection_info['ip'], args.repo)

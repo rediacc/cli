@@ -2,8 +2,14 @@
 
 import tkinter as tk
 import sys
-from core import i18n
-from gui_utilities import (
+import os
+
+# Add parent directory to path for imports if running directly
+if __name__ == "__main__":
+    sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
+
+from core.config import i18n
+from gui.utilities import (
     COLOR_TOOLTIP_BG, BORDER_WIDTH_THIN, FONT_FAMILY_DEFAULT,
     FONT_SIZE_SMALL, FONT_STYLE_NORMAL
 )

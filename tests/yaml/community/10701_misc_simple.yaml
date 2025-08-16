@@ -1,6 +1,6 @@
 name: MISC_SIMPLE_TEST
 description: Simplified test for miscellaneous endpoints
-executor: rediacc-cli.py
+executor: "commands/cli.py"
 setup:
 - name: create_test_company
   command:

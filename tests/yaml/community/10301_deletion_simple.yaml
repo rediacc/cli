@@ -1,6 +1,6 @@
 name: DELETION_SIMPLE_TEST
 description: Simplified test for resource deletion endpoints
-executor: rediacc-cli.py
+executor: "commands/cli.py"
 setup:
 - name: create_test_company
   command:

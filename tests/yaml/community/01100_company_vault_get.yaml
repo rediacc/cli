@@ -1,6 +1,6 @@
 name: COMPANY_VAULT_GET_TEST
 description: Test retrieving company vault configurations
-executor: rediacc-cli.py
+executor: "commands/cli.py"
 setup:
 - name: create_test_company
   command:

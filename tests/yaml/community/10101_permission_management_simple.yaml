@@ -1,6 +1,6 @@
 name: PERMISSION_MANAGEMENT_SIMPLE_TEST
 description: Simplified test for permission management endpoints
-executor: rediacc-cli.py
+executor: "commands/cli.py"
 setup:
 - name: create_test_company
   command:

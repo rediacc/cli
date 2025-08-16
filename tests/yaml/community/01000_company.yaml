@@ -1,6 +1,6 @@
 name: COMPANY_SETUP_TEST
 description: Test company creation and initial configuration
-executor: rediacc-cli.py
+executor: "commands/cli.py"
 tests:
 - name: create_new_company
   command:

@@ -1,6 +1,6 @@
 name: PERMISSIONS_TEST
 description: Test permission group creation and permission assignment
-executor: rediacc-cli.py
+executor: "commands/cli.py"
 setup:
 - name: create_test_company
   command:

@@ -17,8 +17,12 @@ import urllib.request
 import urllib.parse
 import urllib.error
 
+# Add parent directory to path for imports if running directly
+if __name__ == "__main__":
+    sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
+
 # Import from consolidated core module
-from core import (
+from core.config import (
     SubprocessRunner,
     TokenManager,
     get_logger,
@@ -26,7 +30,7 @@ from core import (
     get,
     api_mutex
 )
-from api_client import client, SimpleConfigManager
+from core.api_client import client, SimpleConfigManager
 
 
 # ===== UTILITY FUNCTIONS =====
@@ -55,7 +59,7 @@ def format_time(timestamp: float) -> str:
 
 def parse_ls_output(output: str) -> List[Dict[str, Any]]:
     """Parse ls -la output into file information"""
-    from core import i18n
+    from core.config import i18n
     
     files = []
     lines = output.strip().split('\n')
@@ -181,7 +185,7 @@ class GUIConfig:
     
     def load_config(self):
         """Load configuration from JSON file"""
-        config_path = Path(__file__).parent.parent / 'config' / 'rediacc-gui-config.json'
+        config_path = Path(__file__).parent.parent.parent / 'config' / 'rediacc-gui-config.json'
         
         try:
             with open(config_path, 'r') as f: self._config = json.load(f)

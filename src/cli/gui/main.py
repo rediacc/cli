@@ -29,8 +29,11 @@ import urllib.request
 import urllib.parse
 import urllib.error
 
+# Add parent directory to path for imports
+sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
+
 # Import from consolidated core module
-from core import (
+from core.config import (
     TokenManager,
     SubprocessRunner,
     i18n,
@@ -41,10 +44,10 @@ from core import (
     get,
     api_mutex
 )
-from api_client import client
+from core.api_client import client
 
 # Import core functionality for SSH operations
-from rediacc_cli_core import (
+from core.shared import (
     RepositoryConnection,
     colorize,
     setup_ssh_for_connection,
@@ -52,10 +55,10 @@ from rediacc_cli_core import (
 )
 
 # Import GUI components
-from gui_base import BaseWindow, create_tooltip
-from gui_login import LoginWindow
-from gui_file_browser import DualPaneFileBrowser
-from gui_utilities import (
+from gui.base import BaseWindow, create_tooltip
+from gui.login import LoginWindow
+from gui.file_browser import DualPaneFileBrowser
+from gui.utilities import (
     check_token_validity, center_window,
     MAIN_WINDOW_DEFAULT_SIZE, COMBO_WIDTH_SMALL, COMBO_WIDTH_MEDIUM,
     COLUMN_WIDTH_NAME, COLUMN_WIDTH_SIZE, COLUMN_WIDTH_MODIFIED, COLUMN_WIDTH_TYPE,
@@ -78,7 +81,7 @@ class MainWindow(BaseWindow):
         self.api_client = client
         
         # Ensure config manager is set for token rotation
-        from core import get_default_config_manager
+        from core.config import get_default_config_manager
         self.api_client.set_config_manager(get_default_config_manager())
         
         # Center window at default size
@@ -1414,7 +1417,8 @@ class MainWindow(BaseWindow):
     def _launch_terminal(self, command: str, description: str):
         """Common method to launch terminal with given command"""
         import os
-        cli_dir = os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
+        # Go up 4 levels: main.py -> gui -> cli -> src -> cli (root)
+        cli_dir = os.path.dirname(os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__)))))
         rediacc_path = os.path.join(cli_dir, 'rediacc')
         simple_cmd = f'{rediacc_path} {command}'
         

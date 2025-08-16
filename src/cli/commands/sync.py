@@ -12,9 +12,9 @@ import sys
 from pathlib import Path
 from typing import Dict, Any, Optional
 
-sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
+sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
-from rediacc_cli_core import (
+from core.shared import (
     colorize,
     add_common_arguments,
     error_exit,
@@ -23,7 +23,7 @@ from rediacc_cli_core import (
     is_windows
 )
 
-from core import (
+from core.config import (
     setup_logging, get_logger
 )
 
