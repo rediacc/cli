@@ -3,8 +3,6 @@
 Rediacc CLI Sync - Rsync-based file synchronization with repositories
 """
 
-__version__ = "dev"  # This will be replaced during build/release
-
 import argparse
 import os
 import subprocess
@@ -14,6 +12,7 @@ from typing import Dict, Any, Optional
 
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
+from cli._version import __version__
 from core.shared import (
     colorize,
     add_common_arguments,

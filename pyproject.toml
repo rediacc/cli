@@ -1,0 +1,98 @@
+[build-system]
+requires = ["setuptools>=69.0", "wheel"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "rediacc-cli"
+dynamic = ["version"]
+description = "Rediacc CLI - Command-line interface for Rediacc distributed task execution system"
+readme = "README.md"
+license = {text = "MIT"}
+authors = [
+    {name = "Rediacc Team", email = "info@rediacc.com"}
+]
+maintainers = [
+    {name = "Rediacc Team", email = "info@rediacc.com"}
+]
+requires-python = ">=3.8"
+dependencies = [
+    "cryptography>=41.0.0",
+    "requests>=2.31.0",
+    "pyotp>=2.9.0",
+]
+keywords = [
+    "rediacc",
+    "cli",
+    "distributed",
+    "task-execution",
+    "ssh",
+    "automation",
+    "devops",
+    "infrastructure",
+]
+classifiers = [
+    "Development Status :: 4 - Beta",
+    "Intended Audience :: Developers",
+    "Intended Audience :: System Administrators",
+    "Topic :: Software Development :: Build Tools",
+    "Topic :: System :: Systems Administration",
+    "Topic :: Utilities",
+    "License :: OSI Approved :: MIT License",
+    "Programming Language :: Python :: 3",
+    "Programming Language :: Python :: 3.8",
+    "Programming Language :: Python :: 3.9",
+    "Programming Language :: Python :: 3.10",
+    "Programming Language :: Python :: 3.11",
+    "Programming Language :: Python :: 3.12",
+    "Operating System :: OS Independent",
+    "Operating System :: POSIX :: Linux",
+    "Operating System :: MacOS",
+    "Operating System :: Microsoft :: Windows",
+    "Environment :: Console",
+]
+
+[project.urls]
+Homepage = "https://rediacc.com"
+Documentation = "https://docs.rediacc.com"
+Repository = "https://github.com/rediacc/cli"
+"Bug Tracker" = "https://github.com/rediacc/cli/issues"
+
+[project.optional-dependencies]
+gui = [
+    "tkinter",  # Usually comes with Python
+]
+dev = [
+    "pytest>=7.0",
+    "pytest-cov>=4.0",
+    "black>=23.0",
+    "flake8>=6.0",
+    "mypy>=1.0",
+    "build>=0.10",
+    "twine>=4.0",
+]
+test = [
+    "pytest>=7.0",
+    "pytest-cov>=4.0",
+    "pyyaml>=6.0",
+]
+
+[project.scripts]
+rediacc-cli = "cli.commands.cli:main"
+rediacc-sync = "cli.commands.sync:main"
+rediacc-term = "cli.commands.term:main"
+rediacc-plugin = "cli.commands.plugin:main"
+rediacc-workflow = "cli.commands.workflow:main"
+rediacc-gui = "cli.gui.main:main"
+
+[tool.setuptools]
+package-dir = {"" = "src"}
+packages = ["cli", "cli.commands", "cli.core", "cli.gui"]
+include-package-data = true
+
+[tool.setuptools.dynamic]
+version = {attr = "cli._version.__version__"}
+
+[tool.setuptools.package-data]
+cli = [
+    "../config/*.json",
+]
