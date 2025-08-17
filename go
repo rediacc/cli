@@ -21,11 +21,25 @@ if [ -f "$MONOREPO_DIR/.env" ]; then
     set +a  # turn off automatic export
 fi
 
-# Use TAG environment variable if provided, otherwise use date-based version
+# Function to get latest git tag
+get_latest_git_tag() {
+    git tag -l 'v[0-9]*.[0-9]*.[0-9]*' 2>/dev/null | sort -V | tail -1
+}
+
+# Use TAG environment variable if provided, otherwise try git tag, then date-based version
 if [ -n "$TAG" ] && [ "$TAG" != "latest" ] && [ "$TAG" != "dev" ]; then
     export REDIACC_VERSION="$TAG"
 else
-    export REDIACC_VERSION="dev-$(date +%Y%m%d.%H%M%S)"
+    # Try to get version from git tags
+    GIT_TAG=$(get_latest_git_tag)
+    if [ -n "$GIT_TAG" ]; then
+        # Strip 'v' prefix for consistency
+        export REDIACC_VERSION="${GIT_TAG#v}"
+        echo "📦 Using git tag version: $GIT_TAG (version: $REDIACC_VERSION)"
+    else
+        export REDIACC_VERSION="dev-$(date +%Y%m%d.%H%M%S)"
+        echo "📦 No git tags found, using dev version: $REDIACC_VERSION"
+    fi
 fi
 
 # Function to check required environment variables
@@ -156,6 +170,9 @@ function host_setup() {
         curl \
         jq \
         git
+    
+    echo "Installing PyPI publishing tools..."
+    sudo apt-get install -y twine
     
     # Only install Docker in native environments
     if [ "$is_codespace" = false ]; then

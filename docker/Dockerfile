@@ -114,8 +114,8 @@ COPY --chown=$REDIACC_LINUX_USER:$REDIACC_LINUX_GROUP docs/ ./docs/
 # ========================================
 # Layer 9: Version injection and permissions (changes with version)
 # ========================================
-# Replace version in Python files
-RUN find ./src/cli -name "*.py" -exec sed -i "s/__version__ = \"dev\"/__version__ = \"$VERSION\"/g" {} \; && \
+# Update version in the centralized _version.py file
+RUN sed -i "s/__version__ = \"[^\"]*\"/__version__ = \"$VERSION\"/g" ./src/cli/_version.py && \
     chmod +x rediacc && \
     find ./src/cli/commands -name "*.py" -exec chmod +x {} \; && \
     find ./src/cli/gui -name "*.py" -exec chmod +x {} \;

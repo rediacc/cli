@@ -8,6 +8,7 @@ echo "Building Rediacc CLI Docker images..."
 # Default to using cache for better performance
 no_cache=""
 version="dev"
+update_version_file=false
 
 # Parse arguments
 for arg in "$@"; do
@@ -25,6 +26,10 @@ for arg in "$@"; do
             version="${arg#*=}"
             echo "Building with version: $version"
             ;;
+        --update-version-file)
+            update_version_file=true
+            echo "Will update _version.py before build"
+            ;;
     esac
 done
 
@@ -36,6 +41,18 @@ fi
 
 # Get the CLI root directory (parent of scripts)
 CLI_ROOT="$(cd "$(dirname "$0")/.." && pwd)"
+
+# Optionally update _version.py file (for local testing)
+if [ "$update_version_file" = true ] && [ "$version" != "dev" ]; then
+    VERSION_FILE="$CLI_ROOT/src/cli/_version.py"
+    if [ -f "$VERSION_FILE" ]; then
+        # Strip "v" prefix if present for PyPI compatibility
+        pypi_version="${version#v}"
+        echo "Updating $VERSION_FILE to version: $pypi_version"
+        sed -i.bak "s/__version__ = \"[^\"]*\"/__version__ = \"$pypi_version\"/g" "$VERSION_FILE"
+        rm -f "${VERSION_FILE}.bak"
+    fi
+fi
 
 # Build CLI image (includes GUI support)
 echo "Building CLI image with GUI support..."

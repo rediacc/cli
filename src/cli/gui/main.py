@@ -7,8 +7,6 @@ Rediacc CLI GUI application, including plugin management, terminal access,
 and file synchronization tools.
 """
 
-__version__ = "dev"  # This will be replaced during build/release
-
 import tkinter as tk
 from tkinter import ttk, scrolledtext, messagebox, filedialog
 import subprocess
@@ -31,6 +29,9 @@ import urllib.error
 
 # Add parent directory to path for imports
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
+
+# Import version from centralized location
+from cli._version import __version__
 
 # Import from consolidated core module
 from core.config import (
