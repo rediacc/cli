@@ -2,25 +2,32 @@
 include README.md
 include LICENSE
 include requirements.txt
+include requirements-dev.txt
+include setup.py
+include pyproject.toml
 
 # Include configuration files
 recursive-include src/config *.json
 
-# Include documentation
-recursive-include docs *.md
+# Include package data
+recursive-include src/cli *.py
 
-# Exclude development and test files
-recursive-exclude tests *
-recursive-exclude * __pycache__
-recursive-exclude * *.py[co]
-recursive-exclude * .DS_Store
-recursive-exclude * .git*
+# Exclude unnecessary files
+global-exclude __pycache__
+global-exclude *.py[co]
+global-exclude .DS_Store
+global-exclude .gitignore
+global-exclude .git*
 
-# Exclude build artifacts
-exclude .gitignore
-exclude .gitmodules
+# Exclude development files
+prune tests
+prune scripts
+prune docker
+prune dist
+prune build
+prune *.egg-info
+
+# Exclude shell wrappers (platform-specific, not needed in sdist)
 exclude go
 exclude rediacc
 exclude rediacc.ps1
-exclude docker/
-recursive-exclude scripts *.sh

@@ -1,13 +1,12 @@
-# Python dependencies for Rediacc CLI
-# These are automatically installed during setup
+# Runtime dependencies for Rediacc CLI
+# 
+# NOTE: This file is for documentation purposes.
+# Actual dependencies are specified in pyproject.toml
+#
+# To install the package: pip install rediacc-cli
+# For development: pip install -r requirements-dev.txt
 
-# Core dependencies
-cryptography>=3.4.0
-requests>=2.25.0
-pyotp>=2.8.0  # For TOTP authentication in tests
-
-# Testing dependencies
-pytest>=7.0.0
-pytest-mock>=3.0.0
-# Note: pytest-tkinter is not available on PyPI
-# We'll create our own tkinter testing utilities
+# Core runtime dependencies (must match pyproject.toml)
+cryptography>=41.0.0
+requests>=2.31.0
+pyotp>=2.9.0

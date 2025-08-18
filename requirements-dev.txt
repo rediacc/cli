@@ -1,0 +1,28 @@
+# Development dependencies for Rediacc CLI
+# Install with: pip install -r requirements-dev.txt
+#
+# For package installation, use: pip install .
+# For development installation, use: pip install -e ".[dev,test]"
+
+# Core package in editable mode with all extras
+-e .[dev,test]
+
+# Additional development tools
+build>=0.10.0
+twine>=4.0.0
+wheel>=0.40.0
+
+# Testing tools
+pytest>=7.0.0
+pytest-cov>=4.0.0
+pytest-mock>=3.0.0
+pyyaml>=6.0  # For test YAML files
+
+# Code quality tools
+black>=23.0.0
+flake8>=6.0.0
+mypy>=1.0.0
+
+# Documentation tools (optional)
+# sphinx>=6.0.0
+# sphinx-rtd-theme>=1.0.0
