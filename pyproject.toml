@@ -8,6 +8,7 @@ dynamic = ["version"]
 description = "Rediacc CLI - Command-line interface for Rediacc distributed task execution system"
 readme = "README.md"
 license = {text = "MIT"}
+license-files = ["LICENSE"]
 authors = [
     {name = "Rediacc Team", email = "info@rediacc.com"}
 ]
@@ -58,9 +59,8 @@ Repository = "https://github.com/rediacc/cli"
 "Bug Tracker" = "https://github.com/rediacc/cli/issues"
 
 [project.optional-dependencies]
-gui = [
-    "tkinter",  # Usually comes with Python
-]
+# Note: GUI support requires tkinter which is part of Python standard library
+# On some Linux distributions, you may need to install python3-tk package
 dev = [
     "pytest>=7.0",
     "pytest-cov>=4.0",

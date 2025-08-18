@@ -129,3 +129,4 @@ bin/
 *.dylib
 # PyPI build environment
 .build_venv/
+.test-venv/
