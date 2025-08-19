@@ -7,8 +7,6 @@ name = "rediacc-cli"
 dynamic = ["version"]
 description = "Rediacc CLI - Command-line interface for Rediacc distributed task execution system"
 readme = "README.md"
-license = {text = "MIT"}
-license-files = ["LICENSE"]
 authors = [
     {name = "Rediacc Team", email = "info@rediacc.com"}
 ]
@@ -38,7 +36,6 @@ classifiers = [
     "Topic :: Software Development :: Build Tools",
     "Topic :: System :: Systems Administration",
     "Topic :: Utilities",
-    "License :: OSI Approved :: MIT License",
     "Programming Language :: Python :: 3",
     "Programming Language :: Python :: 3.8",
     "Programming Language :: Python :: 3.9",
@@ -88,6 +85,7 @@ rediacc-gui = "cli.gui.main:main"
 package-dir = {"" = "src"}
 packages = ["cli", "cli.commands", "cli.core", "cli.gui"]
 include-package-data = true
+license-files = []  # Disable automatic license file detection to avoid PyPI metadata issues
 
 [tool.setuptools.dynamic]
 version = {attr = "cli._version.__version__"}

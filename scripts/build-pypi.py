@@ -156,6 +156,16 @@ def build_package(base_dir):
         text=True
     )
     
+    # If build fails, try setup.py directly
+    if result.returncode != 0:
+        print("⚠️  Build module failed, trying setup.py directly...")
+        result = subprocess.run(
+            python_cmd + ["setup.py", "sdist", "bdist_wheel"],
+            cwd=base_dir,
+            capture_output=True,
+            text=True
+        )
+    
     if result.returncode != 0:
         print(f"✗ Build failed:\n{result.stderr}")
         return False
@@ -236,19 +246,30 @@ def upload_package(base_dir, repository="testpypi", token=None):
     """Upload the package to PyPI or TestPyPI."""
     print(f"\n🚀 Uploading to {repository}...")
     
+    # Get all files in dist directory
+    import glob
+    dist_files = glob.glob(str(base_dir / "dist" / "*"))
+    if not dist_files:
+        print("✗ No distribution files found in dist/")
+        return False
+    
+    # Set up environment for twine
+    env = os.environ.copy()
+    if token:
+        env['TWINE_USERNAME'] = '__token__'
+        env['TWINE_PASSWORD'] = token
+    
     cmd = [sys.executable, "-m", "twine", "upload"]
     
     if repository == "testpypi":
         cmd.extend(["--repository", "testpypi"])
     
-    if token:
-        cmd.extend(["--username", "__token__", "--password", token])
-    
-    cmd.append("dist/*")
+    # Add the actual file paths
+    cmd.extend(dist_files)
     
     result = subprocess.run(
         cmd,
-        cwd=base_dir,
+        env=env,
         capture_output=True,
         text=True
     )
