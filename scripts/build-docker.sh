@@ -56,12 +56,22 @@ fi
 
 # Build CLI image (includes GUI support)
 echo "Building CLI image with GUI support..."
-docker build $no_cache \
-    --build-arg VERSION="$version" \
-    -t rediacc/cli:latest \
-    -t rediacc/cli:$version \
-    -f "$CLI_ROOT/docker/Dockerfile" \
-    "$CLI_ROOT"
+if [ "$version" != "dev" ]; then
+    # Build with version tag
+    docker build $no_cache \
+        --build-arg VERSION="$version" \
+        -t rediacc/cli:latest \
+        -t rediacc/cli:$version \
+        -f "$CLI_ROOT/docker/Dockerfile" \
+        "$CLI_ROOT"
+else
+    # Build with only latest tag when no version specified
+    docker build $no_cache \
+        --build-arg VERSION="latest" \
+        -t rediacc/cli:latest \
+        -f "$CLI_ROOT/docker/Dockerfile" \
+        "$CLI_ROOT"
+fi
 
 echo "Build complete!"
 echo ""
