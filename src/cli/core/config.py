@@ -1165,7 +1165,7 @@ class SubprocessRunner:
         For API operations, use the APIClient class directly."""
         self.logger.warning("run_cli_command is deprecated. Use direct API calls for better performance.")
         try:
-            # Don't pass token via command line - let rediacc-cli read it from TokenManager
+            # Don't pass token via command line - let rediacc read it from TokenManager
             # This avoids issues with token rotation and ensures fresh tokens are always used
             
             cli_cmd = [self.python_cmd, self.cli_path_msys2] + args

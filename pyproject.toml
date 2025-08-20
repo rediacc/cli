@@ -3,7 +3,7 @@ requires = ["setuptools>=69.0", "wheel"]
 build-backend = "setuptools.build_meta"
 
 [project]
-name = "rediacc-cli"
+name = "rediacc"
 dynamic = ["version"]
 description = "Rediacc CLI - Command-line interface for Rediacc distributed task execution system"
 readme = "README.md"
@@ -74,7 +74,7 @@ test = [
 ]
 
 [project.scripts]
-rediacc-cli = "cli.commands.cli:main"
+rediacc = "cli.commands.cli:main"
 rediacc-sync = "cli.commands.sync:main"
 rediacc-term = "cli.commands.term:main"
 rediacc-plugin = "cli.commands.plugin:main"

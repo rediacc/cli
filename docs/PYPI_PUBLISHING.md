@@ -1,4 +1,4 @@
-# PyPI Publishing Guide for Rediacc CLI
+# PyPI Publishing Guide for Rediacc
 
 This guide explains how to build and publish the Rediacc CLI package to PyPI (Python Package Index) or TestPyPI for testing.
 
@@ -97,10 +97,10 @@ source test-env/bin/activate  # On Windows: test-env\Scripts\activate
 # Install from TestPyPI
 pip install --index-url https://test.pypi.org/simple/ \
             --extra-index-url https://pypi.org/simple/ \
-            rediacc-cli
+            rediacc
 
 # Test the installation
-rediacc-cli --version
+rediacc --version
 rediacc-sync --help
 rediacc-term --help
 ```
@@ -108,7 +108,7 @@ rediacc-term --help
 ### 3. Verify Entry Points
 
 All console scripts should be available:
-- `rediacc-cli` - Main CLI interface
+- `rediacc` - Main CLI interface
 - `rediacc-sync` - File synchronization
 - `rediacc-term` - Terminal access
 - `rediacc-plugin` - Plugin management
@@ -144,13 +144,13 @@ python -m twine upload dist/*
 Users can now install directly from PyPI:
 
 ```bash
-pip install rediacc-cli
+pip install rediacc
 
 # Or with GUI support
-pip install rediacc-cli[gui]
+pip install rediacc[gui]
 
 # Or for development
-pip install rediacc-cli[dev]
+pip install rediacc[dev]
 ```
 
 ## Version Management

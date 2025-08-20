@@ -622,7 +622,7 @@ def initialize_cli_command(args, parser, requires_cli_tool=True):
     Args:
         args: Parsed command line arguments
         parser: ArgumentParser instance for error reporting
-        requires_cli_tool: Whether to validate rediacc-cli.py exists (default: True)
+        requires_cli_tool: Whether to validate rediacc.py exists (default: True)
     """
     # Validate authentication
     if hasattr(args, 'token') and args.token:
@@ -633,9 +633,9 @@ def initialize_cli_command(args, parser, requires_cli_tool=True):
     # Validate CLI tool if required
     if requires_cli_tool:
         if not os.path.exists(CLI_TOOL): 
-            error_exit(f"rediacc-cli not found at {CLI_TOOL}")
+            error_exit(f"rediacc not found at {CLI_TOOL}")
         if not is_windows() and not os.access(CLI_TOOL, os.X_OK): 
-            error_exit(f"rediacc-cli is not executable at {CLI_TOOL}")
+            error_exit(f"rediacc is not executable at {CLI_TOOL}")
 
 def add_common_arguments(parser, include_args=None, required_overrides=None):
     """Add common arguments to an argument parser.

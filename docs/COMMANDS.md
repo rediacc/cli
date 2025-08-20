@@ -27,110 +27,110 @@ The main wrapper provides convenient access to all tools:
 ./rediacc logout
 
 # Tool shortcuts
-./rediacc cli ARGS      # Run rediacc-cli
-./rediacc sync ARGS     # Run rediacc-cli-sync  
-./rediacc term ARGS     # Run rediacc-cli-term
+./rediacc cli ARGS      # Run rediacc
+./rediacc sync ARGS     # Run rediacc-sync  
+./rediacc term ARGS     # Run rediacc-term
 ```
 
-## rediacc-cli Commands
+## rediacc Commands
 
 ### Authentication & User
 
 ```bash
 # Get current user info
-rediacc-cli me
+rediacc me
 
 # Manage tokens
-rediacc-cli token save NAME VALUE
-rediacc-cli token list
-rediacc-cli token remove NAME
+rediacc token save NAME VALUE
+rediacc token list
+rediacc token remove NAME
 ```
 
 ### List Commands
 
 ```bash
 # List entities
-rediacc-cli list companies [--limit N]
-rediacc-cli list teams [--limit N]
-rediacc-cli list machines --team TEAM [--limit N]
-rediacc-cli list bridges --team TEAM [--limit N]
-rediacc-cli list repositories --team TEAM [--limit N]
-rediacc-cli list storages --team TEAM [--limit N]
-rediacc-cli list schedules --team TEAM [--limit N]
-rediacc-cli list users --team TEAM [--limit N]
+rediacc list companies [--limit N]
+rediacc list teams [--limit N]
+rediacc list machines --team TEAM [--limit N]
+rediacc list bridges --team TEAM [--limit N]
+rediacc list repositories --team TEAM [--limit N]
+rediacc list storages --team TEAM [--limit N]
+rediacc list schedules --team TEAM [--limit N]
+rediacc list users --team TEAM [--limit N]
 ```
 
 ### Create Commands
 
 ```bash
 # Create entities
-rediacc-cli create company NAME --email EMAIL --password PASS --plan PLAN
-rediacc-cli create team NAME [--vault-file FILE]
-rediacc-cli create machine NAME --team TEAM [--vault-file FILE]
-rediacc-cli create bridge NAME --team TEAM [--vault-file FILE]
-rediacc-cli create repository NAME --team TEAM --machine MACHINE [--vault-file FILE]
-rediacc-cli create storage NAME --team TEAM [--vault-file FILE]
-rediacc-cli create schedule NAME --team TEAM --cron CRON [--vault-file FILE]
-rediacc-cli create user EMAIL --team TEAM --role ROLE
+rediacc create company NAME --email EMAIL --password PASS --plan PLAN
+rediacc create team NAME [--vault-file FILE]
+rediacc create machine NAME --team TEAM [--vault-file FILE]
+rediacc create bridge NAME --team TEAM [--vault-file FILE]
+rediacc create repository NAME --team TEAM --machine MACHINE [--vault-file FILE]
+rediacc create storage NAME --team TEAM [--vault-file FILE]
+rediacc create schedule NAME --team TEAM --cron CRON [--vault-file FILE]
+rediacc create user EMAIL --team TEAM --role ROLE
 ```
 
 ### Update Commands
 
 ```bash
 # Update entity vaults
-rediacc-cli update company NAME --vault-file FILE
-rediacc-cli update team NAME --vault-file FILE
-rediacc-cli update machine NAME --team TEAM --vault-file FILE
-rediacc-cli update bridge NAME --team TEAM --vault-file FILE
-rediacc-cli update repository NAME --team TEAM --vault-file FILE
-rediacc-cli update storage NAME --team TEAM --vault-file FILE
-rediacc-cli update schedule NAME --team TEAM --vault-file FILE [--cron CRON]
+rediacc update company NAME --vault-file FILE
+rediacc update team NAME --vault-file FILE
+rediacc update machine NAME --team TEAM --vault-file FILE
+rediacc update bridge NAME --team TEAM --vault-file FILE
+rediacc update repository NAME --team TEAM --vault-file FILE
+rediacc update storage NAME --team TEAM --vault-file FILE
+rediacc update schedule NAME --team TEAM --vault-file FILE [--cron CRON]
 ```
 
 ### Delete Commands
 
 ```bash
 # Delete entities
-rediacc-cli delete team NAME
-rediacc-cli delete machine NAME --team TEAM
-rediacc-cli delete bridge NAME --team TEAM
-rediacc-cli delete repository NAME --team TEAM
-rediacc-cli delete storage NAME --team TEAM
-rediacc-cli delete schedule NAME --team TEAM
-rediacc-cli delete user EMAIL --team TEAM
+rediacc delete team NAME
+rediacc delete machine NAME --team TEAM
+rediacc delete bridge NAME --team TEAM
+rediacc delete repository NAME --team TEAM
+rediacc delete storage NAME --team TEAM
+rediacc delete schedule NAME --team TEAM
+rediacc delete user EMAIL --team TEAM
 ```
 
 ### Inspect Commands
 
 ```bash
 # Get detailed info including vault data
-rediacc-cli inspect company NAME
-rediacc-cli inspect team NAME
-rediacc-cli inspect machine NAME --team TEAM
-rediacc-cli inspect bridge NAME --team TEAM
-rediacc-cli inspect repository NAME --team TEAM
-rediacc-cli inspect storage NAME --team TEAM
-rediacc-cli inspect schedule NAME --team TEAM
+rediacc inspect company NAME
+rediacc inspect team NAME
+rediacc inspect machine NAME --team TEAM
+rediacc inspect bridge NAME --team TEAM
+rediacc inspect repository NAME --team TEAM
+rediacc inspect storage NAME --team TEAM
+rediacc inspect schedule NAME --team TEAM
 ```
 
 ### Other Commands
 
 ```bash
 # Search across all entities
-rediacc-cli search QUERY
+rediacc search QUERY
 
 # Configuration management
-rediacc-cli config get KEY
-rediacc-cli config set KEY VALUE
-rediacc-cli config list
+rediacc config get KEY
+rediacc config set KEY VALUE
+rediacc config list
 ```
 
-## rediacc-cli-sync Commands
+## rediacc-sync Commands
 
 ### Upload
 
 ```bash
-rediacc-cli-sync upload --local PATH --machine MACHINE --repo REPO [OPTIONS]
+rediacc-sync upload --local PATH --machine MACHINE --repo REPO [OPTIONS]
 
 Options:
   --team TEAM              # Team name (default: from config)
@@ -144,7 +144,7 @@ Options:
 ### Download
 
 ```bash
-rediacc-cli-sync download --machine MACHINE --repo REPO --local PATH [OPTIONS]
+rediacc-sync download --machine MACHINE --repo REPO --local PATH [OPTIONS]
 
 Options:
   --team TEAM              # Team name (default: from config)
@@ -160,23 +160,23 @@ Options:
 
 ```bash
 # Basic upload
-rediacc-cli-sync upload --local ./myapp --machine server --repo webapp
+rediacc-sync upload --local ./myapp --machine server --repo webapp
 
 # Mirror with exclusions
-rediacc-cli-sync upload --local ./src --machine dev --repo code \
+rediacc-sync upload --local ./src --machine dev --repo code \
   --mirror --exclude "*.pyc" --exclude "__pycache__" --confirm
 
 # Download with verification
-rediacc-cli-sync download --machine backup --repo data \
+rediacc-sync download --machine backup --repo data \
   --local ./restore --verify
 ```
 
-## rediacc-cli-term Commands
+## rediacc-term Commands
 
 ### Basic Usage
 
 ```bash
-rediacc-cli-term --machine MACHINE [OPTIONS]
+rediacc-term --machine MACHINE [OPTIONS]
 
 Options:
   --team TEAM              # Team name (default: from config)
@@ -190,30 +190,30 @@ Options:
 
 ```bash
 # Access repository environment (Docker container)
-rediacc-cli-term --machine server --repo webapp
+rediacc-term --machine server --repo webapp
 
 # Access machine directly (universal user)
-rediacc-cli-term --machine server
+rediacc-term --machine server
 
 # Execute single command
-rediacc-cli-term --machine server --command "docker ps"
+rediacc-term --machine server --command "docker ps"
 
 # Execute command in repository
-rediacc-cli-term --machine server --repo webapp --command "npm list"
+rediacc-term --machine server --repo webapp --command "npm list"
 ```
 
 ### Examples
 
 ```bash
 # Interactive shell in repository
-rediacc-cli-term --machine prod --repo api
+rediacc-term --machine prod --repo api
 
 # Check logs
-rediacc-cli-term --machine prod --repo api \
+rediacc-term --machine prod --repo api \
   --command "tail -n 100 /logs/app.log"
 
 # Restart service
-rediacc-cli-term --machine prod --repo api \
+rediacc-term --machine prod --repo api \
   --command "docker restart api"
 ```
 
@@ -223,10 +223,10 @@ rediacc-cli-term --machine prod --repo api \
 
 ```bash
 # Set default team
-rediacc-cli config set default_team "Production"
+rediacc config set default_team "Production"
 
 # Override team for specific commands
-rediacc-cli list machines --team "Development"
+rediacc list machines --team "Development"
 ```
 
 ### Batch Operations
@@ -234,13 +234,13 @@ rediacc-cli list machines --team "Development"
 ```bash
 # Upload multiple repositories
 for repo in api web worker; do
-  rediacc-cli-sync upload --local ./$repo --machine prod --repo $repo
+  rediacc-sync upload --local ./$repo --machine prod --repo $repo
 done
 
 # Check status across machines
 for machine in server1 server2 server3; do
   echo "=== $machine ==="
-  rediacc-cli-term --machine $machine --command "df -h"
+  rediacc-term --machine $machine --command "df -h"
 done
 ```
 
@@ -248,7 +248,7 @@ done
 
 ```bash
 # Get machine details as JSON
-MACHINES=$(rediacc-cli --output json list machines --team Default)
+MACHINES=$(rediacc --output json list machines --team Default)
 
 # Parse with jq
 echo "$MACHINES" | jq -r '.data[].name'

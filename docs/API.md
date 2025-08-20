@@ -1,6 +1,6 @@
 # API Operations Guide
 
-The `rediacc-cli` tool provides comprehensive access to the Rediacc API for managing resources and operations.
+The `rediacc` tool provides comprehensive access to the Rediacc API for managing resources and operations.
 
 ## Overview
 
@@ -18,47 +18,47 @@ The CLI provides operations for:
 
 ```bash
 # List all companies
-rediacc-cli list companies
+rediacc list companies
 
 # Create new company (admin only)
-rediacc-cli create company "TechCorp" \
+rediacc create company "TechCorp" \
   --email admin@techcorp.com \
   --password securepass \
   --plan ELITE
 
 # Inspect company details
-rediacc-cli inspect company "TechCorp"
+rediacc inspect company "TechCorp"
 
 # Update company vault
 echo '{"settings": {"tier": "enterprise"}}' > company-vault.json
-rediacc-cli update company "TechCorp" --vault-file company-vault.json
+rediacc update company "TechCorp" --vault-file company-vault.json
 ```
 
 ### Teams
 
 ```bash
 # List teams
-rediacc-cli list teams
+rediacc list teams
 
 # Create team
-rediacc-cli create team "Development"
+rediacc create team "Development"
 
 # Create team with initial vault data
 echo '{"ssh_key": "...", "config": {...}}' > team-vault.json
-rediacc-cli create team "Production" --vault-file team-vault.json
+rediacc create team "Production" --vault-file team-vault.json
 
 # Update team vault
-rediacc-cli update team "Production" --vault-file updated-vault.json
+rediacc update team "Production" --vault-file updated-vault.json
 
 # Delete team
-rediacc-cli delete team "OldTeam"
+rediacc delete team "OldTeam"
 ```
 
 ### Machines
 
 ```bash
 # List machines in team
-rediacc-cli list machines --team Production
+rediacc list machines --team Production
 
 # Create machine with vault configuration
 cat > machine-vault.json << EOF
@@ -69,51 +69,51 @@ cat > machine-vault.json << EOF
   "ssh_port": 22
 }
 EOF
-rediacc-cli create machine "web-server-01" --team Production \
+rediacc create machine "web-server-01" --team Production \
   --vault-file machine-vault.json
 
 # Inspect machine (shows vault data)
-rediacc-cli inspect machine "web-server-01" --team Production
+rediacc inspect machine "web-server-01" --team Production
 
 # Update machine configuration
-rediacc-cli update machine "web-server-01" --team Production \
+rediacc update machine "web-server-01" --team Production \
   --vault-file new-config.json
 
 # Delete machine
-rediacc-cli delete machine "old-server" --team Production
+rediacc delete machine "old-server" --team Production
 ```
 
 ### Repositories
 
 ```bash
 # List repositories
-rediacc-cli list repositories --team Development
+rediacc list repositories --team Development
 
 # Create repository
-rediacc-cli create repository "webapp" \
+rediacc create repository "webapp" \
   --team Development \
   --machine "dev-server"
 
 # Create with initial configuration
 echo '{"docker_image": "node:14", "port": 3000}' > repo-config.json
-rediacc-cli create repository "api" \
+rediacc create repository "api" \
   --team Production \
   --machine "api-server" \
   --vault-file repo-config.json
 
 # Update repository settings
-rediacc-cli update repository "api" --team Production \
+rediacc update repository "api" --team Production \
   --vault-file updated-config.json
 
 # Delete repository
-rediacc-cli delete repository "old-app" --team Development
+rediacc delete repository "old-app" --team Development
 ```
 
 ### Storage
 
 ```bash
 # List storage configurations
-rediacc-cli list storages --team Production
+rediacc list storages --team Production
 
 # Create storage with S3 configuration
 cat > s3-storage.json << EOF
@@ -125,25 +125,25 @@ cat > s3-storage.json << EOF
   "secret_key": "..."
 }
 EOF
-rediacc-cli create storage "backup-s3" --team Production \
+rediacc create storage "backup-s3" --team Production \
   --vault-file s3-storage.json
 
 # Update storage credentials
-rediacc-cli update storage "backup-s3" --team Production \
+rediacc update storage "backup-s3" --team Production \
   --vault-file new-creds.json
 
 # Delete storage
-rediacc-cli delete storage "old-backup" --team Production
+rediacc delete storage "old-backup" --team Production
 ```
 
 ## User Management
 
 ```bash
 # List team users
-rediacc-cli list users --team Development
+rediacc list users --team Development
 
 # Add user to team
-rediacc-cli create user "developer@company.com" \
+rediacc create user "developer@company.com" \
   --team Development \
   --role MEMBER
 
@@ -153,10 +153,10 @@ rediacc-cli create user "developer@company.com" \
 # - VIEWER: Read-only access
 
 # Remove user from team
-rediacc-cli delete user "former@company.com" --team Development
+rediacc delete user "former@company.com" --team Development
 
 # Get current user info
-rediacc-cli me
+rediacc me
 ```
 
 ## Automation & Scheduling
@@ -165,7 +165,7 @@ rediacc-cli me
 
 ```bash
 # List schedules
-rediacc-cli list schedules --team Production
+rediacc list schedules --team Production
 
 # Create backup schedule
 cat > backup-task.json << EOF
@@ -179,19 +179,19 @@ cat > backup-task.json << EOF
   }
 }
 EOF
-rediacc-cli create schedule "daily-backup" \
+rediacc create schedule "daily-backup" \
   --team Production \
   --cron "0 2 * * *" \
   --vault-file backup-task.json
 
 # Update schedule
-rediacc-cli update schedule "daily-backup" \
+rediacc update schedule "daily-backup" \
   --team Production \
   --cron "0 3 * * *" \
   --vault-file updated-task.json
 
 # Delete schedule
-rediacc-cli delete schedule "old-schedule" --team Production
+rediacc delete schedule "old-schedule" --team Production
 ```
 
 ### Queue Operations
@@ -206,24 +206,24 @@ cat > queue-task.json << EOF
   "priority": 1
 }
 EOF
-rediacc-cli create queue-item \
+rediacc create queue-item \
   --team Production \
   --machine "worker-01" \
   --bridge "bridge-01" \
   --vault-file queue-task.json
 
 # Check queue status (if available)
-rediacc-cli list queue-items --team Production --status PENDING
+rediacc list queue-items --team Production --status PENDING
 ```
 
 ## Search Operations
 
 ```bash
 # Search across all resources
-rediacc-cli search "production"
+rediacc search "production"
 
 # Search with JSON output for parsing
-rediacc-cli --output json search "web" | jq '.data[]'
+rediacc --output json search "web" | jq '.data[]'
 ```
 
 ## Vault Data Management
@@ -241,16 +241,16 @@ Vaults store encrypted configuration and credentials:
 
 ```bash
 # Inspect current vault data
-rediacc-cli inspect team Production > current-vault.json
+rediacc inspect team Production > current-vault.json
 
 # Modify vault data
 jq '.ssh_private_key = "new-key-content"' current-vault.json > updated-vault.json
 
 # Apply vault update
-rediacc-cli update team Production --vault-file updated-vault.json
+rediacc update team Production --vault-file updated-vault.json
 
 # Verify update
-rediacc-cli inspect team Production
+rediacc inspect team Production
 ```
 
 ## Output Formats
@@ -258,7 +258,7 @@ rediacc-cli inspect team Production
 ### Table Format (Default)
 
 ```bash
-rediacc-cli list machines --team Production
+rediacc list machines --team Production
 # ┌─────────────┬──────────┬─────────┐
 # │ Name        │ Status   │ Created │
 # ├─────────────┼──────────┼─────────┤
@@ -270,7 +270,7 @@ rediacc-cli list machines --team Production
 ### JSON Format
 
 ```bash
-rediacc-cli --output json list machines --team Production
+rediacc --output json list machines --team Production
 # {
 #   "success": true,
 #   "data": [
@@ -294,15 +294,15 @@ for i in {1..3}; do
   "datastore": "/data"
 }
 EOF
-  rediacc-cli create machine "worker-0$i" \
+  rediacc create machine "worker-0$i" \
     --team Production \
     --vault-file machine-$i.json
 done
 
 # Update all repositories in a team
-for repo in $(rediacc-cli --output json list repositories --team Dev | jq -r '.data[].name'); do
+for repo in $(rediacc --output json list repositories --team Dev | jq -r '.data[].name'); do
   echo "Updating $repo..."
-  rediacc-cli update repository "$repo" --team Dev --vault-file config.json
+  rediacc update repository "$repo" --team Dev --vault-file config.json
 done
 ```
 
@@ -313,7 +313,7 @@ done
 # Deploy script using CLI
 
 # Get machine details
-MACHINE_INFO=$(rediacc-cli --output json inspect machine prod-web --team Production)
+MACHINE_INFO=$(rediacc --output json inspect machine prod-web --team Production)
 MACHINE_IP=$(echo "$MACHINE_INFO" | jq -r '.data.vault.ip')
 
 # Create deployment task
@@ -328,7 +328,7 @@ cat > deploy-task.json << EOF
 EOF
 
 # Queue deployment
-rediacc-cli create queue-item \
+rediacc create queue-item \
   --team Production \
   --machine prod-web \
   --bridge prod-bridge \
@@ -339,7 +339,7 @@ rediacc-cli create queue-item \
 
 ```bash
 # Check operation success
-if rediacc-cli create machine "test" --team Dev --vault-file config.json; then
+if rediacc create machine "test" --team Dev --vault-file config.json; then
   echo "Machine created successfully"
 else
   echo "Failed to create machine"
@@ -347,7 +347,7 @@ else
 fi
 
 # Capture and parse errors
-ERROR=$(rediacc-cli delete machine "nonexistent" --team Dev 2>&1)
+ERROR=$(rediacc delete machine "nonexistent" --team Dev 2>&1)
 if [[ $ERROR == *"not found"* ]]; then
   echo "Machine doesn't exist"
 fi
@@ -360,12 +360,12 @@ fi
 Never put credentials in command arguments:
 ```bash
 # Bad - credentials visible in process list
-rediacc-cli create storage "s3" --team Prod --data '{"key":"secret"}'
+rediacc create storage "s3" --team Prod --data '{"key":"secret"}'
 
 # Good - credentials in file
 echo '{"access_key":"...","secret_key":"..."}' > s3-creds.json
 chmod 600 s3-creds.json
-rediacc-cli create storage "s3" --team Prod --vault-file s3-creds.json
+rediacc create storage "s3" --team Prod --vault-file s3-creds.json
 rm s3-creds.json
 ```
 
@@ -376,7 +376,7 @@ rm s3-creds.json
 jq . vault-update.json > /dev/null || echo "Invalid JSON"
 
 # Preview changes
-rediacc-cli inspect resource Current > current.json
+rediacc inspect resource Current > current.json
 diff current.json new.json
 ```
 
@@ -384,12 +384,12 @@ diff current.json new.json
 
 ```bash
 # Good naming
-rediacc-cli create machine "prod-web-us-east-1" --team Production
-rediacc-cli create repository "api-v2-staging" --team Staging
+rediacc create machine "prod-web-us-east-1" --team Production
+rediacc create repository "api-v2-staging" --team Staging
 
 # Poor naming  
-rediacc-cli create machine "server1" --team Production
-rediacc-cli create repository "test" --team Staging
+rediacc create machine "server1" --team Production
+rediacc create repository "test" --team Staging
 ```
 
 ### 4. Regular Backups
@@ -397,13 +397,13 @@ rediacc-cli create repository "test" --team Staging
 ```bash
 # Backup team configuration
 for team in Production Staging Development; do
-  rediacc-cli inspect team "$team" > "backup-$team-$(date +%Y%m%d).json"
+  rediacc inspect team "$team" > "backup-$team-$(date +%Y%m%d).json"
 done
 
 # Backup all machine configs
-rediacc-cli --output json list machines --team Prod | \
+rediacc --output json list machines --team Prod | \
   jq -r '.data[].name' | \
   while read machine; do
-    rediacc-cli inspect machine "$machine" --team Prod > "machine-$machine.json"
+    rediacc inspect machine "$machine" --team Prod > "machine-$machine.json"
   done
 ```

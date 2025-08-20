@@ -30,17 +30,17 @@ After successful login, the token is stored in `~/.rediacc/config.json`.
 export REDIACC_TOKEN="your-api-token"
 
 # Commands will use this token
-./rediacc-cli list teams
+./rediacc list teams
 ```
 
 ### 3. Command-Line Parameter
 
 ```bash
 # Provide token directly
-./rediacc-cli --token "your-api-token" list teams
+./rediacc --token "your-api-token" list teams
 
 # Works with all tools
-./rediacc-cli-sync --token "your-api-token" upload --local ./files --machine server --repo data
+./rediacc-sync --token "your-api-token" upload --local ./files --machine server --repo data
 ```
 
 ## Token Priority
@@ -56,7 +56,7 @@ Tokens are used in the following priority order:
 
 ```bash
 # Show current authenticated user
-./rediacc-cli me
+./rediacc me
 ```
 
 ### Logout
@@ -79,16 +79,16 @@ The CLI supports managing multiple named tokens:
 
 ```bash
 # Save a token with a name
-./rediacc-cli token save "production" "prod-token-value"
+./rediacc token save "production" "prod-token-value"
 
 # Use a named token
-./rediacc-cli --token-name "production" list teams
+./rediacc --token-name "production" list teams
 
 # List saved tokens
-./rediacc-cli token list
+./rediacc token list
 
 # Remove a named token
-./rediacc-cli token remove "production"
+./rediacc token remove "production"
 ```
 
 ## Security Best Practices
@@ -147,7 +147,7 @@ export REDIACC_CONFIG_PATH="/path/to/config.json"
 
 ```bash
 # Use different API endpoint
-./rediacc-cli --api-url "https://api.custom.com" list teams
+./rediacc --api-url "https://api.custom.com" list teams
 ```
 
 ### Debugging Authentication
@@ -155,10 +155,10 @@ export REDIACC_CONFIG_PATH="/path/to/config.json"
 ```bash
 # Enable verbose output
 export REDIACC_VERBOSE=1
-./rediacc-cli list teams
+./rediacc list teams
 
 # Check token validation
-./rediacc-cli --token "your-token" me
+./rediacc --token "your-token" me
 ```
 
 ## Integration Examples
@@ -168,8 +168,8 @@ export REDIACC_VERBOSE=1
 #!/bin/bash
 # Script using environment variable
 export REDIACC_TOKEN="your-token"
-./rediacc-cli list teams
-./rediacc-cli-sync upload --local ./data --machine server --repo backup
+./rediacc list teams
+./rediacc-sync upload --local ./data --machine server --repo backup
 ```
 
 ### CI/CD Pipeline
@@ -179,7 +179,7 @@ export REDIACC_TOKEN="your-token"
   env:
     REDIACC_TOKEN: ${{ secrets.REDIACC_TOKEN }}
   run: |
-    ./rediacc-cli-sync upload --local ./dist --machine prod --repo webapp
+    ./rediacc-sync upload --local ./dist --machine prod --repo webapp
 ```
 
 ### Python Integration
@@ -191,7 +191,7 @@ import os
 os.environ['REDIACC_TOKEN'] = 'your-token'
 
 # Run CLI command
-result = subprocess.run(['./rediacc-cli', 'list', 'teams'], 
+result = subprocess.run(['./rediacc', 'list', 'teams'], 
                        capture_output=True, text=True)
 print(result.stdout)
 ```

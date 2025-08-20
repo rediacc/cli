@@ -33,7 +33,7 @@ Error: Authentication failed
    ```
 2. Check token validity:
    ```bash
-   ./rediacc-cli me
+   ./rediacc me
    ```
 
 #### No Token Available
@@ -61,7 +61,7 @@ Error: Connection refused
 **Solutions:**
 1. Check API URL:
    ```bash
-   rediacc-cli config get api_url
+   rediacc config get api_url
    ```
 2. Test connectivity:
    ```bash
@@ -118,7 +118,7 @@ Host key verification failed
    ```
 2. For development:
    ```bash
-   rediacc-cli-term --dev --machine dev-server
+   rediacc-term --dev --machine dev-server
    ```
 
 #### Permission Denied (publickey)
@@ -134,12 +134,12 @@ Permission denied (publickey)
 **Solutions:**
 1. Verify team vault has correct SSH key:
    ```bash
-   rediacc-cli inspect team MyTeam | jq '.vault.ssh_private_key'
+   rediacc inspect team MyTeam | jq '.vault.ssh_private_key'
    ```
 2. Update SSH key in vault:
    ```bash
    echo '{"ssh_private_key": "-----BEGIN RSA..."}' > vault.json
-   rediacc-cli update team MyTeam --vault-file vault.json
+   rediacc update team MyTeam --vault-file vault.json
    ```
 
 #### Connection Timeout
@@ -151,7 +151,7 @@ ssh: connect to host X.X.X.X port 22: Connection timed out
 1. Verify machine is online
 2. Check machine IP in vault:
    ```bash
-   rediacc-cli inspect machine my-machine --team MyTeam
+   rediacc inspect machine my-machine --team MyTeam
    ```
 3. Test direct SSH:
    ```bash
@@ -206,7 +206,7 @@ rsync: mkstemp "/path/.file.XXXXXX" failed: Permission denied
 1. Check remote directory permissions
 2. Verify repository exists:
    ```bash
-   rediacc-cli-term --machine server --repo myrepo --command "ls -la"
+   rediacc-term --machine server --repo myrepo --command "ls -la"
    ```
 
 ### API Errors
@@ -219,7 +219,7 @@ Error: Machine 'my-machine' not found in team 'MyTeam'
 **Solutions:**
 1. List available resources:
    ```bash
-   rediacc-cli list machines --team MyTeam
+   rediacc list machines --team MyTeam
    ```
 2. Check spelling and case
 3. Verify team access
@@ -232,7 +232,7 @@ Error: Validation failed: Name is required
 **Solutions:**
 1. Check required parameters in help:
    ```bash
-   rediacc-cli create machine --help
+   rediacc create machine --help
    ```
 2. Provide all required fields
 
@@ -340,18 +340,18 @@ export REDIACC_VERBOSE=1
 export REDIACC_DEBUG=3
 
 # Run command
-rediacc-cli list teams
+rediacc list teams
 ```
 
 ### Check Configuration
 
 ```bash
 # View all configuration
-rediacc-cli config list
+rediacc config list
 
 # Check specific values
-rediacc-cli config get api_url
-rediacc-cli config get default_team
+rediacc config get api_url
+rediacc config get default_team
 ```
 
 ### Test Connectivity
@@ -369,10 +369,10 @@ curl -H "Rediacc-RequestToken: $REDIACC_TOKEN" \
 
 ```bash
 # Save all output
-rediacc-cli list teams --debug > debug.log 2>&1
+rediacc list teams --debug > debug.log 2>&1
 
 # Separate stdout and stderr
-rediacc-cli list teams > output.log 2> error.log
+rediacc list teams > output.log 2> error.log
 ```
 
 ## Getting Help
@@ -384,9 +384,9 @@ rediacc-cli list teams > output.log 2> error.log
 ./rediacc --help
 
 # Command-specific help
-rediacc-cli create machine --help
-rediacc-cli-sync --help
-rediacc-cli-term --help
+rediacc create machine --help
+rediacc-sync --help
+rediacc-term --help
 ```
 
 ### Version Information
@@ -424,5 +424,5 @@ Example:
 echo "OS: $(uname -a)" >> debug-info.txt
 echo "Python: $(python3 --version)" >> debug-info.txt
 echo "Error:" >> debug-info.txt
-rediacc-cli list teams --debug >> debug-info.txt 2>&1
+rediacc list teams --debug >> debug-info.txt 2>&1
 ```

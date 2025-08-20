@@ -48,13 +48,13 @@ Command-line parameters have the highest priority:
 
 ```bash
 # Override token
-rediacc-cli --token "temporary-token" list teams
+rediacc --token "temporary-token" list teams
 
 # Override API URL
-rediacc-cli --api-url "https://staging-api.com" list teams
+rediacc --api-url "https://staging-api.com" list teams
 
 # Override output format
-rediacc-cli --output json list teams
+rediacc --output json list teams
 ```
 
 ## Priority Order
@@ -71,31 +71,31 @@ Configuration values are used in this priority order (highest to lowest):
 
 ```bash
 # Show all configuration
-rediacc-cli config list
+rediacc config list
 
 # Get specific value
-rediacc-cli config get default_team
-rediacc-cli config get api_url
+rediacc config get default_team
+rediacc config get api_url
 ```
 
 ### Set Configuration
 
 ```bash
 # Set default team
-rediacc-cli config set default_team "Production"
+rediacc config set default_team "Production"
 
 # Set output format
-rediacc-cli config set output_format "json"
+rediacc config set output_format "json"
 
 # Set custom API URL
-rediacc-cli config set api_url "https://api.company.internal"
+rediacc config set api_url "https://api.company.internal"
 ```
 
 ### Reset Configuration
 
 ```bash
 # Remove specific setting (falls back to default)
-rediacc-cli config unset output_format
+rediacc config unset output_format
 
 # Reset all configuration
 rm ~/.rediacc/config.json
@@ -103,7 +103,7 @@ rm ~/.rediacc/config.json
 
 ## Tool-Specific Configuration
 
-### rediacc-cli-sync
+### rediacc-sync
 
 ```bash
 # Default exclusions
@@ -116,7 +116,7 @@ export REDIACC_RSYNC_OPTS="-avz --progress"
 export REDIACC_SSH_OPTS="-o StrictHostKeyChecking=no"
 ```
 
-### rediacc-cli-term
+### rediacc-term
 
 ```bash
 # Default SSH options
@@ -144,16 +144,16 @@ cp ~/.rediacc/config.json ~/.rediacc/config.dev.json
 
 # Use specific configuration
 export REDIACC_CONFIG_PATH=~/.rediacc/config.dev.json
-rediacc-cli list teams
+rediacc list teams
 ```
 
 ### Team-Specific Settings
 
 ```bash
 # Create team-specific aliases
-alias rediacc-prod='REDIACC_DEFAULT_TEAM=Production rediacc-cli'
-alias rediacc-dev='REDIACC_DEFAULT_TEAM=Development rediacc-cli'
-alias rediacc-staging='REDIACC_DEFAULT_TEAM=Staging rediacc-cli'
+alias rediacc-prod='REDIACC_DEFAULT_TEAM=Production rediacc'
+alias rediacc-dev='REDIACC_DEFAULT_TEAM=Development rediacc'
+alias rediacc-staging='REDIACC_DEFAULT_TEAM=Staging rediacc'
 
 # Use aliases
 rediacc-prod list machines
@@ -172,7 +172,7 @@ export REDIACC_DEFAULT_TEAM="Production"
 export REDIACC_OUTPUT_FORMAT="json"
 export SYSTEM_API_URL="https://prod-api.company.com"
 
-exec rediacc-cli "$@"
+exec rediacc "$@"
 ```
 
 ## Security Configuration
@@ -221,7 +221,7 @@ export NO_PROXY="localhost,127.0.0.1,.company.internal"
 
 ```bash
 # Temporary verbose mode
-REDIACC_VERBOSE=1 rediacc-cli list teams
+REDIACC_VERBOSE=1 rediacc list teams
 
 # Persistent verbose mode
 export REDIACC_VERBOSE=1
@@ -322,5 +322,5 @@ if [ -z "${REDIACC_TOKEN:-}" ]; then
 fi
 
 # Run deployment
-rediacc-cli-sync upload --local ./dist --machine prod-web --repo frontend --verify
+rediacc-sync upload --local ./dist --machine prod-web --repo frontend --verify
 ```

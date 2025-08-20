@@ -1038,23 +1038,23 @@ function Invoke-RediaccCLI {
     }
     
     # Check MSYS2 for sync operations
-    if ($Tool -eq "rediacc-cli-sync" -and -not $SkipMSYS2Check) {
+    if ($Tool -eq "rediacc-sync" -and -not $SkipMSYS2Check) {
         $msys2Path = Find-MSYS2
         if (-not $msys2Path) {
-            Write-ColorOutput "ERROR: MSYS2 not found. Run: .\rediacc-cli.ps1 setup" -Color Red
+            Write-ColorOutput "ERROR: MSYS2 not found. Run: .\rediacc.ps1 setup" -Color Red
             exit 1
         }
         
         $components = Test-MSYS2Components -MSYS2Path $msys2Path
         if (-not $components.rsync -or -not $components.ssh) {
-            Write-ColorOutput "ERROR: Required MSYS2 packages missing. Run: .\rediacc-cli.ps1 setup" -Color Red
+            Write-ColorOutput "ERROR: Required MSYS2 packages missing. Run: .\rediacc.ps1 setup" -Color Red
             exit 1
         }
     }
     
     # Auto-inject token if not provided and tool needs it (unless NoTokenInjection is set)
     if (-not $NoTokenInjection) {
-        $needsToken = $Tool -in @("rediacc-cli-sync", "rediacc-cli-term")
+        $needsToken = $Tool -in @("rediacc-sync", "rediacc-term")
         if ($needsToken -and -not ($Arguments -contains "--token")) {
             $token = Get-SavedToken
             if ($token) {
@@ -1067,7 +1067,7 @@ function Invoke-RediaccCLI {
         }
         
         # Also inject token for main CLI if available and not provided
-        if ($Tool -eq "rediacc-cli" -and -not ($Arguments -contains "--token")) {
+        if ($Tool -eq "rediacc" -and -not ($Arguments -contains "--token")) {
             $token = Get-SavedToken
             if ($token) {
                 $Arguments = @("--token", $token) + $Arguments
@@ -1077,10 +1077,10 @@ function Invoke-RediaccCLI {
     
     # Build script path based on tool type
     switch ($Tool) {
-        "rediacc-cli" { $scriptPath = Join-Path (Join-Path $PSScriptRoot "src\cli\commands") "cli.py" }
-        "rediacc-cli-sync" { $scriptPath = Join-Path (Join-Path $PSScriptRoot "src\cli\commands") "sync.py" }
-        "rediacc-cli-term" { $scriptPath = Join-Path (Join-Path $PSScriptRoot "src\cli\commands") "term.py" }
-        "rediacc-cli-plugin" { $scriptPath = Join-Path (Join-Path $PSScriptRoot "src\cli\commands") "plugin.py" }
+        "rediacc" { $scriptPath = Join-Path (Join-Path $PSScriptRoot "src\cli\commands") "cli.py" }
+        "rediacc-sync" { $scriptPath = Join-Path (Join-Path $PSScriptRoot "src\cli\commands") "sync.py" }
+        "rediacc-term" { $scriptPath = Join-Path (Join-Path $PSScriptRoot "src\cli\commands") "term.py" }
+        "rediacc-plugin" { $scriptPath = Join-Path (Join-Path $PSScriptRoot "src\cli\commands") "plugin.py" }
         "rediacc-gui" { $scriptPath = Join-Path (Join-Path $PSScriptRoot "src\cli\gui") "main.py" }
         default { $scriptPath = Join-Path (Join-Path $PSScriptRoot "src\cli") "$Tool.py" }
     }
@@ -1094,7 +1094,7 @@ function Show-Help {
 Rediacc CLI for Windows
 
 USAGE:
-    .\rediacc-cli.ps1 <command> [arguments]
+    .\rediacc.ps1 <command> [arguments]
 
 COMMANDS:
     setup       Set up Windows environment for Rediacc CLI
@@ -1108,52 +1108,52 @@ COMMANDS:
     help        Show this help message
 
 SETUP:
-    .\rediacc-cli.ps1 setup
-    .\rediacc-cli.ps1 setup -AutoInstall
-    .\rediacc-cli.ps1 setup -ForceReinstall
-    .\rediacc-cli.ps1 setup -SkipPython -SkipMSYS2
-    .\rediacc-cli.ps1 setup -InstallDir C:\custom\path
+    .\rediacc.ps1 setup
+    .\rediacc.ps1 setup -AutoInstall
+    .\rediacc.ps1 setup -ForceReinstall
+    .\rediacc.ps1 setup -SkipPython -SkipMSYS2
+    .\rediacc.ps1 setup -InstallDir C:\custom\path
 
 AUTHENTICATION:
-    .\rediacc-cli.ps1 login --email user@example.com --password yourpass
-    .\rediacc-cli.ps1 login  # Interactive login
+    .\rediacc.ps1 login --email user@example.com --password yourpass
+    .\rediacc.ps1 login  # Interactive login
 
 SYNC OPERATIONS:
-    .\rediacc-cli.ps1 sync upload --token GUID --local C:\data --machine server --repo myrepo
-    .\rediacc-cli.ps1 sync download --token GUID --machine server --repo myrepo --local C:\backup
-    .\rediacc-cli.ps1 sync upload --help
+    .\rediacc.ps1 sync upload --token GUID --local C:\data --machine server --repo myrepo
+    .\rediacc.ps1 sync download --token GUID --machine server --repo myrepo --local C:\backup
+    .\rediacc.ps1 sync upload --help
 
 TERMINAL ACCESS:
-    .\rediacc-cli.ps1 term --token GUID --machine server --repo myrepo
+    .\rediacc.ps1 term --token GUID --machine server --repo myrepo
 
 TEST INSTALLATION:
-    .\rediacc-cli.ps1 test
+    .\rediacc.ps1 test
 
 GRAPHICAL USER INTERFACE:
-    .\rediacc-cli.ps1 gui
+    .\rediacc.ps1 gui
 
 WORKFLOW COMMANDS:
-    .\rediacc-cli.ps1 workflow --help
-    .\rediacc-cli.ps1 workflow repo-create --team Default --name myrepo --machine server --size 1G
-    .\rediacc-cli.ps1 workflow hello-test --team Default --machine server --wait
+    .\rediacc.ps1 workflow --help
+    .\rediacc.ps1 workflow repo-create --team Default --name myrepo --machine server --size 1G
+    .\rediacc.ps1 workflow hello-test --team Default --machine server --wait
 
 DIRECT CLI ACCESS:
-    .\rediacc-cli.ps1 cli <any-command> [arguments]
-    .\rediacc-cli.ps1 cli list teams
-    .\rediacc-cli.ps1 cli create machine --name prod-01 --team Production
+    .\rediacc.ps1 cli <any-command> [arguments]
+    .\rediacc.ps1 cli list teams
+    .\rediacc.ps1 cli create machine --name prod-01 --team Production
 
 EXAMPLES:
     # First time setup
-    .\rediacc-cli.ps1 setup -AutoInstall
+    .\rediacc.ps1 setup -AutoInstall
     
     # Login
-    .\rediacc-cli.ps1 login
+    .\rediacc.ps1 login
     
     # Upload files
-    .\rediacc-cli.ps1 sync upload --token YOUR_TOKEN --local "C:\MyProject" --machine myserver --repo myrepo
+    .\rediacc.ps1 sync upload --token YOUR_TOKEN --local "C:\MyProject" --machine myserver --repo myrepo
     
     # Download with confirmation
-    .\rediacc-cli.ps1 sync download --token YOUR_TOKEN --machine myserver --repo myrepo --local "C:\Backup" --confirm
+    .\rediacc.ps1 sync download --token YOUR_TOKEN --machine myserver --repo myrepo --local "C:\Backup" --confirm
 
 OPTIONS:
     -AutoInstall        Automatically install missing components without prompting
@@ -1175,15 +1175,15 @@ switch ($Command) {
     }
     
     'login' {
-        Invoke-RediaccCLI -Tool "rediacc-cli" -Arguments (@('login') + $Arguments)
+        Invoke-RediaccCLI -Tool "rediacc" -Arguments (@('login') + $Arguments)
     }
     
     'sync' {
-        Invoke-RediaccCLI -Tool "rediacc-cli-sync" -Arguments $Arguments
+        Invoke-RediaccCLI -Tool "rediacc-sync" -Arguments $Arguments
     }
     
     'term' {
-        Invoke-RediaccCLI -Tool "rediacc-cli-term" -Arguments $Arguments
+        Invoke-RediaccCLI -Tool "rediacc-term" -Arguments $Arguments
     }
     
     'test' {
@@ -1203,16 +1203,16 @@ switch ($Command) {
     
     'cli' {
         # Direct pass-through to CLI without any wrapper logic
-        Invoke-RediaccCLI -Tool "rediacc-cli" -Arguments $Arguments -NoTokenInjection
+        Invoke-RediaccCLI -Tool "rediacc" -Arguments $Arguments -NoTokenInjection
     }
     
     'workflow' {
         # Pass workflow command to main CLI
-        Invoke-RediaccCLI -Tool "rediacc-cli" -Arguments (@('workflow') + $Arguments)
+        Invoke-RediaccCLI -Tool "rediacc" -Arguments (@('workflow') + $Arguments)
     }
     
     'version' {
-        Invoke-RediaccCLI -Tool "rediacc-cli" -Arguments @('--version')
+        Invoke-RediaccCLI -Tool "rediacc" -Arguments @('--version')
     }
     
     'help' {
@@ -1221,6 +1221,6 @@ switch ($Command) {
     
     default {
         # Pass through any unrecognized commands to main CLI
-        Invoke-RediaccCLI -Tool "rediacc-cli" -Arguments (@($Command) + $Arguments)
+        Invoke-RediaccCLI -Tool "rediacc" -Arguments (@($Command) + $Arguments)
     }
 }

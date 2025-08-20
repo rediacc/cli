@@ -47,7 +47,7 @@ class InMemoryTokenStore:
 
 class SuperClient:
     PASSWORD_SALT = 'Rd!@cc111$ecur3P@$w0rd$@lt#H@$h'
-    USER_AGENT = "rediacc-cli/1.0"
+    USER_AGENT = "rediacc/1.0"
     MIDDLEWARE_ERROR_HELP = "\nPlease ensure the middleware is running.\nTry: ./go system up middleware"
     
     _instance = None

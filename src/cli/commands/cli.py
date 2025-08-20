@@ -61,7 +61,7 @@ if not CRYPTO_AVAILABLE:
     else:
         print(colorize("Install with: pip install cryptography", 'YELLOW'), file=sys.stderr)
 
-CLI_CONFIG_PATH = Path(__file__).parent.parent.parent / 'config' / 'rediacc-cli.json'
+CLI_CONFIG_PATH = Path(__file__).parent.parent.parent / 'config' / 'rediacc.json'
 try:
     with open(CLI_CONFIG_PATH, 'r') as f:
         cli_config = json.load(f)
@@ -1086,7 +1086,7 @@ class CommandHandler:
                 desc = help_info.get('description', 'No description available')
                 help_text += f"  {colorize(resource, 'GREEN'):<{max_width + 10}} {desc}\n"
             
-            help_text += f"\nUse '{colorize(f'rediacc-cli {cmd_type} <resource> --help', 'YELLOW')}' for more details on a specific resource.\n"
+            help_text += f"\nUse '{colorize(f'rediacc {cmd_type} <resource> --help', 'YELLOW')}' for more details on a specific resource.\n"
             return help_text
         
         # Generate help for specific command

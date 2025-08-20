@@ -429,7 +429,7 @@ function release() {
         fi
     done
     
-    tar -czf "$ROOT_DIR/bin/rediacc-cli-${REDIACC_VERSION}.tar.gz" \
+    tar -czf "$ROOT_DIR/bin/rediacc-${REDIACC_VERSION}.tar.gz" \
         -C "$ROOT_DIR" \
         --exclude="__pycache__" \
         --exclude="*.pyc" \
