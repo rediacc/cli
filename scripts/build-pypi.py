@@ -282,10 +282,10 @@ def upload_package(base_dir, repository="testpypi", token=None):
     
     if repository == "testpypi":
         print("\n📋 To install from TestPyPI:")
-        print("pip install --index-url https://test.pypi.org/simple/ --extra-index-url https://pypi.org/simple/ rediacc-cli")
+        print("pip install --index-url https://test.pypi.org/simple/ --extra-index-url https://pypi.org/simple/ rediacc")
     else:
         print("\n📋 To install from PyPI:")
-        print("pip install rediacc-cli")
+        print("pip install rediacc")
     
     return True
 

@@ -6,9 +6,9 @@ The Rediacc CLI provides command-line tools for interacting with the Rediacc dis
 
 The CLI consists of three main tools:
 
-1. **rediacc-cli** - Main CLI for API operations and system management
-2. **rediacc-cli-sync** - File synchronization tool using rsync
-3. **rediacc-cli-term** - Terminal access to remote machines and repositories
+1. **rediacc** - Main CLI for API operations and system management
+2. **rediacc-sync** - File synchronization tool using rsync
+3. **rediacc-term** - Terminal access to remote machines and repositories
 
 ## Quick Start
 
@@ -35,7 +35,7 @@ The CLI consists of three main tools:
 ./rediacc login --email user@example.com --password yourpassword
 
 # Using token directly
-./rediacc-cli --token YOUR_TOKEN list teams
+./rediacc --token YOUR_TOKEN list teams
 ```
 
 ## Documentation Index
@@ -46,9 +46,9 @@ The CLI consists of three main tools:
 - [Command Reference](COMMANDS.md) - Complete command reference
 
 ### Tool-Specific Guides
-- [File Synchronization](SYNC.md) - Using rediacc-cli-sync
-- [Terminal Access](TERMINAL.md) - Using rediacc-cli-term
-- [API Operations](API.md) - Using rediacc-cli for API calls
+- [File Synchronization](SYNC.md) - Using rediacc-sync
+- [Terminal Access](TERMINAL.md) - Using rediacc-term
+- [API Operations](API.md) - Using rediacc for API calls
 
 ### Advanced Topics
 - [Configuration](guides/CONFIGURATION.md) - Configuration files and environment variables
@@ -70,13 +70,13 @@ The CLI consists of three main tools:
 ### List Resources
 ```bash
 # List all teams
-./rediacc-cli list teams
+./rediacc list teams
 
 # List machines in a team
-./rediacc-cli list machines --team Default
+./rediacc list machines --team Default
 
 # List repositories
-./rediacc-cli list repositories --team Default
+./rediacc list repositories --team Default
 ```
 
 ### File Operations

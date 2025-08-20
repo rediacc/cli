@@ -10,14 +10,14 @@ Development mode relaxes certain security restrictions for easier development:
 
 ```bash
 # Via command line flag
-rediacc-cli-term --dev --machine dev-server
+rediacc-term --dev --machine dev-server
 
 # Via environment variable
 export REDIACC_DEV_MODE=1
-rediacc-cli-term --machine dev-server
+rediacc-term --machine dev-server
 
 # In sync operations
-rediacc-cli-sync upload --dev --local ./src --machine dev --repo test
+rediacc-sync upload --dev --local ./src --machine dev --repo test
 ```
 
 ### What Dev Mode Changes
@@ -39,7 +39,7 @@ export SYSTEM_API_URL="http://localhost:8080"
 export REDIACC_VERIFY_SSL=0
 
 # Use local middleware
-./rediacc-cli list teams
+./rediacc list teams
 ```
 
 ### Mock Environments
@@ -58,7 +58,7 @@ cat > mock-team.json << EOF
 }
 EOF
 
-rediacc-cli create team "DevTest" --vault-file mock-team.json
+rediacc create team "DevTest" --vault-file mock-team.json
 ```
 
 ## Debugging Features
@@ -67,13 +67,13 @@ rediacc-cli create team "DevTest" --vault-file mock-team.json
 
 ```bash
 # Level 1: Basic verbose
-REDIACC_VERBOSE=1 rediacc-cli list teams
+REDIACC_VERBOSE=1 rediacc list teams
 
 # Level 2: Include API calls
-REDIACC_DEBUG=2 rediacc-cli list teams
+REDIACC_DEBUG=2 rediacc list teams
 
 # Level 3: Full trace
-REDIACC_DEBUG=3 rediacc-cli list teams
+REDIACC_DEBUG=3 rediacc list teams
 ```
 
 ### Request/Response Logging
@@ -94,7 +94,7 @@ tail -f /tmp/rediacc-api.log
 export REDIACC_SSH_DEBUG=1
 
 # Very verbose SSH
-rediacc-cli-term --machine dev --command "echo test" 2>&1 | tee ssh-debug.log
+rediacc-term --machine dev --command "echo test" 2>&1 | tee ssh-debug.log
 ```
 
 ## Testing Scripts
@@ -113,7 +113,7 @@ def run_cli_command(args, token=None):
     if token:
         env['REDIACC_TOKEN'] = token
     
-    cmd = ['./rediacc-cli'] + args
+    cmd = ['./rediacc'] + args
     result = subprocess.run(cmd, capture_output=True, text=True, env=env)
     
     if '--output json' in args:
@@ -135,10 +135,10 @@ export SYSTEM_API_URL="http://localhost:8080"
 
 # Test: Create and verify team
 echo "Creating test team..."
-./rediacc-cli create team "TestTeam-$$"
+./rediacc create team "TestTeam-$$"
 
 echo "Verifying team exists..."
-if ./rediacc-cli list teams | grep -q "TestTeam-$$"; then
+if ./rediacc list teams | grep -q "TestTeam-$$"; then
     echo "✓ Team created successfully"
 else
     echo "✗ Team creation failed"
@@ -146,7 +146,7 @@ else
 fi
 
 # Cleanup
-./rediacc-cli delete team "TestTeam-$$"
+./rediacc delete team "TestTeam-$$"
 ```
 
 ## Development Workflows
@@ -164,7 +164,7 @@ export REDIACC_VERBOSE=1
 
 # 3. Test changes iteratively
 while developing; do
-    ./rediacc-cli new-command --test
+    ./rediacc new-command --test
     # Make changes
 done
 
@@ -187,7 +187,7 @@ curl -H "Rediacc-RequestToken: $TOKEN" \
      http://localhost:8080/api/StoredProcedure/GetTeams
 
 # Compare with CLI
-./rediacc-cli --output json list teams
+./rediacc --output json list teams
 ```
 
 ## Performance Profiling
@@ -196,7 +196,7 @@ curl -H "Rediacc-RequestToken: $TOKEN" \
 
 ```bash
 # Simple timing
-time ./rediacc-cli list teams
+time ./rediacc list teams
 
 # Detailed profiling
 python3 -m cProfile -o profile.stats src/cli/commands/cli.py list teams

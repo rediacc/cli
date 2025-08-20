@@ -3,7 +3,7 @@
 # NOTE: This file is for documentation purposes.
 # Actual dependencies are specified in pyproject.toml
 #
-# To install the package: pip install rediacc-cli
+# To install the package: pip install rediacc
 # For development: pip install -r requirements-dev.txt
 
 # Core runtime dependencies (must match pyproject.toml)

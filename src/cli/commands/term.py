@@ -24,7 +24,7 @@ from core.config import setup_logging, get_logger
 # Load configuration
 def load_config():
     """Load configuration from JSON file"""
-    config_path = Path(__file__).parent.parent.parent / 'config' / 'rediacc-cli-term-config.json'
+    config_path = Path(__file__).parent.parent.parent / 'config' / 'rediacc-term-config.json'
     try: return json.load(open(config_path, 'r'))
     except (FileNotFoundError, json.JSONDecodeError) as e:
         print(f"Warning: Could not load config file: {e}")

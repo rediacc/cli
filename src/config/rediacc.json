@@ -53,15 +53,15 @@
         },
         "examples": [
           {
-            "command": "rediacc-cli login",
+            "command": "rediacc login",
             "description": "Interactive login with prompts"
           },
           {
-            "command": "rediacc-cli login --email user@company.com --password 'P@ssw0rd'",
+            "command": "rediacc login --email user@company.com --password 'P@ssw0rd'",
             "description": "Direct login with credentials"
           },
           {
-            "command": "rediacc-cli login --email admin@company.com --tfa-code 123456 --permissions admin",
+            "command": "rediacc login --email admin@company.com --tfa-code 123456 --permissions admin",
             "description": "Admin login with TFA"
           }
         ],
@@ -128,7 +128,7 @@
         "parameters": {},
         "examples": [
           {
-            "command": "rediacc-cli logout",
+            "command": "rediacc logout",
             "description": "Log out current session"
           }
         ],
@@ -261,11 +261,11 @@
           },
           "examples": [
             {
-              "command": "rediacc-cli create team production-team",
+              "command": "rediacc create team production-team",
               "description": "Create a basic team"
             },
             {
-              "command": "rediacc-cli create team dev-team --vault-file team-config.json",
+              "command": "rediacc create team dev-team --vault-file team-config.json",
               "description": "Create team with vault configuration from file"
             }
           ],
@@ -310,11 +310,11 @@
           },
           "examples": [
             {
-              "command": "rediacc-cli create region us-east",
+              "command": "rediacc create region us-east",
               "description": "Create a basic region"
             },
             {
-              "command": "rediacc-cli create region europe-west --vault '{\"provider\":\"azure\",\"location\":\"westeurope\"}'",
+              "command": "rediacc create region europe-west --vault '{\"provider\":\"azure\",\"location\":\"westeurope\"}'",
               "description": "Create region with provider configuration"
             }
           ],
@@ -366,15 +366,15 @@
           },
           "examples": [
             {
-              "command": "rediacc-cli create bridge us-east bridge-01",
+              "command": "rediacc create bridge us-east bridge-01",
               "description": "Create a basic bridge"
             },
             {
-              "command": "rediacc-cli create bridge us-east high-priority-bridge --vault '{\"batch_size\":10}'",
+              "command": "rediacc create bridge us-east high-priority-bridge --vault '{\"batch_size\":10}'",
               "description": "Create bridge with custom batch size"
             }
           ],
-          "notes": "After creation, start the bridge with './bridge --bridge-mode token=<token> api_url=<url> master_password=<pwd>'. Use 'rediacc-cli login --target bridge-name' to get a bridge-specific token.",
+          "notes": "After creation, start the bridge with './bridge --bridge-mode token=<token> api_url=<url> master_password=<pwd>'. Use 'rediacc login --target bridge-name' to get a bridge-specific token.",
           "rules": [
             "Bridge name must be unique within the region",
             "Region must exist and belong to the user's company",
@@ -427,11 +427,11 @@
           },
           "examples": [
             {
-              "command": "rediacc-cli create machine production-team us-east-bridge web-01",
+              "command": "rediacc create machine production-team us-east-bridge web-01",
               "description": "Create a basic machine"
             },
             {
-              "command": "rediacc-cli create machine prod us-bridge db-01 --vault '{\"ip\":\"10.0.0.10\"}'",
+              "command": "rediacc create machine prod us-bridge db-01 --vault '{\"ip\":\"10.0.0.10\"}'",
               "description": "Create machine with IP configuration"
             }
           ],
@@ -530,11 +530,11 @@
           },
           "examples": [
             {
-              "command": "rediacc-cli create storage backup-team s3-archive",
+              "command": "rediacc create storage backup-team s3-archive",
               "description": "Create a basic storage resource"
             },
             {
-              "command": "rediacc-cli create storage prod azure-backup --vault-file azure-config.json",
+              "command": "rediacc create storage prod azure-backup --vault-file azure-config.json",
               "description": "Create Azure storage with credentials from file"
             }
           ],
@@ -580,11 +580,11 @@
           },
           "examples": [
             {
-              "command": "rediacc-cli create schedule ops-team daily-backup",
+              "command": "rediacc create schedule ops-team daily-backup",
               "description": "Create a basic schedule"
             },
             {
-              "command": "rediacc-cli create schedule prod hourly-sync --vault '{\"cron\":\"0 * * * *\",\"function\":\"repo_pull\",\"machine\":\"sync-01\"}'",
+              "command": "rediacc create schedule prod hourly-sync --vault '{\"cron\":\"0 * * * *\",\"function\":\"repo_pull\",\"machine\":\"sync-01\"}'",
               "description": "Create hourly sync schedule"
             }
           ],
@@ -640,11 +640,11 @@
           },
           "examples": [
             {
-              "command": "rediacc-cli create queue-item prod web-01 us-bridge --priority 3",
+              "command": "rediacc create queue-item prod web-01 us-bridge --priority 3",
               "description": "Create standard priority queue item"
             },
             {
-              "command": "rediacc-cli create queue-item prod db-01 bridge-01 --priority 1 --vault-file task.json",
+              "command": "rediacc create queue-item prod db-01 bridge-01 --priority 1 --vault-file task.json",
               "description": "Create high priority item with task config"
             }
           ],
@@ -674,11 +674,11 @@
           "parameters": {},
           "examples": [
             {
-              "command": "rediacc-cli list teams",
+              "command": "rediacc list teams",
               "description": "List all teams in table format"
             },
             {
-              "command": "rediacc-cli list teams --output json",
+              "command": "rediacc list teams --output json",
               "description": "List all teams in JSON format for scripting"
             }
           ],
@@ -706,7 +706,7 @@
           "parameters": {},
           "examples": [
             {
-              "command": "rediacc-cli list regions",
+              "command": "rediacc list regions",
               "description": "Display all regions with their vault configurations"
             }
           ],
@@ -740,7 +740,7 @@
           },
           "examples": [
             {
-              "command": "rediacc-cli list bridges us-east",
+              "command": "rediacc list bridges us-east",
               "description": "List all bridges in the us-east region"
             }
           ],
@@ -768,11 +768,11 @@
           "parameters": {},
           "examples": [
             {
-              "command": "rediacc-cli list users",
+              "command": "rediacc list users",
               "description": "Display all company users in table format"
             },
             {
-              "command": "rediacc-cli list users --output json | jq '.[] | select(.isActive == false)'",
+              "command": "rediacc list users --output json | jq '.[] | select(.isActive == false)'",
               "description": "Find all inactive users"
             }
           ],
@@ -800,11 +800,11 @@
           "parameters": {},
           "examples": [
             {
-              "command": "rediacc-cli list sessions",
+              "command": "rediacc list sessions",
               "description": "View all active sessions"
             },
             {
-              "command": "rediacc-cli list sessions --output json | jq '.[] | select(.sessionName | contains(\"CLI\"))'",
+              "command": "rediacc list sessions --output json | jq '.[] | select(.sessionName | contains(\"CLI\"))'",
               "description": "Filter CLI sessions"
             }
           ],
@@ -832,11 +832,11 @@
           "parameters": {},
           "examples": [
             {
-              "command": "rediacc-cli list resource-limits",
+              "command": "rediacc list resource-limits",
               "description": "View resource usage vs limits in table format"
             },
             {
-              "command": "rediacc-cli list resource-limits --output json | jq '.resourceLimits'",
+              "command": "rediacc list resource-limits --output json | jq '.resourceLimits'",
               "description": "Extract resource limits data for monitoring"
             }
           ],
@@ -864,11 +864,11 @@
           "parameters": {},
           "examples": [
             {
-              "command": "rediacc-cli list subscription",
+              "command": "rediacc list subscription",
               "description": "View subscription status and limits"
             },
             {
-              "command": "rediacc-cli list subscription --output json | jq '.subscriptions'",
+              "command": "rediacc list subscription --output json | jq '.subscriptions'",
               "description": "Extract subscription data for monitoring"
             }
           ],
@@ -896,11 +896,11 @@
           "parameters": {},
           "examples": [
             {
-              "command": "rediacc-cli list data-graph",
+              "command": "rediacc list data-graph",
               "description": "Display infrastructure graph"
             },
             {
-              "command": "rediacc-cli list data-graph --output json | jq '.graph'",
+              "command": "rediacc list data-graph --output json | jq '.graph'",
               "description": "Extract graph data for visualization"
             }
           ],
@@ -928,7 +928,7 @@
           "parameters": {},
           "examples": [
             {
-              "command": "rediacc-cli list company-vault",
+              "command": "rediacc list company-vault",
               "description": "View company vault contents"
             }
           ],
@@ -962,11 +962,11 @@
           },
           "examples": [
             {
-              "command": "rediacc-cli list lookup-data",
+              "command": "rediacc list lookup-data",
               "description": "Get all available lookup data"
             },
             {
-              "command": "rediacc-cli list lookup-data --context queue_create",
+              "command": "rediacc list lookup-data --context queue_create",
               "description": "Get lookup data specific to queue creation"
             }
           ],
@@ -994,7 +994,7 @@
           "parameters": {},
           "examples": [
             {
-              "command": "rediacc-cli list user-company",
+              "command": "rediacc list user-company",
               "description": "Display current user's company"
             }
           ],
@@ -1047,11 +1047,11 @@
           },
           "examples": [
             {
-              "command": "rediacc-cli list audit-logs --start-date 2024-01-01T00:00:00Z",
+              "command": "rediacc list audit-logs --start-date 2024-01-01T00:00:00Z",
               "description": "Get audit logs from specific date"
             },
             {
-              "command": "rediacc-cli list audit-logs --entity-filter Team --max-records 100",
+              "command": "rediacc list audit-logs --entity-filter Team --max-records 100",
               "description": "Get last 100 team-related changes"
             }
           ],
@@ -1097,11 +1097,11 @@
           },
           "examples": [
             {
-              "command": "rediacc-cli list entity-history Machine 550e8400-e29b-41d4-a716-446655440000",
+              "command": "rediacc list entity-history Machine 550e8400-e29b-41d4-a716-446655440000",
               "description": "View history for a specific machine"
             },
             {
-              "command": "rediacc-cli list entity-history Team 123e4567-e89b-12d3-a456-426614174000 --max-records 50",
+              "command": "rediacc list entity-history Team 123e4567-e89b-12d3-a456-426614174000 --max-records 50",
               "description": "View last 50 changes to a team"
             }
           ],
@@ -1135,11 +1135,11 @@
           },
           "examples": [
             {
-              "command": "rediacc-cli list team-machines production-team",
+              "command": "rediacc list team-machines production-team",
               "description": "List all machines in production team"
             },
             {
-              "command": "rediacc-cli list team-machines team1,team2",
+              "command": "rediacc list team-machines team1,team2",
               "description": "List machines from multiple teams"
             }
           ],
@@ -1173,7 +1173,7 @@
           },
           "examples": [
             {
-              "command": "rediacc-cli list team-members production-team",
+              "command": "rediacc list team-members production-team",
               "description": "List all members of production team"
             }
           ],
@@ -1207,11 +1207,11 @@
           },
           "examples": [
             {
-              "command": "rediacc-cli list team-repositories dev-team",
+              "command": "rediacc list team-repositories dev-team",
               "description": "List all repositories in dev-team"
             },
             {
-              "command": "rediacc-cli list team-repositories prod --output json | jq '.[].repoName'",
+              "command": "rediacc list team-repositories prod --output json | jq '.[].repoName'",
               "description": "Extract repository names from production team"
             }
           ],
@@ -1245,11 +1245,11 @@
           },
           "examples": [
             {
-              "command": "rediacc-cli list team-schedules ops-team",
+              "command": "rediacc list team-schedules ops-team",
               "description": "List all schedules in ops-team"
             },
             {
-              "command": "rediacc-cli list team-schedules backup-team --output json",
+              "command": "rediacc list team-schedules backup-team --output json",
               "description": "Get schedule details in JSON format"
             }
           ],
@@ -1283,11 +1283,11 @@
           },
           "examples": [
             {
-              "command": "rediacc-cli list team-storages data-team",
+              "command": "rediacc list team-storages data-team",
               "description": "List all storage resources in data-team"
             },
             {
-              "command": "rediacc-cli list team-storages backup --output json | jq '.[] | select(.storageName | contains(\"s3\"))'",
+              "command": "rediacc list team-storages backup --output json | jq '.[] | select(.storageName | contains(\"s3\"))'",
               "description": "Find all S3 storage resources"
             }
           ],
@@ -1330,11 +1330,11 @@
           },
           "examples": [
             {
-              "command": "rediacc-cli rm team old-team",
+              "command": "rediacc rm team old-team",
               "description": "Delete team with confirmation"
             },
             {
-              "command": "rediacc-cli rm team old-team --force",
+              "command": "rediacc rm team old-team --force",
               "description": "Delete team without confirmation"
             }
           ],
@@ -1382,11 +1382,11 @@
           },
           "examples": [
             {
-              "command": "rediacc-cli rm machine dev-team old-server",
+              "command": "rediacc rm machine dev-team old-server",
               "description": "Delete machine with confirmation"
             },
             {
-              "command": "rediacc-cli rm machine staging temp-machine --force",
+              "command": "rediacc rm machine staging temp-machine --force",
               "description": "Delete without confirmation"
             }
           ],
@@ -1434,11 +1434,11 @@
           },
           "examples": [
             {
-              "command": "rediacc-cli rm bridge us-east old-bridge",
+              "command": "rediacc rm bridge us-east old-bridge",
               "description": "Delete bridge with confirmation"
             },
             {
-              "command": "rediacc-cli rm bridge europe decommissioned-bridge --force",
+              "command": "rediacc rm bridge europe decommissioned-bridge --force",
               "description": "Force delete without confirmation"
             }
           ],
@@ -1479,11 +1479,11 @@
           },
           "examples": [
             {
-              "command": "rediacc-cli rm region test-region",
+              "command": "rediacc rm region test-region",
               "description": "Delete region with confirmation"
             },
             {
-              "command": "rediacc-cli rm region deprecated-region --force",
+              "command": "rediacc rm region deprecated-region --force",
               "description": "Force delete without confirmation"
             }
           ],
@@ -1524,11 +1524,11 @@
           },
           "examples": [
             {
-              "command": "rediacc-cli rm repository old-app --team dev",
+              "command": "rediacc rm repository old-app --team dev",
               "description": "Delete repository with confirmation"
             },
             {
-              "command": "rediacc-cli rm repository temp-test --team qa --force",
+              "command": "rediacc rm repository temp-test --team qa --force",
               "description": "Force delete without confirmation"
             }
           ],
@@ -1569,11 +1569,11 @@
           },
           "examples": [
             {
-              "command": "rediacc-cli rm storage old-backup --team ops",
+              "command": "rediacc rm storage old-backup --team ops",
               "description": "Delete storage config with confirmation"
             },
             {
-              "command": "rediacc-cli rm storage temp-s3 --team dev --force",
+              "command": "rediacc rm storage temp-s3 --team dev --force",
               "description": "Force delete without confirmation"
             }
           ],
@@ -1614,11 +1614,11 @@
           },
           "examples": [
             {
-              "command": "rediacc-cli rm schedule nightly-backup --team ops",
+              "command": "rediacc rm schedule nightly-backup --team ops",
               "description": "Delete schedule with confirmation"
             },
             {
-              "command": "rediacc-cli rm schedule old-sync --team dev --force",
+              "command": "rediacc rm schedule old-sync --team dev --force",
               "description": "Force delete without confirmation"
             }
           ],
@@ -1660,11 +1660,11 @@
           },
           "examples": [
             {
-              "command": "rediacc-cli rm queue-item 550e8400-e29b-41d4-a716-446655440000",
+              "command": "rediacc rm queue-item 550e8400-e29b-41d4-a716-446655440000",
               "description": "Delete queue item with confirmation"
             },
             {
-              "command": "rediacc-cli rm queue-item 550e8400 --force",
+              "command": "rediacc rm queue-item 550e8400 --force",
               "description": "Force delete using partial task ID"
             }
           ],
@@ -1947,11 +1947,11 @@
           },
           "examples": [
             {
-              "command": "rediacc-cli update machine-bridge prod db-01 us-west-bridge",
+              "command": "rediacc update machine-bridge prod db-01 us-west-bridge",
               "description": "Move machine to different bridge"
             },
             {
-              "command": "rediacc-cli update machine-bridge dev test-server local-bridge",
+              "command": "rediacc update machine-bridge dev test-server local-bridge",
               "description": "Reassign test server to local bridge"
             }
           ],
@@ -2041,11 +2041,11 @@
           },
           "examples": [
             {
-              "command": "rediacc-cli update repository-vault dev web-app --vault '{\"size\":\"30G\"}'",
+              "command": "rediacc update repository-vault dev web-app --vault '{\"size\":\"30G\"}'",
               "description": "Update repository size"
             },
             {
-              "command": "rediacc-cli update repository-vault prod api --vault-file new-config.json",
+              "command": "rediacc update repository-vault prod api --vault-file new-config.json",
               "description": "Update repository config from file"
             }
           ],
@@ -2135,11 +2135,11 @@
           },
           "examples": [
             {
-              "command": "rediacc-cli update storage-vault backup s3-main --vault-file new-creds.json",
+              "command": "rediacc update storage-vault backup s3-main --vault-file new-creds.json",
               "description": "Update S3 credentials from file"
             },
             {
-              "command": "rediacc-cli update storage-vault data azure-storage --vault '{\"container\":\"new-container\"}'",
+              "command": "rediacc update storage-vault data azure-storage --vault '{\"container\":\"new-container\"}'",
               "description": "Change Azure container"
             }
           ],
@@ -2229,11 +2229,11 @@
           },
           "examples": [
             {
-              "command": "rediacc-cli update schedule-vault ops backup --vault '{\"cron\":\"0 3 * * *\"}'",
+              "command": "rediacc update schedule-vault ops backup --vault '{\"cron\":\"0 3 * * *\"}'",
               "description": "Change schedule time to 3 AM"
             },
             {
-              "command": "rediacc-cli update schedule-vault prod sync --vault-file new-schedule.json",
+              "command": "rediacc update schedule-vault prod sync --vault-file new-schedule.json",
               "description": "Update complete schedule config"
             }
           ],
@@ -2360,15 +2360,15 @@
           },
           "examples": [
             {
-              "command": "rediacc-cli vault set machine web-01 machine-config.json --team prod",
+              "command": "rediacc vault set machine web-01 machine-config.json --team prod",
               "description": "Update machine vault from file"
             },
             {
-              "command": "echo '{\"SSH_PRIVATE_KEY\":\"...\"}' | rediacc-cli vault set team dev-team -",
+              "command": "echo '{\"SSH_PRIVATE_KEY\":\"...\"}' | rediacc vault set team dev-team -",
               "description": "Update team vault from stdin"
             },
             {
-              "command": "rediacc-cli vault set company company-settings.json",
+              "command": "rediacc vault set company company-settings.json",
               "description": "Update company-wide vault"
             }
           ],
@@ -2394,7 +2394,7 @@
           "parameters": {},
           "examples": [
             {
-              "command": "rediacc-cli vault set-password",
+              "command": "rediacc vault set-password",
               "description": "Set master password with secure prompt"
             }
           ],
@@ -2420,7 +2420,7 @@
           "parameters": {},
           "examples": [
             {
-              "command": "rediacc-cli vault clear-password",
+              "command": "rediacc vault clear-password",
               "description": "Remove stored master password"
             }
           ],
@@ -2446,7 +2446,7 @@
           "parameters": {},
           "examples": [
             {
-              "command": "rediacc-cli vault status",
+              "command": "rediacc vault status",
               "description": "Check vault configuration status"
             }
           ],
@@ -3036,11 +3036,11 @@
           },
           "examples": [
             {
-              "command": "rediacc-cli permission create-group developers",
+              "command": "rediacc permission create-group developers",
               "description": "Create a developers permission group"
             },
             {
-              "command": "rediacc-cli permission create-group read-only",
+              "command": "rediacc permission create-group read-only",
               "description": "Create a read-only access group"
             }
           ],
@@ -3081,11 +3081,11 @@
           },
           "examples": [
             {
-              "command": "rediacc-cli permission delete-group temporary-access",
+              "command": "rediacc permission delete-group temporary-access",
               "description": "Delete group with confirmation"
             },
             {
-              "command": "rediacc-cli permission delete-group test-group --force",
+              "command": "rediacc permission delete-group test-group --force",
               "description": "Delete without confirmation"
             }
           ],
@@ -3125,11 +3125,11 @@
           },
           "examples": [
             {
-              "command": "rediacc-cli permission add developers CreateMachine",
+              "command": "rediacc permission add developers CreateMachine",
               "description": "Allow developers to create machines"
             },
             {
-              "command": "rediacc-cli permission add read-only GetTeamMachines",
+              "command": "rediacc permission add read-only GetTeamMachines",
               "description": "Allow read-only users to list machines"
             }
           ],
@@ -3175,11 +3175,11 @@
           },
           "examples": [
             {
-              "command": "rediacc-cli permission remove developers DeleteMachine",
+              "command": "rediacc permission remove developers DeleteMachine",
               "description": "Revoke machine deletion from developers"
             },
             {
-              "command": "rediacc-cli permission remove contractors CreateBridge --force",
+              "command": "rediacc permission remove contractors CreateBridge --force",
               "description": "Remove permission without confirmation"
             }
           ],
@@ -3220,11 +3220,11 @@
           },
           "examples": [
             {
-              "command": "rediacc-cli permission assign john@company.com developers",
+              "command": "rediacc permission assign john@company.com developers",
               "description": "Give John developer permissions"
             },
             {
-              "command": "rediacc-cli permission assign contractor@external.com read-only",
+              "command": "rediacc permission assign contractor@external.com read-only",
               "description": "Limit contractor to read-only access"
             }
           ],
@@ -3252,11 +3252,11 @@
           "parameters": {},
           "examples": [
             {
-              "command": "rediacc-cli permission list-groups",
+              "command": "rediacc permission list-groups",
               "description": "Display all permission groups"
             },
             {
-              "command": "rediacc-cli permission list-groups --output json",
+              "command": "rediacc permission list-groups --output json",
               "description": "Get groups in JSON format"
             }
           ],
@@ -3290,11 +3290,11 @@
           },
           "examples": [
             {
-              "command": "rediacc-cli permission list-group developers",
+              "command": "rediacc permission list-group developers",
               "description": "Show all permissions for developers"
             },
             {
-              "command": "rediacc-cli permission list-group Admins --output json",
+              "command": "rediacc permission list-group Admins --output json",
               "description": "List admin permissions in JSON"
             }
           ],
@@ -3331,11 +3331,11 @@
           },
           "examples": [
             {
-              "command": "rediacc-cli company block-user-requests true",
+              "command": "rediacc company block-user-requests true",
               "description": "Block new user registrations"
             },
             {
-              "command": "rediacc-cli company block-user-requests false",
+              "command": "rediacc company block-user-requests false",
               "description": "Allow new user registrations"
             }
           ],
@@ -3380,11 +3380,11 @@
           },
           "examples": [
             {
-              "command": "rediacc-cli company update-vault --vault-file company-config.json",
+              "command": "rediacc company update-vault --vault-file company-config.json",
               "description": "Update from configuration file"
             },
             {
-              "command": "rediacc-cli company update-vault --vault '{\"UNIVERSAL_USER_NAME\":\"rediacc\"}'",
+              "command": "rediacc company update-vault --vault '{\"UNIVERSAL_USER_NAME\":\"rediacc\"}'",
               "description": "Update specific vault field"
             }
           ],
@@ -3411,11 +3411,11 @@
           "details": "Fetches all vault configurations stored at the company level, including encrypted settings and credentials. Useful for backup or inspection.",
           "examples": [
             {
-              "command": "rediacc-cli company get-vaults",
+              "command": "rediacc company get-vaults",
               "description": "Display all company vaults"
             },
             {
-              "command": "rediacc-cli company get-vaults --output json > backup.json",
+              "command": "rediacc company get-vaults --output json > backup.json",
               "description": "Backup vaults to file"
             }
           ],
@@ -3482,11 +3482,11 @@
           "parameters": {},
           "examples": [
             {
-              "command": "rediacc-cli company export-data > company-backup.json",
+              "command": "rediacc company export-data > company-backup.json",
               "description": "Export company data to file"
             },
             {
-              "command": "rediacc-cli company export-data | jq '.teams'",
+              "command": "rediacc company export-data | jq '.teams'",
               "description": "View exported teams data"
             }
           ],
@@ -3525,11 +3525,11 @@
           },
           "examples": [
             {
-              "command": "rediacc-cli company import-data --vault-file backup.json",
+              "command": "rediacc company import-data --vault-file backup.json",
               "description": "Import with skip mode (default)"
             },
             {
-              "command": "rediacc-cli company import-data --vault-file backup.json --import-mode override",
+              "command": "rediacc company import-data --vault-file backup.json --import-mode override",
               "description": "Import with override mode"
             }
           ],
@@ -3606,11 +3606,11 @@
           },
           "examples": [
             {
-              "command": "rediacc-cli user activate newuser@company.com",
+              "command": "rediacc user activate newuser@company.com",
               "description": "Activate with default code"
             },
             {
-              "command": "rediacc-cli user activate admin@company.com --code 654321",
+              "command": "rediacc user activate admin@company.com --code 654321",
               "description": "Activate with custom code"
             }
           ],
@@ -3651,11 +3651,11 @@
           },
           "examples": [
             {
-              "command": "rediacc-cli user deactivate employee@company.com",
+              "command": "rediacc user deactivate employee@company.com",
               "description": "Deactivate with confirmation"
             },
             {
-              "command": "rediacc-cli user deactivate contractor@company.com --force",
+              "command": "rediacc user deactivate contractor@company.com --force",
               "description": "Deactivate without confirmation"
             }
           ],
@@ -3695,11 +3695,11 @@
           },
           "examples": [
             {
-              "command": "rediacc-cli user update-email old@company.com new@company.com",
+              "command": "rediacc user update-email old@company.com new@company.com",
               "description": "Change user's email"
             },
             {
-              "command": "rediacc-cli user update-email jane.doe@company.com jane.smith@company.com",
+              "command": "rediacc user update-email jane.doe@company.com jane.smith@company.com",
               "description": "Update email after name change"
             }
           ],
@@ -3734,11 +3734,11 @@
           },
           "examples": [
             {
-              "command": "rediacc-cli user update-password",
+              "command": "rediacc user update-password",
               "description": "Change password with secure prompt"
             },
             {
-              "command": "rediacc-cli user update-password --new-password 'MyN3wP@ssw0rd!'",
+              "command": "rediacc user update-password --new-password 'MyN3wP@ssw0rd!'",
               "description": "Change password directly (less secure)"
             }
           ],
@@ -3774,7 +3774,7 @@
           },
           "examples": [
             {
-              "command": "rediacc-cli auth status a1b2c3d4e5f6789",
+              "command": "rediacc auth status a1b2c3d4e5f6789",
               "description": "Check status of auth request"
             }
           ],
@@ -3852,11 +3852,11 @@
           },
           "examples": [
             {
-              "command": "rediacc-cli team-member add dev-team john@company.com",
+              "command": "rediacc team-member add dev-team john@company.com",
               "description": "Add John to development team"
             },
             {
-              "command": "rediacc-cli team-member add production admin@company.com",
+              "command": "rediacc team-member add production admin@company.com",
               "description": "Add admin to production team"
             }
           ],
@@ -3898,11 +3898,11 @@
           },
           "examples": [
             {
-              "command": "rediacc-cli team-member remove dev-team contractor@external.com",
+              "command": "rediacc team-member remove dev-team contractor@external.com",
               "description": "Remove contractor with confirmation"
             },
             {
-              "command": "rediacc-cli team-member remove production ex-employee@company.com --force",
+              "command": "rediacc team-member remove production ex-employee@company.com --force",
               "description": "Force remove without confirmation"
             }
           ],
@@ -3938,11 +3938,11 @@
           },
           "examples": [
             {
-              "command": "rediacc-cli queue get-next",
+              "command": "rediacc queue get-next",
               "description": "Get next 3 items (default)"
             },
             {
-              "command": "rediacc-cli queue get-next --count 10",
+              "command": "rediacc queue get-next --count 10",
               "description": "Get up to 10 items"
             }
           ],
@@ -4094,11 +4094,11 @@
           },
           "examples": [
             {
-              "command": "rediacc-cli queue update-response 550e8400 --vault '{\"progress\":25}'",
+              "command": "rediacc queue update-response 550e8400 --vault '{\"progress\":25}'",
               "description": "Update task progress to 25%"
             },
             {
-              "command": "rediacc-cli queue update-response 550e8400 --vault-file status.json",
+              "command": "rediacc queue update-response 550e8400 --vault-file status.json",
               "description": "Update from status file"
             }
           ],
@@ -4170,11 +4170,11 @@
           },
           "examples": [
             {
-              "command": "rediacc-cli queue trace 550e8400-e29b-41d4-a716-446655440000",
+              "command": "rediacc queue trace 550e8400-e29b-41d4-a716-446655440000",
               "description": "Get full trace for task"
             },
             {
-              "command": "rediacc-cli queue trace 550e8400 --output json | jq '.logs'",
+              "command": "rediacc queue trace 550e8400 --output json | jq '.logs'",
               "description": "Extract logs from trace"
             }
           ],
@@ -4215,11 +4215,11 @@
           },
           "examples": [
             {
-              "command": "rediacc-cli queue cancel 550e8400-e29b-41d4-a716-446655440000",
+              "command": "rediacc queue cancel 550e8400-e29b-41d4-a716-446655440000",
               "description": "Cancel with confirmation"
             },
             {
-              "command": "rediacc-cli queue cancel 550e8400-e29b-41d4-a716-446655440000 --force",
+              "command": "rediacc queue cancel 550e8400-e29b-41d4-a716-446655440000 --force",
               "description": "Cancel without confirmation"
             }
           ],
@@ -4254,11 +4254,11 @@
           },
           "examples": [
             {
-              "command": "rediacc-cli queue retry 550e8400-e29b-41d4-a716-446655440000",
+              "command": "rediacc queue retry 550e8400-e29b-41d4-a716-446655440000",
               "description": "Retry a failed task"
             },
             {
-              "command": "rediacc-cli queue list --status FAILED --output json | jq -r '.[].taskId' | xargs -I {} rediacc-cli queue retry {}",
+              "command": "rediacc queue list --status FAILED --output json | jq -r '.[].taskId' | xargs -I {} rediacc queue retry {}",
               "description": "Retry all failed tasks"
             }
           ],
@@ -4301,11 +4301,11 @@
           },
           "examples": [
             {
-              "command": "rediacc-cli inspect machine prod web-01",
+              "command": "rediacc inspect machine prod web-01",
               "description": "Inspect production web server"
             },
             {
-              "command": "rediacc-cli inspect machine dev database --output json",
+              "command": "rediacc inspect machine dev database --output json",
               "description": "Get machine details in JSON format"
             }
           ],
@@ -4346,11 +4346,11 @@
           },
           "examples": [
             {
-              "command": "rediacc-cli inspect repository dev-team web-app",
+              "command": "rediacc inspect repository dev-team web-app",
               "description": "Inspect web-app repository"
             },
             {
-              "command": "rediacc-cli inspect repository prod api --output json",
+              "command": "rediacc inspect repository prod api --output json",
               "description": "Get repository details in JSON"
             }
           ],

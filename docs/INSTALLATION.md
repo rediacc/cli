@@ -119,16 +119,16 @@ ssh -V
 ### 2. Verify Connection
 ```bash
 # Test API connection
-./rediacc-cli list teams
+./rediacc list teams
 ```
 
 ### 3. Configure Defaults (Optional)
 ```bash
 # Set default team
-./rediacc-cli config set default_team "MyTeam"
+./rediacc config set default_team "MyTeam"
 
 # Set default output format
-./rediacc-cli config set output_format "json"
+./rediacc config set output_format "json"
 ```
 
 ## Troubleshooting Installation
