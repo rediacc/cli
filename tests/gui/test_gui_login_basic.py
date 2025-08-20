@@ -528,13 +528,46 @@ class GUITestSuite:
                     if team and machine:
                         print(f"    Team: {team}, Machine: {machine}")
                         
-                        # Actually launch the terminal - no mocking!
-                        print("    Launching real terminal window...")
-                        main_window.open_machine_terminal()
+                        # Test if the terminal command would work before launching
+                        # Run a dry-run test of the actual terminal command
+                        rediacc_path = Path(__file__).parent.parent.parent / 'rediacc'
+                        test_cmd = [str(rediacc_path), 'term', '--help']
                         
-                        terminal_launched[0] = True
-                        print(f"    ✓ Terminal launch command executed for: term --team \"{team}\" --machine \"{machine}\"")
-                        print("    ✓ Terminal window should be opening...")
+                        # Try running the terminal command to check for ANY errors
+                        print("    Pre-checking terminal command...")
+                        import subprocess
+                        try:
+                            result = subprocess.run(test_cmd, 
+                                                  capture_output=True, 
+                                                  text=True,
+                                                  timeout=5,
+                                                  cwd=Path(__file__).parent.parent.parent)
+                            if result.returncode != 0:
+                                error_output = result.stderr if result.stderr else result.stdout
+                                print(f"    ✗ Terminal command failed (exit code {result.returncode}):")
+                                if error_output:
+                                    for line in error_output.split('\n')[:5]:  # Show first 5 lines
+                                        if line.strip():
+                                            print(f"      {line}")
+                                terminal_launched[0] = False
+                                # Still try to launch to show the actual behavior
+                                main_window.open_machine_terminal()
+                                print("    ✗ Terminal launched but will fail due to errors")
+                            else:
+                                print("    ✓ Terminal command OK")
+                                # Actually launch the terminal - no mocking!
+                                print("    Launching real terminal window...")
+                                main_window.open_machine_terminal()
+                                terminal_launched[0] = True
+                                print(f"    ✓ Terminal launch command executed for: term --team \"{team}\" --machine \"{machine}\"")
+                                print("    ✓ Terminal window should be opening...")
+                        except subprocess.TimeoutExpired:
+                            print("    ⚠ Import check timed out")
+                            main_window.open_machine_terminal()
+                            terminal_launched[0] = True
+                        except Exception as e:
+                            print(f"    ✗ Error checking terminal imports: {e}")
+                            terminal_launched[0] = False
                         
                         # Give time for terminal to open
                         main_window.root.after(3000, lambda: print("    Terminal should be visible now"))
@@ -542,6 +575,7 @@ class GUITestSuite:
                         print(f"    ✗ Invalid selection - Team: {team}, Machine: {machine}")
                 except Exception as e:
                     print(f"    ✗ Error launching terminal: {e}")
+                    terminal_launched[0] = False
                 
                 # Finish test after giving time to see the terminal
                 main_window.root.after(5000, finish_test)
@@ -577,7 +611,8 @@ class GUITestSuite:
             print("✓ Login and terminal launch test passed")
             return True
         else:
-            print(f"✗ Test failed - MainWindow created: {main_window_created[0]}, Terminal launched: {terminal_launched[0]}")
+            print(f"✗ Test failed - MainWindow created: {main_window_created[0]}, Terminal launched successfully: {terminal_launched[0]}")
+            # This test should fail if terminal has import errors
             return False
     
     def run_all_tests(self):
