@@ -59,6 +59,30 @@ def setup_virtual_display():
 def run_gui_tests(test_path=None, verbose=False, headless=False):
     """Run GUI tests with pytest or directly"""
     
+    # First run terminal command test to catch any errors early
+    print("=" * 60)
+    print("Pre-flight Check: Terminal Command Functionality")
+    print("=" * 60)
+    
+    gui_test_dir = Path(__file__).parent
+    terminal_test_file = gui_test_dir / "test_terminal_imports.py"
+    
+    if terminal_test_file.exists():
+        print("Testing terminal command...")
+        terminal_result = subprocess.run(
+            [sys.executable, str(terminal_test_file)],
+            capture_output=False,  # Show output directly
+            text=True
+        )
+        if terminal_result.returncode != 0:
+            print("\n" + "=" * 60)
+            print("❌ TERMINAL COMMAND TEST FAILED")
+            print("The terminal command has errors that will cause test failures.")
+            print("Please fix the errors above before running GUI tests.")
+            print("=" * 60)
+            return 1
+        print("\n✓ Terminal command OK, proceeding with GUI tests...\n")
+    
     # Check for display or set up virtual one
     if headless or not check_display():
         xvfb_process = setup_virtual_display()
@@ -70,7 +94,6 @@ def run_gui_tests(test_path=None, verbose=False, headless=False):
     
     try:
         # Check if we have the basic test file
-        gui_test_dir = Path(__file__).parent
         basic_test_file = gui_test_dir / "test_gui_login_basic.py"
         
         if basic_test_file.exists():
