@@ -38,7 +38,7 @@ cat ~/.rediacc/config.json | grep -E "(token|api_url)" | head -5
 ```
 
 ### API Configuration
-- **API URL**: <!-- e.g., https://api.rediacc.com or custom -->
+- **API URL**: <!-- e.g., https://www.rediacc.com or custom -->
 - **Using Custom Endpoint**: <!-- Yes/No -->
 - **Environment Variables Set**: <!-- List any SYSTEM_API_URL, etc. -->
 

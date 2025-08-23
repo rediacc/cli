@@ -11,7 +11,7 @@ Location: `~/.rediacc/config.json`
 ```json
 {
   "token": "xx-xxxxxxxx-xxxx-xxxx-xxxx-xxxxxxxxxxxxxxxxxxxx",
-  "api_url": "https://api.rediacc.com",
+  "api_url": "https://www.rediacc.com",
   "default_team": "Production",
   "output_format": "table",
   "verify_ssl": true
