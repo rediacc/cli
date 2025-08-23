@@ -65,7 +65,7 @@ Error: Connection refused
    ```
 2. Test connectivity:
    ```bash
-   curl -I https://api.rediacc.com
+   curl -I https://www.rediacc.com
    ```
 3. Check proxy settings:
    ```bash
@@ -358,11 +358,11 @@ rediacc config get default_team
 
 ```bash
 # Test API endpoint
-curl -v https://api.rediacc.com/health
+curl -v https://www.rediacc.com/health
 
 # Test with token
 curl -H "Rediacc-RequestToken: $REDIACC_TOKEN" \
-     https://api.rediacc.com/api/StoredProcedure/GetUserInfo
+     https://www.rediacc.com/api/StoredProcedure/GetUserInfo
 ```
 
 ### Capture Debug Output
