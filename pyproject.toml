@@ -51,7 +51,7 @@ classifiers = [
 
 [project.urls]
 Homepage = "https://rediacc.com"
-Documentation = "https://docs.rediacc.com"
+Documentation = "https://www.rediacc.com/docs"
 Repository = "https://github.com/rediacc/cli"
 "Bug Tracker" = "https://github.com/rediacc/cli/issues"
 
