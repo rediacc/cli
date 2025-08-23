@@ -2440,7 +2440,7 @@ class MainWindow(BaseWindow):
     
     def show_documentation(self):
         """Open documentation in web browser"""
-        webbrowser.open('https://docs.rediacc.com')
+        webbrowser.open('https://www.rediacc.com/docs')
     
     def show_keyboard_shortcuts(self):
         """Show keyboard shortcuts dialog"""

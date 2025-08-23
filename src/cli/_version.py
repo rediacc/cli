@@ -6,5 +6,5 @@ It is imported by setup.py and can be updated programmatically
 during the build process.
 """
 
-__version__ = "0.1.27"
+__version__ = "0.1.28"
 __version_info__ = tuple(int(x) for x in __version__.split("."))
