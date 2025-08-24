@@ -457,7 +457,7 @@ class SuperClient:
     def request_license(self, hardware_id, base_url=None):
         """Request license from license server"""
         request_base_url = (base_url or self.base_url).removesuffix('/api/StoredProcedure').removesuffix('/api')
-        license_url = f"{request_base_url}/api/license/request"
+        license_url = f"https://lic.rediacc.com/api/license/request"
         return self._make_direct_request(license_url, {"HardwareId": hardware_id}, method='POST')
     
     def hash_password(self, password: str) -> str:
