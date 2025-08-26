@@ -26,6 +26,9 @@ class EnvironmentConfig:
         'SYSTEM_SQL_PORT': '1433',
         'SYSTEM_API_URL': 'http://localhost:7322/api',
         'PUBLIC_API_URL': 'https://www.rediacc.com/api',
+        'SANDBOX_API_URL': 'https://sandbox.rediacc.com/api',
+        'REDIACC_BUILD_TYPE': 'DEBUG',
+        'REDIACC_SANDBOX_MODE': 'false',
         'SYSTEM_BASE_IMAGE': 'ubuntu:24.04',
         'DOCKER_REGISTRY': '192.168.111.1:5000',
         'PROVISION_CEPH_CLUSTER': 'false',
@@ -117,7 +120,9 @@ class EnvironmentConfig:
     def get_important_env_vars(cls) -> Dict[str, str]:
         """Get environment variables that should be exported to subprocesses"""
         important_vars = [
-            'SYSTEM_API_URL', 'SYSTEM_ADMIN_EMAIL', 'SYSTEM_ADMIN_PASSWORD', 
+            'SYSTEM_API_URL', 'PUBLIC_API_URL', 'SANDBOX_API_URL',
+            'REDIACC_BUILD_TYPE', 'REDIACC_SANDBOX_MODE',
+            'SYSTEM_ADMIN_EMAIL', 'SYSTEM_ADMIN_PASSWORD', 
             'SYSTEM_MASTER_PASSWORD', 'SYSTEM_HTTP_PORT', 'SYSTEM_COMPANY_ID',
             'SYSTEM_COMPANY_VAULT_DEFAULTS', 'SYSTEM_COMPANY_NAME',
             'SYSTEM_DEFAULT_TEAM_NAME', 'SYSTEM_DEFAULT_REGION_NAME',

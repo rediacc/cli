@@ -58,11 +58,12 @@ class SuperClient:
             cls._instance = super().__new__(cls)
         return cls._instance
     
-    def __init__(self):
+    def __init__(self, sandbox_mode=False):
         if SuperClient._initialized:
             return
         
         SuperClient._initialized = True
+        self.sandbox_mode = sandbox_mode
         self.user_agent = SuperClient.USER_AGENT
         self.base_headers = {"Content-Type": "application/json", "User-Agent": self.user_agent}
         self.config_manager = None
@@ -78,6 +79,11 @@ class SuperClient:
                 self.use_requests = False
         
         self.token_store = InMemoryTokenStore()
+        
+        # Log mode in verbose output
+        if os.environ.get('REDIACC_DEBUG'):
+            api_url = self.base_url
+            print(f"DEBUG: API Client initialized - URL: {api_url}, Sandbox: {sandbox_mode}", file=sys.stderr)
     
     def _should_use_requests(self):
         if any(test_indicator in sys.argv[0] for test_indicator in ['test', 'pytest']):
@@ -178,7 +184,27 @@ class SuperClient:
     
     @property
     def base_url(self):
-        return get_required('SYSTEM_API_URL')
+        # Check for sandbox mode first
+        sandbox_mode = getattr(self, 'sandbox_mode', False)
+        
+        # Check environment variable for sandbox mode
+        if not sandbox_mode and 'REDIACC_SANDBOX_MODE' in os.environ:
+            sandbox_mode = os.environ.get('REDIACC_SANDBOX_MODE').lower() == 'true'
+        
+        if sandbox_mode:
+            # Get sandbox URL from environment or use from env_config
+            return os.environ.get('SANDBOX_API_URL') or EnvironmentConfig.get_env('SANDBOX_API_URL')
+        
+        # Check build type (must be set in environment)
+        build_type = os.environ.get('REDIACC_BUILD_TYPE')
+        if not build_type:
+            # Fall back to env_config
+            build_type = EnvironmentConfig.get_env('REDIACC_BUILD_TYPE')
+        
+        if build_type and build_type.upper() == 'RELEASE':
+            return os.environ.get('PUBLIC_API_URL') or EnvironmentConfig.get_env('PUBLIC_API_URL')
+        else:
+            return get_required('SYSTEM_API_URL')
     
     @property
     def api_prefix(self):
@@ -195,6 +221,13 @@ class SuperClient:
     def should_use_vault_encryption(self):
         return (self.config_manager and self.config_manager.get_master_password() and
                 getattr(self.config_manager, 'has_vault_encryption', lambda: True)())
+    
+    def set_sandbox_mode(self, enabled=True):
+        """Enable or disable sandbox mode for API calls"""
+        self.sandbox_mode = enabled
+        if os.environ.get('REDIACC_DEBUG'):
+            api_url = self.base_url
+            print(f"DEBUG: Sandbox mode {'enabled' if enabled else 'disabled'} - URL: {api_url}", file=sys.stderr)
     
     def set_config_manager(self, config_manager):
         self.config_manager = config_manager

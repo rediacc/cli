@@ -1,33 +1,51 @@
-# Rediacc CLI and Desktop
+# Rediacc CLI - Infrastructure Protection Platform
 
-This directory contains the Rediacc command-line tools and Rediacc Desktop GUI application.
+**Built for 60-second recovery from infrastructure failures.** Instant cloning, time-travel recovery, and 90% storage reduction.
+
+This directory contains the Rediacc command-line tools for infrastructure protection and disaster recovery.
+
+## 🚀 Why Rediacc?
+
+### Protection Against Common Disasters
+- **AI Agent Risks**: Isolate AI operations with instant cloning - production stays safe
+- **Regional Outages**: Cross-continental failover for business continuity
+- **Data Loss Events**: Time-travel recovery from any point in the last 3 weeks
+
+### Your Protection Arsenal
+- **🤖 AI Safety**: AI works on clones, production untouchable
+- **💰 90% Storage Savings**: 300TB → 3TB for 10TB database
+- **⏰ Time Travel**: Restore to any point in last 3 weeks
+- **🌍 Cross-Continental**: Instant failover between regions
+- **🚀 Instant Scaling**: Clone 100TB in 3 seconds
 
 ## Configuration
 
-The CLI requires configuration via environment variables. Copy `.env.example` to `.env` and update with your values:
+The CLI requires configuration via environment variables:
 
 ```bash
 cp .env.example .env
-# Edit .env with your configuration
+# Edit .env with your API settings
 ```
 
-Required configuration:
-- `SYSTEM_HTTP_PORT`: API server port (e.g., 7322)
-- `SYSTEM_API_URL`: Full API URL (e.g., http://localhost:7322/api)
+Required:
+- `SYSTEM_HTTP_PORT`: API port (e.g., 7322)
+- `SYSTEM_API_URL`: API URL (e.g., http://localhost:7322/api)
 
-See `.env.example` for all available configuration options.
-
-## Quick Start
+## Quick Start - Get Protected in 60 Seconds
 
 ```bash
 # Linux/macOS
-./rediacc login          # Authenticate
-./rediacc gui            # Launch Rediacc Desktop GUI
-./rediacc desktop        # Alternative for GUI
+./rediacc login                                      # Authenticate
+./rediacc create clone --source prod --name ai-safe # Create AI-safe environment
+./rediacc backup create --repo production           # Instant backup
+./rediacc restore --point-in-time "1 hour ago"      # Time travel recovery
 
-# Windows
-.\rediacc.ps1 login      # Authenticate
-.\rediacc.ps1 gui        # Launch Rediacc Desktop GUI
+# Windows PowerShell
+.\rediacc.ps1 login                                 # Authenticate  
+.\rediacc.ps1 create clone --source prod --name test # Safe testing environment
+
+# Launch GUI for visual management
+./rediacc gui                                        # Desktop application
 ```
 
 ## Directory Structure
@@ -46,15 +64,26 @@ cli/
 └── tests/             # Test files
 ```
 
+## 📊 Key Benefits
+
+- **90% storage reduction** with Copy-on-Write technology
+- **60-second recovery** from any disaster scenario
+- **3-week retention** with hourly snapshots
+- **Instant cloning** even for 100TB databases
+- **Cross-continental** replication and failover
+
 ## Documentation
 
-- [Main Documentation](docs/README.md) - Complete guide to all CLI tools
-- [GUI Documentation](docs/GUI_README.md) - Rediacc Desktop documentation
-- [Platform Guides](docs/guides/) - Platform-specific troubleshooting
+- [Complete CLI Guide](docs/README.md) - All commands and features
+- [Disaster Recovery](docs/guides/) - Recovery procedures
+- [GUI Documentation](docs/GUI_README.md) - Desktop application
+- [AI Safety Guide](https://rediacc.com/docs/guides/ai-safety) - Protect against AI disasters
 
 ## Installation
 
-See [docs/README.md](docs/README.md) for detailed installation instructions.
+For PyPI: `pip install rediacc`
+
+For local development: See [docs/README.md](docs/README.md)
 
 ## Docker Support
 
@@ -77,6 +106,14 @@ docker run -it --rm -v ./cli/.config:/home/rediacc/.config rediacc/cli:latest /b
 
 See [docker/README.md](docker/README.md) for complete Docker documentation including details about the local config directory.
 
+## 🆘 Emergency Support
+
+**Currently experiencing downtime?** Contact emergency@rediacc.com for immediate assistance.
+
+- **Community Forum**: https://community.rediacc.com
+- **Enterprise Support**: 24/7 for Premium/Elite customers
+- **Documentation**: https://rediacc.com/docs
+
 ## License
 
-Part of the Rediacc monorepo. See the main repository for license information.
+Proprietary - Part of the Rediacc infrastructure protection platform. Free tier available.
