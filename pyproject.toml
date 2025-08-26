@@ -5,8 +5,8 @@ build-backend = "setuptools.build_meta"
 [project]
 name = "rediacc"
 dynamic = ["version"]
-description = "Rediacc CLI - Command-line interface for Rediacc distributed task execution system"
-readme = "README.md"
+description = "Infrastructure protection platform with 60-second recovery. Instant cloning, time-travel recovery, and 90% storage reduction for disaster prevention."
+readme = "README_PYPI.md"
 authors = [
     {name = "Rediacc Team", email = "info@rediacc.com"}
 ]
@@ -21,13 +21,18 @@ dependencies = [
 ]
 keywords = [
     "rediacc",
-    "cli",
-    "distributed",
-    "task-execution",
-    "ssh",
-    "automation",
+    "disaster-recovery",
+    "backup",
+    "ai-safety",
+    "infrastructure-protection",
+    "ransomware-protection",
+    "time-travel-recovery",
+    "zero-cost-backup",
     "devops",
-    "infrastructure",
+    "cloud-failover",
+    "database-cloning",
+    "snapshot",
+    "copy-on-write",
 ]
 classifiers = [
     "Development Status :: 4 - Beta",

@@ -1963,6 +1963,8 @@ def setup_parser():
     parser.add_argument('--token', '-t', help='Authentication token (overrides saved token)')
     parser.add_argument('--verbose', '-v', action='store_true',
                        help='Enable verbose logging output')
+    parser.add_argument('--sandbox', action='store_true',
+                       help='Use sandbox API (https://sandbox.rediacc.com)')
     
     subparsers = parser.add_subparsers(dest='command', help='Command')
     
@@ -2292,6 +2294,16 @@ def main():
         return 1
     
     output_format = args.output
+    
+    # Set sandbox mode if requested
+    if args.sandbox:
+        os.environ['REDIACC_SANDBOX_MODE'] = 'true'
+        # Initialize SuperClient with sandbox mode
+        from ..core.api_client import SuperClient
+        client = SuperClient()
+        client.set_sandbox_mode(True)
+        if args.verbose:
+            logger.debug("Sandbox mode enabled - using https://sandbox.rediacc.com/api")
     
     config_manager = TokenManager()
     config_manager.load_vault_info_from_config()
