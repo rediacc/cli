@@ -108,7 +108,7 @@ class TestRunner:
     
     def _load_cli_config(self) -> dict:
         """Load CLI configuration with command endpoints"""
-        cli_config_file = Path(__file__).parent.parent / 'src' / 'config' / 'rediacc.json'
+        cli_config_file = Path(__file__).parent.parent / 'src' / 'config' / 'cli-config.json'
         
         if cli_config_file.exists():
             with open(cli_config_file, 'r') as f:

@@ -32,7 +32,7 @@
 - Example: `perm-admin2-${TIMESTAMP}@test.com` for permission tests
 
 ### API Returns 404
-- Check if stored procedure exists in `/middleware/AppData/procedures.json`
+- Check if stored procedure exists in `/middleware/AppData/stored-procedures.json`
 - Verify all required entities are created in correct order
 - Ensure parameter names match exactly
 
@@ -61,7 +61,7 @@ python3 tests/run_tests.py
 1. Check test results in `/cli/test_results/`
 2. Look for specific error messages in JSON output
 3. For SQL errors, check stored procedure in `/middleware/scripts/db_middleware_*.sql`
-4. For 404 errors, verify procedure whitelist in `/middleware/AppData/procedures.json`
+4. For 404 errors, verify procedure whitelist in `/middleware/AppData/stored-procedures.json`
 5. After fixing SQL, deploy with: `./go system up --force middleware`
 
 ## Test Structure Essentials
