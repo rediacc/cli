@@ -1,6 +1,6 @@
 name: CLONE_MACHINE_OPERATIONS_TEST
 description: Test clone machine assignment operations with RBD hierarchy
-executor: "commands/cli.py"
+executor: "commands/cli_main.py"
 setup:
 - name: create_test_company
   command:

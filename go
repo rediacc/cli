@@ -254,7 +254,7 @@ function dev() {
     echo "Starting Rediacc CLI in development mode..."
     
     # Run the main CLI
-    "$PYTHON_CMD" "$ROOT_DIR/src/cli/commands/cli.py" "$@"
+    "$PYTHON_CMD" "$ROOT_DIR/src/cli/commands/cli_main.py" "$@"
 }
 
 # Function to run tests

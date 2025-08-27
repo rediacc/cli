@@ -25,7 +25,7 @@ from core.config import (
 
 from core.shared import colorize, COLORS
 from core.api_client import client
-from commands.workflow import WorkflowHandler
+from commands.workflow_main import WorkflowHandler
 
 try:
     from cryptography.hazmat.primitives import hashes

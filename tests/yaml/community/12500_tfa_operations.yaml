@@ -1,6 +1,6 @@
 name: TFA_OPERATIONS_TEST
 description: Test Two-Factor Authentication operations - UpdateUserTFA
-executor: "commands/cli.py"
+executor: "commands/cli_main.py"
 setup:
 - name: create_test_company
   command:

@@ -1,7 +1,7 @@
 name: Company Export Import
 description: 'Test company data export and import functionality - stored procedures:
   public_ExportCompanyData, public_ImportCompanyData'
-executor: "commands/cli.py"
+executor: "commands/cli_main.py"
 setup:
 - name: create_test_company
   command:

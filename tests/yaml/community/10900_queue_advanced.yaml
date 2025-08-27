@@ -1,6 +1,6 @@
 name: QUEUE_ADVANCED_TEST
 description: Test advanced queue operations - create and list queue items
-executor: "commands/cli.py"
+executor: "commands/cli_main.py"
 setup:
 - name: create_test_company
   command:

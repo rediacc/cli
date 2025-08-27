@@ -1,6 +1,6 @@
 name: AUDIT_SIMPLE_TEST
 description: Simplified test for audit and monitoring endpoints
-executor: "commands/cli.py"
+executor: "commands/cli_main.py"
 setup:
 - name: create_test_company
   command:

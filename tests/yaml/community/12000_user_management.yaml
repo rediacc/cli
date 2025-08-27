@@ -1,6 +1,6 @@
 name: USER_MANAGEMENT_TEST
 description: Test user management operations - create, update, deactivate users
-executor: "commands/cli.py"
+executor: "commands/cli_main.py"
 setup:
 - name: create_test_company
   command:

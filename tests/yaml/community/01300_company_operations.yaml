@@ -1,6 +1,6 @@
 name: COMPANY_OPERATIONS_TEST
 description: Test company import/export operations and privilege authentication
-executor: "commands/cli.py"
+executor: "commands/cli_main.py"
 setup:
 - name: create_test_company
   command:

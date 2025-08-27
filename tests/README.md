@@ -24,7 +24,7 @@ Create a test file `my_test.yaml`:
 
 ```yaml
 name: "My Test"
-executor: "commands/cli.py"
+executor: "commands/cli_main.py"
 
 tests:
   - name: "Create team"
@@ -87,7 +87,7 @@ tests:
 
 ```yaml
 name: "Test Name"
-executor: "commands/cli.py"    # Or commands/term.py, etc.
+executor: "commands/cli_main.py"    # Or commands/term_main.py, etc.
 
 tests:
   - name: "Step 1"

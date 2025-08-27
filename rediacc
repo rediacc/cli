@@ -537,24 +537,24 @@ case "$1" in
         
     login)
         shift
-        "$PYTHON_CMD" "$CLI_ROOT/src/cli/commands/cli.py" login "$@"
+        "$PYTHON_CMD" "$CLI_ROOT/src/cli/commands/cli_main.py" login "$@"
         ;;
         
     sync)
         shift
-        "$PYTHON_CMD" "$CLI_ROOT/src/cli/commands/sync.py" "$@"
+        "$PYTHON_CMD" "$CLI_ROOT/src/cli/commands/sync_main.py" "$@"
         ;;
         
     term|terminal)
         shift
         # Don't inject token - let the term command manage its own token from config
-        "$PYTHON_CMD" "$CLI_ROOT/src/cli/commands/term.py" "$@"
+        "$PYTHON_CMD" "$CLI_ROOT/src/cli/commands/term_main.py" "$@"
         ;;
         
     plugin)
         shift
         # Don't inject token - let the plugin command manage its own token from config
-        "$PYTHON_CMD" "$CLI_ROOT/src/cli/commands/plugin.py" "$@"
+        "$PYTHON_CMD" "$CLI_ROOT/src/cli/commands/plugin_main.py" "$@"
         ;;
         
     gui|desktop|--gui)
@@ -600,12 +600,12 @@ case "$1" in
     cli)
         # Direct pass-through to CLI without token injection
         shift
-        "$PYTHON_CMD" "$CLI_ROOT/src/cli/commands/cli.py" "$@"
+        "$PYTHON_CMD" "$CLI_ROOT/src/cli/commands/cli_main.py" "$@"
         ;;
         
     version|--version)
         # Show version of main CLI
-        "$PYTHON_CMD" "$CLI_ROOT/src/cli/commands/cli.py" --version
+        "$PYTHON_CMD" "$CLI_ROOT/src/cli/commands/cli_main.py" --version
         ;;
         
     help|--help|-h)
@@ -614,7 +614,7 @@ case "$1" in
         
     "")
         # When no arguments provided, run the CLI directly (shows its own help)
-        "$PYTHON_CMD" "$CLI_ROOT/src/cli/commands/cli.py"
+        "$PYTHON_CMD" "$CLI_ROOT/src/cli/commands/cli_main.py"
         ;;
         
     *)
@@ -622,12 +622,12 @@ case "$1" in
         if [[ ! " $@ " =~ " --token " ]]; then
             token=$(python3 -c "import sys; sys.path.insert(0, '$CLI_ROOT/src/cli'); from core.config import TokenManager; print(TokenManager().get_token() or '')" 2>/dev/null || true)
             if [ -n "$token" ]; then
-                "$PYTHON_CMD" "$CLI_ROOT/src/cli/commands/cli.py" --token "$token" "$@"
+                "$PYTHON_CMD" "$CLI_ROOT/src/cli/commands/cli_main.py" --token "$token" "$@"
             else
-                "$PYTHON_CMD" "$CLI_ROOT/src/cli/commands/cli.py" "$@"
+                "$PYTHON_CMD" "$CLI_ROOT/src/cli/commands/cli_main.py" "$@"
             fi
         else
-            "$PYTHON_CMD" "$CLI_ROOT/src/cli/commands/cli.py" "$@"
+            "$PYTHON_CMD" "$CLI_ROOT/src/cli/commands/cli_main.py" "$@"
         fi
         ;;
 esac

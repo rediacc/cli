@@ -1,6 +1,6 @@
 name: QUEUE_TEST
 description: Test queue item creation
-executor: "commands/cli.py"
+executor: "commands/cli_main.py"
 setup:
 - name: create_test_company
   command:

@@ -1,7 +1,7 @@
 name: COMPANY_LIST_ENTITIES_TEST
 description: Test listing company entities - users, teams, regions, and permission
   groups
-executor: "commands/cli.py"
+executor: "commands/cli_main.py"
 setup:
 - name: create_test_company
   command:

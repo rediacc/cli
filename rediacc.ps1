@@ -1077,10 +1077,10 @@ function Invoke-RediaccCLI {
     
     # Build script path based on tool type
     switch ($Tool) {
-        "rediacc" { $scriptPath = Join-Path (Join-Path $PSScriptRoot "src\cli\commands") "cli.py" }
-        "rediacc-sync" { $scriptPath = Join-Path (Join-Path $PSScriptRoot "src\cli\commands") "sync.py" }
-        "rediacc-term" { $scriptPath = Join-Path (Join-Path $PSScriptRoot "src\cli\commands") "term.py" }
-        "rediacc-plugin" { $scriptPath = Join-Path (Join-Path $PSScriptRoot "src\cli\commands") "plugin.py" }
+        "rediacc" { $scriptPath = Join-Path (Join-Path $PSScriptRoot "src\cli\commands") "cli_main.py" }
+        "rediacc-sync" { $scriptPath = Join-Path (Join-Path $PSScriptRoot "src\cli\commands") "sync_main.py" }
+        "rediacc-term" { $scriptPath = Join-Path (Join-Path $PSScriptRoot "src\cli\commands") "term_main.py" }
+        "rediacc-plugin" { $scriptPath = Join-Path (Join-Path $PSScriptRoot "src\cli\commands") "plugin_main.py" }
         "rediacc-gui" { $scriptPath = Join-Path (Join-Path $PSScriptRoot "src\cli\gui") "main.py" }
         default { $scriptPath = Join-Path (Join-Path $PSScriptRoot "src\cli") "$Tool.py" }
     }

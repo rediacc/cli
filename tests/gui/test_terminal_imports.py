@@ -22,52 +22,52 @@ def test_terminal_command():
     
     # Test importing the term module
     try:
-        print("  Importing commands.term module...")
-        from commands import term
-        print("    ✓ commands.term imported successfully")
+        print("  Importing commands.term_main module...")
+        from commands import term_main
+        print("    ✓ commands.term_main imported successfully")
     except ImportError as e:
-        error_msg = f"Failed to import commands.term: {e}"
+        error_msg = f"Failed to import commands.term_main: {e}"
         print(f"    ✗ {error_msg}")
         errors.append(error_msg)
     except Exception as e:
-        error_msg = f"Unexpected error importing commands.term: {e}"
+        error_msg = f"Unexpected error importing commands.term_main: {e}"
         print(f"    ✗ {error_msg}")
         errors.append(error_msg)
     
-    # Also test the actual term.py file path that might have the issue
+    # Also test the actual term_main.py file path that might have the issue
     try:
-        print("  Testing direct execution context for term.py...")
-        term_file = cli_src_path / 'commands' / 'term.py'
+        print("  Testing direct execution context for term_main.py...")
+        term_file = cli_src_path / 'commands' / 'term_main.py'
         if term_file.exists():
-            # Simulate how term.py would be executed
+            # Simulate how term_main.py would be executed
             import importlib.util
             spec = importlib.util.spec_from_file_location("term_direct", term_file)
             term_module = importlib.util.module_from_spec(spec)
             # This will catch the import error you mentioned
             spec.loader.exec_module(term_module)
-            print("    ✓ term.py can be executed directly")
+            print("    ✓ term_main.py can be executed directly")
         else:
-            print(f"    ⚠ term.py not found at {term_file}")
+            print(f"    ⚠ term_main.py not found at {term_file}")
     except ModuleNotFoundError as e:
-        error_msg = f"Module import error in term.py: {e}"
+        error_msg = f"Module import error in term_main.py: {e}"
         print(f"    ✗ {error_msg}")
         errors.append(error_msg)
     except Exception as e:
-        error_msg = f"Error executing term.py: {e}"
+        error_msg = f"Error executing term_main.py: {e}"
         print(f"    ✗ {error_msg}")
         errors.append(error_msg)
     
     # Test importing specific items from term
     try:
         print("  Testing specific imports from term...")
-        from commands.term import main
+        from commands.term_main import main
         print("    ✓ main function imported successfully")
     except ImportError as e:
-        error_msg = f"Failed to import main from commands.term: {e}"
+        error_msg = f"Failed to import main from commands.term_main: {e}"
         print(f"    ✗ {error_msg}")
         errors.append(error_msg)
     except Exception as e:
-        error_msg = f"Unexpected error importing from commands.term: {e}"
+        error_msg = f"Unexpected error importing from commands.term_main: {e}"
         print(f"    ✗ {error_msg}")
         errors.append(error_msg)
     
