@@ -84,6 +84,7 @@ rediacc-sync = "cli.commands.sync:main"
 rediacc-term = "cli.commands.term:main"
 rediacc-plugin = "cli.commands.plugin:main"
 rediacc-workflow = "cli.commands.workflow:main"
+rediacc-desktop = "cli.gui.main:main"
 rediacc-gui = "cli.gui.main:main"
 
 [tool.setuptools]

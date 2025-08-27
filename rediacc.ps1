@@ -4,7 +4,7 @@
 [CmdletBinding()]
 param(
     [Parameter(Position=0)]
-    [ValidateSet('setup', 'login', 'sync', 'term', 'test', 'gui', 'cli', 'workflow', 'help', 'version')]
+    [ValidateSet('setup', 'login', 'sync', 'term', 'test', 'desktop', 'gui', 'cli', 'workflow', 'help', 'version')]
     [string]$Command = 'help',
     
     [Parameter(Position=1, ValueFromRemainingArguments=$true)]
@@ -1102,7 +1102,8 @@ COMMANDS:
     sync        File synchronization operations
     term        Terminal access to repositories
     test        Test Windows compatibility
-    gui         Launch graphical user interface
+    desktop     Launch desktop application
+    gui         Deprecated: Use 'desktop' command instead
     cli         Direct access to CLI (bypass wrapper)
     workflow    High-level workflow commands
     help        Show this help message
@@ -1129,8 +1130,8 @@ TERMINAL ACCESS:
 TEST INSTALLATION:
     .\rediacc.ps1 test
 
-GRAPHICAL USER INTERFACE:
-    .\rediacc.ps1 gui
+DESKTOP APPLICATION:
+    .\rediacc.ps1 desktop
 
 WORKFLOW COMMANDS:
     .\rediacc.ps1 workflow --help
@@ -1197,7 +1198,12 @@ switch ($Command) {
         }
     }
     
+    'desktop' {
+        Invoke-RediaccCLI -Tool "rediacc-gui" -Arguments $Arguments
+    }
+    
     'gui' {
+        Write-ColorOutput "Warning: 'gui' command is deprecated. Please use 'desktop' instead." -Color Yellow
         Invoke-RediaccCLI -Tool "rediacc-gui" -Arguments $Arguments
     }
     

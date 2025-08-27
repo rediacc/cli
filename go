@@ -154,7 +154,7 @@ function host_setup() {
         python3-pluggy \
         python3-dotenv
     
-    echo "Installing GUI testing dependencies..."
+    echo "Installing desktop application testing dependencies..."
     sudo apt-get install -y \
         python3-tk \
         xvfb \
@@ -268,13 +268,23 @@ function test() {
     shift || true
     
     case "$test_type" in
-        gui)
-            # Run GUI tests only
+        desktop)
+            # Run desktop application tests only
             if [ -f "tests/gui/run_gui_tests.py" ]; then
-                echo "Running GUI test suite..."
+                echo "Running desktop application test suite..."
                 "$PYTHON_CMD" tests/gui/run_gui_tests.py "$@"
             else
-                echo "⚠️  No GUI tests found at tests/gui/run_gui_tests.py"
+                echo "⚠️  No desktop tests found at tests/gui/run_gui_tests.py"
+            fi
+            ;;
+        gui)
+            echo "⚠️  Warning: 'gui' test type is deprecated. Use 'desktop' instead."
+            # Run desktop application tests
+            if [ -f "tests/gui/run_gui_tests.py" ]; then
+                echo "Running desktop application test suite..."
+                "$PYTHON_CMD" tests/gui/run_gui_tests.py "$@"
+            else
+                echo "⚠️  No desktop tests found at tests/gui/run_gui_tests.py"
             fi
             ;;
         api)
@@ -297,14 +307,14 @@ function test() {
                 exit_code=$?
             fi
             
-            # Run GUI tests if display is available or in CI
+            # Run desktop tests if display is available or in CI
             if [ -f "tests/gui/run_gui_tests.py" ]; then
                 echo ""
-                echo "Running GUI test suite..."
+                echo "Running desktop application test suite..."
                 "$PYTHON_CMD" tests/gui/run_gui_tests.py --headless "$@"
-                local gui_exit=$?
-                if [ $gui_exit -ne 0 ]; then
-                    exit_code=$gui_exit
+                local desktop_exit=$?
+                if [ $desktop_exit -ne 0 ]; then
+                    exit_code=$desktop_exit
                 fi
             fi
             
@@ -542,7 +552,7 @@ function show_help() {
     echo ""
     echo "Development Commands:"
     echo "  dev           Run CLI in development mode"
-    echo "  test [type]   Run test suite (all|api|gui) - default: all"
+    echo "  test [type]   Run test suite (all|api|desktop) - default: all"
     echo "  lint          Run code linting"
     echo ""
     echo "Build Commands:"

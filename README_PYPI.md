@@ -65,7 +65,8 @@ rediacc-sync upload --local ./app --machine server --repo webapp  # Deploy safel
 - `rediacc` - Main CLI for infrastructure management and API operations
 - `rediacc-sync` - Efficient file synchronization with rsync
 - `rediacc-term` - SSH terminal access to repositories and machines
-- `rediacc-gui` - Desktop GUI application (if available)
+- `rediacc-desktop` - Desktop application (if available)
+- `rediacc-gui` - Deprecated: use rediacc-desktop instead
 
 ### Platform Support
 - ✅ Linux (Ubuntu, RHEL, Debian, etc.)

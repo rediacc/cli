@@ -1,6 +1,6 @@
-# Rediacc CLI GUI - Terminal and File Sync Tools
+# Rediacc Desktop Application - Terminal and File Sync Tools
 
-The Rediacc CLI GUI provides a simple graphical interface for the most commonly used CLI tools:
+The Rediacc Desktop application provides a simple graphical interface for the most commonly used CLI tools:
 - **Terminal Access** - SSH into machines and repositories
 - **File Sync** - Upload and download files using rsync
 
@@ -22,24 +22,24 @@ The Rediacc CLI GUI provides a simple graphical interface for the most commonly 
 ## Requirements
 
 - Python 3.6+
-- tkinter (GUI toolkit)
+- tkinter (Desktop application toolkit)
   - **Ubuntu/Debian**: `sudo apt-get install python3-tk`
   - **Fedora/RHEL**: `sudo dnf install python3-tkinter`
   - **macOS**: Included with Python
   - **Windows**: Included with Python
 
-## Launching the GUI
+## Launching the Desktop Application
 
 ### Native Launch (Default)
 ```bash
 # Linux/macOS
-./rediacc gui
-./rediacc --gui
-./rediacc --gui native
+./rediacc desktop
+./rediacc --desktop
+./rediacc --desktop native
 
 # Windows
-.\rediacc.ps1 gui
-.\rediacc.ps1 --gui
+.\rediacc.ps1 desktop
+.\rediacc.ps1 --desktop
 
 # Direct Python
 python3 src/cli/gui/main.py
@@ -48,13 +48,13 @@ python3 src/cli/gui/main.py
 
 ### Docker Launch (with X11 support)
 ```bash
-# Run GUI in Docker (auto-builds if needed)
-./rediacc gui docker
-./rediacc --gui docker
+# Run desktop app in Docker (auto-builds if needed)
+./rediacc desktop docker
+./rediacc --desktop docker
 
 # Force rebuild of Docker image
-./rediacc gui docker-build
-./rediacc --gui docker-build
+./rediacc desktop docker-build
+./rediacc --desktop docker-build
 
 # Note: The Docker image will be automatically built or rebuilt when:
 # - Running for the first time
@@ -67,15 +67,15 @@ python3 src/cli/gui/main.py
 # - Windows: Use X server like VcXsrv or WSLg
 ```
 
-### All GUI Options
-- `--gui` or `--gui native` - Run GUI natively (default)
-- `--gui docker` - Run GUI in Docker container
-- `--gui docker-build` - Build Docker image for GUI
+### All Desktop Application Options
+- `--desktop` or `--desktop native` - Run desktop app natively (default)
+- `--desktop docker` - Run desktop app in Docker container
+- `--desktop docker-build` - Build Docker image for desktop app
 
 ## Usage
 
 ### Login
-1. Launch the GUI
+1. Launch the desktop application
 2. Enter your email and password
 3. Click "Login" or press Enter
 
