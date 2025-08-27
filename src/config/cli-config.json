@@ -6614,7 +6614,7 @@
     "description": "Reorganized structure separating generated API endpoints from manual CLI commands",
     "sections": {
       "API_ENDPOINTS": {
-        "description": "Generated from procedures.json via proc.sh synchronization",
+        "description": "Generated from stored-procedures.json via proc.sh synchronization",
         "source": "database stored procedures",
         "last_sync": null,
         "modification_allowed": false
