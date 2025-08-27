@@ -125,11 +125,11 @@ print_help() {
     echo "    term        Terminal access to repositories"
     echo "    plugin      Manage plugin connections (SSH tunnels)"
     echo "    cli         Direct access to CLI (bypass wrapper)"
-    echo "    gui [mode]  Launch Rediacc Desktop (graphical interface)"
-    echo "                  native: Run natively (default)"
-    echo "                  docker: Run in Docker (auto-builds)"
-    echo "                  docker-build: Force rebuild Docker image"
-    echo "    desktop     Alias for gui command"
+    echo "    desktop [mode]  Launch Rediacc Desktop application"
+    echo "                    native: Run natively (default)"
+    echo "                    docker: Run in Docker (auto-builds)"
+    echo "                    docker-build: Force rebuild Docker image"
+    echo "    gui         Deprecated: Use 'desktop' command instead"
     echo
     echo "  License Management:"
     echo "    license generate-id   Generate hardware ID for offline licensing"
@@ -152,8 +152,8 @@ print_help() {
     echo "EXAMPLES:"
     echo "    ./rediacc setup --auto       # Auto-install dependencies"
     echo "    ./rediacc login             # Interactive login"
-    echo "    ./rediacc gui               # Launch GUI natively"
-    echo "    ./rediacc gui docker        # Launch GUI in Docker"
+    echo "    ./rediacc desktop           # Launch desktop app natively"
+    echo "    ./rediacc desktop docker    # Launch desktop app in Docker"
     echo "    ./rediacc sync --help       # Sync help"
     echo "    ./rediacc term --help       # Terminal help"
     echo "    ./rediacc plugin --help     # Plugin help"
@@ -202,12 +202,12 @@ setup() {
         echo -e "${GREEN}✓ SSH found${NC}"
     fi
     
-    # Check tkinter for GUI
+    # Check tkinter for desktop application
     if "$python_cmd" -c "import tkinter" 2>/dev/null; then
-        echo -e "${GREEN}✓ tkinter found (GUI support available)${NC}"
+        echo -e "${GREEN}✓ tkinter found (desktop app support available)${NC}"
     else
         echo -e "${YELLOW}Warning: tkinter not found${NC}"
-        echo "Install python3-tk for Rediacc Desktop support:"
+        echo "Install python3-tk for Rediacc Desktop application support:"
         echo "  Ubuntu/Debian: sudo apt-get install python3-tk"
         echo "  macOS: tkinter should be included with Python"
     fi
@@ -232,8 +232,14 @@ test_cli() {
     
     # Check for specific test type
     case "$1" in
+        desktop)
+            echo -e "${GREEN}Running desktop application tests...${NC}"
+            shift
+            python3 -m pytest tests/gui/ -v "$@"
+            ;;
         gui)
-            echo -e "${GREEN}Running GUI tests...${NC}"
+            echo -e "${YELLOW}Note: 'gui' test type is deprecated, use 'desktop' instead${NC}"
+            echo -e "${GREEN}Running desktop application tests...${NC}"
             shift
             python3 -m pytest tests/gui/ -v "$@"
             ;;
@@ -360,9 +366,9 @@ docker_shell() {
 }
 
 
-# Desktop functions
+# Desktop application functions
 desktop() {
-    echo -e "${GREEN}Starting Rediacc Desktop...${NC}"
+    echo -e "${GREEN}Starting Rediacc Desktop application...${NC}"
     
     # Check Python
     if ! command -v python3 &> /dev/null; then
@@ -475,8 +481,8 @@ desktop_docker() {
         DISPLAY_ENV="-e DISPLAY=$DISPLAY"
     fi
     
-    # Run with GUI support
-    echo -e "${CYAN}Starting GUI container...${NC}"
+    # Run with desktop application support
+    echo -e "${CYAN}Starting desktop application container...${NC}"
     
     # Check if we're in a terminal
     if [ -t 0 ] && [ -t 1 ]; then

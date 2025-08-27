@@ -4,7 +4,7 @@ This directory contains Docker configurations for the Rediacc CLI tools.
 
 ## Available Images
 
-**rediacc/cli** - Complete CLI image with all tools including GUI support (X11 forwarding)
+**rediacc/cli** - Complete CLI image with all tools including desktop application support (X11 forwarding)
 
 ## Building Images
 
@@ -40,19 +40,19 @@ docker run --rm --env-file .env rediacc/cli:latest ./rediacc list teams
 docker run --rm -e REDIACC_TOKEN=your-token rediacc/cli:latest ./rediacc list teams
 ```
 
-### GUI Support (X11 Forwarding)
+### Desktop Application Support (X11 Forwarding)
 
 **Linux/macOS:**
 ```bash
 # Allow X11 connections
 xhost +local:docker
 
-# Run GUI
+# Run desktop application
 docker run -it --rm \
   -e DISPLAY=$DISPLAY \
   -v /tmp/.X11-unix:/tmp/.X11-unix:rw \
   -v ./cli/.rediacc:/home/rediacc/.rediacc \
-  rediacc/cli:latest ./rediacc gui
+  rediacc/cli:latest ./rediacc desktop
 ```
 
 **Windows (with X server like VcXsrv):**
@@ -60,7 +60,7 @@ docker run -it --rm \
 docker run -it --rm \
   -e DISPLAY=host.docker.internal:0 \
   -v ./cli/.rediacc:/home/rediacc/.rediacc \
-  rediacc/cli:latest ./rediacc gui
+  rediacc/cli:latest ./rediacc desktop
 ```
 
 

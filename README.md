@@ -44,8 +44,8 @@ Required:
 .\rediacc.ps1 login                                 # Authenticate  
 .\rediacc.ps1 create clone --source prod --name test # Safe testing environment
 
-# Launch GUI for visual management
-./rediacc gui                                        # Desktop application
+# Launch desktop application for visual management
+./rediacc desktop                                    # Desktop application
 ```
 
 ## Directory Structure
@@ -76,7 +76,7 @@ cli/
 
 - [Complete CLI Guide](docs/README.md) - All commands and features
 - [Disaster Recovery](docs/guides/) - Recovery procedures
-- [GUI Documentation](docs/GUI_README.md) - Desktop application
+- [Desktop Application Documentation](docs/DESKTOP.md) - Desktop application interface
 - [AI Safety Guide](https://rediacc.com/docs/guides/ai-safety) - Protect against AI disasters
 
 ## Installation
