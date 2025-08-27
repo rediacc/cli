@@ -7,8 +7,8 @@ import json
 from pathlib import Path
 import re
 
-# Load procedures.json to get endpoint names
-procedures_path = Path(__file__).parent.parent.parent / 'middleware/AppData/procedures.json'
+# Load stored-procedures.json to get endpoint names
+procedures_path = Path(__file__).parent.parent.parent / 'middleware/AppData/stored-procedures.json'
 with open(procedures_path) as f:
     procedures = json.load(f)
 

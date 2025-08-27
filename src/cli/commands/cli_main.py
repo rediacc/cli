@@ -61,7 +61,7 @@ if not CRYPTO_AVAILABLE:
     else:
         print(colorize("Install with: pip install cryptography", 'YELLOW'), file=sys.stderr)
 
-CLI_CONFIG_PATH = Path(__file__).parent.parent.parent / 'config' / 'rediacc.json'
+CLI_CONFIG_PATH = Path(__file__).parent.parent.parent / 'config' / 'cli-config.json'
 try:
     with open(CLI_CONFIG_PATH, 'r') as f:
         cli_config = json.load(f)
