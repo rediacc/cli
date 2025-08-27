@@ -1305,6 +1305,20 @@
             "Failed authentication results in 403 error"
           ]
         }
+      },
+      "list-system-configuration": {
+        "endpoint": "GetSystemConfiguration",
+        "params": "lambda args: {'configKey': args.config_key}",
+        "help": {
+          "parameters": {
+            "config_key": {
+              "description": "",
+              "required": true,
+              "example": "",
+              "type": "string"
+            }
+          }
+        }
       }
     },
     "rm": {
