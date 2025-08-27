@@ -1,7 +1,7 @@
 name: COMPANY_SETTINGS_TEST
 description: Test company settings updates including user request blocking and vault
   operations
-executor: "commands/cli.py"
+executor: "commands/cli_main.py"
 setup:
 - name: create_test_company
   command:

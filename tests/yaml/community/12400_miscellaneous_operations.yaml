@@ -1,6 +1,6 @@
 name: MISCELLANEOUS_OPERATIONS_TEST
 description: Test remaining operations - GetQueueItemsNext, UpdateCompanyVaults, UpdateImageMachineAssignment
-executor: "commands/cli.py"
+executor: "commands/cli_main.py"
 setup:
 - name: create_test_company
   command:

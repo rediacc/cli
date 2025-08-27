@@ -1,6 +1,6 @@
 name: TEAM_INFO_TEST
 description: Test team information retrieval - machines, members, and queue items
-executor: "commands/cli.py"
+executor: "commands/cli_main.py"
 setup:
 - name: create_test_company
   command:

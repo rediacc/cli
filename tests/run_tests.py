@@ -380,7 +380,7 @@ class TestRunner:
         # Extract configuration
         name = test_spec.get('name', 'Unnamed Test')
         description = test_spec.get('description', '')
-        executor = test_spec.get('executor', 'commands/cli.py')
+        executor = test_spec.get('executor', 'commands/cli_main.py')
         
         # (test name and description suppressed for cleaner output)
         

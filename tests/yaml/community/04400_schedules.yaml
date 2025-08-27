@@ -1,6 +1,6 @@
 name: SCHEDULES_TEST
 description: Test schedule creation, update, and deletion
-executor: "commands/cli.py"
+executor: "commands/cli_main.py"
 setup:
 - name: create_test_company
   command:

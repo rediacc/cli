@@ -1,7 +1,7 @@
 name: REPOSITORIES_TEST
 description: Test repository listing - creation tests disabled due to backend SQL
   error
-executor: "commands/cli.py"
+executor: "commands/cli_main.py"
 setup:
 - name: create_test_company
   command:

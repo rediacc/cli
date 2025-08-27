@@ -14,7 +14,7 @@ from .config import (
     is_encrypted
 )
 
-CLI_TOOL = os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))), 'commands', 'cli.py')
+CLI_TOOL = os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))), 'commands', 'cli_main.py')
 
 def get_cli_command() -> list:
     if not is_windows(): return [CLI_TOOL]

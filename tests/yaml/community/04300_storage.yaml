@@ -1,6 +1,6 @@
 name: STORAGE_TEST
 description: Test storage creation, update, and deletion
-executor: "commands/cli.py"
+executor: "commands/cli_main.py"
 setup:
 - name: create_test_company
   command:

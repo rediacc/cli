@@ -1,6 +1,6 @@
 name: AUDIT_ADVANCED_TEST
 description: Test advanced audit operations including entity trace and history
-executor: "commands/cli.py"
+executor: "commands/cli_main.py"
 setup:
 - name: create_test_company
   command:

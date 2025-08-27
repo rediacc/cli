@@ -1,6 +1,6 @@
 name: COMPANY_DASHBOARD_TEST
 description: Test company dashboard and data graph endpoints
-executor: "commands/cli.py"
+executor: "commands/cli_main.py"
 setup:
 - name: create_test_company
   command:

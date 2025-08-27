@@ -1,6 +1,6 @@
 name: DELETION_FIXED_TEST
 description: Fixed test for resource deletion endpoints
-executor: "commands/cli.py"
+executor: "commands/cli_main.py"
 setup:
 - name: create_test_company
   command:

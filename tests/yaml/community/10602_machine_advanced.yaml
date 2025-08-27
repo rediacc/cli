@@ -1,6 +1,6 @@
 name: MACHINE_ADVANCED_TEST
 description: Test advanced machine operations including bridge assignment
-executor: "commands/cli.py"
+executor: "commands/cli_main.py"
 setup:
 - name: create_test_company
   command:
