@@ -243,7 +243,8 @@ class Config:
     def _load_from_environment(self):
         self._config.update({k: v for k, v in os.environ.items() if k in self.DEFAULTS})
         
-        if 'SYSTEM_API_URL' not in os.environ and (api_url := self._load_api_url_from_shared_config()):
+        api_url = self._load_api_url_from_shared_config()
+        if 'SYSTEM_API_URL' not in os.environ and api_url:
             self._config['SYSTEM_API_URL'] = api_url
     
     def _load_api_url_from_shared_config(self) -> Optional[str]:
@@ -258,7 +259,8 @@ class Config:
         return None
     
     def _validate(self):
-        if missing := [f"  {key}: {description}" for key, description in self.REQUIRED_KEYS.items() if key not in self._config]:
+        missing = [f"  {key}: {description}" for key, description in self.REQUIRED_KEYS.items() if key not in self._config]
+        if missing:
             raise ConfigError(f"Missing required configuration:\n{chr(10).join(missing)}\n\nPlease set these environment variables.")
     
     def get(self, key: str, default: Optional[str] = None) -> Optional[str]:
@@ -267,12 +269,14 @@ class Config:
         return self._config.get(key, default)
     
     def get_required(self, key: str) -> str:
-        if (value := self.get(key)) is None: 
+        value = self.get(key)
+        if value is None: 
             raise ConfigError(f"Required configuration '{key}' is not set")
         return value
     
     def get_int(self, key: str, default: Optional[int] = None) -> Optional[int]:
-        if (value := self.get(key)) is None: return default
+        value = self.get(key)
+        if value is None: return default
         try: return int(value)
         except ValueError: raise ConfigError(f"Configuration '{key}' must be an integer, got: {value}")
     
@@ -281,7 +285,8 @@ class Config:
         return value.lower() in ('true', '1', 'yes', 'on') if value is not None else default
     
     def get_path(self, key: str, default: Optional[str] = None) -> Optional[Path]:
-        return Path(os.path.expandvars(os.path.expanduser(value))) if (value := self.get(key, default)) else None
+        value = self.get(key, default)
+        return Path(os.path.expandvars(os.path.expanduser(value))) if value else None
     
     def print_config(self):
         """Print current configuration (for debugging)"""
@@ -298,10 +303,12 @@ class Config:
             if key in self._config:
                 self.logger.debug(f"  {key}={self._config[key]}")
         
-        if hasattr(self, 'OPTIONAL_KEYS') and (unset := [k for k in self.OPTIONAL_KEYS if k not in self._config]):
-            self.logger.debug("\nOptional (not set):")
-            for key in unset:
-                self.logger.debug(f"  {key}")
+        if hasattr(self, 'OPTIONAL_KEYS'):
+            unset = [k for k in self.OPTIONAL_KEYS if k not in self._config]
+            if unset:
+                self.logger.debug("\nOptional (not set):")
+                for key in unset:
+                    self.logger.debug(f"  {key}")
 
 # Global config instance
 _config = Config()
@@ -622,14 +629,16 @@ class TokenManager:
             logger.warning("Invalid override token format")
             return None
         
-        if env_token := os.environ.get('REDIACC_TOKEN'):
+        env_token = os.environ.get('REDIACC_TOKEN')
+        if env_token:
             if cls.validate_token(env_token):
                 return env_token
             logger.warning("Invalid token in REDIACC_TOKEN environment variable")
         
         try:
             config = cls._load_from_config()
-            if (token := config.get('token')) and cls.validate_token(token):
+            token = config.get('token')
+            if token and cls.validate_token(token):
                 return token
             
             logger.debug("No valid token found in config file")
@@ -917,7 +926,8 @@ class I18n:
             try:
                 with open(config_path, 'r', encoding='utf-8') as f:
                     data = json.load(f)
-                    if (lang := data.get('language', self.DEFAULT_LANGUAGE)) in self.LANGUAGES:
+                    lang = data.get('language', self.DEFAULT_LANGUAGE)
+                    if lang in self.LANGUAGES:
                         return lang
             except Exception:
                 pass
@@ -1055,7 +1065,8 @@ class SubprocessRunner:
         ]
         
         # Check MSYS2_ROOT environment variable
-        if msys2_root := os.environ.get('MSYS2_ROOT'):
+        msys2_root = os.environ.get('MSYS2_ROOT')
+        if msys2_root:
             msys2_paths.insert(0, msys2_root)
         
         return next((path for path in msys2_paths if os.path.exists(path)), None)
@@ -1353,7 +1364,10 @@ class TerminalDetector:
     
     def _is_cache_valid(self, platform: str) -> bool:
         """Check if cached results are still valid"""
-        if platform not in self.cache or not (cached_time := self.cache[platform].get('timestamp')):
+        if platform not in self.cache:
+            return False
+        cached_time = self.cache[platform].get('timestamp')
+        if not cached_time:
             return False
         
         try:
@@ -1368,8 +1382,9 @@ class TerminalDetector:
             'C:\\msys64', 'C:\\msys2',
             os.path.expanduser('~\\msys64'), os.path.expanduser('~\\msys2')
         ]
-        
-        if msys2_root := os.environ.get('MSYS2_ROOT'):
+
+        msys2_root = os.environ.get('MSYS2_ROOT')
+        if msys2_root:
             msys2_paths.insert(0, msys2_root)
         
         return next((path for path in msys2_paths if os.path.exists(path)), None)
@@ -1487,7 +1502,8 @@ class TerminalDetector:
     # Windows terminal tests
     def _test_msys2_mintty(self) -> Tuple[bool, str]:
         """Test MSYS2 mintty terminal"""
-        if not (msys2_path := self._find_msys2_installation()):
+        msys2_path = self._find_msys2_installation()
+        if not msys2_path:
             return (False, "MSYS2 not found")
         
         mintty_exe = os.path.join(msys2_path, 'usr', 'bin', 'mintty.exe')
@@ -1561,7 +1577,8 @@ class TerminalDetector:
     
     def _test_msys2_windows_terminal(self) -> Tuple[bool, str]:
         """Test MSYS2 with Windows Terminal"""
-        if not (msys2_path := self._find_msys2_installation()):
+        msys2_path = self._find_msys2_installation()
+        if not msys2_path:
             return (False, "MSYS2 not found")
         
         bash_exe = os.path.join(msys2_path, 'usr', 'bin', 'bash.exe')
@@ -1588,7 +1605,8 @@ class TerminalDetector:
     
     def _test_msys2_bash_direct(self) -> Tuple[bool, str]:
         """Test MSYS2 bash directly"""
-        if not (msys2_path := self._find_msys2_installation()):
+        msys2_path = self._find_msys2_installation()
+        if not msys2_path:
             return (False, "MSYS2 not found")
         
         bash_exe = os.path.join(msys2_path, 'usr', 'bin', 'bash.exe')
@@ -1659,12 +1677,14 @@ class TerminalDetector:
         
         # Check cache
         if not force_refresh and self._is_cache_valid(platform):
-            if cached_method := self.cache[platform].get('method'):
+            cached_method = self.cache[platform].get('method')
+            if cached_method:
                 self.logger.debug(f"Using cached method: {cached_method}")
                 return cached_method
         
         # Get methods for this platform
-        if not (platform_methods := self.methods.get(platform, [])):
+        platform_methods = self.methods.get(platform, [])
+        if not platform_methods:
             self.logger.warning(f"No methods defined for platform: {platform}")
             return None
         

@@ -128,7 +128,12 @@ class EnvironmentConfig:
             'SYSTEM_DEFAULT_TEAM_NAME', 'SYSTEM_DEFAULT_REGION_NAME',
             'SYSTEM_DEFAULT_BRIDGE_NAME', 'DOCKER_REGISTRY'
         ]
-        return {var: value for var in important_vars if (value := cls.get_env(var))}
+        result = {}
+        for var in important_vars:
+            value = cls.get_env(var)
+            if value:
+                result[var] = value
+        return result
 
 
 # Convenience functions for backward compatibility

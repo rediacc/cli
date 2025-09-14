@@ -36,7 +36,8 @@ def get_null_device() -> str:
 def create_temp_file(suffix: str = '', prefix: str = 'tmp', delete: bool = True) -> str:
     if not is_windows():
         with tempfile.NamedTemporaryFile(mode='w', delete=False, suffix=suffix, prefix=prefix) as f: return f.name
-    if not (temp_dir := get('REDIACC_TEMP_DIR') or os.environ.get('TEMP') or os.environ.get('TMP')):
+    temp_dir = get('REDIACC_TEMP_DIR') or os.environ.get('TEMP') or os.environ.get('TMP')
+    if not temp_dir:
         raise ValueError("No temporary directory found. Set REDIACC_TEMP_DIR, TEMP, or TMP environment variable.")
     fd, path = tempfile.mkstemp(suffix=suffix, prefix=prefix, dir=temp_dir)
     os.close(fd); return path
@@ -136,7 +137,8 @@ def _get_universal_user_info() -> Tuple[Optional[str], Optional[str], Optional[s
     Returns: (universal_user_name, universal_user_id, company_id)
     """
     # First try to get from config file
-    if (config_path := get_main_config_file()).exists():
+    config_path = get_main_config_file()
+    if config_path.exists():
         try:
             config = json.load(open(config_path, 'r'))
             
@@ -191,13 +193,15 @@ def _get_universal_user_info() -> Tuple[Optional[str], Optional[str], Optional[s
                     
                     if not response.get('error'):
                         for table in response.get('resultSets', []):
-                            if data := table.get('data', []):
+                            data = table.get('data', [])
+                            if data:
                                 for row in data:
                                     if 'companyCredential' in row or 'CompanyCredential' in row:
                                         company_id = row.get('companyCredential') or row.get('CompanyCredential')
                                         
                                         # Also parse vault content if available
-                                        if vault_content := row.get('vaultContent'):
+                                        vault_content = row.get('vaultContent')
+                                        if vault_content:
                                             try:
                                                 vault_from_api = json.loads(vault_content)
                                                 if not universal_user_name:
@@ -271,7 +275,8 @@ def get_machine_info_with_team(team_name: str, machine_name: str) -> Dict[str, A
         error_exit(f"No machine data found for '{machine_name}' in team '{team_name}'")
     
     # Parse vault content if available
-    if vault_content := machine_info.get('vaultContent'):
+    vault_content = machine_info.get('vaultContent')
+    if vault_content:
         try: 
             machine_info['vault'] = json.loads(vault_content) if isinstance(vault_content, str) else vault_content
         except json.JSONDecodeError: 
@@ -305,7 +310,8 @@ def get_repository_info(team_name: str, repo_name: str) -> Dict[str, Any]:
             error_exit(f"No repository data found for '{repo_name}' in team '{team_name}'")
         repo_info = data_list[0]
         
-        if vault_content := repo_info.get('vaultContent'):
+        vault_content = repo_info.get('vaultContent')
+        if vault_content:
             try: repo_info['vault'] = json.loads(vault_content) if isinstance(vault_content, str) else vault_content
             except json.JSONDecodeError: pass
         
@@ -339,12 +345,14 @@ def get_ssh_key_from_vault(team_name: Optional[str] = None) -> Optional[str]:
         if team_name and team.get('teamName') != team_name:
             continue
         
-        if not (vault_content := team.get('vaultContent')):
+        vault_content = team.get('vaultContent')
+        if not vault_content:
             continue
         
         try:
             vault_data = json.loads(vault_content) if isinstance(vault_content, str) else vault_content
-            if ssh_key := vault_data.get('SSH_PRIVATE_KEY'):
+            ssh_key = vault_data.get('SSH_PRIVATE_KEY')
+            if ssh_key:
                 return ssh_key
         except json.JSONDecodeError:
             continue
@@ -374,11 +382,13 @@ def setup_ssh_agent_connection(ssh_key: str, host_entry: str = None) -> Tuple[st
         
         agent_env = {}
         for line in agent_result.stdout.strip().split('\n'):
-            if '=' in line and ';' in line and '=' in (var_assignment := line.split(';')[0]):
+            var_assignment = line.split(';')[0] if ';' in line else line
+            if '=' in line and ';' in line and '=' in var_assignment:
                 key, value = var_assignment.split('=', 1)
                 agent_env[key] = os.environ[key] = value
         
-        if not (agent_pid := agent_env.get('SSH_AGENT_PID')): raise RuntimeError("Could not get SSH agent PID")
+        agent_pid = agent_env.get('SSH_AGENT_PID')
+        if not agent_pid: raise RuntimeError("Could not get SSH agent PID")
         
         ssh_add_result = subprocess.run(['ssh-add', '-'], 
                                       input=ssh_key, text=True,
@@ -522,12 +532,14 @@ def get_machine_connection_info(machine_info: Dict[str, Any]) -> Dict[str, Any]:
     machine_name = machine_info.get('machineName')
     vault = machine_info.get('vault', {})
     
-    if not vault and (vault_content := machine_info.get('vaultContent')):
-        if isinstance(vault_content, str):
-            try:
-                vault = machine_info['vault'] = json.loads(vault_content)
-            except json.JSONDecodeError as e:
-                print(colorize(f"Failed to parse vaultContent: {e}", 'RED'))
+    if not vault:
+        vault_content = machine_info.get('vaultContent')
+        if vault_content:
+            if isinstance(vault_content, str):
+                try:
+                    vault = machine_info['vault'] = json.loads(vault_content)
+                except json.JSONDecodeError as e:
+                    print(colorize(f"Failed to parse vaultContent: {e}", 'RED'))
     
     ip = vault.get('ip') or vault.get('IP')
     ssh_user = vault.get('user') or vault.get('USER')
@@ -784,7 +796,8 @@ class RepositoryConnection:
         print(f"Fetching repository information for '{self.repo_name}'...")
         self._repo_info = get_repository_info(self._connection_info['team'], self.repo_name)
         
-        if not (repo_guid := self._repo_info.get('repoGuid') or self._repo_info.get('grandGuid')):
+        repo_guid = self._repo_info.get('repoGuid') or self._repo_info.get('grandGuid')
+        if not repo_guid:
             print(colorize(f"Repository info: {json.dumps(self._repo_info, indent=2)}", 'YELLOW'))
             error_exit(f"Repository GUID not found for '{self.repo_name}'")
         
