@@ -16,7 +16,10 @@ param(
     [switch]$SkipPython,
     [switch]$SkipMSYS2,
     [string]$InstallDir,
-    [switch]$NoProgress
+    [switch]$NoProgress,
+    [switch]$RegisterProtocol,
+    [switch]$UnregisterProtocol,
+    [switch]$ProtocolStatus
 )
 
 $ErrorActionPreference = "Stop"
@@ -1143,6 +1146,11 @@ DIRECT CLI ACCESS:
     .\rediacc.ps1 cli list teams
     .\rediacc.ps1 cli create machine --name prod-01 --team Production
 
+PROTOCOL REGISTRATION (Windows Browser Integration):
+    .\rediacc.ps1 -RegisterProtocol       # Register rediacc:// protocol for browser integration
+    .\rediacc.ps1 -UnregisterProtocol     # Unregister rediacc:// protocol
+    .\rediacc.ps1 -ProtocolStatus         # Check protocol registration status
+
 EXAMPLES:
     # First time setup
     .\rediacc.ps1 setup -AutoInstall
@@ -1167,6 +1175,61 @@ OPTIONS:
 
 For more information, see README.md and WINDOWS_TROUBLESHOOTING.md
 "@ -Color Cyan
+}
+
+# Handle protocol registration arguments (before main command processing)
+if ($RegisterProtocol) {
+    Write-ColorOutput "Registering rediacc:// protocol for browser integration..." -Color Cyan
+    
+    $python = Find-Python
+    if (-not $python) {
+        Write-ColorOutput "ERROR: Python not found. Run: .\rediacc.ps1 setup" -Color Red
+        exit 1
+    }
+    
+    try {
+        Invoke-RediaccCLI -Tool "rediacc" -Arguments @('--register-protocol') -NoTokenInjection
+        exit $LASTEXITCODE
+    } catch {
+        Write-ColorOutput "ERROR: Failed to register protocol: $($_.Exception.Message)" -Color Red
+        exit 1
+    }
+}
+
+if ($UnregisterProtocol) {
+    Write-ColorOutput "Unregistering rediacc:// protocol..." -Color Cyan
+    
+    $python = Find-Python
+    if (-not $python) {
+        Write-ColorOutput "ERROR: Python not found. Run: .\rediacc.ps1 setup" -Color Red
+        exit 1
+    }
+    
+    try {
+        Invoke-RediaccCLI -Tool "rediacc" -Arguments @('--unregister-protocol') -NoTokenInjection
+        exit $LASTEXITCODE
+    } catch {
+        Write-ColorOutput "ERROR: Failed to unregister protocol: $($_.Exception.Message)" -Color Red
+        exit 1
+    }
+}
+
+if ($ProtocolStatus) {
+    Write-ColorOutput "Checking rediacc:// protocol registration status..." -Color Cyan
+    
+    $python = Find-Python
+    if (-not $python) {
+        Write-ColorOutput "ERROR: Python not found. Run: .\rediacc.ps1 setup" -Color Red
+        exit 1
+    }
+    
+    try {
+        Invoke-RediaccCLI -Tool "rediacc" -Arguments @('--protocol-status') -NoTokenInjection
+        exit $LASTEXITCODE
+    } catch {
+        Write-ColorOutput "ERROR: Failed to check protocol status: $($_.Exception.Message)" -Color Red
+        exit 1
+    }
 }
 
 # Main execution
