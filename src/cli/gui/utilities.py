@@ -22,7 +22,7 @@ if __name__ == "__main__":
     sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
 # Import from consolidated core module
-from core.config import (
+from cli.core.config import (
     SubprocessRunner,
     TokenManager,
     get_logger,
@@ -30,7 +30,7 @@ from core.config import (
     get,
     api_mutex
 )
-from core.api_client import client, SimpleConfigManager
+from cli.core.api_client import client, SimpleConfigManager
 
 
 # ===== UTILITY FUNCTIONS =====
@@ -59,7 +59,7 @@ def format_time(timestamp: float) -> str:
 
 def parse_ls_output(output: str) -> List[Dict[str, Any]]:
     """Parse ls -la output into file information"""
-    from core.config import i18n
+    from cli.core.config import i18n
     
     files = []
     lines = output.strip().split('\n')

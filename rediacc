@@ -626,7 +626,7 @@ case "$1" in
     *)
         # Pass through to main CLI with token injection if needed
         if [[ ! " $@ " =~ " --token " ]]; then
-            token=$(python3 -c "import sys; sys.path.insert(0, '$CLI_ROOT/src/cli'); from core.config import TokenManager; print(TokenManager().get_token() or '')" 2>/dev/null || true)
+            token=$(python3 -c "import sys; sys.path.insert(0, '$CLI_ROOT/src'); from cli.core.config import TokenManager; print(TokenManager().get_token() or '')" 2>/dev/null || true)
             if [ -n "$token" ]; then
                 "$PYTHON_CMD" "$CLI_ROOT/src/cli/commands/cli_main.py" --token "$token" "$@"
             else

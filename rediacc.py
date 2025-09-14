@@ -542,8 +542,8 @@ class RediaccCLI:
         if inject_token and '--token' not in args:
             # Try to get token from config
             try:
-                sys.path.insert(0, str(self.cli_root / 'src' / 'cli'))
-                from core.config import TokenManager
+                sys.path.insert(0, str(self.cli_root / 'src'))
+                from cli.core.config import TokenManager
                 token = TokenManager().get_token()
                 if token:
                     cmd_args = ['--token', token] + cmd_args

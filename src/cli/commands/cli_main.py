@@ -15,17 +15,17 @@ import base64
 from typing import Dict, Any, Optional, List, Union
 from pathlib import Path
 
-sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
+sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__)))))
 
 from cli._version import __version__
-from core.config import (
+from cli.core.config import (
     load_config, get_required, get, get_path, ConfigError,
     TokenManager, api_mutex, setup_logging, get_logger
 )
 
-from core.shared import colorize, COLORS
-from core.api_client import client
-from commands.workflow_main import WorkflowHandler
+from cli.core.shared import colorize, COLORS
+from cli.core.api_client import client
+from cli.commands.workflow_main import WorkflowHandler
 
 try:
     from cryptography.hazmat.primitives import hashes
@@ -44,7 +44,7 @@ except ConfigError as e:
     print(f"Configuration error: {e}", file=sys.stderr)
     sys.exit(1)
 
-from core.config import get_config_dir, get_main_config_file
+from cli.core.config import get_config_dir, get_main_config_file
 
 HTTP_PORT = get_required('SYSTEM_HTTP_PORT')
 BASE_URL = get_required('SYSTEM_API_URL')
@@ -768,7 +768,7 @@ class CommandHandler:
         if authentication_status == 'TFA_REQUIRED' and not is_authorized:
             if not hasattr(args, 'tfa_code') or not args.tfa_code:
                 if self.output_format not in ['json', 'json-full']:
-                    from core.config import I18n
+                    from cli.core.config import I18n
                     i18n = I18n()
                     tfa_code = input(i18n.get('enter_tfa_code'))
                 else:

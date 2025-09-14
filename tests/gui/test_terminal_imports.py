@@ -11,8 +11,8 @@ from pathlib import Path
 def test_terminal_command():
     """Test that terminal command works without any errors"""
     
-    # Add src/cli to path as the terminal command would
-    cli_src_path = Path(__file__).parent.parent.parent / 'src' / 'cli'
+    # Add src to path as the terminal command would
+    cli_src_path = Path(__file__).parent.parent.parent / 'src'
     sys.path.insert(0, str(cli_src_path))
     
     print("Testing terminal command functionality...")
@@ -22,15 +22,15 @@ def test_terminal_command():
     
     # Test importing the term module
     try:
-        print("  Importing commands.term_main module...")
-        from commands import term_main
+        print("  Importing cli.commands.term_main module...")
+        from cli.commands import term_main
         print("    ✓ commands.term_main imported successfully")
     except ImportError as e:
-        error_msg = f"Failed to import commands.term_main: {e}"
+        error_msg = f"Failed to import cli.commands.term_main: {e}"
         print(f"    ✗ {error_msg}")
         errors.append(error_msg)
     except Exception as e:
-        error_msg = f"Unexpected error importing commands.term_main: {e}"
+        error_msg = f"Unexpected error importing cli.commands.term_main: {e}"
         print(f"    ✗ {error_msg}")
         errors.append(error_msg)
     
@@ -60,14 +60,14 @@ def test_terminal_command():
     # Test importing specific items from term
     try:
         print("  Testing specific imports from term...")
-        from commands.term_main import main
+        from cli.commands.term_main import main
         print("    ✓ main function imported successfully")
     except ImportError as e:
-        error_msg = f"Failed to import main from commands.term_main: {e}"
+        error_msg = f"Failed to import main from cli.commands.term_main: {e}"
         print(f"    ✗ {error_msg}")
         errors.append(error_msg)
     except Exception as e:
-        error_msg = f"Unexpected error importing from commands.term_main: {e}"
+        error_msg = f"Unexpected error importing from cli.commands.term_main: {e}"
         print(f"    ✗ {error_msg}")
         errors.append(error_msg)
     
