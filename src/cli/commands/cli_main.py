@@ -1984,6 +1984,16 @@ def setup_parser():
     parser.add_argument('--sandbox', action='store_true',
                        help='Use sandbox API (https://sandbox.rediacc.com)')
     
+    # Protocol registration arguments (cross-platform)
+    parser.add_argument('--register-protocol', action='store_true',
+                       help='Register rediacc:// protocol for browser integration (requires admin privileges on Windows)')
+    parser.add_argument('--unregister-protocol', action='store_true',
+                       help='Unregister rediacc:// protocol (requires admin privileges on Windows)')
+    parser.add_argument('--protocol-status', action='store_true',
+                       help='Show rediacc:// protocol registration status')
+    parser.add_argument('--system-wide', action='store_true',
+                       help='Install protocol system-wide (requires sudo on Linux/macOS, admin on Windows)')
+    
     subparsers = parser.add_subparsers(dest='command', help='Command')
     
     for cmd_name, cmd_def in CLI_COMMANDS.items():
@@ -2102,6 +2112,10 @@ def setup_parser():
                             kwargs['dest'] = param_name.replace('-', '_')
                             
                             subcmd_parser.add_argument(*args, **kwargs)
+    
+    # Add protocol-handler command (for internal use by protocol registration)
+    protocol_parser = subparsers.add_parser('protocol-handler', help='Handle rediacc:// protocol URLs (internal use)')
+    protocol_parser.add_argument('url', help='The rediacc:// URL to handle')
     
     return parser
 
@@ -2307,6 +2321,112 @@ def main():
         logger.debug(f"Command: {args.command}")
         logger.debug(f"Arguments: {vars(args)}")
     
+    # Handle protocol registration arguments (before command processing)
+    if hasattr(args, 'register_protocol') and args.register_protocol:
+        try:
+            from ..core.protocol_handler import register_protocol, get_platform
+            system_wide = hasattr(args, 'system_wide') and args.system_wide
+            platform_name = get_platform()
+            
+            print(f"Registering rediacc:// protocol on {platform_name}...")
+            if system_wide:
+                print("Note: System-wide registration requires elevated privileges")
+            
+            success = register_protocol(force=False, system_wide=system_wide)
+            if success:
+                print("Successfully registered rediacc:// protocol for browser integration")
+                if platform_name == "windows":
+                    print("You may need to restart your browser for changes to take effect")
+                elif platform_name == "linux":
+                    print("You may need to log out and back in for changes to take effect")
+                elif platform_name == "macos":
+                    print("Changes should take effect immediately")
+                return 0
+            else:
+                print("Failed to register rediacc:// protocol", file=sys.stderr)
+                return 1
+        except Exception as e:
+            print(f"Error registering protocol: {e}", file=sys.stderr)
+            return 1
+    
+    if hasattr(args, 'unregister_protocol') and args.unregister_protocol:
+        try:
+            from ..core.protocol_handler import unregister_protocol, get_platform
+            system_wide = hasattr(args, 'system_wide') and args.system_wide
+            platform_name = get_platform()
+            
+            print(f"Unregistering rediacc:// protocol from {platform_name}...")
+            success = unregister_protocol(system_wide=system_wide)
+            if success:
+                print("Successfully unregistered rediacc:// protocol")
+                return 0
+            else:
+                print("Failed to unregister rediacc:// protocol", file=sys.stderr)
+                return 1
+        except Exception as e:
+            print(f"Error unregistering protocol: {e}", file=sys.stderr)
+            return 1
+    
+    if hasattr(args, 'protocol_status') and args.protocol_status:
+        try:
+            from ..core.protocol_handler import get_protocol_status, get_install_instructions
+            system_wide = hasattr(args, 'system_wide') and args.system_wide
+            status = get_protocol_status(system_wide=system_wide)
+            
+            print(f"Protocol Registration Status:")
+            print(f"  Platform: {status.get('platform', 'unknown')}")
+            print(f"  Supported: {status.get('supported', False)}")
+            
+            if status.get('supported'):
+                print(f"  Registered: {status.get('registered', False)}")
+                
+                # Platform-specific status information
+                if 'admin_privileges' in status:
+                    print(f"  Admin Privileges: {status['admin_privileges']}")
+                if 'dependencies' in status:
+                    deps = status['dependencies']
+                    print(f"  Dependencies Available: {status.get('dependencies_available', 'unknown')}")
+                    for dep, available in deps.items():
+                        print(f"    {dep}: {'✓' if available else '✗'}")
+                
+                print(f"  Python Executable: {status.get('python_executable', 'not found')}")
+                print(f"  CLI Script: {status.get('cli_script', 'not found')}")
+                
+                # Platform-specific details
+                if 'current_handler' in status:
+                    print(f"  Current Handler: {status.get('current_handler', 'none')}")
+                if 'desktop_file_exists' in status:
+                    print(f"  Desktop File Exists: {status['desktop_file_exists']}")
+                if 'launch_agent_exists' in status:
+                    print(f"  Launch Agent Exists: {status['launch_agent_exists']}")
+                
+                if status.get('registered'):
+                    if 'command' in status:
+                        current_cmd = status.get('command', 'not found')
+                        expected_cmd = status.get('expected_command', 'not found')
+                        print(f"  Current Command: {current_cmd}")
+                        
+                        if current_cmd != expected_cmd:
+                            print(f"  Expected Command: {expected_cmd}")
+                            print("  WARNING: Current registration may be outdated")
+                
+                if 'error' in status:
+                    print(f"  Error: {status['error']}")
+            else:
+                print(f"  Message: {status.get('message', 'Protocol registration not supported')}")
+            
+            # Show installation instructions if not registered
+            if not status.get('registered', False):
+                print("\nInstallation Instructions:")
+                instructions = get_install_instructions()
+                for instruction in instructions:
+                    print(f"  {instruction}")
+            
+            return 0
+        except Exception as e:
+            print(f"Error checking protocol status: {e}", file=sys.stderr)
+            return 1
+    
     if not args.command:
         parser.print_help()
         return 1
@@ -2345,7 +2465,16 @@ def main():
         print(help_text)
         return 0
     
-    if args.command == 'login':
+    if args.command == 'protocol-handler':
+        # Handle protocol URL (used when browser calls rediacc:// URLs)
+        try:
+            from ..core.protocol_handler import handle_protocol_url
+            return handle_protocol_url(args.url)
+        except Exception as e:
+            logger.error(f"Protocol handler error: {e}")
+            print(f"Error handling protocol URL: {e}", file=sys.stderr)
+            return 1
+    elif args.command == 'login':
         return handler.login(args)
     elif args.command == 'logout':
         return handler.logout(args)

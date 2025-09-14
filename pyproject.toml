@@ -79,11 +79,11 @@ test = [
 ]
 
 [project.scripts]
-rediacc = "cli.commands.cli:main"
-rediacc-sync = "cli.commands.sync:main"
-rediacc-term = "cli.commands.term:main"
-rediacc-plugin = "cli.commands.plugin:main"
-rediacc-workflow = "cli.commands.workflow:main"
+rediacc = "cli.commands.cli_main:main"
+rediacc-sync = "cli.commands.sync_main:main"
+rediacc-term = "cli.commands.term_main:main"
+rediacc-plugin = "cli.commands.plugin_main:main"
+rediacc-workflow = "cli.commands.workflow_main:main"
 rediacc-desktop = "cli.gui.main:main"
 rediacc-gui = "cli.gui.main:main"
 

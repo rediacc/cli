@@ -1,0 +1,605 @@
+#!/usr/bin/env python3
+# -*- coding: utf-8 -*-
+"""
+Windows Protocol Handler for rediacc:// URLs
+Provides Windows registry management and URL parsing for browser integration
+"""
+
+import os
+import sys
+import re
+import subprocess
+import urllib.parse
+import platform
+from typing import Dict, Any, Optional, List, Tuple
+from pathlib import Path
+
+from .shared import is_windows
+from .config import get_logger
+
+logger = get_logger(__name__)
+
+class ProtocolHandlerError(Exception):
+    """Protocol handler specific errors"""
+    pass
+
+def get_platform() -> str:
+    """Get the current platform (windows, linux, macos)"""
+    system = platform.system().lower()
+    if system == "darwin":
+        return "macos"
+    elif system == "linux":
+        return "linux"
+    elif system == "windows":
+        return "windows"
+    else:
+        return "unknown"
+
+def get_platform_handler(platform_name: str = None):
+    """Get the appropriate protocol handler for the current platform"""
+    if platform_name is None:
+        platform_name = get_platform()
+    
+    if platform_name == "windows":
+        return WindowsProtocolHandler()
+    elif platform_name == "linux":
+        from .linux_protocol_handler import LinuxProtocolHandler
+        return LinuxProtocolHandler()
+    elif platform_name == "macos":
+        from .macos_protocol_handler import MacOSProtocolHandler
+        return MacOSProtocolHandler()
+    else:
+        raise ProtocolHandlerError(f"Unsupported platform: {platform_name}")
+
+def is_protocol_supported() -> bool:
+    """Check if protocol registration is supported on the current platform"""
+    return get_platform() in ["windows", "linux", "macos"]
+
+class WindowsProtocolHandler:
+    """Handles Windows registry operations for rediacc:// protocol"""
+    
+    PROTOCOL_SCHEME = "rediacc"
+    REGISTRY_ROOT = r"HKEY_CLASSES_ROOT"
+    
+    def __init__(self):
+        if not is_windows():
+            raise ProtocolHandlerError("Windows Protocol Handler can only be used on Windows")
+    
+    @property
+    def registry_key(self) -> str:
+        """Get the main registry key for the protocol"""
+        return f"{self.REGISTRY_ROOT}\\{self.PROTOCOL_SCHEME}"
+    
+    @property
+    def command_key(self) -> str:
+        """Get the command registry key for the protocol"""
+        return f"{self.registry_key}\\shell\\open\\command"
+    
+    def get_python_executable(self) -> str:
+        """Get the current Python executable path"""
+        return sys.executable
+    
+    def get_cli_script_path(self) -> str:
+        """Get the path to the CLI main script"""
+        # Try to find the CLI script in the package
+        cli_module = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+        cli_script = os.path.join(cli_module, "commands", "cli_main.py")
+        
+        if os.path.exists(cli_script):
+            return cli_script
+        
+        # Fallback: try to use the module import path
+        try:
+            import cli.commands.cli_main
+            return cli.commands.cli_main.__file__
+        except ImportError:
+            pass
+        
+        # Last resort: use the current file's relative path
+        current_dir = Path(__file__).parent.parent
+        return str(current_dir / "commands" / "cli_main.py")
+    
+    def get_protocol_command(self) -> str:
+        """Get the command string for protocol handling"""
+        python_exe = self.get_python_executable()
+        cli_script = self.get_cli_script_path()
+        
+        # Use protocol-handler command with URL parameter
+        return f'"{python_exe}" "{cli_script}" protocol-handler "%1"'
+    
+    def check_admin_privileges(self) -> bool:
+        """Check if running with administrator privileges"""
+        try:
+            # Try to access a system registry key
+            result = subprocess.run([
+                "reg", "query", "HKEY_LOCAL_MACHINE\\SOFTWARE\\Microsoft\\Windows\\CurrentVersion",
+                "/v", "ProgramFilesDir"
+            ], capture_output=True, text=True, timeout=10)
+            return result.returncode == 0
+        except (subprocess.TimeoutExpired, FileNotFoundError):
+            return False
+    
+    def is_protocol_registered(self) -> bool:
+        """Check if the rediacc protocol is already registered"""
+        try:
+            result = subprocess.run([
+                "reg", "query", self.registry_key
+            ], capture_output=True, text=True, timeout=10)
+            return result.returncode == 0
+        except (subprocess.TimeoutExpired, FileNotFoundError):
+            return False
+    
+    def register_protocol(self, force: bool = False) -> bool:
+        """Register the rediacc:// protocol in Windows registry"""
+        if not force and self.is_protocol_registered():
+            logger.info("Protocol already registered")
+            return True
+        
+        if not self.check_admin_privileges():
+            raise ProtocolHandlerError(
+                "Administrator privileges required for protocol registration. "
+                "Please run PowerShell as Administrator and try again."
+            )
+        
+        try:
+            # Create main protocol key
+            result1 = subprocess.run([
+                "reg", "add", self.registry_key,
+                "/ve", "/d", "URL:Rediacc Protocol",
+                "/f"
+            ], capture_output=True, text=True, timeout=30)
+            
+            # Add URL Protocol value
+            result2 = subprocess.run([
+                "reg", "add", self.registry_key,
+                "/v", "URL Protocol",
+                "/t", "REG_SZ",
+                "/d", "",
+                "/f"
+            ], capture_output=True, text=True, timeout=30)
+            
+            # Create command key with protocol handler
+            command = self.get_protocol_command()
+            result3 = subprocess.run([
+                "reg", "add", self.command_key,
+                "/ve", "/d", command,
+                "/f"
+            ], capture_output=True, text=True, timeout=30)
+            
+            # Check if all operations succeeded
+            success = all(r.returncode == 0 for r in [result1, result2, result3])
+            
+            if success:
+                logger.info(f"Successfully registered {self.PROTOCOL_SCHEME}:// protocol")
+                return True
+            else:
+                error_msgs = []
+                for i, result in enumerate([result1, result2, result3], 1):
+                    if result.returncode != 0:
+                        error_msgs.append(f"Step {i}: {result.stderr.strip()}")
+                
+                raise ProtocolHandlerError(f"Registry operations failed: {'; '.join(error_msgs)}")
+        
+        except subprocess.TimeoutExpired:
+            raise ProtocolHandlerError("Registry operation timed out")
+        except FileNotFoundError:
+            raise ProtocolHandlerError("Registry command not found (reg.exe)")
+    
+    def unregister_protocol(self) -> bool:
+        """Unregister the rediacc:// protocol from Windows registry"""
+        if not self.is_protocol_registered():
+            logger.info("Protocol not registered")
+            return True
+        
+        if not self.check_admin_privileges():
+            raise ProtocolHandlerError(
+                "Administrator privileges required for protocol unregistration. "
+                "Please run PowerShell as Administrator and try again."
+            )
+        
+        try:
+            # Remove the entire protocol key tree
+            result = subprocess.run([
+                "reg", "delete", self.registry_key,
+                "/f"
+            ], capture_output=True, text=True, timeout=30)
+            
+            if result.returncode == 0:
+                logger.info(f"Successfully unregistered {self.PROTOCOL_SCHEME}:// protocol")
+                return True
+            else:
+                raise ProtocolHandlerError(f"Failed to delete registry key: {result.stderr.strip()}")
+        
+        except subprocess.TimeoutExpired:
+            raise ProtocolHandlerError("Registry operation timed out")
+        except FileNotFoundError:
+            raise ProtocolHandlerError("Registry command not found (reg.exe)")
+    
+    def get_protocol_status(self) -> Dict[str, Any]:
+        """Get detailed status of protocol registration"""
+        status = {
+            "registered": False,
+            "admin_privileges": self.check_admin_privileges(),
+            "command": None,
+            "python_executable": self.get_python_executable(),
+            "cli_script": self.get_cli_script_path(),
+            "expected_command": self.get_protocol_command()
+        }
+        
+        if self.is_protocol_registered():
+            status["registered"] = True
+            
+            # Try to get the current command
+            try:
+                result = subprocess.run([
+                    "reg", "query", self.command_key,
+                    "/ve"
+                ], capture_output=True, text=True, timeout=10)
+                
+                if result.returncode == 0:
+                    # Parse the output to extract the command
+                    for line in result.stdout.splitlines():
+                        if "(Default)" in line:
+                            # Extract command after "REG_SZ"
+                            parts = line.split("REG_SZ", 1)
+                            if len(parts) > 1:
+                                status["command"] = parts[1].strip()
+                            break
+            except (subprocess.TimeoutExpired, FileNotFoundError):
+                pass
+        
+        return status
+
+class ProtocolUrlParser:
+    """Parse and handle rediacc:// protocol URLs"""
+    
+    VALID_ACTIONS = {"sync", "terminal", "plugin", "browser"}
+    PROTOCOL_SCHEME = "rediacc"
+    
+    def __init__(self):
+        pass
+    
+    def parse_url(self, url: str) -> Dict[str, Any]:
+        """Parse a rediacc:// URL into components"""
+        if not url.startswith(f"{self.PROTOCOL_SCHEME}://"):
+            raise ValueError(f"Invalid protocol scheme. Expected {self.PROTOCOL_SCHEME}://")
+        
+        try:
+            parsed = urllib.parse.urlparse(url)
+
+            # Extract path components and handle two possible formats:
+            # Format 1: rediacc://token/team/machine/repository[/action]
+            # Format 2: rediacc://hostname/team/machine/repository[/action] (where hostname is token)
+
+            path_parts = [p for p in parsed.path.split('/') if p]
+
+            # Check if token is in hostname (netloc) or path
+            if parsed.netloc and len(path_parts) >= 3:
+                # Format 2: token in hostname, path has team/machine/repository[/action]
+                token = parsed.netloc
+                team = urllib.parse.unquote(path_parts[0])
+                machine = urllib.parse.unquote(path_parts[1])
+                repository = urllib.parse.unquote(path_parts[2])
+                action_index = 3
+            elif len(path_parts) >= 4:
+                # Format 1: token/team/machine/repository[/action] in path
+                token = urllib.parse.unquote(path_parts[0])
+                team = urllib.parse.unquote(path_parts[1])
+                machine = urllib.parse.unquote(path_parts[2])
+                repository = urllib.parse.unquote(path_parts[3])
+                action_index = 4
+            else:
+                raise ValueError("URL must contain at least token, team, machine, and repository")
+
+            result = {
+                "protocol": self.PROTOCOL_SCHEME,
+                "token": token,
+                "team": team,
+                "machine": machine,
+                "repository": repository,
+                "action": None,
+                "params": {}
+            }
+            
+            # Extract action if present
+            if len(path_parts) > action_index:
+                action = path_parts[action_index].lower()
+                if action in self.VALID_ACTIONS:
+                    result["action"] = action
+                else:
+                    raise ValueError(f"Invalid action '{action}'. Must be one of: {', '.join(self.VALID_ACTIONS)}")
+            
+            # Parse query parameters
+            if parsed.query:
+                query_params = urllib.parse.parse_qs(parsed.query, keep_blank_values=True)
+                # Convert lists to single values (take first occurrence)
+                result["params"] = {k: v[0] if v else "" for k, v in query_params.items()}
+            
+            return result
+        
+        except Exception as e:
+            raise ValueError(f"Failed to parse URL '{url}': {str(e)}")
+    
+    def build_cli_command(self, parsed_url: Dict[str, Any]) -> List[str]:
+        """Build CLI command from parsed URL"""
+        token = parsed_url["token"]
+        team = parsed_url["team"]
+        machine = parsed_url["machine"]
+        repository = parsed_url["repository"]
+        action = parsed_url["action"]
+        params = parsed_url["params"]
+        
+        if not action:
+            # Default to terminal action if no action specified (most commonly useful)
+            action = "terminal"
+            logger.info(f"No action specified in URL, defaulting to terminal action")
+        
+        # Build base command based on action
+        if action == "sync":
+            cmd = ["sync"]
+            
+            # Add sync-specific parameters
+            direction = params.get("direction", "download")
+            if direction not in ["upload", "download"]:
+                raise ValueError(f"Invalid sync direction: {direction}")
+            
+            cmd.append(direction)
+            cmd.extend(["--token", token, "--machine", machine, "--repo", repository])
+            
+            # Optional sync parameters
+            if "localPath" in params:
+                cmd.extend(["--local", params["localPath"]])
+            if "mirror" in params and params["mirror"].lower() in ["true", "yes", "1"]:
+                cmd.append("--mirror")
+            if "verify" in params and params["verify"].lower() in ["true", "yes", "1"]:
+                cmd.append("--verify")
+            if "preview" in params and params["preview"].lower() in ["true", "yes", "1"]:
+                cmd.append("--preview")
+        
+        elif action == "terminal":
+            cmd = ["term"]
+            cmd.extend(["--token", token, "--machine", machine, "--repo", repository])
+            
+            # Optional terminal parameters
+            if "command" in params:
+                cmd.extend(["--command", params["command"]])
+            if "terminalType" in params and params["terminalType"] == "machine":
+                # Connect to machine directly instead of repository
+                cmd = ["term", "--token", token, "--machine", machine]
+        
+        elif action == "plugin":
+            # Plugin action might need different handling
+            cmd = ["plugin"]
+            cmd.extend(["--token", token, "--machine", machine, "--repo", repository])
+            
+            if "name" in params:
+                cmd.extend(["--plugin", params["name"]])
+            if "port" in params:
+                cmd.extend(["--port", params["port"]])
+        
+        elif action == "browser":
+            # File browser action - use GUI application
+            cmd = ["gui"]  # Use the GUI application for file browsing
+            cmd.extend(["--token", token, "--machine", machine, "--repo", repository])
+
+            if "path" in params:
+                cmd.extend(["--path", params["path"]])
+        
+        else:
+            raise ValueError(f"Unsupported action: {action}")
+        
+        return cmd
+
+def handle_protocol_url(url: str) -> int:
+    """Handle a protocol URL by parsing and executing the appropriate CLI command"""
+    try:
+        logger.info(f"Handling protocol URL: {url}")
+        
+        parser = ProtocolUrlParser()
+        parsed = parser.parse_url(url)
+        
+        logger.debug(f"Parsed URL components: {parsed}")
+        
+        cmd_args = parser.build_cli_command(parsed)
+        logger.info(f"Executing command: {cmd_args}")
+        
+        # Execute the appropriate CLI tool based on the action
+        action = parsed.get("action")
+        
+        if action == "sync":
+            # Use rediacc-sync tool
+            python_exe = sys.executable
+            sync_script = os.path.join(os.path.dirname(os.path.dirname(__file__)), "commands", "sync_main.py")
+            
+            if os.path.exists(sync_script):
+                result = subprocess.run([python_exe, sync_script] + cmd_args[1:], timeout=300)
+                return result.returncode
+            else:
+                logger.error(f"Sync script not found: {sync_script}")
+                return 1
+        
+        elif action == "terminal":
+            # Use rediacc-term tool
+            python_exe = sys.executable
+            term_script = os.path.join(os.path.dirname(os.path.dirname(__file__)), "commands", "term_main.py")
+            
+            if os.path.exists(term_script):
+                result = subprocess.run([python_exe, term_script] + cmd_args[1:], timeout=300)
+                return result.returncode
+            else:
+                logger.error(f"Terminal script not found: {term_script}")
+                return 1
+        
+        elif action in ["plugin", "browser"]:
+            # Use main CLI for plugin and browser actions
+            # Import and execute the CLI command
+            # We need to modify sys.argv to simulate the command being called
+            original_argv = sys.argv[:]
+            try:
+                sys.argv = ["rediacc"] + cmd_args
+                
+                # Import and call the main CLI function (avoid circular import)
+                import importlib
+                cli_main = importlib.import_module('cli.commands.cli_main')
+                return cli_main.main()
+            finally:
+                sys.argv = original_argv
+        
+        else:
+            raise ValueError(f"Unsupported action: {action}")
+    
+    except Exception as e:
+        logger.error(f"Protocol handler error: {e}")
+        print(f"Error handling protocol URL: {e}", file=sys.stderr)
+        return 1
+
+def register_protocol(force: bool = False, system_wide: bool = False) -> bool:
+    """Register the rediacc:// protocol (cross-platform)"""
+    if not is_protocol_supported():
+        platform_name = get_platform()
+        raise ProtocolHandlerError(f"Protocol registration is not supported on {platform_name}")
+    
+    try:
+        handler = get_platform_handler()
+        
+        # Handle different function signatures across platforms
+        if hasattr(handler, 'register_protocol'):
+            # Check if the handler supports system_wide parameter
+            import inspect
+            sig = inspect.signature(handler.register_protocol)
+            if 'system_wide' in sig.parameters:
+                return handler.register_protocol(force=force, system_wide=system_wide)
+            else:
+                return handler.register_protocol(force=force)
+        else:
+            raise ProtocolHandlerError("Handler does not support protocol registration")
+    
+    except ImportError as e:
+        raise ProtocolHandlerError(f"Failed to import platform handler: {e}")
+
+def unregister_protocol(system_wide: bool = False) -> bool:
+    """Unregister the rediacc:// protocol (cross-platform)"""
+    if not is_protocol_supported():
+        platform_name = get_platform()
+        raise ProtocolHandlerError(f"Protocol unregistration is not supported on {platform_name}")
+    
+    try:
+        handler = get_platform_handler()
+        
+        # Handle different function signatures across platforms
+        if hasattr(handler, 'unregister_protocol'):
+            # Check if the handler supports system_wide parameter
+            import inspect
+            sig = inspect.signature(handler.unregister_protocol)
+            if 'system_wide' in sig.parameters:
+                return handler.unregister_protocol(system_wide=system_wide)
+            else:
+                return handler.unregister_protocol()
+        else:
+            raise ProtocolHandlerError("Handler does not support protocol unregistration")
+    
+    except ImportError as e:
+        raise ProtocolHandlerError(f"Failed to import platform handler: {e}")
+
+def get_protocol_status(system_wide: bool = False) -> Dict[str, Any]:
+    """Get protocol registration status (cross-platform)"""
+    platform_name = get_platform()
+    
+    base_status = {
+        "platform": platform_name,
+        "supported": is_protocol_supported()
+    }
+    
+    if not is_protocol_supported():
+        base_status.update({
+            "registered": False,
+            "message": f"Protocol registration is not supported on {platform_name}"
+        })
+        return base_status
+    
+    try:
+        handler = get_platform_handler()
+        
+        if hasattr(handler, 'get_protocol_status'):
+            # Check if the handler supports system_wide parameter
+            import inspect
+            sig = inspect.signature(handler.get_protocol_status)
+            if 'system_wide' in sig.parameters:
+                status = handler.get_protocol_status(system_wide=system_wide)
+            else:
+                status = handler.get_protocol_status()
+            
+            # Merge with base status
+            base_status.update(status)
+            return base_status
+        else:
+            base_status.update({
+                "registered": False,
+                "message": "Handler does not support status checking"
+            })
+            return base_status
+    
+    except ImportError as e:
+        base_status.update({
+            "registered": False,
+            "error": f"Failed to import platform handler: {e}"
+        })
+        return base_status
+    except Exception as e:
+        base_status.update({
+            "registered": False,
+            "error": f"Error checking protocol status: {e}"
+        })
+        return base_status
+
+def get_install_instructions() -> List[str]:
+    """Get platform-specific installation instructions"""
+    platform_name = get_platform()
+    
+    if not is_protocol_supported():
+        return [
+            f"Protocol registration is not supported on {platform_name}",
+            "Supported platforms: Windows, Linux, macOS"
+        ]
+    
+    try:
+        handler = get_platform_handler()
+        
+        if hasattr(handler, 'get_install_instructions'):
+            return handler.get_install_instructions()
+        else:
+            # Generic instructions based on platform
+            if platform_name == "windows":
+                return [
+                    "Run as Administrator:",
+                    "  .\\rediacc.ps1 -RegisterProtocol",
+                    "  # or",
+                    "  rediacc --register-protocol"
+                ]
+            elif platform_name == "linux":
+                return [
+                    "Install xdg-utils if not available:",
+                    "  sudo apt install xdg-utils  # Ubuntu/Debian",
+                    "  sudo dnf install xdg-utils  # Fedora/RHEL",
+                    "",
+                    "Register protocol:",
+                    "  ./rediacc --register-protocol"
+                ]
+            elif platform_name == "macos":
+                return [
+                    "Optional: Install duti for enhanced support:",
+                    "  brew install duti",
+                    "",
+                    "Register protocol:",
+                    "  ./rediacc --register-protocol"
+                ]
+    
+    except Exception as e:
+        return [
+            f"Error getting instructions for {platform_name}: {e}",
+            "",
+            "Generic instructions:",
+            "  ./rediacc --register-protocol"
+        ]
+    
+    return ["No specific instructions available"]
