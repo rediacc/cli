@@ -21,15 +21,15 @@ import time
 import datetime
 
 if TYPE_CHECKING:
-    from gui.main import MainWindow
+    from cli.gui.main import MainWindow
 
 # Add parent directory to path for imports if running directly
 if __name__ == "__main__":
     sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
 # Import core functionality
-from core.config import get_logger, i18n
-from core.shared import (
+from cli.core.config import get_logger, i18n
+from cli.core.shared import (
     RepositoryConnection,
     colorize,
     setup_ssh_for_connection,
@@ -37,8 +37,8 @@ from core.shared import (
 )
 
 # Import GUI components
-from gui.base import create_tooltip
-from gui.utilities import (
+from cli.gui.base import create_tooltip
+from cli.gui.utilities import (
     format_size, format_time, parse_ls_output, center_window,
     COMBO_WIDTH_SMALL, COMBO_WIDTH_MEDIUM, COLUMN_WIDTH_NAME, COLUMN_WIDTH_SIZE,
     COLUMN_WIDTH_MODIFIED, COLUMN_WIDTH_TYPE, COLOR_SUCCESS, COLOR_ERROR,

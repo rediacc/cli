@@ -8,8 +8,8 @@ import os
 if __name__ == "__main__":
     sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
-from core.config import i18n
-from gui.utilities import (
+from cli.core.config import i18n
+from cli.gui.utilities import (
     COLOR_TOOLTIP_BG, BORDER_WIDTH_THIN, FONT_FAMILY_DEFAULT,
     FONT_SIZE_SMALL, FONT_STYLE_NORMAL
 )

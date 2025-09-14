@@ -9,7 +9,7 @@ import os
 from pathlib import Path
 
 # Add parent directories to path
-sys.path.insert(0, str(Path(__file__).parent.parent.parent / 'src' / 'cli'))
+sys.path.insert(0, str(Path(__file__).parent.parent.parent / 'src'))
 
 # Import the test suite - need to add the directory to path
 sys.path.insert(0, str(Path(__file__).parent))

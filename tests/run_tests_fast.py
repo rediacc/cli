@@ -19,8 +19,7 @@ sys.path.insert(0, str(Path(__file__).parent.parent / 'src'))
 sys.path.insert(0, str(Path(__file__).parent))  # For helpers
 
 # Import API client and helpers
-sys.path.insert(0, str(Path(__file__).parent.parent / 'src' / 'cli'))  # Add CLI source to path
-from core.api_client import SuperClient
+from cli.core.api_client import SuperClient
 from totp_helper import generate_totp_code, hash_password
 
 # Load environment variables from parent .env file

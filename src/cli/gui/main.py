@@ -34,7 +34,7 @@ sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 from cli._version import __version__
 
 # Import from consolidated core module
-from core.config import (
+from cli.core.config import (
     TokenManager,
     SubprocessRunner,
     i18n,
@@ -45,10 +45,10 @@ from core.config import (
     get,
     api_mutex
 )
-from core.api_client import client
+from cli.core.api_client import client
 
 # Import core functionality for SSH operations
-from core.shared import (
+from cli.core.shared import (
     RepositoryConnection,
     colorize,
     setup_ssh_for_connection,
@@ -56,10 +56,10 @@ from core.shared import (
 )
 
 # Import GUI components
-from gui.base import BaseWindow, create_tooltip
-from gui.login import LoginWindow
-from gui.file_browser import DualPaneFileBrowser
-from gui.utilities import (
+from cli.gui.base import BaseWindow, create_tooltip
+from cli.gui.login import LoginWindow
+from cli.gui.file_browser import DualPaneFileBrowser
+from cli.gui.utilities import (
     check_token_validity, center_window,
     MAIN_WINDOW_DEFAULT_SIZE, COMBO_WIDTH_SMALL, COMBO_WIDTH_MEDIUM,
     COLUMN_WIDTH_NAME, COLUMN_WIDTH_SIZE, COLUMN_WIDTH_MODIFIED, COLUMN_WIDTH_TYPE,
@@ -82,7 +82,7 @@ class MainWindow(BaseWindow):
         self.api_client = client
         
         # Ensure config manager is set for token rotation
-        from core.config import get_default_config_manager
+        from cli.core.config import get_default_config_manager
         self.api_client.set_config_manager(get_default_config_manager())
         
         # Center window at default size

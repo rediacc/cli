@@ -24,13 +24,13 @@ import os
 if __name__ == "__main__":
     sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
-from core.config import SubprocessRunner, i18n, TokenManager, get_required, get, api_mutex
-from gui.base import BaseWindow
-from gui.utilities import (
+from cli.core.config import SubprocessRunner, i18n, TokenManager, get_required, get, api_mutex
+from cli.gui.base import BaseWindow
+from cli.gui.utilities import (
     LOGIN_WINDOW_SIZE, COMBO_WIDTH_SMALL, ENTRY_WIDTH_DEFAULT,
     COLOR_SUCCESS, COLOR_ERROR
 )
-from core.api_client import client, SimpleConfigManager
+from cli.core.api_client import client, SimpleConfigManager
 
 # Password hashing
 STATIC_SALT = 'Rd!@cc111$ecur3P@$$w0rd$@lt#H@$h'
@@ -164,7 +164,7 @@ class LoginWindow(BaseWindow):
         """Perform login in background thread using direct API call"""
         try:
             # Set up config manager with master password
-            from core.config import get_default_config_manager
+            from cli.core.config import get_default_config_manager
             config_manager = get_default_config_manager()
             if master_password.strip():
                 config_manager.set_master_password(master_password)

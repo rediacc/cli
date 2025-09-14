@@ -11,8 +11,8 @@ import secrets
 import string
 from typing import Optional, Dict, Any
 
-from core.shared import colorize
-from core.api_client import client
+from cli.core.shared import colorize
+from cli.core.api_client import client
 
 
 def format_output(data, format_type, message=None, error=None):

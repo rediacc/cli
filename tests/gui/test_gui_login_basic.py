@@ -14,7 +14,7 @@ import threading
 import pytest
 
 # Add parent directories to path
-sys.path.insert(0, str(Path(__file__).parent.parent.parent / 'src' / 'cli'))
+sys.path.insert(0, str(Path(__file__).parent.parent.parent / 'src'))
 
 # Load environment variables manually
 env_path = Path(__file__).parent.parent.parent.parent / '.env'
@@ -40,7 +40,7 @@ class GUITestSuite:
     def setup_shared_window(self):
         """Create shared window for simple tests"""
         if not self.shared_window:
-            from gui.login import LoginWindow
+            from cli.gui.login import LoginWindow
             self.shared_window = LoginWindow(on_login_success=lambda: None)
             print("✓ Created shared window for non-login tests")
     
@@ -146,7 +146,7 @@ class GUITestSuite:
         print("\nTest 4: Wrong Credentials")
         print("-" * 40)
         
-        from gui.login import LoginWindow
+        from cli.gui.login import LoginWindow
         
         print("Creating dedicated window for login test...")
         
@@ -238,7 +238,7 @@ class GUITestSuite:
             print("⚠ No SYSTEM_API_URL in .env, skipping real login test")
             return False
         
-        from gui.login import LoginWindow
+        from cli.gui.login import LoginWindow
         
         print("Creating dedicated window for login test...")
         print("Testing with real credentials from .env (NO MOCKING)...")
@@ -378,7 +378,7 @@ class GUITestSuite:
             print("⚠ No SYSTEM_API_URL in .env, skipping terminal test")
             return False
         
-        from gui.login import LoginWindow
+        from cli.gui.login import LoginWindow
         import importlib.util
         
         print("Testing login and terminal launch workflow...")
