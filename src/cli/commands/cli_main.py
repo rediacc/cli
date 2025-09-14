@@ -712,8 +712,10 @@ class CommandHandler:
                 return False
         
         if success_message and format_args and '{task_id}' in success_message:
-            if (resultSets := response.get('resultSets', [])) and len(resultSets) > 1 and resultSets[1].get('data'):
-                if task_id := resultSets[1]['data'][0].get('taskId') or resultSets[1]['data'][0].get('TaskId'):
+            resultSets = response.get('resultSets', [])
+            if resultSets and len(resultSets) > 1 and resultSets[1].get('data'):
+                task_id = resultSets[1]['data'][0].get('taskId') or resultSets[1]['data'][0].get('TaskId')
+                if task_id:
                     setattr(format_args, 'task_id', task_id)
         
         if not success_message: return True
@@ -746,14 +748,19 @@ class CommandHandler:
         login_params = {'name': args.session_name or "CLI Session"}
         
         for attr, param in [('tfa_code', 'TFACode'), ('permissions', 'requestedPermissions'), ('expiration', 'tokenExpirationHours'), ('target', 'target')]:
-            if hasattr(args, attr) and (value := getattr(args, attr)): login_params[param] = value
+            if hasattr(args, attr):
+                value = getattr(args, attr)
+                if value:
+                    login_params[param] = value
         
         response = self.client.auth_request("CreateAuthenticationRequest", email, hash_pwd, login_params)
         
         if response.get('error'): print(format_output(None, self.output_format, None, f"Login failed: {response['error']}")); return 1
-        if not (resultSets := response.get('resultSets', [])) or not resultSets[0].get('data'): print(format_output(None, self.output_format, None, "Login failed: Could not get authentication token")); return 1
+        resultSets = response.get('resultSets', [])
+        if not resultSets or not resultSets[0].get('data'): print(format_output(None, self.output_format, None, "Login failed: Could not get authentication token")); return 1
         auth_data = resultSets[0]['data'][0]
-        if not (token := auth_data.get('nextRequestToken')): print(format_output(None, self.output_format, None, "Login failed: Invalid authentication token")); return 1
+        token = auth_data.get('nextRequestToken')
+        if not token: print(format_output(None, self.output_format, None, "Login failed: Invalid authentication token")); return 1
         
         is_authorized = auth_data.get('isAuthorized', True)
         authentication_status = auth_data.get('authenticationStatus', '')
@@ -792,8 +799,10 @@ class CommandHandler:
         self.config_manager.set_token_with_auth(token, email, company, vault_company)
         
         # Immediately fetch and update vault_company with COMPANY_ID after login
-        if company_info := self.client.get_company_vault():
-            if updated_vault := company_info.get('vaultCompany'):
+        company_info = self.client.get_company_vault()
+        if company_info:
+            updated_vault = company_info.get('vaultCompany')
+            if updated_vault:
                 self.config_manager.set_token_with_auth(token, email, company, updated_vault)
         
         # Check if company has vault encryption enabled
@@ -1063,7 +1072,8 @@ class CommandHandler:
                     required = "[required]" if param_info.get('required', False) else "[optional]"
                     default = f" (default: {param_info.get('default')})" if 'default' in param_info else ""
                     print(f"    - {param_name} {colorize(required, 'YELLOW')}{default}")
-                    if help_text := param_info.get('help', ''):
+                    help_text = param_info.get('help', '')
+                    if help_text:
                         print(f"      {help_text}")
         
         return 0
@@ -1100,35 +1110,42 @@ class CommandHandler:
         help_text = f"\n{colorize(help_info.get('description', 'No description available'), 'BOLD')}\n"
         
         # Add detailed description
-        if details := help_info.get('details'):
+        details = help_info.get('details')
+        if details:
             help_text += f"\n{details}\n"
         
         # Add parameters section
-        if params := help_info.get('parameters'):
+        params = help_info.get('parameters')
+        if params:
             help_text += f"\n{colorize('Parameters:', 'BLUE')}\n"
             for param_name, param_info in params.items():
                 req_text = colorize(" (required)", 'YELLOW') if param_info.get('required') else " (optional)"
                 help_text += f"  {colorize(param_name, 'GREEN')}{req_text}: {param_info['description']}\n"
                 
-                if default := param_info.get('default'):
+                default = param_info.get('default')
+                if default:
                     help_text += f"    Default: {default}\n"
                     
-                if example := param_info.get('example'):
+                example = param_info.get('example')
+                if example:
                     help_text += f"    Example: {example}\n"
         
         # Add examples section
-        if examples := help_info.get('examples'):
+        examples = help_info.get('examples')
+        if examples:
             help_text += f"\n{colorize('Examples:', 'BLUE')}\n"
             for ex in examples:
                 help_text += f"  $ {colorize(ex['command'], 'GREEN')}\n"
                 help_text += f"    {ex['description']}\n\n"
         
         # Add notes section
-        if notes := help_info.get('notes'):
+        notes = help_info.get('notes')
+        if notes:
             help_text += f"{colorize('Notes:', 'BLUE')} {notes}\n"
         
         # Add success message info if available
-        if success_msg := config.get('success_msg'):
+        success_msg = config.get('success_msg')
+        if success_msg:
             help_text += f"\n{colorize('Success message:', 'BLUE')} {success_msg}\n"
         
         return help_text
@@ -1143,7 +1160,8 @@ class CommandHandler:
             ('vault', 'status'): self.vault_status,
         }
         
-        if handler := special_handlers.get((cmd_type, resource_type)):
+        handler = special_handlers.get((cmd_type, resource_type))
+        if handler:
             return handler(args)
         
         if cmd_type not in API_ENDPOINTS or resource_type not in API_ENDPOINTS[cmd_type]:
