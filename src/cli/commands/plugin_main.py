@@ -70,13 +70,14 @@ def is_process_running(pid: int) -> bool:
 
 def clean_stale_connections():
     connections = load_connections()
-    active_connections = {
-        conn_id: conn_info
-        for conn_id, conn_info in connections.items()
-        if (pid := conn_info.get('ssh_pid')) and is_process_running(pid)
-    }
+    active_connections = {}
+    for conn_id, conn_info in connections.items():
+        pid = conn_info.get('ssh_pid')
+        if pid and is_process_running(pid):
+            active_connections[conn_id] = conn_info
     
-    if stale_connections := set(connections) - set(active_connections):
+    stale_connections = set(connections) - set(active_connections)
+    if stale_connections:
         for conn_id in stale_connections:
             print(colorize(f"Cleaning up stale connection: {conn_id}", 'YELLOW'))
         save_connections(active_connections)
@@ -112,7 +113,8 @@ def list_plugins(args):
             
             plugins = []
             for line in result.stdout.strip().split('\n'):
-                if '.sock' in line and (parts := line.split()) and len(parts) >= 9:
+                parts = line.split()
+                if '.sock' in line and parts and len(parts) >= 9:
                     socket_file = parts[-1]
                     plugin_name = socket_file.replace('.sock', '')
                     plugins.append(plugin_name)
@@ -170,8 +172,10 @@ def connect_plugin(args):
         if not is_port_available(args.port): 
             error_exit(f"Port {args.port} is not available")
         local_port = args.port
-    elif not (local_port := find_available_port()): 
-        error_exit("No available ports in range 7111-9111")
+    else:
+        local_port = find_available_port()
+        if not local_port:
+            error_exit("No available ports in range 7111-9111")
     
     conn = RepositoryConnection(args.team, args.machine, args.repo); conn.connect()
     
@@ -179,7 +183,8 @@ def connect_plugin(args):
     if args.dev: conn.connection_info['host_entry'] = None
     
     # Get SSH key for tunnel connection
-    if not (ssh_key := get_ssh_key_from_vault(args.team)):
+    ssh_key = get_ssh_key_from_vault(args.team)
+    if not ssh_key:
         error_exit(f"SSH key not found for team '{args.team}'")
     
     # Use SSHTunnelConnection for persistent tunnels
@@ -216,7 +221,8 @@ def connect_plugin(args):
             if 'openssh' not in ssh_version_output: return False
             try:
                 import re
-                if match := re.search(r'openssh[_\s]+(\d+)\.(\d+)', ssh_version_output):
+                match = re.search(r'openssh[_\s]+(\d+)\.(\d+)', ssh_version_output)
+                if match:
                     major, minor = map(int, match.groups())
                     return major > 6 or (major == 6 and minor >= 7)
             except: return False
@@ -345,11 +351,13 @@ def disconnect_plugin(args):
         print(colorize(f"Disconnecting {conn_info['plugin']} (port {conn_info['local_port']})...", 'BLUE'))
         
         def stop_ssh_connection(conn_info: Dict[str, Any]):
-            if control_path := conn_info.get('control_path'):
+            control_path = conn_info.get('control_path')
+            if control_path:
                 try: subprocess.run(['ssh', '-O', 'stop', '-o', f'ControlPath={control_path}', 'dummy'], capture_output=True, stderr=subprocess.DEVNULL)
                 except: pass
             
-            if pid := conn_info.get('ssh_pid'):
+            pid = conn_info.get('ssh_pid')
+            if pid:
                 try:
                     os.kill(pid, signal.SIGTERM); time.sleep(0.5)
                     if is_process_running(pid): os.kill(pid, signal.SIGKILL)
@@ -358,7 +366,8 @@ def disconnect_plugin(args):
         stop_ssh_connection(conn_info)
         
         for file_key in ['ssh_key_file', 'known_hosts_file']:
-            if file_path := conn_info.get(file_key):
+            file_path = conn_info.get(file_key)
+            if file_path:
                 try: os.remove(file_path)
                 except: pass
         
@@ -369,7 +378,8 @@ def disconnect_plugin(args):
 
 def show_status(args):
     clean_stale_connections()
-    if not (connections := load_connections()): print(colorize("No active plugin connections", 'YELLOW')); return
+    connections = load_connections()
+    if not connections: print(colorize("No active plugin connections", 'YELLOW')); return
     
     print(colorize("Active Plugin Connections", 'HEADER'))
     print(colorize("=" * 80, 'BLUE'))

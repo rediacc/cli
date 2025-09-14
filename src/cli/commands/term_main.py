@@ -60,7 +60,8 @@ def connect_to_machine(args):
     validate_machine_accessibility(args.machine, args.team, connection_info['ip'])
     
     print(MESSAGES.get('retrieving_ssh_key', 'Retrieving SSH key...'))
-    if not (ssh_key := get_ssh_key_from_vault(args.team)): 
+    ssh_key = get_ssh_key_from_vault(args.team)
+    if not ssh_key: 
         error_exit(MESSAGES.get('ssh_key_not_found', 'SSH key not found').format(team=args.team))
     
     host_entry = None if args.dev else connection_info.get('host_entry')
@@ -100,7 +101,8 @@ def connect_to_terminal(args):
     
     original_host_entry = conn.connection_info.get('host_entry') if args.dev else None
     if args.dev: conn.connection_info['host_entry'] = None
-    if not (ssh_key := get_ssh_key_from_vault(args.team)): 
+    ssh_key = get_ssh_key_from_vault(args.team)
+    if not ssh_key: 
         error_exit(MESSAGES.get('ssh_key_not_found', 'SSH key not found').format(team=args.team))
     
     host_entry = None if args.dev else conn.connection_info.get('host_entry')
@@ -158,12 +160,14 @@ def main():
         examples.extend([f"  {example.get('title', '')}", f"    {example.get('command', '')}", ""])
     sections.append('\n'.join(examples))
     
-    if repo_env := help_config.get('repository_env_vars', {}):
+    repo_env = help_config.get('repository_env_vars', {})
+    if repo_env:
         env_section = [repo_env.get('title', ''), f"  {repo_env.get('subtitle', '')}"]
         env_section.extend(f"    {var:<15} - {desc}" for var, desc in repo_env.get('vars', {}).items())
         sections.append('\n'.join(env_section))
     
-    if machine_info := help_config.get('machine_only_info', {}):
+    machine_info = help_config.get('machine_only_info', {})
+    if machine_info:
         machine_section = [machine_info.get('title', '')]
         machine_section.extend(f"  {point}" for point in machine_info.get('points', []))
         sections.append('\n'.join(machine_section))

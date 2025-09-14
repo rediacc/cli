@@ -35,19 +35,22 @@ def find_msys2_executable(exe_name: str) -> Optional[str]:
     for msys2_path in filter(None, [os.environ.get('MSYS2_ROOT'), 'C:\\msys64', 'C:\\msys2', os.path.expanduser('~\\msys64'), os.path.expanduser('~\\msys2')]):
         if os.path.exists(msys2_path):
             for subdir in ['usr\\bin', 'mingw64\\bin', 'mingw32\\bin']:
-                if os.path.exists(exe_path := os.path.join(msys2_path, subdir, f'{exe_name}.exe')): return exe_path
+                exe_path = os.path.join(msys2_path, subdir, f'{exe_name}.exe')
+                if os.path.exists(exe_path): return exe_path
     return None
 
 def get_rsync_command() -> str:
     if is_windows():
-        if msys2_rsync := find_msys2_executable('rsync'): return msys2_rsync
+        msys2_rsync = find_msys2_executable('rsync')
+        if msys2_rsync: return msys2_rsync
         raise RuntimeError("rsync not found. Please install MSYS2 with rsync package.")
     if shutil.which('rsync'): return 'rsync'
     raise RuntimeError("rsync not found. Please install rsync.")
 
 def get_rsync_ssh_command(ssh_opts: str) -> str:
     if not is_windows(): return f'ssh {ssh_opts}'
-    if msys2_ssh := find_msys2_executable('ssh'): return f'{msys2_ssh.replace("\\", "/")} {ssh_opts}'
+    msys2_ssh = find_msys2_executable('ssh')
+    if msys2_ssh: return f'{msys2_ssh.replace("\\", "/")} {ssh_opts}'
     if shutil.which('ssh'): return f'ssh {ssh_opts}'
     raise RuntimeError("SSH not found for rsync")
 
@@ -108,7 +111,8 @@ def display_changes_and_confirm(changes: Dict[str, list], operation: str) -> boo
         ]
         
         for key, desc, color, prefix, suffix in categories:
-            if not (items := changes[key]): continue
+            items = changes[key]
+            if not items: continue
             print(colorize(f"\n{desc} ({len(items)}):", color))
             for item in (items[:limit] if limit else items): print(f"  {prefix} {item}{suffix}")
             if limit and len(items) > limit: print(f"  ... and {len(items) - limit} more")
@@ -136,7 +140,8 @@ def perform_rsync(source: str, dest: str, ssh_cmd: str, options: Dict[str, Any],
     
     if options.get('confirm'):
         print(colorize("Analyzing changes...", 'BLUE'))
-        if not (dry_run_output := get_rsync_changes(source, dest, ssh_cmd, options, universal_user)): print(colorize("Failed to analyze changes", 'RED')); return False
+        dry_run_output = get_rsync_changes(source, dest, ssh_cmd, options, universal_user)
+        if not dry_run_output: print(colorize("Failed to analyze changes", 'RED')); return False
         if not display_changes_and_confirm(parse_rsync_changes(dry_run_output), "Upload" if '@' in dest else "Download"): return False
     
     rsync_cmd = [get_rsync_command(), '-av', '--verbose', '--inplace', '--no-whole-file', '-e', ssh_cmd, '--progress']
@@ -159,7 +164,8 @@ def perform_rsync(source: str, dest: str, ssh_cmd: str, options: Dict[str, Any],
 
 def upload(args):
     print(colorize(f"Uploading from {args.local} to {args.machine}:{args.repo}", 'HEADER'))
-    if not (source_path := Path(args.local)).exists(): 
+    source_path = Path(args.local)
+    if not source_path.exists(): 
         error_exit(f"Local path '{args.local}' does not exist")
     
     conn = RepositoryConnection(args.team, args.machine, args.repo); conn.connect()
@@ -183,7 +189,8 @@ def upload(args):
 
 def download(args):
     print(colorize(f"Downloading from {args.machine}:{args.repo} to {args.local}", 'HEADER'))
-    (dest_path := Path(args.local)).mkdir(parents=True, exist_ok=True)
+    dest_path = Path(args.local)
+    dest_path.mkdir(parents=True, exist_ok=True)
     
     conn = RepositoryConnection(args.team, args.machine, args.repo); conn.connect()
     original_host_entry = conn.connection_info.get('host_entry') if args.dev else None

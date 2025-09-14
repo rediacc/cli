@@ -138,7 +138,8 @@ class SuperClient:
         prepared_data = data
         merged_headers = {**self.base_headers, **(headers or {})}
         
-        if data and self.should_use_vault_encryption and (master_pwd := self.config_manager.get_master_password()):
+        master_pwd = self.config_manager.get_master_password() if self.should_use_vault_encryption else None
+        if data and self.should_use_vault_encryption and master_pwd:
             try:
                 from .config import encrypt_vault_fields
                 prepared_data = encrypt_vault_fields(data, master_pwd)
@@ -160,7 +161,8 @@ class SuperClient:
             result.update({'error': error_msg, 'status_code': result.get('failure', 400)})
             return result
         
-        if self.should_use_vault_encryption and (master_pwd := self.config_manager.get_master_password()):
+        master_pwd = self.config_manager.get_master_password() if self.should_use_vault_encryption else None
+        if self.should_use_vault_encryption and master_pwd:
             try:
                 from .config import decrypt_vault_fields
                 result = decrypt_vault_fields(result, master_pwd)
@@ -322,7 +324,8 @@ class SuperClient:
             if result_set and result_set.get('data'):
                 for data_row in result_set['data']:
                     if data_row and isinstance(data_row, dict):
-                        if token := (data_row.get('nextRequestToken') or data_row.get('NextRequestToken')):
+                        token = data_row.get('nextRequestToken') or data_row.get('NextRequestToken')
+                        if token:
                             return token
         
         return response.get('nextRequestToken') or response.get('NextRequestToken')
@@ -413,7 +416,8 @@ class SuperClient:
             return None
         
         for table in response.get('resultSets', []):
-            if not (data := table.get('data', [])):
+            data = table.get('data', [])
+            if not data:
                 continue
             
             row = data[0]
@@ -482,14 +486,24 @@ class SuperClient:
     
     def get_hardware_id(self):
         """Get hardware ID from middleware health endpoint"""
-        base_url = self.base_url.removesuffix('/api/StoredProcedure').removesuffix('/api')
+        # Remove suffixes manually for Python 3.7 compatibility
+        base_url = self.base_url
+        if base_url.endswith('/api/StoredProcedure'):
+            base_url = base_url[:-len('/api/StoredProcedure')]
+        if base_url.endswith('/api'):
+            base_url = base_url[:-len('/api')]
         hardware_id_url = f"{base_url}/api/health/hardware-id"
         data = self._make_direct_request(hardware_id_url, method='GET')
         return data['hardwareId']
     
     def request_license(self, hardware_id, base_url=None):
         """Request license from license server"""
-        request_base_url = (base_url or self.base_url).removesuffix('/api/StoredProcedure').removesuffix('/api')
+        # Remove suffixes manually for Python 3.7 compatibility
+        request_base_url = base_url or self.base_url
+        if request_base_url.endswith('/api/StoredProcedure'):
+            request_base_url = request_base_url[:-len('/api/StoredProcedure')]
+        if request_base_url.endswith('/api'):
+            request_base_url = request_base_url[:-len('/api')]
         license_url = f"https://lic.rediacc.com/api/license/request"
         return self._make_direct_request(license_url, {"HardwareId": hardware_id}, method='POST')
     
