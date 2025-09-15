@@ -639,6 +639,11 @@ COMMANDS:
     license request       Request license using hardware ID
     license install       Install license file
 
+  Protocol Registration:
+    protocol register     Register rediacc:// protocol for browser integration
+    protocol unregister   Unregister rediacc:// protocol
+    protocol status       Show protocol registration status
+
   Development:
     test        Test installation and run test suite
     protocol-server  Start protocol test server for manual testing
@@ -673,6 +678,12 @@ EXAMPLES:
     python3 rediacc.py license generate-id           # Generate hardware ID
     python3 rediacc.py license request -i hw-id.txt  # Request license
     python3 rediacc.py license install -f license.lic # Install license
+
+  Protocol Registration:
+    python3 rediacc.py protocol register             # Register browser protocol
+    python3 rediacc.py protocol register --system-wide # Register system-wide
+    python3 rediacc.py protocol unregister           # Unregister protocol
+    python3 rediacc.py protocol status               # Check registration status
 
 For detailed documentation, see docs/README.md"""
         print(help_text)
@@ -722,6 +733,9 @@ For detailed documentation, see docs/README.md"""
         elif command == 'license':
             # License management - pass through to CLI
             self.cmd_cli_command('cli', ['license'] + args, inject_token=True)
+        elif command == 'protocol':
+            # Protocol registration - pass through to CLI
+            self.cmd_cli_command('cli', ['protocol'] + args)
         elif command == 'protocol-server':
             self.cmd_protocol_server(args)
         else:

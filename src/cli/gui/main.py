@@ -257,7 +257,80 @@ class MainWindow(BaseWindow):
             launch_gui()
             return True
         return False
-    
+
+    def _extract_repos_from_machine(self, machine_name):
+        """Extract repository information from machine vaultStatus data"""
+        if not machine_name or machine_name not in self.machines_data:
+            return []
+
+        machine_data = self.machines_data[machine_name]
+        repos = []
+
+        if machine_data.get('vaultStatus'):
+            try:
+                vault_status = json.loads(machine_data['vaultStatus'])
+                if vault_status.get('status') == 'completed' and vault_status.get('result'):
+                    result_data = json.loads(vault_status['result'])
+                    if result_data.get('repositories'):
+                        for repo in result_data['repositories']:
+                            repo_guid = repo.get('name')  # This is actually the GUID
+                            if repo_guid:
+                                repos.append({
+                                    'guid': repo_guid,
+                                    'size': repo.get('size_human', 'Unknown'),
+                                    'mounted': repo.get('mounted', False)
+                                })
+            except (json.JSONDecodeError, KeyError, TypeError) as e:
+                self.logger.error(f"Failed to parse vaultStatus for machine {machine_name}: {e}")
+
+        return repos
+
+    def _get_repo_name_mapping(self, team):
+        """Get mapping from repository GUID to human-readable name"""
+        # Cache the mapping at the instance level
+        if not hasattr(self, '_repo_name_cache'):
+            self._repo_name_cache = {}
+
+        if team in self._repo_name_cache:
+            return self._repo_name_cache[team]
+
+        mapping = {}
+        try:
+            response = self.api_client.token_request('GetTeamRepositories', {'teamName': team})
+            if not response.get('error') and response.get('resultSets') and len(response['resultSets']) > 1:
+                repos_data = response['resultSets'][1].get('data', [])
+                for repo in repos_data:
+                    repo_guid = repo.get('repoGuid') or repo.get('grandGuid')
+                    repo_name = self._get_name(repo, 'repositoryName', 'name', 'repoName')
+                    if repo_guid and repo_name:
+                        mapping[repo_guid] = repo_name
+        except Exception as e:
+            self.logger.error(f"Failed to get repository name mapping for team {team}: {e}")
+
+        # Cache the result
+        self._repo_name_cache[team] = mapping
+        return mapping
+
+    def _map_repo_guids_to_names(self, repos, team):
+        """Convert repository GUIDs to human-readable names"""
+        if not repos:
+            return []
+
+        name_mapping = self._get_repo_name_mapping(team)
+        result = []
+
+        for repo in repos:
+            repo_guid = repo['guid']
+            human_name = name_mapping.get(repo_guid, repo_guid)  # Fallback to GUID
+            result.append({
+                'name': human_name,
+                'guid': repo_guid,
+                'size': repo['size'],
+                'mounted': repo['mounted']
+            })
+
+        return result
+
     def create_menu_bar(self):
         """Create the application menu bar"""
         self.menubar = tk.Menu(self.root)
@@ -1208,6 +1281,10 @@ class MainWindow(BaseWindow):
     
     def on_team_changed(self):
         """Handle team selection change"""
+        # Clear repository name cache when team changes
+        if hasattr(self, '_repo_name_cache'):
+            self._repo_name_cache = {}
+
         self.load_machines()
         # Reset plugin tracking since selection changed
         self.plugins_loaded_for = None
@@ -1318,85 +1395,49 @@ class MainWindow(BaseWindow):
         self.update_activity_status()
     
     def load_repositories(self):
-        """Load repositories for selected team/machine"""
+        """Load repositories for selected machine"""
         team = self.team_combo.get()
         machine = self.machine_combo.get()
+
+        # Validate inputs
         if not team or self._is_placeholder_value(team, 'select_team'):
             return
-        
+
+        # Clear repositories if no machine selected
+        if not machine or self._is_placeholder_value(machine, 'select_machine'):
+            self.update_repositories([])
+            self.repo_filter_label.config(text="")
+            return
+
         self.activity_status_label.config(text=i18n.get('loading_repositories', team=team))
-        
-        # Direct API call to get team repositories
-        response = self.api_client.token_request('GetTeamRepositories', {'teamName': team})
-        
-        if response.get('error'):
-            error_msg = response.get('error', i18n.get('failed_to_load_repositories'))
+
+        try:
+            # Extract repositories directly from machine vaultStatus
+            machine_repos = self._extract_repos_from_machine(machine)
+
+            if machine_repos:
+                # Map GUIDs to human-readable names
+                repos_with_names = self._map_repo_guids_to_names(machine_repos, team)
+                repo_names = [repo['name'] for repo in repos_with_names]
+
+                # Update UI with machine-specific repositories
+                self.update_repositories(repo_names)
+                self.repo_filter_label.config(text="(machine-specific)", fg=COLOR_SUCCESS)
+                status_text = f"Showing {len(repo_names)} repositories for machine '{machine}'"
+                self.activity_status_label.config(text=status_text, fg=COLOR_SUCCESS)
+                self.root.after(3000, lambda: self.update_activity_status())
+            else:
+                # No repositories found on this machine
+                self.update_repositories([])
+                self.repo_filter_label.config(text="(no repositories)", fg='#666666')
+                self.activity_status_label.config(text=f"No repositories found on machine '{machine}'", fg='#666666')
+                self.root.after(3000, lambda: self.update_activity_status())
+
+        except Exception as e:
+            self.logger.error(f"Failed to load repositories for machine {machine}: {e}")
+            error_msg = f"Failed to load repositories: {str(e)}"
             if not self._handle_api_error(error_msg):
                 self.activity_status_label.config(text=f"{i18n.get('error')}: {error_msg}", fg=COLOR_ERROR)
-        else:
-            # Extract repositories from resultSets - second table contains the actual data
-            all_repos = []
-            if response.get('resultSets') and len(response['resultSets']) > 1:
-                all_repos = response['resultSets'][1].get('data', [])
-            
-            # Try to filter by machine if we have vaultStatus data
-            if machine and machine in self.machines_data:
-                machine_data = self.machines_data[machine]
-                self.logger.debug(f"Machine data keys for {machine}: {sorted(machine_data.keys())}")
-                self.logger.debug(f"vaultStatus present: {'vaultStatus' in machine_data}")
-                if machine_data.get('vaultStatus'):
-                    try:
-                        # Parse the nested JSON structure
-                        vault_status = json.loads(machine_data['vaultStatus'])
-                        if vault_status.get('status') == 'completed' and vault_status.get('result'):
-                            result_data = json.loads(vault_status['result'])
-                            if result_data.get('repositories'):
-                                # Get repository GUIDs from vaultStatus
-                                # In machine vaultStatus, the repository GUID is stored in the 'name' field
-                                machine_repo_guids = []
-                                for repo in result_data['repositories']:
-                                    guid = repo.get('name')
-                                    if guid:
-                                        machine_repo_guids.append(guid)
-                                        self.logger.debug(f"Found repository GUID in machine {machine}: {guid}")
-                                
-                                # Filter repositories to only those on this machine
-                                filtered_repos = []
-                                self.logger.debug(f"Filtering repositories for machine {machine}")
-                                self.logger.debug(f"Machine repository GUIDs: {machine_repo_guids}")
-                                
-                                for repo in all_repos:
-                                    repo_guid = repo.get('repoGuid') or repo.get('grandGuid')
-                                    repo_name = self._get_name(repo, 'repositoryName', 'name', 'repoName')
-                                    self.logger.debug(f"Checking repository '{repo_name}' with GUID: {repo_guid}")
-                                    
-                                    if repo_guid and repo_guid in machine_repo_guids:
-                                        filtered_repos.append(repo)
-                                        self.logger.debug(f"  -> Matched! Repository '{repo_name}' is on machine {machine}")
-                                
-                                # Use filtered list
-                                if filtered_repos:
-                                    repos = [self._get_name(r, 'repositoryName', 'name', 'repoName') for r in filtered_repos]
-                                    self.update_repositories(repos)
-                                    # Update status to show filtering is active
-                                    self.repo_filter_label.config(text="(machine-specific)", fg=COLOR_SUCCESS)
-                                    status_text = f"Showing {len(repos)} repositories for machine '{machine}'"
-                                    self.activity_status_label.config(text=status_text, fg=COLOR_SUCCESS)
-                                    self.root.after(3000, lambda: self.update_activity_status())
-                                    return
-                                else:
-                                    self.logger.debug(f"No repositories matched for machine {machine}")
-                                    # Fall through to show all repositories
-                    except (json.JSONDecodeError, KeyError, TypeError) as e:
-                        # If parsing fails, fall back to showing all repos
-                        self.logger.error(f"Failed to parse vaultStatus for machine {machine}: {e}")
-                else:
-                    self.logger.debug(f"Machine {machine} has no vaultStatus - showing all team repositories")
-            
-            # Fall back to showing all team repositories
-            repos = [self._get_name(r, 'repositoryName', 'name', 'repoName') for r in all_repos]
-            self.repo_filter_label.config(text="(all team repos)", fg='#666666')
-            self.update_repositories(repos)
     
     def update_repositories(self, repos: list):
         """Update repository dropdown"""
