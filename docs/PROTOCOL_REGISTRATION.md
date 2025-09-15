@@ -1,10 +1,10 @@
 # rediacc:// Protocol Registration
 
-This document describes the Windows browser integration functionality that allows `rediacc://` URLs to automatically launch the appropriate CLI tools.
+This document describes the cross-platform browser integration functionality that allows `rediacc://` URLs to automatically launch the appropriate CLI tools on Windows, macOS, and Linux.
 
 ## Overview
 
-The Rediacc CLI includes Windows protocol registration support that enables seamless browser integration. When registered, clicking on `rediacc://` URLs in web pages will automatically execute the corresponding CLI commands.
+The Rediacc CLI includes cross-platform protocol registration support that enables seamless browser integration. When registered, clicking on `rediacc://` URLs in web pages will automatically execute the corresponding CLI commands on Windows, macOS, and Linux systems.
 
 ## Features
 
@@ -12,7 +12,7 @@ The Rediacc CLI includes Windows protocol registration support that enables seam
 - **Browser Integration**: Click `rediacc://` URLs to launch CLI tools
 - **Multiple Actions**: Support for sync, terminal, plugin, and browser actions
 - **URL Parameter Parsing**: Extract tokens, teams, machines, repositories, and action parameters
-- **PowerShell Integration**: Full support in the Windows PowerShell wrapper
+- **Cross-Platform Support**: Works on Windows, macOS, and Linux with consistent command structure
 
 ## URL Format
 
@@ -83,36 +83,35 @@ pip install rediacc
 
 If automatic registration didn't work, you can register manually:
 
-#### Using Python CLI
+#### Current Command Structure (All Platforms)
 ```bash
-# Register protocol
-rediacc --register-protocol
+# Register protocol for current user
+./rediacc protocol register
 
-# Check status
-rediacc --protocol-status
+# Register protocol system-wide (requires admin/sudo)
+./rediacc protocol register --system-wide
 
-# Unregister protocol
-rediacc --unregister-protocol
-```
-
-#### Using PowerShell Wrapper
-```powershell
-# Register protocol (requires admin privileges)
-.\rediacc.ps1 -RegisterProtocol
-
-# Check status
-.\rediacc.ps1 -ProtocolStatus
+# Check registration status
+./rediacc protocol status
 
 # Unregister protocol
-.\rediacc.ps1 -UnregisterProtocol
+./rediacc protocol unregister
+
+# Unregister system-wide
+./rediacc protocol unregister --system-wide
 ```
+
 
 ### Prerequisites
 
-- **Windows OS**: Protocol registration only works on Windows
-- **Administrator Privileges**: Required for registry modifications
+**All Platforms:**
 - **Python**: Python executable must be accessible
-- **CLI Installation**: Rediacc CLI must be properly installed
+- **Rediacc CLI**: Properly installed and configured
+
+**Platform-Specific:**
+- **Windows**: Administrator privileges required for system-wide registration (registry modifications)
+- **macOS**: System-wide registration requires `sudo` (LaunchAgent installation)
+- **Linux**: System-wide registration requires `sudo` (system application entries)
 
 ## Registry Details
 
@@ -263,7 +262,7 @@ Planned improvements:
 - **Core Handler**: `src/cli/core/protocol_handler.py`
 - **CLI Integration**: `src/cli/commands/cli_main.py`
 - **Setup Hooks**: `src/cli/setup_hooks.py`
-- **PowerShell Support**: `rediacc.ps1`
+- **Cross-Platform Wrappers**: `rediacc.py`, `rediacc.sh`, `rediacc.bat`
 - **Tests**: `tests/test_protocol_handler.py`
 - **Examples**: `examples/protocol_examples.py`
 - **Frontend Service**: `console/src/services/protocolUrlService.ts`

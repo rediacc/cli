@@ -28,8 +28,9 @@ The main wrapper provides convenient access to all tools:
 
 # Tool shortcuts
 ./rediacc cli ARGS      # Run rediacc
-./rediacc sync ARGS     # Run rediacc-sync  
+./rediacc sync ARGS     # Run rediacc-sync
 ./rediacc term ARGS     # Run rediacc-term
+./rediacc protocol ARGS # Run protocol registration commands
 ```
 
 ## rediacc Commands
@@ -112,6 +113,86 @@ rediacc inspect repository NAME --team TEAM
 rediacc inspect storage NAME --team TEAM
 rediacc inspect schedule NAME --team TEAM
 ```
+
+### Protocol Registration Commands
+
+```bash
+# Register rediacc:// protocol for browser integration
+rediacc protocol register [--system-wide]
+
+# Unregister rediacc:// protocol
+rediacc protocol unregister [--system-wide]
+
+# Check protocol registration status
+rediacc protocol status [--system-wide]
+```
+
+#### Protocol Registration Options
+
+- `--system-wide`: Install/uninstall protocol system-wide (requires elevated privileges)
+
+#### Protocol Registration Examples
+
+```bash
+# Register protocol for current user
+rediacc protocol register
+
+# Register protocol system-wide (requires sudo/admin)
+rediacc protocol register --system-wide
+
+# Check registration status
+rediacc protocol status
+
+# Unregister protocol
+rediacc protocol unregister
+```
+
+#### Platform-Specific Notes
+
+**Linux/WSL:**
+- User-level registration creates desktop entries in `~/.local/share/applications/`
+- System-wide registration requires `sudo` and installs in `/usr/share/applications/`
+- May need to log out and back in for changes to take effect
+
+**macOS:**
+- User-level registration creates LaunchAgent in `~/Library/LaunchAgents/`
+- System-wide registration requires `sudo` and installs in `/Library/LaunchAgents/`
+- Changes should take effect immediately
+
+**Windows:**
+- User-level registration modifies `HKEY_CURRENT_USER` registry
+- System-wide registration requires admin privileges and modifies `HKEY_LOCAL_MACHINE`
+- May need to restart browser for changes to take effect
+
+#### Troubleshooting Protocol Registration
+
+**Common Issues:**
+
+1. **Protocol shows as registered but browser doesn't recognize it:**
+   ```bash
+   # Try unregistering and re-registering
+   ./rediacc protocol unregister
+   ./rediacc protocol register
+
+   # On Linux: Update desktop database
+   update-desktop-database ~/.local/share/applications/
+   ```
+
+2. **Permission denied errors:**
+   ```bash
+   # For system-wide installation, use appropriate privileges
+   sudo ./rediacc protocol register --system-wide  # Linux/macOS
+   # Run as Administrator on Windows
+   ```
+
+3. **Status shows "Not registered" after successful registration:**
+   - This may be a detection issue - try opening a `rediacc://` URL to test
+   - On Linux/WSL: Log out and back in to refresh desktop entries
+   - On Windows: Restart browser to refresh registry changes
+
+4. **Browser asks which application to use:**
+   - This is normal for the first `rediacc://` URL click
+   - Choose the Rediacc CLI application and check "Always use this app"
 
 ### Other Commands
 
@@ -218,6 +299,19 @@ rediacc-term --machine prod --repo api \
 ```
 
 ## Common Patterns
+
+### Initial Setup
+
+```bash
+# Complete CLI setup workflow
+./rediacc setup                    # Install dependencies
+./rediacc login                    # Authenticate
+./rediacc protocol register        # Enable browser integration
+
+# Check everything is working
+./rediacc protocol status          # Verify protocol registration
+./rediacc list teams               # Test API connectivity
+```
 
 ### Working with Different Teams
 
