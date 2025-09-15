@@ -131,3 +131,4 @@ bin/
 .build_venv/
 .test-venv/
 tests/test_results/
+cli_output.json

@@ -1087,6 +1087,14 @@ class DualPaneFileBrowser:
             # Set up SSH
             ssh_opts, ssh_key_file, known_hosts_file = self.ssh_connection.setup_ssh()
             
+            # Convert SSH key path for MSYS2
+            if is_windows():
+                ssh_key_file_msys = ssh_key_file.replace('\\', '/')
+                if ':' in ssh_key_file_msys:
+                    drive = ssh_key_file_msys[0].lower()
+                    ssh_key_file_msys = f'/{drive}/{ssh_key_file_msys[3:]}'
+                ssh_opts = ssh_opts.replace(ssh_key_file, ssh_key_file_msys)
+            
             # Build SSH command
             ssh_cmd = f'ssh {ssh_opts}'
             
@@ -1117,6 +1125,20 @@ class DualPaneFileBrowser:
                         if is_dir and not source.endswith('/'):
                             source += '/'
                         
+                        self.logger.debug(f"[GUI DEBUG] Upload - original local source: {source!r}")
+                        
+                        # Convert Windows path for rsync if needed
+                        if is_windows():
+                            # MSYS2 rsync expects local Windows paths in /c/Users/... format
+                            # C:/Users/... format was being interpreted as remote by MSYS2 rsync
+                            self.logger.debug(f"[GUI DEBUG] Windows detected, converting source path")
+                            original_source = source
+                            source = source.replace('\\', '/')
+                            if ':' in source:
+                                drive = source[0].lower()  # Use lowercase for /c/ format
+                                source = f'/{drive}/{source[3:]}'
+                            self.logger.debug(f"[GUI DEBUG] Converted source: {original_source!r} -> {source!r}")
+                        
                         # Build destination
                         dest = f"{self.ssh_connection.ssh_destination}:{remote_base}"
                         if not remote_base.endswith('/'):
@@ -1128,6 +1150,7 @@ class DualPaneFileBrowser:
                             filename = os.path.basename(local_path)
                             dest = f"{self.ssh_connection.ssh_destination}:{remote_base}/{filename}"
                         
+                        self.logger.debug(f"[GUI DEBUG] Final upload paths: source={source!r}, dest={dest!r}")
                         cmd.extend([source, dest])
                     else:  # download
                         # Build source
@@ -1137,12 +1160,19 @@ class DualPaneFileBrowser:
                         
                         # Build destination
                         dest = str(self.local_current_path)
+                        self.logger.debug(f"[GUI DEBUG] Download - original local dest: {dest!r}")
+                        
                         if is_windows():
                             # Convert Windows path for rsync
+                            # MSYS2 rsync expects local Windows paths in /c/Users/... format
+                            # C:/Users/... format was being interpreted as remote by MSYS2 rsync
+                            self.logger.debug(f"[GUI DEBUG] Windows detected, converting dest path")
+                            original_dest = dest
                             dest = dest.replace('\\', '/')
                             if ':' in dest:
-                                drive = dest[0].lower()
+                                drive = dest[0].lower()  # Use lowercase for /c/ format
                                 dest = f'/{drive}/{dest[3:]}'
+                            self.logger.debug(f"[GUI DEBUG] Converted dest: {original_dest!r} -> {dest!r}")
                         
                         if not dest.endswith('/'):
                             dest += '/'
@@ -1154,6 +1184,7 @@ class DualPaneFileBrowser:
                                 dest_file = os.path.join(str(self.local_current_path), filename)
                                 dest_file = dest_file.replace('\\', '/')
                                 if ':' in dest_file:
+                                    # Use MSYS2 format (/c/path) for local Windows paths
                                     drive = dest_file[0].lower()
                                     dest = f'/{drive}/{dest_file[3:]}'
                                 else:
@@ -1162,6 +1193,26 @@ class DualPaneFileBrowser:
                                 dest = os.path.join(str(self.local_current_path), filename)
                         
                         cmd.extend([source, dest])
+                    
+                    # Log the complete command for debugging
+                    self.logger.debug(f"[GUI DEBUG] COMPLETE RSYNC COMMAND: {cmd}")
+                    self.logger.debug(f"[GUI DEBUG] Command as string: {' '.join(cmd)}")
+                    
+                    # Critical validation for Windows
+                    if is_windows():
+                        source_in_cmd = cmd[-2]
+                        dest_in_cmd = cmd[-1]
+                        self.logger.debug(f"[GUI DEBUG] Final Windows validation:")
+                        self.logger.debug(f"[GUI DEBUG]   Source in command: {source_in_cmd!r}")
+                        self.logger.debug(f"[GUI DEBUG]   Dest in command: {dest_in_cmd!r}")
+                        self.logger.debug(f"[GUI DEBUG]   Source has @: {'@' in source_in_cmd}")
+                        self.logger.debug(f"[GUI DEBUG]   Dest has @: {'@' in dest_in_cmd}")
+                        
+                        # Check for the problematic condition
+                        if '@' not in source_in_cmd and '@' not in dest_in_cmd:
+                            self.logger.error(f"[GUI ERROR] CRITICAL: Both paths appear local - this WILL cause the 'both remote' error!")
+                            self.logger.error(f"[GUI ERROR] Source: {source_in_cmd!r}")
+                            self.logger.error(f"[GUI ERROR] Dest: {dest_in_cmd!r}")
                     
                     # Run rsync
                     process = subprocess.Popen(cmd, stdout=subprocess.PIPE, stderr=subprocess.PIPE, 
@@ -1220,6 +1271,10 @@ class DualPaneFileBrowser:
                         success_count += 1
                     else:
                         stderr = process.stderr.read()
+                        self.logger.error(f"[GUI ERROR] rsync failed for {local_path}")
+                        self.logger.error(f"[GUI ERROR] Return code: {process.returncode}")
+                        self.logger.error(f"[GUI ERROR] STDERR: {stderr!r}")
+                        self.logger.error(f"[GUI ERROR] STDOUT: {process.stdout.read()!r}")
                         error_messages.append(f"{os.path.basename(local_path)}: {stderr}")
                     
                 except Exception as e:
@@ -1245,9 +1300,9 @@ class DualPaneFileBrowser:
     def perform_folder_sync(self, folder_path: str, remote_base: str, direction: str, progress_callback=None) -> Tuple[bool, str]:
         """Perform optimized folder sync using sync-specific options"""
         try:
-            # Import sync utilities
-            sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
-            from rediacc_cli_sync import get_rsync_command, get_rsync_ssh_command, prepare_rsync_paths, get_rsync_changes, parse_rsync_changes, display_changes_and_confirm
+            # Import sync utilities from the commands module
+            sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
+            from commands.sync_main import get_rsync_command, get_rsync_ssh_command, prepare_rsync_paths, get_rsync_changes, parse_rsync_changes, display_changes_and_confirm
             
             # Get SSH options
             ssh_opts, ssh_key_file, known_hosts_file = self.ssh_connection.setup_ssh()

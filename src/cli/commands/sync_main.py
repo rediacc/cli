@@ -55,13 +55,73 @@ def get_rsync_ssh_command(ssh_opts: str) -> str:
     raise RuntimeError("SSH not found for rsync")
 
 def prepare_rsync_paths(source: str, dest: str) -> Tuple[str, str]:
-    if not is_windows(): return source, dest
+    logger = get_logger(__name__)
+    logger.debug(f"[DEBUG] prepare_rsync_paths called with:")
+    logger.debug(f"[DEBUG]   source: {source!r}")
+    logger.debug(f"[DEBUG]   dest: {dest!r}")
+    logger.debug(f"[DEBUG]   is_windows(): {is_windows()}")
+    
+    if not is_windows(): 
+        logger.debug(f"[DEBUG] Not Windows, returning paths unchanged")
+        return source, dest
+    
     def convert_local_path(path: str) -> str:
-        if '@' in path and ':' in path.split('@')[1]: return path
+        logger.debug(f"[DEBUG] convert_local_path called with: {path!r}")
+        
+        # Check if it's already a remote path (contains @ and : after @)
+        if '@' in path and ':' in path.split('@')[1]: 
+            logger.debug(f"[DEBUG] Path is remote (contains @:), returning unchanged: {path!r}")
+            return path
+            
         path_obj = Path(path)
-        if not path_obj.is_absolute(): return path.replace('\\', '/')
-        return f'/{path_obj.drive[0].lower()}/{str(path_obj).replace(path_obj.drive + "\\", "").replace("\\", "/")}'
-    return (source if '@' in source else convert_local_path(source), dest if '@' in dest else convert_local_path(dest))
+        logger.debug(f"[DEBUG] Path object: {path_obj}")
+        logger.debug(f"[DEBUG] is_absolute(): {path_obj.is_absolute()}")
+        
+        if not path_obj.is_absolute(): 
+            converted = path.replace('\\', '/')
+            logger.debug(f"[DEBUG] Relative path converted: {path!r} -> {converted!r}")
+            return converted
+            
+        # Convert Windows absolute path to MSYS2/Cygwin format
+        # MSYS2 rsync expects local Windows paths in /c/Users/... format
+        # The issue was not the path format, but that rsync was confused by C:/Users/...
+        drive_letter = path_obj.drive[0].lower()
+        path_without_drive = str(path_obj).replace(path_obj.drive + "\\", "")
+        unix_path = path_without_drive.replace("\\", "/")
+        converted = f'/{drive_letter}/{unix_path}'
+        
+        logger.debug(f"[DEBUG] Absolute path conversion:")
+        logger.debug(f"[DEBUG]   original: {path!r}")
+        logger.debug(f"[DEBUG]   drive: {path_obj.drive!r}")
+        logger.debug(f"[DEBUG]   drive_letter: {drive_letter!r}")
+        logger.debug(f"[DEBUG]   path_without_drive: {path_without_drive!r}")
+        logger.debug(f"[DEBUG]   unix_path: {unix_path!r}")
+        logger.debug(f"[DEBUG]   converted: {converted!r}")
+        
+        return converted
+    
+    # Process source and destination
+    logger.debug(f"[DEBUG] Processing source...")
+    if '@' in source:
+        logger.debug(f"[DEBUG] Source contains @, treating as remote")
+        converted_source = source
+    else:
+        logger.debug(f"[DEBUG] Source is local, converting...")
+        converted_source = convert_local_path(source)
+    
+    logger.debug(f"[DEBUG] Processing destination...")
+    if '@' in dest:
+        logger.debug(f"[DEBUG] Destination contains @, treating as remote")
+        converted_dest = dest
+    else:
+        logger.debug(f"[DEBUG] Destination is local, converting...")
+        converted_dest = convert_local_path(dest)
+    
+    logger.debug(f"[DEBUG] Final results:")
+    logger.debug(f"[DEBUG]   converted_source: {converted_source!r}")
+    logger.debug(f"[DEBUG]   converted_dest: {converted_dest!r}")
+    
+    return (converted_source, converted_dest)
 
 def run_platform_command(cmd: List[str], **kwargs) -> subprocess.CompletedProcess:
     logger = get_logger(__name__)
