@@ -43,7 +43,10 @@ class RediaccCLI:
     def __init__(self):
         self.script_dir = Path(__file__).parent.resolve()
         self.cli_root = self.script_dir
-        self.env_file = self.script_dir.parent / '.env'
+        # Check for .env file in parent directory first, then current directory
+        parent_env_file = self.script_dir.parent / '.env'
+        current_env_file = self.script_dir / '.env'
+        self.env_file = parent_env_file if parent_env_file.exists() else current_env_file
         self.config_dir = self.cli_root / '.config'
         self.python_cmd = None
         self.verbose = False
@@ -60,6 +63,8 @@ class RediaccCLI:
     def load_env(self):
         """Load environment variables from .env file"""
         if self.env_file.exists():
+            if self.verbose or os.environ.get('REDIACC_DEBUG'):
+                print(f"{Colors.CYAN}[DEBUG] Loading environment from: {self.env_file}{Colors.NC}", file=sys.stderr)
             with open(self.env_file, 'r') as f:
                 for line in f:
                     line = line.strip()
@@ -73,6 +78,15 @@ class RediaccCLI:
                         value = value.strip('"\'')
                         self.env_vars[key] = value
                         os.environ[key] = value
+                        if self.verbose or os.environ.get('REDIACC_DEBUG'):
+                            # Don't log sensitive values like passwords
+                            if 'PASSWORD' in key.upper() or 'TOKEN' in key.upper():
+                                print(f"{Colors.CYAN}[DEBUG] Set {key}=[REDACTED]{Colors.NC}", file=sys.stderr)
+                            else:
+                                print(f"{Colors.CYAN}[DEBUG] Set {key}={value}{Colors.NC}", file=sys.stderr)
+        else:
+            if self.verbose or os.environ.get('REDIACC_DEBUG'):
+                print(f"{Colors.YELLOW}[DEBUG] No .env file found at: {self.env_file}{Colors.NC}", file=sys.stderr)
     
     def find_python(self) -> Optional[str]:
         """Find suitable Python interpreter"""
