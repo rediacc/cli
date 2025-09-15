@@ -1024,14 +1024,32 @@ class SubprocessRunner:
     
     def __init__(self):
         self.logger = get_logger(__name__)
-        # Store original Windows paths
-        base_dir = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
-        self.cli_dir = base_dir
-        self.cli_path = os.path.join(base_dir, 'cli', 'commands', 'cli_main.py')
-        self.sync_path = os.path.join(base_dir, 'cli', 'commands', 'sync_main.py')
-        self.term_path = os.path.join(base_dir, 'cli', 'commands', 'term_main.py')
-        self.plugin_path = os.path.join(base_dir, 'cli', 'commands', 'plugin_main.py')
-        self.wrapper_path = os.path.join(os.path.dirname(base_dir), 'rediacc')
+        # Store original paths (works on both Windows and Linux)
+        # Current file: src/cli/core/config.py
+        # We want to get to: src/cli/commands/
+        current_dir = os.path.dirname(os.path.abspath(__file__))  # src/cli/core
+        cli_dir = os.path.dirname(current_dir)  # src/cli
+        self.cli_dir = cli_dir
+        
+        # All command files are in src/cli/commands/
+        commands_dir = os.path.join(cli_dir, 'commands')
+        self.cli_path = os.path.join(commands_dir, 'cli_main.py')
+        self.sync_path = os.path.join(commands_dir, 'sync_main.py')
+        self.term_path = os.path.join(commands_dir, 'term_main.py')
+        self.plugin_path = os.path.join(commands_dir, 'plugin_main.py')
+        
+        # Wrapper is at the root level (src/../rediacc)
+        root_dir = os.path.dirname(os.path.dirname(cli_dir))  # Go up from src/cli to root
+        self.wrapper_path = os.path.join(root_dir, 'rediacc')
+        
+        # Debug: Log the constructed paths
+        if os.environ.get('REDIACC_DEBUG'):
+            self.logger.debug(f"SubprocessRunner paths:")
+            self.logger.debug(f"  cli_dir: {self.cli_dir}")
+            self.logger.debug(f"  plugin_path: {self.plugin_path} (exists: {os.path.exists(self.plugin_path)})")
+            self.logger.debug(f"  cli_path: {self.cli_path} (exists: {os.path.exists(self.cli_path)})")
+            self.logger.debug(f"  sync_path: {self.sync_path} (exists: {os.path.exists(self.sync_path)})")
+            self.logger.debug(f"  term_path: {self.term_path} (exists: {os.path.exists(self.term_path)})")
         
         # Check for MSYS2 on Windows for better compatibility
         self.msys2_path = self._find_msys2_installation() if platform.system().lower() == 'windows' else None
