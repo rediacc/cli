@@ -364,9 +364,179 @@ class GUITestSuite:
         print("✓ Real login successful")
         return True
     
+    def test_dropdown_placeholders(self):
+        """Test that dropdowns show placeholders instead of auto-selecting first items"""
+        print("\nTest 6: Dropdown Placeholder Behavior")
+        print("-" * 40)
+
+        # Check if we have real credentials
+        if not os.getenv('SYSTEM_ADMIN_EMAIL'):
+            print("⚠ No SYSTEM_ADMIN_EMAIL in .env, skipping dropdown test")
+            return False
+
+        if not os.getenv('SYSTEM_API_URL'):
+            print("⚠ No SYSTEM_API_URL in .env, skipping dropdown test")
+            return False
+
+        from cli.gui.login import LoginWindow
+        import importlib.util
+
+        print("Testing that dropdowns show placeholders instead of auto-selecting...")
+
+        # Track results
+        login_success = [False]
+        placeholders_correct = [False]
+        test_complete = [False]
+
+        def on_login_success():
+            """Handle successful login"""
+            login_success[0] = True
+            print("✓ Login successful, checking dropdown behavior...")
+            login_window.root.quit()
+
+        # Create login window
+        login_window = LoginWindow(on_login_success=on_login_success)
+
+        # Get credentials
+        email = os.getenv('SYSTEM_ADMIN_EMAIL')
+        password = os.getenv('SYSTEM_ADMIN_PASSWORD')
+
+        def perform_login():
+            """Fill credentials and login"""
+            login_window.email_entry.delete(0, 'end')
+            login_window.password_entry.delete(0, 'end')
+            login_window.email_entry.insert(0, email)
+            login_window.password_entry.insert(0, password)
+            login_window.login_button.invoke()
+            login_window.root.after(2000, check_login_status)
+
+        def check_login_status():
+            """Check if login succeeded"""
+            if hasattr(login_window, 'status_label'):
+                status = login_window.status_label.cget('text')
+                if 'successful' in status.lower():
+                    print("  ✓ Login completed successfully")
+                    login_window.root.after(500, lambda: login_window.root.quit())
+                elif any(word in status.lower() for word in ['error', 'failed']):
+                    print(f"  ✗ Login failed: {status}")
+                    login_window.root.quit()
+                else:
+                    login_window.root.after(1000, check_login_status)
+
+        # Start login process
+        login_window.root.after(500, perform_login)
+        login_window.root.after(10000, lambda: login_window.root.quit())  # Timeout
+        login_window.root.mainloop()
+
+        # Clean up login window
+        try:
+            login_window.root.destroy()
+        except:
+            pass
+
+        if not login_success[0]:
+            print("✗ Login failed, cannot test dropdown behavior")
+            return False
+
+        print("  Creating MainWindow to test dropdown behavior...")
+
+        # Import and create MainWindow
+        try:
+            spec = importlib.util.spec_from_file_location(
+                "gui.main",
+                Path(__file__).parent.parent.parent / 'src' / 'cli' / 'gui' / 'main.py'
+            )
+            rediacc_gui = importlib.util.module_from_spec(spec)
+            spec.loader.exec_module(rediacc_gui)
+
+            main_window = rediacc_gui.MainWindow()
+            print("  ✓ MainWindow created")
+
+            def check_dropdown_behavior():
+                """Check that dropdowns show placeholders after data loads"""
+                print("  Waiting for data to load...")
+                main_window.root.after(3000, verify_placeholders)
+
+            def verify_placeholders():
+                """Verify that dropdowns show placeholders instead of auto-selected values"""
+                # Check team dropdown
+                team_value = main_window.team_combo.get()
+                teams = main_window.team_combo['values']
+
+                print(f"  Team dropdown: '{team_value}' (available: {len(teams) if teams else 0} teams)")
+
+                if teams and len(teams) > 0:
+                    if "Select Team" in team_value or team_value == "Select Team...":
+                        print("    ✓ Team dropdown shows placeholder correctly")
+                        team_placeholder_ok = True
+                    else:
+                        print(f"    ✗ Team dropdown auto-selected: '{team_value}' instead of placeholder")
+                        team_placeholder_ok = False
+                else:
+                    print("    ⚠ No teams loaded to test")
+                    team_placeholder_ok = True
+
+                # Check machine dropdown
+                machine_value = main_window.machine_combo.get()
+                machines = main_window.machine_combo['values']
+
+                print(f"  Machine dropdown: '{machine_value}' (available: {len(machines) if machines else 0} machines)")
+
+                if "Select Machine" in machine_value or machine_value == "Select Machine...":
+                    print("    ✓ Machine dropdown shows placeholder correctly")
+                    machine_placeholder_ok = True
+                else:
+                    print(f"    ✗ Machine dropdown shows: '{machine_value}' instead of placeholder")
+                    machine_placeholder_ok = False
+
+                # Check repository dropdown
+                repo_value = main_window.repo_combo.get()
+                repos = main_window.repo_combo['values']
+
+                print(f"  Repository dropdown: '{repo_value}' (available: {len(repos) if repos else 0} repos)")
+
+                if "Select Repository" in repo_value or repo_value == "Select Repository...":
+                    print("    ✓ Repository dropdown shows placeholder correctly")
+                    repo_placeholder_ok = True
+                else:
+                    print(f"    ✗ Repository dropdown shows: '{repo_value}' instead of placeholder")
+                    repo_placeholder_ok = False
+
+                placeholders_correct[0] = team_placeholder_ok and machine_placeholder_ok and repo_placeholder_ok
+
+                if placeholders_correct[0]:
+                    print("  ✓ All dropdowns show placeholders correctly!")
+                else:
+                    print("  ✗ Some dropdowns are not showing placeholders as expected")
+
+                test_complete[0] = True
+                main_window.root.quit()
+
+            # Start checking after window is ready
+            main_window.root.after(2000, check_dropdown_behavior)
+            main_window.root.after(15000, lambda: main_window.root.quit())  # Timeout
+            main_window.root.mainloop()
+
+            # Clean up
+            try:
+                main_window.root.destroy()
+            except:
+                pass
+
+        except Exception as e:
+            print(f"✗ Error creating MainWindow: {e}")
+            return False
+
+        if placeholders_correct[0]:
+            print("✓ Dropdown placeholder test passed")
+            return True
+        else:
+            print("✗ Dropdown placeholder test failed")
+            return False
+
     def test_login_and_terminal(self):
         """Test login and then launch machine terminal from Tools menu"""
-        print("\nTest 6: Login and Terminal Launch")
+        print("\nTest 7: Login and Terminal Launch")
         print("-" * 40)
         
         # Check if we have real credentials
@@ -506,9 +676,12 @@ class GUITestSuite:
                         first_machine = machines[0]
                         main_window.machine_combo.set(first_machine)
                         print(f"    Selected machine: {first_machine}")
-                        
-                        # Now try to launch terminal
-                        main_window.root.after(1000, launch_terminal)
+
+                        # Trigger machine change to load repositories
+                        main_window.on_machine_changed()
+
+                        # Wait for repositories to load, then try to launch terminal
+                        main_window.root.after(2000, launch_terminal)
                     else:
                         print("    No machines available")
                         finish_test()
@@ -636,6 +809,7 @@ class GUITestSuite:
             ("Login Form Interaction", self.test_login_form),
             ("Wrong Credentials", self.test_wrong_credentials),
             ("Real Login", self.test_real_login),
+            ("Dropdown Placeholders", self.test_dropdown_placeholders),
             ("Login and Terminal", self.test_login_and_terminal)
         ]
         
