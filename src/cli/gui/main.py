@@ -1272,8 +1272,7 @@ class MainWindow(BaseWindow):
         """Update team dropdowns"""
         self.team_combo['values'] = teams
         if teams:
-            self.team_combo.set(teams[0])
-            self.on_team_changed()
+            self.team_combo.set(i18n.get('select_team'))
         else:
             self.team_combo.set(i18n.get('select_team'))
         self.update_activity_status()
@@ -1310,13 +1309,12 @@ class MainWindow(BaseWindow):
         """Update machine dropdown"""
         self.machine_combo['values'] = machines
         if machines:
-            self.machine_combo.set(machines[0])
-            self.load_repositories()
+            self.machine_combo.set(i18n.get('select_machine'))
         else:
             # Set placeholder if no machines are available
             self.machine_combo.set(i18n.get('select_machine'))
-            # Also clear repositories since no machine is selected
-            self.update_repositories([])
+        # Clear repositories since no machine is selected
+        self.update_repositories([])
         self.update_activity_status()
     
     def load_repositories(self):
@@ -1404,15 +1402,13 @@ class MainWindow(BaseWindow):
         """Update repository dropdown"""
         self.repo_combo['values'] = repos
         if repos:
-            self.repo_combo.set(repos[0])
-            # Trigger repository change event to load plugins
-            self.on_repository_changed()
+            self.repo_combo.set(i18n.get('select_repository'))
         else:
             self.repo_combo.set(i18n.get('select_repository'))
-            # Clear the filter label when no repos
-            self.repo_filter_label.config(text="")
-            # Also trigger change event to clear plugins
-            self.on_repository_changed()
+        # Clear the filter label when no repos
+        self.repo_filter_label.config(text="")
+        # Also trigger change event to clear plugins
+        self.on_repository_changed()
         self.update_activity_status()
     
     def _launch_terminal(self, command: str, description: str):
