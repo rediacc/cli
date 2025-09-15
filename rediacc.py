@@ -269,7 +269,51 @@ class RediaccCLI:
             else:
                 print(f"{Colors.GREEN}Running CLI tests with options...{Colors.NC}")
                 self.run_command([self.get_python_command(), '-m', 'pytest', 'tests/'] + args)
-    
+
+    def cmd_protocol_server(self, args: List[str]):
+        """Start the protocol test server for manual testing"""
+        import argparse
+
+        # Parse arguments
+        parser = argparse.ArgumentParser(description='Start protocol test server')
+        parser.add_argument('--port', type=int, default=8765, help='Server port (default: 8765)')
+        parser.add_argument('--host', default='localhost', help='Server host (default: localhost)')
+
+        try:
+            parsed_args = parser.parse_args(args)
+        except SystemExit:
+            return
+
+        # Set up environment
+        env = os.environ.copy()
+        env['SYSTEM_API_URL'] = 'http://localhost:7322/api'
+
+        protocol_server_path = self.cli_root / 'tests' / 'protocol' / 'protocol_test_server.py'
+
+        if not protocol_server_path.exists():
+            print(f"{Colors.RED}Error: Protocol test server not found at {protocol_server_path}{Colors.NC}")
+            print(f"{Colors.YELLOW}Make sure you're running this from the CLI root directory{Colors.NC}")
+            return
+
+        print(f"{Colors.GREEN}🚀 Starting Protocol Test Server...{Colors.NC}")
+        print(f"{Colors.CYAN}📍 Server will run at: http://{parsed_args.host}:{parsed_args.port}{Colors.NC}")
+        print(f"{Colors.CYAN}📄 Test page: http://{parsed_args.host}:{parsed_args.port}/{Colors.NC}")
+        print(f"{Colors.CYAN}🔧 API URL: {env['SYSTEM_API_URL']}{Colors.NC}")
+        print(f"{Colors.YELLOW}💡 Press Ctrl+C to stop the server{Colors.NC}")
+        print()
+
+        try:
+            self.run_command([
+                self.get_python_command(),
+                str(protocol_server_path),
+                '--port', str(parsed_args.port),
+                '--host', parsed_args.host
+            ], env=env)
+        except KeyboardInterrupt:
+            print(f"\n{Colors.GREEN}✅ Protocol test server stopped{Colors.NC}")
+        except Exception as e:
+            print(f"{Colors.RED}❌ Error starting server: {e}{Colors.NC}")
+
     def cmd_release(self, args: List[str]):
         """Create a release build"""
         print(f"{Colors.GREEN}Preparing CLI release...{Colors.NC}")
@@ -597,6 +641,7 @@ COMMANDS:
 
   Development:
     test        Test installation and run test suite
+    protocol-server  Start protocol test server for manual testing
     release     Create a release build
 
   Docker:
@@ -620,6 +665,7 @@ EXAMPLES:
   Testing:
     python3 rediacc.py test          # Run all tests
     python3 rediacc.py test protocol # Run protocol tests
+    python3 rediacc.py protocol-server # Start protocol test server for manual testing
     python3 rediacc.py test desktop  # Run desktop tests
     python3 rediacc.py test yaml     # Run YAML tests
 
@@ -676,6 +722,8 @@ For detailed documentation, see docs/README.md"""
         elif command == 'license':
             # License management - pass through to CLI
             self.cmd_cli_command('cli', ['license'] + args, inject_token=True)
+        elif command == 'protocol-server':
+            self.cmd_protocol_server(args)
         else:
             # Default: pass through to main CLI with possible token injection
             self.cmd_cli_command('cli', argv, inject_token=True)
