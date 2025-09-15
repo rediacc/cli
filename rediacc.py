@@ -249,6 +249,9 @@ class RediaccCLI:
             elif test_type == 'yaml':
                 print(f"{Colors.GREEN}Running YAML tests...{Colors.NC}")
                 self.run_command([self.get_python_command(), 'tests/run_tests.py'] + remaining_args)
+            elif test_type == 'protocol':
+                print(f"{Colors.GREEN}Running protocol tests...{Colors.NC}")
+                self.run_command([self.get_python_command(), '-m', 'pytest', 'tests/protocol/', '-v'] + remaining_args)
             else:
                 print(f"{Colors.GREEN}Running CLI tests with options...{Colors.NC}")
                 self.run_command([self.get_python_command(), '-m', 'pytest', 'tests/'] + args)
@@ -599,6 +602,12 @@ EXAMPLES:
     python3 rediacc.py sync --help   # Sync help
     python3 rediacc.py term --help   # Terminal help
     python3 rediacc.py plugin --help # Plugin help
+
+  Testing:
+    python3 rediacc.py test          # Run all tests
+    python3 rediacc.py test protocol # Run protocol tests
+    python3 rediacc.py test desktop  # Run desktop tests
+    python3 rediacc.py test yaml     # Run YAML tests
 
   License Management:
     python3 rediacc.py license generate-id           # Generate hardware ID

@@ -27,8 +27,8 @@ import urllib.request
 import urllib.parse
 import urllib.error
 
-# Add parent directory to path for imports
-sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
+# Add src directory to path for imports (go up 3 levels: gui -> cli -> src)
+sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__)))))
 
 # Import version from centralized location
 from cli._version import __version__
