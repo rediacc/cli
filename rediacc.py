@@ -270,6 +270,21 @@ class RediaccCLI:
                 print(f"{Colors.GREEN}Running CLI tests with options...{Colors.NC}")
                 self.run_command([self.get_python_command(), '-m', 'pytest', 'tests/'] + args)
 
+    def cmd_protocol_handler(self, url: str):
+        """Handle protocol URL - run as module to avoid import issues"""
+        print(f"{Colors.GREEN}Handling protocol URL: {url}{Colors.NC}")
+        
+        python_cmd = self.get_python_command()
+        
+        # Change to CLI root and run as module to avoid relative import issues
+        original_cwd = os.getcwd()
+        try:
+            os.chdir(self.cli_root)
+            cmd = [python_cmd, '-m', 'src.cli.commands.cli_main', 'protocol-handler', url]
+            self.run_command(cmd)
+        finally:
+            os.chdir(original_cwd)
+    
     def cmd_protocol_server(self, args: List[str]):
         """Start the protocol test server for manual testing"""
         import argparse
@@ -738,6 +753,14 @@ For detailed documentation, see docs/README.md"""
             self.cmd_cli_command('cli', ['protocol'] + args)
         elif command == 'protocol-server':
             self.cmd_protocol_server(args)
+        elif command == 'protocol-handler':
+            # Protocol handler - needs special handling to run as module
+            if args:
+                url = args[0]
+                self.cmd_protocol_handler(url)
+            else:
+                print(f"{Colors.RED}Error: Protocol handler requires a URL argument{Colors.NC}")
+                sys.exit(1)
         else:
             # Default: pass through to main CLI with possible token injection
             self.cmd_cli_command('cli', argv, inject_token=True)

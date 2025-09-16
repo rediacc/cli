@@ -63,7 +63,7 @@ if not CRYPTO_AVAILABLE:
 
 CLI_CONFIG_PATH = Path(__file__).parent.parent.parent / 'config' / 'cli-config.json'
 try:
-    with open(CLI_CONFIG_PATH, 'r') as f:
+    with open(CLI_CONFIG_PATH, 'r', encoding='utf-8') as f:
         cli_config = json.load(f)
         QUEUE_FUNCTIONS = cli_config['QUEUE_FUNCTIONS']
         API_ENDPOINTS_JSON = cli_config['API_ENDPOINTS']
@@ -202,12 +202,19 @@ def extract_table_data(response, table_index=0):
 
 def get_vault_data(args):
     if not (hasattr(args, 'vault_file') and args.vault_file): return getattr(args, 'vault', '{}') or '{}'
-    try: return json.dumps(json.loads(sys.stdin.read()) if args.vault_file == '-' else json.load(open(args.vault_file, 'r')))
+    try: 
+        if args.vault_file == '-':
+            return json.dumps(json.loads(sys.stdin.read()))
+        else:
+            with open(args.vault_file, 'r', encoding='utf-8') as f:
+                return json.dumps(json.load(f))
     except (IOError, json.JSONDecodeError) as e: print(colorize(f"Warning: Could not load vault data: {e}", 'YELLOW')); return '{}'
 
 def get_vault_set_params(args, config_manager=None):
     if args.file and args.file != '-':
-        try: vault_data = open(args.file, 'r').read()
+        try: 
+            with open(args.file, 'r', encoding='utf-8') as f:
+                vault_data = f.read()
         except IOError: print(colorize(f"Error: Could not read file: {args.file}", 'RED')); return None
     else:
         print("Enter JSON vault data (press Ctrl+D when finished):")
@@ -899,7 +906,7 @@ class CommandHandler:
         elif args.license_command == 'request':
             try:
                 if os.path.isfile(args.hardware_id):
-                    with open(args.hardware_id, 'r') as f:
+                    with open(args.hardware_id, 'r', encoding='utf-8') as f:
                         hardware_id = f.read().strip()
                 else:
                     hardware_id = args.hardware_id
