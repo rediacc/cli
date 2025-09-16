@@ -46,8 +46,7 @@ docker-compose*.yml
 
 # Windows-specific files (as mentioned, Windows doesn't need Docker)
 *.cmd
-# Note: rediacc.ps1 is needed for Docker build, so using specific pattern
-rediacc-*.ps1
-*.bat
+# Note: rediacc.bat is needed for Docker build, so using specific pattern for exclusions
+!rediacc.bat
 install_msys2_packages.sh
 test_windows_compat.py

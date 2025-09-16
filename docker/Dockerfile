@@ -106,7 +106,7 @@ ARG VERSION=dev
 
 # Copy application code
 COPY --chown=$REDIACC_LINUX_USER:$REDIACC_LINUX_GROUP rediacc ./rediacc
-COPY --chown=$REDIACC_LINUX_USER:$REDIACC_LINUX_GROUP rediacc.ps1 ./rediacc.ps1
+COPY --chown=$REDIACC_LINUX_USER:$REDIACC_LINUX_GROUP rediacc.bat ./rediacc.bat
 COPY --chown=$REDIACC_LINUX_USER:$REDIACC_LINUX_GROUP src/ ./src/
 COPY --chown=$REDIACC_LINUX_USER:$REDIACC_LINUX_GROUP scripts/ ./scripts/
 COPY --chown=$REDIACC_LINUX_USER:$REDIACC_LINUX_GROUP docs/ ./docs/

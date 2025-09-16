@@ -21,7 +21,7 @@ assignees: ''
 <!-- Check the method you tried -->
 - [ ] pip install (`pip install rediacc-cli`)
 - [ ] Manual installation (`./scripts/install.sh`)
-- [ ] PowerShell installation (`.\rediacc.ps1 setup`)
+- [ ] Windows batch installation (`rediacc.bat setup`)
 - [ ] Docker installation
 - [ ] Development setup
 - [ ] Other: <!-- Specify -->
@@ -49,7 +49,7 @@ pip3 --version
 
 - [ ] Python 3.8+ installed
 - [ ] MSYS2 installed (for rsync support)
-- [ ] PowerShell 5.0+ available
+- [ ] Command Prompt or PowerShell available
 - [ ] Administrator privileges (if needed)
 
 ```powershell

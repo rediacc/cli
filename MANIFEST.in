@@ -30,4 +30,4 @@ prune *.egg-info
 # Exclude shell wrappers (platform-specific, not needed in sdist)
 exclude go
 exclude rediacc
-exclude rediacc.ps1
+exclude rediacc.bat

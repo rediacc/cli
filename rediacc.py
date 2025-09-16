@@ -340,7 +340,7 @@ class RediaccCLI:
         release_dir.mkdir(parents=True)
         
         # Copy essential files
-        for item in ['src', 'rediacc', 'rediacc.ps1', 'rediacc.py', '.env.example']:
+        for item in ['src', 'rediacc', 'rediacc.bat', 'rediacc.py', '.env.example']:
             source = self.cli_root / item
             if source.exists():
                 if source.is_dir():

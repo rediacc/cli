@@ -18,8 +18,8 @@ The CLI consists of three main tools:
 # Linux/macOS
 ./install.sh --auto
 
-# Windows (PowerShell)
-.\rediacc.ps1 setup -AutoInstall
+# Windows
+rediacc.bat setup --auto
 
 # Manual setup
 ./rediacc setup
@@ -63,7 +63,7 @@ The CLI consists of three main tools:
 
 ### Platform-Specific
 - **Linux/macOS**: bash, rsync, openssh
-- **Windows**: PowerShell, MSYS2 (for rsync functionality)
+- **Windows**: Command Prompt or PowerShell, MSYS2 (for rsync functionality)
 
 ## Basic Usage Examples
 

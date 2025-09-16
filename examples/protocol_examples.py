@@ -131,20 +131,20 @@ def example_cli_integration():
     
     print("To register the protocol:")
     print("  rediacc --register-protocol")
-    print("  # or")
-    print("  .\\rediacc.ps1 -RegisterProtocol")
+    print("  # or on Windows:")
+    print("  rediacc.bat protocol register")
     print()
     
     print("To check protocol status:")
     print("  rediacc --protocol-status")
-    print("  # or")
-    print("  .\\rediacc.ps1 -ProtocolStatus")
+    print("  # or on Windows:")
+    print("  rediacc.bat protocol status")
     print()
     
     print("To unregister the protocol:")
     print("  rediacc --unregister-protocol")
-    print("  # or")
-    print("  .\\rediacc.ps1 -UnregisterProtocol")
+    print("  # or on Windows:")
+    print("  rediacc.bat protocol unregister")
     print()
     
     print("Browser Integration:")
