@@ -112,14 +112,14 @@ class TestWindowsProtocolIntegration:
         except ImportError:
             pytest.skip("Windows protocol handler not available")
 
-    def test_windows_powershell_integration(self):
-        """Test PowerShell wrapper integration"""
-        ps1_script = Path(__file__).parent.parent / 'rediacc.ps1'
-        if ps1_script.exists():
-            # Test PowerShell protocol registration (dry run)
+    def test_windows_batch_integration(self):
+        """Test batch wrapper integration"""
+        bat_script = Path(__file__).parent.parent / 'rediacc.bat'
+        if bat_script.exists():
+            # Test batch protocol registration (dry run)
             try:
                 result = subprocess.run(
-                    ['powershell', '-ExecutionPolicy', 'Bypass', '-File', str(ps1_script), '-ProtocolStatus'],
+                    [str(bat_script), 'protocol', 'status'],
                     capture_output=True,
                     text=True,
                     timeout=10
@@ -127,7 +127,7 @@ class TestWindowsProtocolIntegration:
                 # Should complete without error (regardless of actual registration status)
                 assert result.returncode in [0, 1]
             except (subprocess.TimeoutExpired, FileNotFoundError):
-                pytest.skip("PowerShell not available or script timeout")
+                pytest.skip("Batch script not available or script timeout")
 
     def test_windows_admin_privilege_detection(self):
         """Test detection of administrator privileges on Windows"""

@@ -268,7 +268,7 @@ The system cannot find the path specified
 **Solution:**
 Use quotes for paths with spaces:
 ```powershell
-.\rediacc.ps1 sync upload --local "C:\My Documents\project" --machine server --repo data
+rediacc.bat sync upload --local "C:\My Documents\project" --machine server --repo data
 ```
 
 #### MSYS2 Not Found

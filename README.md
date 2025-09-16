@@ -40,9 +40,9 @@ Required:
 ./rediacc backup create --repo production           # Instant backup
 ./rediacc restore --point-in-time "1 hour ago"      # Time travel recovery
 
-# Windows PowerShell
-.\rediacc.ps1 login                                 # Authenticate  
-.\rediacc.ps1 create clone --source prod --name test # Safe testing environment
+# Windows
+rediacc.bat login                                   # Authenticate
+rediacc.bat create clone --source prod --name test  # Safe testing environment
 
 # Launch desktop application for visual management
 ./rediacc desktop                                    # Desktop application
@@ -53,7 +53,7 @@ Required:
 ```
 cli/
 ├── rediacc             # Linux/macOS wrapper script
-├── rediacc.ps1         # Windows PowerShell wrapper
+├── rediacc.bat         # Windows batch wrapper
 ├── src/                # Python source code
 │   ├── cli/           # CLI executables
 │   ├── modules/       # Shared Python modules

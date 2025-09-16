@@ -278,7 +278,7 @@ release() {
     # Copy essential files
     cp -r "$CLI_ROOT/src" "$release_dir/"
     cp "$CLI_ROOT/rediacc" "$release_dir/"
-    cp "$CLI_ROOT/rediacc.ps1" "$release_dir/"
+    cp "$CLI_ROOT/rediacc.bat" "$release_dir/" 2>/dev/null || true
     cp "$CLI_ROOT/.env.example" "$release_dir/"
     cp "$CLI_ROOT/requirements.txt" "$release_dir/" 2>/dev/null || true
     

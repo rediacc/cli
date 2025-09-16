@@ -17,7 +17,7 @@ This guide covers the installation of Rediacc CLI tools on different platforms.
 - OpenSSH client
 
 #### Windows
-- PowerShell 5.0 or higher
+- Command Prompt or PowerShell
 - MSYS2 (for rsync functionality)
 
 ## Installation Methods
@@ -40,8 +40,8 @@ cd cli
 git clone <repository-url>
 cd cli
 
-# Run PowerShell installer
-.\rediacc.ps1 setup -AutoInstall
+# Run automated setup
+rediacc.bat setup --auto
 ```
 
 ### 2. Interactive Installation
@@ -51,7 +51,7 @@ cd cli
 ./rediacc setup
 
 # Windows
-.\rediacc.ps1 setup
+rediacc.bat setup
 ```
 
 The interactive installer will:

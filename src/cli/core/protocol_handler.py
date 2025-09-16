@@ -171,10 +171,10 @@ class WindowsProtocolHandler:
             registry_key = self.get_registry_key(system_wide)
             command_key = self.get_command_key(system_wide)
             
-            # Create main protocol key
+            # Create main protocol key with friendly display name
             result1 = subprocess.run([
                 "reg", "add", registry_key,
-                "/ve", "/d", "URL:Rediacc Protocol",
+                "/ve", "/d", "URL:Rediacc Desktop",
                 "/f"
             ], capture_output=True, text=True, timeout=30)
             
@@ -186,27 +186,36 @@ class WindowsProtocolHandler:
                 "/d", "",
                 "/f"
             ], capture_output=True, text=True, timeout=30)
-            
+
+            # Add friendly type name for better Windows display
+            result3 = subprocess.run([
+                "reg", "add", registry_key,
+                "/v", "FriendlyTypeName",
+                "/t", "REG_SZ",
+                "/d", "Rediacc Desktop",
+                "/f"
+            ], capture_output=True, text=True, timeout=30)
+
             # Create command key with protocol handler
             command = self.get_protocol_command()
-            result3 = subprocess.run([
+            result4 = subprocess.run([
                 "reg", "add", command_key,
                 "/ve", "/d", command,
                 "/f"
             ], capture_output=True, text=True, timeout=30)
-            
+
             # Check if all operations succeeded
-            success = all(r.returncode == 0 for r in [result1, result2, result3])
+            success = all(r.returncode == 0 for r in [result1, result2, result3, result4])
             
             if success:
                 logger.info(f"Successfully registered {self.PROTOCOL_SCHEME}:// protocol")
                 return True
             else:
                 error_msgs = []
-                for i, result in enumerate([result1, result2, result3], 1):
+                for i, result in enumerate([result1, result2, result3, result4], 1):
                     if result.returncode != 0:
                         error_msgs.append(f"Step {i}: {result.stderr.strip()}")
-                
+
                 raise ProtocolHandlerError(f"Registry operations failed: {'; '.join(error_msgs)}")
         
         except subprocess.TimeoutExpired:
@@ -626,10 +635,10 @@ def get_install_instructions() -> List[str]:
             # Generic instructions based on platform
             if platform_name == "windows":
                 return [
-                    "Run as Administrator:",
-                    "  .\\rediacc.ps1 -RegisterProtocol",
-                    "  # or",
-                    "  rediacc --register-protocol"
+                    "Register protocol using batch file:",
+                    "  rediacc.bat protocol register",
+                    "  # or for system-wide:",
+                    "  rediacc.bat protocol register --system-wide"
                 ]
             elif platform_name == "linux":
                 return [

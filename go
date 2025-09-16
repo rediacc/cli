@@ -433,7 +433,7 @@ function release() {
     echo "Creating release archive..."
     # Build list of files to include (only if they exist)
     local tar_files=()
-    for file in src/ rediacc rediacc.ps1 .env.example requirements.txt README.md docs/; do
+    for file in src/ rediacc rediacc.bat .env.example requirements.txt README.md docs/; do
         if [ -e "$ROOT_DIR/$file" ]; then
             tar_files+=("$file")
         fi

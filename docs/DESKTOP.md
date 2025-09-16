@@ -38,8 +38,8 @@ The Rediacc Desktop application provides a simple graphical interface for the mo
 ./rediacc --desktop native
 
 # Windows
-.\rediacc.ps1 desktop
-.\rediacc.ps1 --desktop
+rediacc.bat desktop
+rediacc.bat --desktop
 
 # Direct Python
 python3 src/cli/gui/main.py
