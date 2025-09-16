@@ -25,10 +25,21 @@ from cli.core.config import setup_logging, get_logger
 def load_config():
     """Load configuration from JSON file"""
     config_path = Path(__file__).parent.parent.parent / 'config' / 'rediacc-term-config.json'
-    try: return json.load(open(config_path, 'r'))
+    try: 
+        with open(config_path, 'r', encoding='utf-8') as f:
+            return json.load(f)
     except (FileNotFoundError, json.JSONDecodeError) as e:
         print(f"Warning: Could not load config file: {e}")
         return {"terminal_commands": {}, "messages": {}, "help_text": {}}
+    except UnicodeDecodeError as e:
+        print(f"Warning: Config file encoding error at position {e.start}: {e}")
+        print("Attempting to read with fallback encoding...")
+        try:
+            with open(config_path, 'r', encoding='utf-8-sig') as f:
+                return json.load(f)
+        except Exception as fallback_error:
+            print(f"Failed to load config with fallback: {fallback_error}")
+            return {"terminal_commands": {}, "messages": {}, "help_text": {}}
 
 # Global config
 CONFIG = load_config()

@@ -59,21 +59,35 @@ class WindowsProtocolHandler:
     """Handles Windows registry operations for rediacc:// protocol"""
     
     PROTOCOL_SCHEME = "rediacc"
-    REGISTRY_ROOT = r"HKEY_CLASSES_ROOT"
+    SYSTEM_REGISTRY_ROOT = r"HKEY_CLASSES_ROOT"
+    USER_REGISTRY_ROOT = r"HKEY_CURRENT_USER\Software\Classes"
     
     def __init__(self):
         if not is_windows():
             raise ProtocolHandlerError("Windows Protocol Handler can only be used on Windows")
     
+    def get_registry_root(self, system_wide: bool = False) -> str:
+        """Get the appropriate registry root based on system_wide parameter"""
+        return self.SYSTEM_REGISTRY_ROOT if system_wide else self.USER_REGISTRY_ROOT
+    
+    def get_registry_key(self, system_wide: bool = False) -> str:
+        """Get the main registry key for the protocol"""
+        return f"{self.get_registry_root(system_wide)}\\{self.PROTOCOL_SCHEME}"
+    
+    def get_command_key(self, system_wide: bool = False) -> str:
+        """Get the command registry key for the protocol"""
+        return f"{self.get_registry_key(system_wide)}\\shell\\open\\command"
+    
+    # Legacy properties for backward compatibility
     @property
     def registry_key(self) -> str:
-        """Get the main registry key for the protocol"""
-        return f"{self.REGISTRY_ROOT}\\{self.PROTOCOL_SCHEME}"
+        """Get the main registry key for the protocol (system-wide)"""
+        return self.get_registry_key(system_wide=True)
     
     @property
     def command_key(self) -> str:
-        """Get the command registry key for the protocol"""
-        return f"{self.registry_key}\\shell\\open\\command"
+        """Get the command registry key for the protocol (system-wide)"""
+        return self.get_command_key(system_wide=True)
     
     def get_python_executable(self) -> str:
         """Get the current Python executable path"""
@@ -102,10 +116,19 @@ class WindowsProtocolHandler:
     def get_protocol_command(self) -> str:
         """Get the command string for protocol handling"""
         python_exe = self.get_python_executable()
-        cli_script = self.get_cli_script_path()
         
-        # Use protocol-handler command with URL parameter
-        return f'"{python_exe}" "{cli_script}" protocol-handler "%1"'
+        # Try to find the wrapper script first (more reliable)
+        # Go up from src/cli/core to get to the CLI root directory
+        cli_dir = Path(__file__).parent.parent.parent.parent
+        wrapper_script = cli_dir / "rediacc.py"
+        
+        if wrapper_script.exists():
+            # Use the wrapper script which handles module imports correctly
+            return f'"{python_exe}" "{wrapper_script}" protocol-handler "%1"'
+        else:
+            # Fallback to direct CLI script
+            cli_script = self.get_cli_script_path()
+            return f'"{python_exe}" "{cli_script}" protocol-handler "%1"'
     
     def check_admin_privileges(self) -> bool:
         """Check if running with administrator privileges"""
@@ -119,39 +142,45 @@ class WindowsProtocolHandler:
         except (subprocess.TimeoutExpired, FileNotFoundError):
             return False
     
-    def is_protocol_registered(self) -> bool:
+    def is_protocol_registered(self, system_wide: bool = False) -> bool:
         """Check if the rediacc protocol is already registered"""
         try:
+            registry_key = self.get_registry_key(system_wide)
             result = subprocess.run([
-                "reg", "query", self.registry_key
+                "reg", "query", registry_key
             ], capture_output=True, text=True, timeout=10)
             return result.returncode == 0
         except (subprocess.TimeoutExpired, FileNotFoundError):
             return False
     
-    def register_protocol(self, force: bool = False) -> bool:
+    def register_protocol(self, force: bool = False, system_wide: bool = False) -> bool:
         """Register the rediacc:// protocol in Windows registry"""
-        if not force and self.is_protocol_registered():
-            logger.info("Protocol already registered")
+        if not force and self.is_protocol_registered(system_wide):
+            logger.info(f"Protocol already registered ({'system-wide' if system_wide else 'user-level'})")
             return True
         
-        if not self.check_admin_privileges():
+        # Only check admin privileges for system-wide registration
+        if system_wide and not self.check_admin_privileges():
             raise ProtocolHandlerError(
-                "Administrator privileges required for protocol registration. "
-                "Please run PowerShell as Administrator and try again."
+                "Administrator privileges required for system-wide protocol registration. "
+                "Please run PowerShell as Administrator and try again, or use user-level registration."
             )
         
         try:
+            # Get the appropriate registry keys based on system_wide
+            registry_key = self.get_registry_key(system_wide)
+            command_key = self.get_command_key(system_wide)
+            
             # Create main protocol key
             result1 = subprocess.run([
-                "reg", "add", self.registry_key,
+                "reg", "add", registry_key,
                 "/ve", "/d", "URL:Rediacc Protocol",
                 "/f"
             ], capture_output=True, text=True, timeout=30)
             
             # Add URL Protocol value
             result2 = subprocess.run([
-                "reg", "add", self.registry_key,
+                "reg", "add", registry_key,
                 "/v", "URL Protocol",
                 "/t", "REG_SZ",
                 "/d", "",
@@ -161,7 +190,7 @@ class WindowsProtocolHandler:
             # Create command key with protocol handler
             command = self.get_protocol_command()
             result3 = subprocess.run([
-                "reg", "add", self.command_key,
+                "reg", "add", command_key,
                 "/ve", "/d", command,
                 "/f"
             ], capture_output=True, text=True, timeout=30)
@@ -185,22 +214,24 @@ class WindowsProtocolHandler:
         except FileNotFoundError:
             raise ProtocolHandlerError("Registry command not found (reg.exe)")
     
-    def unregister_protocol(self) -> bool:
+    def unregister_protocol(self, system_wide: bool = False) -> bool:
         """Unregister the rediacc:// protocol from Windows registry"""
-        if not self.is_protocol_registered():
-            logger.info("Protocol not registered")
+        if not self.is_protocol_registered(system_wide):
+            logger.info(f"Protocol not registered ({'system-wide' if system_wide else 'user-level'})")
             return True
         
-        if not self.check_admin_privileges():
+        # Only check admin privileges for system-wide unregistration
+        if system_wide and not self.check_admin_privileges():
             raise ProtocolHandlerError(
-                "Administrator privileges required for protocol unregistration. "
-                "Please run PowerShell as Administrator and try again."
+                "Administrator privileges required for system-wide protocol unregistration. "
+                "Please run PowerShell as Administrator and try again, or use user-level unregistration."
             )
         
         try:
             # Remove the entire protocol key tree
+            registry_key = self.get_registry_key(system_wide)
             result = subprocess.run([
-                "reg", "delete", self.registry_key,
+                "reg", "delete", registry_key,
                 "/f"
             ], capture_output=True, text=True, timeout=30)
             
@@ -217,8 +248,7 @@ class WindowsProtocolHandler:
     
     def get_protocol_status(self, system_wide: bool = False) -> Dict[str, Any]:
         """Get detailed status of protocol registration"""
-        # On Windows, protocol registration in HKEY_CLASSES_ROOT is system-wide
-        is_registered = self.is_protocol_registered()
+        is_registered = self.is_protocol_registered(system_wide)
 
         status = {
             "registered": is_registered,
@@ -226,14 +256,16 @@ class WindowsProtocolHandler:
             "command": None,
             "python_executable": self.get_python_executable(),
             "cli_script": self.get_cli_script_path(),
-            "expected_command": self.get_protocol_command()
+            "expected_command": self.get_protocol_command(),
+            "registry_location": "system-wide" if system_wide else "user-level"
         }
 
         if is_registered:
             # Try to get the current command
             try:
+                command_key = self.get_command_key(system_wide)
                 result = subprocess.run([
-                    "reg", "query", self.command_key,
+                    "reg", "query", command_key,
                     "/ve"
                 ], capture_output=True, text=True, timeout=10)
 
@@ -333,6 +365,7 @@ class ProtocolUrlParser:
         if not action:
             # Default to terminal action if no action specified (most commonly useful)
             action = "terminal"
+            parsed_url["action"] = action  # Update the parsed URL so it's consistent
             logger.info(f"No action specified in URL, defaulting to terminal action")
         
         # Build base command based on action
@@ -345,7 +378,7 @@ class ProtocolUrlParser:
                 raise ValueError(f"Invalid sync direction: {direction}")
             
             cmd.append(direction)
-            cmd.extend(["--token", token, "--machine", machine, "--repo", repository])
+            cmd.extend(["--token", token, "--team", team, "--machine", machine, "--repo", repository])
             
             # Optional sync parameters
             if "localPath" in params:
@@ -359,19 +392,19 @@ class ProtocolUrlParser:
         
         elif action == "terminal":
             cmd = ["term"]
-            cmd.extend(["--token", token, "--machine", machine, "--repo", repository])
+            cmd.extend(["--token", token, "--team", team, "--machine", machine, "--repo", repository])
             
             # Optional terminal parameters
             if "command" in params:
                 cmd.extend(["--command", params["command"]])
             if "terminalType" in params and params["terminalType"] == "machine":
                 # Connect to machine directly instead of repository
-                cmd = ["term", "--token", token, "--machine", machine]
+                cmd = ["term", "--token", token, "--team", team, "--machine", machine]
         
         elif action == "plugin":
             # Plugin action might need different handling
             cmd = ["plugin"]
-            cmd.extend(["--token", token, "--machine", machine, "--repo", repository])
+            cmd.extend(["--token", token, "--team", team, "--machine", machine, "--repo", repository])
             
             if "name" in params:
                 cmd.extend(["--plugin", params["name"]])
@@ -381,7 +414,7 @@ class ProtocolUrlParser:
         elif action == "browser":
             # File browser action - use GUI application
             cmd = ["gui"]  # Use the GUI application for file browsing
-            cmd.extend(["--token", token, "--machine", machine, "--repo", repository])
+            cmd.extend(["--token", token, "--team", team, "--machine", machine, "--repo", repository])
 
             if "path" in params:
                 cmd.extend(["--path", params["path"]])
@@ -537,13 +570,6 @@ def get_protocol_status(system_wide: bool = False) -> Dict[str, Any]:
                 base_status["user_registered"] = user_status.get("registered", False)
                 base_status["system_registered"] = system_status.get("registered", False)
                 base_status["registered"] = base_status["user_registered"] or base_status["system_registered"]
-
-                # For Windows, protocol registration in HKEY_CLASSES_ROOT is actually system-wide
-                if platform_name == "windows":
-                    is_registered = system_status.get("registered", False)
-                    base_status["user_registered"] = False
-                    base_status["system_registered"] = is_registered
-                    base_status["registered"] = is_registered
             else:
                 # Platform handler doesn't support system_wide parameter
                 status = handler.get_protocol_status()
