@@ -215,27 +215,28 @@ class WindowsProtocolHandler:
         except FileNotFoundError:
             raise ProtocolHandlerError("Registry command not found (reg.exe)")
     
-    def get_protocol_status(self) -> Dict[str, Any]:
+    def get_protocol_status(self, system_wide: bool = False) -> Dict[str, Any]:
         """Get detailed status of protocol registration"""
+        # On Windows, protocol registration in HKEY_CLASSES_ROOT is system-wide
+        is_registered = self.is_protocol_registered()
+
         status = {
-            "registered": False,
+            "registered": is_registered,
             "admin_privileges": self.check_admin_privileges(),
             "command": None,
             "python_executable": self.get_python_executable(),
             "cli_script": self.get_cli_script_path(),
             "expected_command": self.get_protocol_command()
         }
-        
-        if self.is_protocol_registered():
-            status["registered"] = True
-            
+
+        if is_registered:
             # Try to get the current command
             try:
                 result = subprocess.run([
                     "reg", "query", self.command_key,
                     "/ve"
                 ], capture_output=True, text=True, timeout=10)
-                
+
                 if result.returncode == 0:
                     # Parse the output to extract the command
                     for line in result.stdout.splitlines():
@@ -247,7 +248,7 @@ class WindowsProtocolHandler:
                             break
             except (subprocess.TimeoutExpired, FileNotFoundError):
                 pass
-        
+
         return status
 
 class ProtocolUrlParser:
@@ -504,50 +505,78 @@ def unregister_protocol(system_wide: bool = False) -> bool:
 def get_protocol_status(system_wide: bool = False) -> Dict[str, Any]:
     """Get protocol registration status (cross-platform)"""
     platform_name = get_platform()
-    
+
     base_status = {
         "platform": platform_name,
         "supported": is_protocol_supported()
     }
-    
+
     if not is_protocol_supported():
         base_status.update({
             "registered": False,
+            "user_registered": False,
+            "system_registered": False,
             "message": f"Protocol registration is not supported on {platform_name}"
         })
         return base_status
-    
+
     try:
         handler = get_platform_handler()
-        
+
         if hasattr(handler, 'get_protocol_status'):
             # Check if the handler supports system_wide parameter
             import inspect
             sig = inspect.signature(handler.get_protocol_status)
             if 'system_wide' in sig.parameters:
-                status = handler.get_protocol_status(system_wide=system_wide)
+                # Platform handler supports system_wide parameter
+                user_status = handler.get_protocol_status(system_wide=False)
+                system_status = handler.get_protocol_status(system_wide=True)
+
+                # Merge with base status and map to expected format
+                base_status.update(user_status)
+                base_status["user_registered"] = user_status.get("registered", False)
+                base_status["system_registered"] = system_status.get("registered", False)
+                base_status["registered"] = base_status["user_registered"] or base_status["system_registered"]
+
+                # For Windows, protocol registration in HKEY_CLASSES_ROOT is actually system-wide
+                if platform_name == "windows":
+                    is_registered = system_status.get("registered", False)
+                    base_status["user_registered"] = False
+                    base_status["system_registered"] = is_registered
+                    base_status["registered"] = is_registered
             else:
+                # Platform handler doesn't support system_wide parameter
                 status = handler.get_protocol_status()
-            
-            # Merge with base status
-            base_status.update(status)
+                base_status.update(status)
+                # For platforms that don't distinguish between user/system, treat as user-level
+                is_registered = status.get("registered", False)
+                base_status["user_registered"] = is_registered
+                base_status["system_registered"] = False
+                base_status["registered"] = is_registered
+
             return base_status
         else:
             base_status.update({
                 "registered": False,
+                "user_registered": False,
+                "system_registered": False,
                 "message": "Handler does not support status checking"
             })
             return base_status
-    
+
     except ImportError as e:
         base_status.update({
             "registered": False,
+            "user_registered": False,
+            "system_registered": False,
             "error": f"Failed to import platform handler: {e}"
         })
         return base_status
     except Exception as e:
         base_status.update({
             "registered": False,
+            "user_registered": False,
+            "system_registered": False,
             "error": f"Error checking protocol status: {e}"
         })
         return base_status
