@@ -26,6 +26,7 @@ from cli.core.config import (
 from cli.core.shared import colorize, COLORS
 from cli.core.api_client import client
 from cli.commands.workflow_main import WorkflowHandler
+from cli.core.telemetry import track_command, initialize_telemetry, shutdown_telemetry
 
 try:
     from cryptography.hazmat.primitives import hashes
@@ -2342,7 +2343,11 @@ def parse_dynamic_command(argv):
     
     return args, command
 
+@track_command('cli')
 def main():
+    # Initialize telemetry
+    initialize_telemetry()
+
     # Debug output
     if os.environ.get('REDIACC_DEBUG_ARGS'):
         print(f"DEBUG: sys.argv = {sys.argv}", file=sys.stderr)
@@ -2564,3 +2569,6 @@ if __name__ == "__main__":
     except KeyboardInterrupt:
         print("\nOperation cancelled by user")
         sys.exit(130)
+    finally:
+        # Shutdown telemetry
+        shutdown_telemetry()

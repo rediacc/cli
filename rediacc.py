@@ -12,6 +12,7 @@ import json
 import shutil
 import platform
 import argparse
+import time
 from pathlib import Path
 from datetime import datetime
 from typing import Optional, List, Dict, Any
@@ -87,6 +88,57 @@ class RediaccCLI:
         else:
             if self.verbose or os.environ.get('REDIACC_DEBUG'):
                 print(f"{Colors.YELLOW}[DEBUG] No .env file found at: {self.env_file}{Colors.NC}", file=sys.stderr)
+
+    def _init_telemetry(self):
+        """Initialize telemetry service"""
+        try:
+            # Add src directory to path for telemetry import
+            src_dir = str(self.cli_root / 'src')
+            if src_dir not in sys.path:
+                sys.path.insert(0, src_dir)
+
+            from cli.core.telemetry import initialize_telemetry, track_event
+            initialize_telemetry()
+
+            # Track wrapper invocation
+            track_event('cli.wrapper_invoked', {
+                'wrapper.platform': platform.system().lower(),
+                'wrapper.python_version': platform.python_version(),
+                'wrapper.args_count': len(sys.argv) - 1,
+                'wrapper.command': sys.argv[1] if len(sys.argv) > 1 else 'help',
+                'wrapper.has_verbose': self.verbose
+            })
+        except Exception as e:
+            # Silent fail for telemetry - don't impact CLI functionality
+            if self.verbose or os.environ.get('REDIACC_DEBUG'):
+                print(f"{Colors.YELLOW}[DEBUG] Telemetry init failed: {e}{Colors.NC}", file=sys.stderr)
+
+    def _track_command_execution(self, command: str, args: List[str], start_time: float, success: bool, error: Optional[str] = None):
+        """Track command execution through wrapper"""
+        try:
+            from cli.core.telemetry import track_event
+            duration_ms = (time.time() - start_time) * 1000
+
+            track_event('cli.wrapper_command_executed', {
+                'wrapper.command': command,
+                'wrapper.args_count': len(args),
+                'wrapper.duration_ms': duration_ms,
+                'wrapper.success': success,
+                'wrapper.error': error or '',
+                'wrapper.platform': platform.system().lower()
+            })
+        except Exception:
+            # Silent fail for telemetry
+            pass
+
+    def _shutdown_telemetry(self):
+        """Shutdown telemetry service"""
+        try:
+            from cli.core.telemetry import shutdown_telemetry
+            shutdown_telemetry()
+        except Exception:
+            # Silent fail for telemetry
+            pass
     
     def find_python(self) -> Optional[str]:
         """Find suitable Python interpreter"""
@@ -705,65 +757,88 @@ For detailed documentation, see docs/README.md"""
     
     def run(self, argv: List[str]):
         """Main entry point"""
-        if not argv or argv[0] in ['help', '--help', '-h']:
-            self.print_help()
-            return
-        
-        command = argv[0]
-        args = argv[1:]
-        
-        # Command routing
-        if command == 'setup':
-            self.cmd_setup(args)
-        elif command == 'test':
-            self.cmd_test(args)
-        elif command == 'release':
-            self.cmd_release(args)
-        elif command == 'docker-build':
-            self.cmd_docker_build(args)
-        elif command == 'docker-run':
-            self.cmd_docker_run(args)
-        elif command == 'docker-shell':
-            self.cmd_docker_shell(args)
-        elif command in ['desktop', 'gui', '--gui']:
-            if command == 'gui':
-                print(f"{Colors.YELLOW}Note: 'gui' command is deprecated, use 'desktop' instead{Colors.NC}")
-            self.cmd_desktop(args)
-        elif command == 'desktop-docker':
-            self.cmd_desktop_docker(args)
-        elif command == 'desktop-docker-build':
-            self.cmd_desktop_docker_build(args)
-        elif command == 'login':
-            self.cmd_cli_command('cli', ['login'] + args)
-        elif command == 'sync':
-            self.cmd_cli_command('sync', args)
-        elif command in ['term', 'terminal']:
-            self.cmd_cli_command('term', args)
-        elif command == 'plugin':
-            self.cmd_cli_command('plugin', args)
-        elif command == 'cli':
-            self.cmd_cli_command('cli', args)
-        elif command in ['version', '--version']:
-            self.cmd_cli_command('cli', ['--version'])
-        elif command == 'license':
-            # License management - pass through to CLI
-            self.cmd_cli_command('cli', ['license'] + args, inject_token=True)
-        elif command == 'protocol':
-            # Protocol registration - pass through to CLI
-            self.cmd_cli_command('cli', ['protocol'] + args)
-        elif command == 'protocol-server':
-            self.cmd_protocol_server(args)
-        elif command == 'protocol-handler':
-            # Protocol handler - needs special handling to run as module
-            if args:
-                url = args[0]
-                self.cmd_protocol_handler(url)
+        # Initialize telemetry
+        self._init_telemetry()
+
+        start_time = time.time()
+        success = False
+        error = None
+        command = 'help'
+        args = []
+
+        try:
+            if not argv or argv[0] in ['help', '--help', '-h']:
+                self.print_help()
+                success = True
+                return
+
+            command = argv[0]
+            args = argv[1:]
+
+            # Command routing
+            if command == 'setup':
+                self.cmd_setup(args)
+            elif command == 'test':
+                self.cmd_test(args)
+            elif command == 'release':
+                self.cmd_release(args)
+            elif command == 'docker-build':
+                self.cmd_docker_build(args)
+            elif command == 'docker-run':
+                self.cmd_docker_run(args)
+            elif command == 'docker-shell':
+                self.cmd_docker_shell(args)
+            elif command in ['desktop', 'gui', '--gui']:
+                if command == 'gui':
+                    print(f"{Colors.YELLOW}Note: 'gui' command is deprecated, use 'desktop' instead{Colors.NC}")
+                self.cmd_desktop(args)
+            elif command == 'desktop-docker':
+                self.cmd_desktop_docker(args)
+            elif command == 'desktop-docker-build':
+                self.cmd_desktop_docker_build(args)
+            elif command == 'login':
+                self.cmd_cli_command('cli', ['login'] + args)
+            elif command == 'sync':
+                self.cmd_cli_command('sync', args)
+            elif command in ['term', 'terminal']:
+                self.cmd_cli_command('term', args)
+            elif command == 'plugin':
+                self.cmd_cli_command('plugin', args)
+            elif command == 'cli':
+                self.cmd_cli_command('cli', args)
+            elif command in ['version', '--version']:
+                self.cmd_cli_command('cli', ['--version'])
+            elif command == 'license':
+                # License management - pass through to CLI
+                self.cmd_cli_command('cli', ['license'] + args, inject_token=True)
+            elif command == 'protocol':
+                # Protocol registration - pass through to CLI
+                self.cmd_cli_command('cli', ['protocol'] + args)
+            elif command == 'protocol-server':
+                self.cmd_protocol_server(args)
+            elif command == 'protocol-handler':
+                # Protocol handler - needs special handling to run as module
+                if args:
+                    url = args[0]
+                    self.cmd_protocol_handler(url)
+                else:
+                    print(f"{Colors.RED}Error: Protocol handler requires a URL argument{Colors.NC}")
+                    sys.exit(1)
             else:
-                print(f"{Colors.RED}Error: Protocol handler requires a URL argument{Colors.NC}")
-                sys.exit(1)
-        else:
-            # Default: pass through to main CLI with possible token injection
-            self.cmd_cli_command('cli', argv, inject_token=True)
+                # Default: pass through to main CLI with possible token injection
+                self.cmd_cli_command('cli', argv, inject_token=True)
+
+            success = True
+
+        except Exception as e:
+            error = str(e)
+            success = False
+            raise
+        finally:
+            # Track command execution
+            self._track_command_execution(command, args, start_time, success, error)
+            # Shutdown telemetry
+            self._shutdown_telemetry()
 
 
 def main():

@@ -25,6 +25,7 @@ from cli.core.shared import (
 from cli.core.config import (
     setup_logging, get_logger
 )
+from cli.core.telemetry import track_command, initialize_telemetry, shutdown_telemetry
 
 import shutil
 import platform
@@ -271,7 +272,11 @@ def download(args):
         if not success: 
             sys.exit(1)
 
+@track_command('sync')
 def main():
+    # Initialize telemetry
+    initialize_telemetry()
+
     parser = argparse.ArgumentParser(
         description='Rediacc CLI Sync - Rsync-based synchronization utility',
         formatter_class=argparse.RawDescriptionHelpFormatter,
@@ -332,7 +337,11 @@ Examples:
     if not args.command: parser.print_help(); sys.exit(1)
     
     initialize_cli_command(args, parser)
-    args.func(args)
+
+    try:
+        args.func(args)
+    finally:
+        shutdown_telemetry()
 
 if __name__ == '__main__':
     main()

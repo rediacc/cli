@@ -5,6 +5,7 @@ import subprocess
 import sys
 import tempfile
 import platform
+import time
 from pathlib import Path
 from typing import Dict, Any, Optional, Tuple
 from .config import (
@@ -15,6 +16,17 @@ from .config import (
 )
 
 CLI_TOOL = os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))), 'commands', 'cli_main.py')
+
+def _track_ssh_operation(operation: str, host: str = "unknown", success: bool = True,
+                        duration_ms: Optional[float] = None, error: Optional[str] = None, **kwargs):
+    """Helper function to track SSH operations with telemetry"""
+    try:
+        from .telemetry import get_telemetry_service
+        telemetry = get_telemetry_service()
+        telemetry.track_ssh_operation(operation, host, success, duration_ms, error)
+    except Exception:
+        # Silent fail for telemetry
+        pass
 
 def get_cli_command() -> list:
     if not is_windows(): return [CLI_TOOL]
@@ -465,30 +477,56 @@ class SSHConnection:
     
     def __enter__(self):
         """Setup SSH connection."""
-        if self.prefer_agent:
-            try:
-                self.ssh_opts, self.agent_pid, self.known_hosts_file = setup_ssh_agent_connection(
-                    self.ssh_key, self.host_entry
-                )
-                self._using_agent = True
-                return self
-            except Exception as e:
-                # Log warning and fall back to file-based
-                if sys.stdout.isatty():
-                    print(colorize(f"SSH agent setup failed: {e}, falling back to file-based keys", 'YELLOW'))
-        
-        # File-based fallback
-        self.ssh_opts, self.ssh_key_file, self.known_hosts_file = setup_ssh_for_connection(
-            self.ssh_key, self.host_entry
-        )
-        return self
+        start_time = time.time()
+        success = False
+        error = None
+
+        try:
+            if self.prefer_agent:
+                try:
+                    self.ssh_opts, self.agent_pid, self.known_hosts_file = setup_ssh_agent_connection(
+                        self.ssh_key, self.host_entry
+                    )
+                    self._using_agent = True
+                    success = True
+                    _track_ssh_operation("connection_setup", "ssh-agent", True,
+                                       (time.time() - start_time) * 1000)
+                    return self
+                except Exception as e:
+                    error = str(e)
+                    # Log warning and fall back to file-based
+                    if sys.stdout.isatty():
+                        print(colorize(f"SSH agent setup failed: {e}, falling back to file-based keys", 'YELLOW'))
+
+            # File-based fallback
+            self.ssh_opts, self.ssh_key_file, self.known_hosts_file = setup_ssh_for_connection(
+                self.ssh_key, self.host_entry
+            )
+            success = True
+            _track_ssh_operation("connection_setup", "file-based", True,
+                               (time.time() - start_time) * 1000)
+            return self
+        except Exception as e:
+            error = str(e)
+            _track_ssh_operation("connection_setup", "unknown", False,
+                               (time.time() - start_time) * 1000, error)
+            raise
     
     def __exit__(self, exc_type, exc_val, exc_tb):
         """Cleanup SSH resources."""
-        if self.agent_pid:
-            cleanup_ssh_agent(self.agent_pid, self.known_hosts_file)
-        elif self.ssh_key_file:
-            cleanup_ssh_key(self.ssh_key_file, self.known_hosts_file)
+        start_time = time.time()
+        try:
+            if self.agent_pid:
+                cleanup_ssh_agent(self.agent_pid, self.known_hosts_file)
+                _track_ssh_operation("connection_cleanup", "ssh-agent", True,
+                                   (time.time() - start_time) * 1000)
+            elif self.ssh_key_file:
+                cleanup_ssh_key(self.ssh_key_file, self.known_hosts_file)
+                _track_ssh_operation("connection_cleanup", "file-based", True,
+                                   (time.time() - start_time) * 1000)
+        except Exception as e:
+            _track_ssh_operation("connection_cleanup", self.connection_method, False,
+                               (time.time() - start_time) * 1000, str(e))
     
     @property
     def is_using_agent(self) -> bool:
@@ -728,13 +766,34 @@ def wait_for_enter(message: str = "Press Enter to continue..."):
 
 def test_ssh_connectivity(ip: str, port: int = 22, timeout: int = 5) -> Tuple[bool, str]:
     import socket
+    start_time = time.time()
+    success = False
+    error = ""
+
     try:
         with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as sock:
             sock.settimeout(timeout)
-            return (True, "") if sock.connect_ex((ip, port)) == 0 else (False, f"Cannot connect to {ip}:{port} - port appears to be closed or filtered")
-    except socket.timeout: return False, f"Connection to {ip}:{port} timed out after {timeout} seconds"
-    except socket.gaierror: return False, f"Failed to resolve hostname: {ip}"
-    except Exception as e: return False, f"Connection test failed: {str(e)}"
+            if sock.connect_ex((ip, port)) == 0:
+                success = True
+                result = (True, "")
+            else:
+                error = f"Cannot connect to {ip}:{port} - port appears to be closed or filtered"
+                result = (False, error)
+    except socket.timeout:
+        error = f"Connection to {ip}:{port} timed out after {timeout} seconds"
+        result = (False, error)
+    except socket.gaierror:
+        error = f"Failed to resolve hostname: {ip}"
+        result = (False, error)
+    except Exception as e:
+        error = f"Connection test failed: {str(e)}"
+        result = (False, error)
+
+    # Track connectivity test
+    _track_ssh_operation("connectivity_test", ip, success,
+                       (time.time() - start_time) * 1000, error if not success else None)
+
+    return result
 
 def validate_machine_accessibility(machine_name: str, team_name: str, ip: str, repo_name: str = None):
     print(f"Testing connectivity to {ip}...")
@@ -756,10 +815,14 @@ def validate_machine_accessibility(machine_name: str, team_name: str, ip: str, r
     sys.exit(1)  # Keep as is - this is a special user interaction case
 
 def handle_ssh_exit_code(returncode: int, connection_type: str = "machine"):
-    if returncode == 0: print(colorize(f"\nDisconnected from {connection_type}.", 'GREEN')); return
-    
-    if returncode == 255:
-        print(colorize(f"\n✗ SSH connection failed (exit code: {returncode})", 'RED'))
+    success = returncode == 0
+    error = None
+
+    if returncode == 0:
+        print(colorize(f"\nDisconnected from {connection_type}.", 'GREEN'))
+    elif returncode == 255:
+        error = f"SSH connection failed (exit code: {returncode})"
+        print(colorize(f"\n✗ {error}", 'RED'))
         print(colorize("\nPossible reasons:", 'YELLOW'))
         reasons = [
             "SSH authentication failed (check SSH key in team vault)",
@@ -770,7 +833,11 @@ def handle_ssh_exit_code(returncode: int, connection_type: str = "machine"):
         for reason in reasons:
             print(colorize(f"  • {reason}", 'YELLOW'))
     else:
+        error = f"SSH disconnected with exit code {returncode}"
         print(colorize(f"\nDisconnected from {connection_type} (exit code: {returncode})", 'YELLOW'))
+
+    # Track SSH command execution result
+    _track_ssh_operation("command_execution", connection_type, success, error=error)
 
 class RepositoryConnection:
     def __init__(self, team_name: str, machine_name: str, repo_name: str):

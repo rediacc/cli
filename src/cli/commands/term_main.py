@@ -20,6 +20,7 @@ from cli.core.shared import (
 )
 
 from cli.core.config import setup_logging, get_logger
+from cli.core.telemetry import track_command, initialize_telemetry, shutdown_telemetry
 
 # Load configuration
 def load_config():
@@ -162,7 +163,11 @@ def connect_to_terminal(args):
         result = subprocess.run(ssh_cmd)
         handle_ssh_exit_code(result.returncode, "repository terminal")
 
+@track_command('term')
 def main():
+    # Initialize telemetry
+    initialize_telemetry()
+
     help_config = CONFIG.get('help_text', {})
     sections = []
     
@@ -209,7 +214,12 @@ def main():
     if not (args.team and args.machine): parser.error("--team and --machine are required in CLI mode")
     
     initialize_cli_command(args, parser)
-    (connect_to_terminal if args.repo else connect_to_machine)(args)
+
+    try:
+        (connect_to_terminal if args.repo else connect_to_machine)(args)
+    finally:
+        # Shutdown telemetry
+        shutdown_telemetry()
 
 if __name__ == '__main__':
     main()
