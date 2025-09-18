@@ -18,6 +18,8 @@ from typing import Dict, Any, Optional, Tuple
 from .config import TokenManager, get_required, api_mutex
 # Import environment configuration
 from .env_config import EnvironmentConfig
+# Import telemetry
+from .telemetry import track_api_call, track_event
 
 
 class InMemoryTokenStore:
@@ -242,23 +244,33 @@ class SuperClient:
             self.set_config_manager(get_default_config_manager())
     
     def request(self, endpoint, data=None, headers=None):
+        start_time = time.time()
         url, prepared_data, merged_headers = self._prepare_request_for_api(endpoint, data, headers)
-        
+
         try:
             response_text, status_code, response_headers = self._execute_http_request(
                 url, 'POST', prepared_data, merged_headers)
-            
+
+            # Track API call telemetry
+            duration_ms = (time.time() - start_time) * 1000
+            track_api_call('POST', endpoint, status_code, duration_ms)
+
             if status_code >= 500:
                 print(f"DEBUG: Endpoint URL: {url}\nDEBUG: HTTP Error {status_code} occurred", file=sys.stderr)
-            
-            return (self._process_api_response(response_text, status_code) 
-                   if status_code == 200 else 
+
+            return (self._process_api_response(response_text, status_code)
+                   if status_code == 200 else
                    self._handle_http_error(response_text, status_code))
-                
+
         except Exception as e:
             error_msg = str(e)
+            duration_ms = (time.time() - start_time) * 1000
+
+            # Track API error telemetry
+            track_api_call('POST', endpoint, None, duration_ms, error_msg)
+
             print(f"DEBUG: Request error for endpoint: {url}\nDEBUG: Error details: {error_msg}", file=sys.stderr)
-            
+
             if "HTTP " in error_msg and ":" in error_msg:
                 try:
                     status_code = int(error_msg.split("HTTP ")[1].split(":")[0])
@@ -266,12 +278,28 @@ class SuperClient:
                     return self._handle_http_error(error_body, status_code)
                 except (ValueError, IndexError):
                     pass
-            
+
             return {"error": f"Request error: {error_msg}", "status_code": 500}
     
     def auth_request(self, endpoint, email, pwd_hash, data=None):
         """Make an authentication request with email and password hash"""
-        return self.request(endpoint, data, {"Rediacc-UserEmail": email, "Rediacc-UserHash": pwd_hash})
+        # Track authentication attempt
+        track_event('cli.auth_attempt', {
+            'auth.endpoint': endpoint,
+            'auth.email_domain': email.split('@')[1] if '@' in email else 'unknown'
+        })
+
+        result = self.request(endpoint, data, {"Rediacc-UserEmail": email, "Rediacc-UserHash": pwd_hash})
+
+        # Track authentication result
+        success = result.get('status_code', 500) == 200 and not result.get('error')
+        track_event('cli.auth_result', {
+            'auth.endpoint': endpoint,
+            'auth.success': success,
+            'auth.error': result.get('error', '') if not success else ''
+        })
+
+        return result
     
     def token_request(self, endpoint, data=None, retry_count=0):
         """Make an authenticated request with token"""

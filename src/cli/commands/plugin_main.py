@@ -33,6 +33,7 @@ from cli.core.shared import (
 from cli.core.config import (
     get_config_dir, get_plugin_connections_file, get_ssh_control_dir
 )
+from cli.core.telemetry import track_command, initialize_telemetry, shutdown_telemetry
 
 LOCAL_CONFIG_DIR = get_config_dir()
 CONNECTIONS_FILE = str(get_plugin_connections_file())
@@ -397,7 +398,11 @@ def show_status(args):
     print(colorize("-" * 80, 'BLUE'))
     print(f"Total connections: {len(connections)}")
 
+@track_command('plugin')
 def main():
+    # Initialize telemetry
+    initialize_telemetry()
+
     parser = argparse.ArgumentParser(
         description='Rediacc CLI Plugin - SSH tunnel management for repository plugins',
         formatter_class=argparse.RawDescriptionHelpFormatter,
@@ -463,7 +468,11 @@ Plugin Access:
     if args.command in ['list', 'connect']:
         initialize_cli_command(args, parser)
     
-    args.func(args)
+    try:
+        args.func(args)
+    finally:
+        # Shutdown telemetry
+        shutdown_telemetry()
 
 if __name__ == '__main__':
     main()
