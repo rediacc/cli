@@ -766,11 +766,48 @@ def get_machine_connection_info(machine_info: Dict[str, Any]) -> Dict[str, Any]:
     }
 
 def get_crc32(text: str) -> str:
-    """Calculate CRC32 for a string, compatible with cksum command."""
-    import zlib
-    # Use zlib.crc32 which is cross-platform
-    crc = zlib.crc32(text.encode('utf-8')) & 0xffffffff
-    return str(crc)
+    """Calculate Rediacc hash for consistent path generation across Python and Bash."""
+    return rediacc_hash(text)
+
+def rediacc_hash(text: str) -> str:
+    """
+    Custom hash algorithm for consistent path generation.
+
+    This algorithm produces identical results in Python and Bash:
+    - Uses only basic mathematical operations (multiply, add, modulo)
+    - Processes ASCII character values
+    - Platform independent - no external dependencies
+    - Designed for GUID -> directory path conversion
+    - Returns base62-encoded hash for filesystem-safe paths
+    - Uses 64-bit hash for maximum collision resistance
+
+    Algorithm:
+    hash = 5381 (prime seed)
+    for each character:
+        hash = (hash * 33 + ascii_value) % 9223372036854775783
+    Convert to base62 for path-safe representation (0-9A-Za-z only)
+    """
+    hash_val = 5381  # Initial prime seed
+    for char in text:
+        ascii_val = ord(char)
+        hash_val = (hash_val * 33 + ascii_val) % 9223372036854775783  # 2^63 - 25 (largest signed 64-bit prime)
+
+    # Convert to base62 for filesystem-safe paths
+    return _int_to_base62(hash_val)
+
+def _int_to_base62(num: int) -> str:
+    """Convert integer to base62 string (0-9A-Za-z)."""
+    if num == 0:
+        return '0'
+
+    base62_chars = "0123456789ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz"
+    result = ""
+
+    while num > 0:
+        result = base62_chars[num % 62] + result
+        num //= 62
+
+    return result
 
 def get_repository_paths(repo_guid: str, datastore: str, universal_user_id: str, company_id: str) -> Dict[str, str]:
     """Calculate repository paths. Both universal_user_id and company_id are required."""
