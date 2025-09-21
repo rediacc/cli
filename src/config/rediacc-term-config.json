@@ -30,7 +30,7 @@
       "echo",
       "echo -e \"\\033[1;36m━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━\\033[0m\"",
       "echo",
-      "cd {datastore_path} 2>/dev/null || echo \"Warning: Could not change to datastore directory\"",
+      "if ! cd {datastore_path} 2>/dev/null; then echo \"Warning: Could not change to datastore directory\"; cd ~{universal_user} 2>/dev/null || cd /; fi",
       "exec bash -l"
     ]
   },
