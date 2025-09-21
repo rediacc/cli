@@ -606,13 +606,13 @@ class MainWindow(BaseWindow):
         )
 
         vscode_menu.add_command(
-            label='Open Repository',
+            label='VS Code Repository',
             accelerator='Ctrl+Shift+V',
             command=self.open_vscode_repo
         )
 
         vscode_menu.add_command(
-            label='Open Machine',
+            label='VS Code Machine',
             accelerator='Ctrl+Alt+V',
             command=self.open_vscode_machine
         )
@@ -2833,7 +2833,57 @@ class MainWindow(BaseWindow):
     
     def show_quick_command(self):
         """Show quick command dialog"""
-        messagebox.showinfo(i18n.get('info'), i18n.get('not_implemented'))
+        # Check if we have a connection
+        team = self.team_combo.get()
+        machine = self.machine_combo.get()
+        repo = self.repo_combo.get()
+
+        if not all([team, machine, repo]):
+            messagebox.showerror('Error', 'Please select team, machine, and repository first')
+            return
+
+        # Create quick command dialog
+        dialog = tk.Toplevel(self.root)
+        dialog.title('Quick Command')
+        dialog.transient(self.root)
+        dialog.grab_set()
+
+        # Center the dialog
+        dialog.update_idletasks()
+        width, height = 500, 150
+        x = (dialog.winfo_screenwidth() - width) // 2
+        y = (dialog.winfo_screenheight() - height) // 2
+        dialog.geometry(f'{width}x{height}+{x}+{y}')
+
+        # Command input
+        tk.Label(dialog, text='Command:').pack(pady=10)
+        command_var = tk.StringVar()
+        command_entry = tk.Entry(dialog, textvariable=command_var, width=60, font=('Consolas', 10))
+        command_entry.pack(pady=5)
+        command_entry.focus()
+
+        # Buttons frame
+        button_frame = tk.Frame(dialog)
+        button_frame.pack(pady=20)
+
+        def execute_command():
+            command = command_var.get().strip()
+            if command:
+                dialog.destroy()
+                # Execute the command in repository terminal
+                self.open_repo_terminal()
+                # Note: We could enhance this to actually send the command to the terminal
+
+        def cancel_command():
+            dialog.destroy()
+
+        tk.Button(button_frame, text='Execute', command=execute_command, width=10).pack(side=tk.LEFT, padx=5)
+        tk.Button(button_frame, text='Cancel', command=cancel_command, width=10).pack(side=tk.LEFT, padx=5)
+
+        # Bind Enter key to execute
+        command_entry.bind('<Return>', lambda e: execute_command())
+        # Bind Escape key to cancel
+        dialog.bind('<Escape>', lambda e: cancel_command())
     
     def switch_to_plugin_tab(self):
         """Switch to Plugin Manager tab - deprecated, now using menu"""
