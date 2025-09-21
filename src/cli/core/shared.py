@@ -55,10 +55,32 @@ def create_temp_file(suffix: str = '', prefix: str = 'tmp', delete: bool = True)
     os.close(fd); return path
 
 def set_file_permissions(path: str, mode: int):
-    if not is_windows(): os.chmod(path, mode); return
+    """Set file permissions with cross-platform compatibility"""
+    if not is_windows():
+        os.chmod(path, mode)
+        return
+
+    # Windows: Set restrictive permissions for SSH key files
     import stat
-    try: os.chmod(path, stat.S_IREAD if mode & 0o200 == 0 else stat.S_IWRITE | stat.S_IREAD)
-    except: pass
+    try:
+        if mode == 0o600:  # SSH key file - owner read/write only
+            # Remove all permissions first, then add owner read/write
+            os.chmod(path, stat.S_IREAD | stat.S_IWRITE)
+
+            # Additional security: try to set Windows ACL for SSH key files
+            try:
+                import subprocess
+                # Use icacls to set restrictive permissions (owner only)
+                subprocess.run(['icacls', path, '/inheritance:r', '/grant:r', f'{os.getlogin()}:F'],
+                             capture_output=True, check=False)
+            except:
+                pass  # Fallback to basic chmod
+        else:
+            # General case: set read/write based on mode
+            os.chmod(path, stat.S_IREAD if mode & 0o200 == 0 else stat.S_IWRITE | stat.S_IREAD)
+    except Exception as e:
+        # Log the error but don't fail - file permissions are important but not critical
+        _track_ssh_operation("file_permissions", "windows", False, error=str(e))
 
 def safe_error_message(message: str) -> str:
     import re
@@ -372,11 +394,35 @@ def get_ssh_key_from_vault(team_name: Optional[str] = None) -> Optional[str]:
     return None
 
 def _decode_ssh_key(ssh_key: str) -> str:
+    """Decode and normalize SSH key with proper line endings for cross-platform compatibility"""
     import base64
+
+    if not ssh_key:
+        raise ValueError("SSH key is empty")
+
+    # Decode base64 if needed
     if not ssh_key.startswith('-----BEGIN') and '\n' not in ssh_key:
-        try: ssh_key = base64.b64decode(ssh_key).decode('utf-8')
-        except: pass
-    return ssh_key if ssh_key.endswith('\n') else ssh_key + '\n'
+        try:
+            ssh_key = base64.b64decode(ssh_key).decode('utf-8')
+        except Exception as e:
+            raise ValueError(f"Invalid base64 SSH key: {e}")
+
+    # Normalize line endings to Unix format (required for SSH compatibility)
+    ssh_key = ssh_key.replace('\r\n', '\n').replace('\r', '\n')
+
+    # Ensure key ends with single newline
+    ssh_key = ssh_key.rstrip('\n') + '\n'
+
+    # Basic validation - check for SSH key markers
+    if not ('-----BEGIN' in ssh_key and '-----END' in ssh_key):
+        raise ValueError("SSH key does not contain valid PEM markers")
+
+    # Validate common SSH key types
+    valid_key_types = ['RSA PRIVATE KEY', 'DSA PRIVATE KEY', 'EC PRIVATE KEY', 'PRIVATE KEY', 'OPENSSH PRIVATE KEY']
+    if not any(key_type in ssh_key for key_type in valid_key_types):
+        raise ValueError("SSH key type not recognized. Supported types: RSA, DSA, EC, OpenSSH")
+
+    return ssh_key
 
 def _convert_path_for_ssh(path: str) -> str:
     """Convert Windows paths to MSYS2 format for SSH compatibility"""
@@ -465,13 +511,46 @@ def setup_ssh_agent_connection(ssh_key: str, host_entry: str = None) -> Tuple[st
     return ssh_opts, agent_pid, known_hosts_file_path
 
 def setup_ssh_for_connection(ssh_key: str, host_entry: str = None) -> Tuple[str, str, str]:
-    ssh_key = _decode_ssh_key(ssh_key)
-    
+    """Setup SSH connection with enhanced error handling and cross-platform compatibility"""
+    try:
+        ssh_key = _decode_ssh_key(ssh_key)
+    except ValueError as e:
+        _track_ssh_operation("key_validation", "unknown", False, error=str(e))
+        raise RuntimeError(f"SSH key validation failed: {e}")
+
     ssh_key_file_path = create_temp_file(suffix='_rsa', prefix='ssh_key_')
-    with open(ssh_key_file_path, 'w') as f:
-        f.write(ssh_key)
-    
-    set_file_permissions(ssh_key_file_path, 0o600)
+
+    try:
+        # Write SSH key with Unix line endings for cross-platform compatibility
+        # Use newline='\n' to force Unix line endings on Windows
+        with open(ssh_key_file_path, 'w', newline='\n', encoding='utf-8') as f:
+            f.write(ssh_key)
+
+        set_file_permissions(ssh_key_file_path, 0o600)
+
+        # Verify the file was written correctly
+        if not os.path.exists(ssh_key_file_path):
+            raise RuntimeError("SSH key file was not created successfully")
+
+        # On Windows, verify the file content (for debugging libcrypto issues)
+        if is_windows():
+            try:
+                with open(ssh_key_file_path, 'r', encoding='utf-8') as f:
+                    written_content = f.read()
+                if '-----BEGIN' not in written_content:
+                    raise RuntimeError("SSH key file content validation failed")
+            except Exception as e:
+                _track_ssh_operation("key_file_validation", "windows", False, error=str(e))
+                raise RuntimeError(f"SSH key file validation failed: {e}")
+
+    except Exception as e:
+        # Clean up the file if creation failed
+        if os.path.exists(ssh_key_file_path):
+            try:
+                os.unlink(ssh_key_file_path)
+            except:
+                pass
+        raise RuntimeError(f"Failed to create SSH key file: {e}")
     
     known_hosts_file_path = None
     if host_entry:
