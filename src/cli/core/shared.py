@@ -424,28 +424,44 @@ def _decode_ssh_key(ssh_key: str) -> str:
 
     return ssh_key
 
-def _convert_path_for_ssh(path: str) -> str:
-    """Convert Windows paths to MSYS2 format for SSH compatibility"""
+def _convert_path_for_ssh(path: str, ssh_executable: str = None) -> str:
+    """Convert Windows paths for SSH compatibility based on SSH implementation"""
     if not path or not is_windows():
         return path
 
-    # Convert Windows path to MSYS2 format for SSH
-    path = path.replace('\\', '/')
-    if ':' in path and len(path) > 2:
-        # Convert C:/path to /c/path format
-        drive = path[0].lower()
-        rest = path[2:] if path[1] == ':' else path
-        path = f'/{drive}{rest}'
+    # Determine if we're using MSYS2 SSH or Windows OpenSSH
+    using_msys2 = False
+    if ssh_executable:
+        # Check if the SSH executable is from MSYS2
+        using_msys2 = 'msys' in ssh_executable.lower() or 'mingw' in ssh_executable.lower()
+    else:
+        # Try to detect which SSH is in use by checking PATH
+        import shutil
+        ssh_path = shutil.which('ssh')
+        if ssh_path:
+            using_msys2 = 'msys' in ssh_path.lower() or 'mingw' in ssh_path.lower()
+
+    if using_msys2:
+        # Convert Windows path to MSYS2 format for MSYS2 SSH
+        path = path.replace('\\', '/')
+        if ':' in path and len(path) > 2:
+            # Convert C:/path to /c/path format
+            drive = path[0].lower()
+            rest = path[2:] if path[1] == ':' else path
+            path = f'/{drive}{rest}'
+    else:
+        # For Windows OpenSSH, just normalize backslashes to forward slashes
+        path = path.replace('\\', '/')
 
     return path
 
-def _setup_ssh_options(host_entry: str, known_hosts_path: str, key_path: str = None) -> str:
+def _setup_ssh_options(host_entry: str, known_hosts_path: str, key_path: str = None, ssh_executable: str = None) -> str:
     """Setup SSH options with proper path handling for cross-platform compatibility"""
-    # Convert paths for MSYS2 compatibility on Windows
+    # Convert paths based on SSH implementation (MSYS2 vs Windows OpenSSH)
     if known_hosts_path:
-        known_hosts_path = _convert_path_for_ssh(known_hosts_path)
+        known_hosts_path = _convert_path_for_ssh(known_hosts_path, ssh_executable)
     if key_path:
-        key_path = _convert_path_for_ssh(key_path)
+        key_path = _convert_path_for_ssh(key_path, ssh_executable)
 
     # Security: Use different strategies based on host_entry availability
     if host_entry:
@@ -459,7 +475,8 @@ def _setup_ssh_options(host_entry: str, known_hosts_path: str, key_path: str = N
         # but we need to accept it initially to establish the connection
 
         # Use a temporary known_hosts file to capture the host key
-        base_opts = f"-o StrictHostKeyChecking=accept-new -o UserKnownHostsFile={known_hosts_path or get_null_device()}"
+        # Always use the provided known_hosts path (never null device)
+        base_opts = f"-o StrictHostKeyChecking=accept-new -o UserKnownHostsFile={known_hosts_path}"
         _track_ssh_operation("host_key_verification", "new_host", True)
 
     # Add additional security options
@@ -510,7 +527,7 @@ def setup_ssh_agent_connection(ssh_key: str, host_entry: str = None) -> Tuple[st
     
     return ssh_opts, agent_pid, known_hosts_file_path
 
-def setup_ssh_for_connection(ssh_key: str, host_entry: str = None) -> Tuple[str, str, str]:
+def setup_ssh_for_connection(ssh_key: str, host_entry: str = None, ssh_executable: str = None) -> Tuple[str, str, str]:
     """Setup SSH connection with enhanced error handling and cross-platform compatibility"""
     try:
         ssh_key = _decode_ssh_key(ssh_key)
@@ -552,12 +569,16 @@ def setup_ssh_for_connection(ssh_key: str, host_entry: str = None) -> Tuple[str,
                 pass
         raise RuntimeError(f"Failed to create SSH key file: {e}")
     
-    known_hosts_file_path = None
+    # Always create a known_hosts file, even for first-time connections
+    # This allows SSH to save the host key for future verification
+    known_hosts_file_path = create_temp_file(suffix='_known_hosts', prefix='known_hosts_')
     if host_entry:
-        known_hosts_file_path = create_temp_file(suffix='_known_hosts', prefix='known_hosts_')
-        with open(known_hosts_file_path, 'w') as f: f.write(host_entry + '\n')
+        # Write the existing host entry from the vault
+        with open(known_hosts_file_path, 'w') as f: 
+            f.write(host_entry + '\n')
+    # If no host_entry, the file is empty but will be used to store the new host key
     
-    ssh_opts = _setup_ssh_options(host_entry, known_hosts_file_path, ssh_key_file_path)
+    ssh_opts = _setup_ssh_options(host_entry, known_hosts_file_path, ssh_key_file_path, ssh_executable)
     
     return ssh_opts, ssh_key_file_path, known_hosts_file_path
 
@@ -1012,9 +1033,9 @@ class RepositoryConnection:
             print(colorize("Please ensure SSH keys are properly configured in your team's vault settings.", 'YELLOW'))
             raise Exception(error_msg)  # Raise exception instead of sys.exit so GUI can handle it
     
-    def setup_ssh(self) -> Tuple[str, str, str]:
+    def setup_ssh(self, ssh_executable: str = None) -> Tuple[str, str, str]:
         host_entry = self._connection_info.get('host_entry')
-        return setup_ssh_for_connection(self._ssh_key, host_entry)
+        return setup_ssh_for_connection(self._ssh_key, host_entry, ssh_executable)
     
     def cleanup_ssh(self, ssh_key_file: str, known_hosts_file: str = None):
         cleanup_ssh_key(ssh_key_file, known_hosts_file)

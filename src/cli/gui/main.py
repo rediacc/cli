@@ -1703,32 +1703,75 @@ class MainWindow(BaseWindow):
                     ssh_host = connection_info['ip']
                     ssh_user = connection_info['user']
 
-                # Create temporary SSH config
+                # Create persistent SSH key file for VS Code
+                ssh_dir = os.path.expanduser('~/.ssh')
+                os.makedirs(ssh_dir, exist_ok=True)
+                os.chmod(ssh_dir, 0o700)
+                
+                # Create persistent key file with unique name for this connection
+                key_filename = f"rediacc_{self._sanitize_hostname(team)}_{self._sanitize_hostname(machine)}"
+                if repo:
+                    key_filename += f"_{self._sanitize_hostname(repo)}"
+                key_filename += "_key"
+                
+                persistent_key_path = os.path.join(ssh_dir, key_filename)
+                
+                # Write SSH key to persistent file
+                if repo:
+                    # For repo connection, get key from connection object
+                    ssh_key = connection._ssh_key
+                else:
+                    # ssh_key is already defined for machine-only connection
+                    pass
+                    
+                # Decode and write the SSH key
+                from cli.core.shared import _decode_ssh_key
+                decoded_key = _decode_ssh_key(ssh_key)
+                
+                # Write with proper permissions
+                with open(persistent_key_path, 'w', newline='\n', encoding='utf-8') as f:
+                    f.write(decoded_key)
+                    
+                # Set restrictive permissions on Windows
+                if is_windows():
+                    import stat
+                    os.chmod(persistent_key_path, stat.S_IREAD | stat.S_IWRITE)
+                else:
+                    os.chmod(persistent_key_path, 0o600)
+                
+                self.logger.debug(f"Created persistent SSH key at: {persistent_key_path}")
+                
+                # Create SSH config entry using persistent key
                 with ssh_context as ssh_conn:
                     # Extract connection details
 
                     if not ssh_host or not ssh_user:
                         raise Exception("Missing SSH connection details")
 
-                    # Create SSH config entry
-                    # Convert SSH options from command line format to config file format
+                    # Create SSH config entry with persistent key file
                     ssh_opts_lines = []
+                    
+                    # Add the persistent identity file (convert Windows paths to forward slashes)
+                    key_path_for_config = persistent_key_path.replace('\\', '/')
+                    ssh_opts_lines.append(f"    IdentityFile {key_path_for_config}")
+                    ssh_opts_lines.append(f"    IdentitiesOnly yes")
+                    
+                    # Parse other SSH options from ssh_conn.ssh_opts
                     if ssh_conn.ssh_opts:
-                        # Parse ssh options and convert to config format
                         opts = ssh_conn.ssh_opts.split()
                         i = 0
                         while i < len(opts):
                             if opts[i] == '-o' and i + 1 < len(opts):
-                                # Convert -o "Key=Value" to "    Key Value"
                                 option = opts[i + 1]
                                 if '=' in option:
                                     key, value = option.split('=', 1)
-                                    ssh_opts_lines.append(f"    {key} {value}")
+                                    # Skip IdentityFile from options since we're using persistent one
+                                    # Also skip UserKnownHostsFile to use default ~/.ssh/known_hosts
+                                    if key not in ['IdentityFile', 'UserKnownHostsFile']:
+                                        ssh_opts_lines.append(f"    {key} {value}")
                                 i += 2
-                            elif opts[i] == '-i' and i + 1 < len(opts):
-                                # Convert -i keyfile to "    IdentityFile keyfile"
-                                keyfile = opts[i + 1]
-                                ssh_opts_lines.append(f"    IdentityFile {keyfile}")
+                            elif opts[i] == '-i':
+                                # Skip -i keyfile since we're using persistent key
                                 i += 2
                             else:
                                 i += 1
