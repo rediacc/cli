@@ -840,12 +840,13 @@ class DualPaneFileBrowser:
             return False, "Not connected"
 
         try:
-            ssh_opts, ssh_key_file, known_hosts_file = self.ssh_connection.setup_ssh()
-
             # Get SSH executable - use MSYS2 SSH on Windows for better compatibility
             ssh_exe = self._get_ssh_executable()
             if not ssh_exe:
                 return False, "SSH executable not found"
+            
+            # Pass SSH executable to setup_ssh for proper path handling
+            ssh_opts, ssh_key_file, known_hosts_file = self.ssh_connection.setup_ssh(ssh_exe)
 
             # Build SSH command with proper option parsing
             # On Windows, ssh_opts may contain MSYS2-formatted paths that need special handling
