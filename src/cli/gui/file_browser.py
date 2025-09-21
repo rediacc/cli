@@ -13,7 +13,7 @@ import subprocess
 import os
 import sys
 from pathlib import Path
-from typing import List, Dict, Any, Tuple, TYPE_CHECKING
+from typing import List, Dict, Any, Tuple, Optional, TYPE_CHECKING
 import tempfile
 import shutil
 import re
@@ -835,38 +835,126 @@ class DualPaneFileBrowser:
                 self.connect_remote()
     
     def execute_remote_command(self, command: str) -> Tuple[bool, str]:
-        """Execute command on remote via SSH"""
+        """Execute command on remote via SSH with proper cross-platform handling"""
         if not self.ssh_connection:
             return False, "Not connected"
-        
+
         try:
             ssh_opts, ssh_key_file, known_hosts_file = self.ssh_connection.setup_ssh()
-            
-            # Build SSH command
-            ssh_cmd = ['ssh'] + ssh_opts.split() + [self.ssh_connection.ssh_destination]
-            
+
+            # Get SSH executable - use MSYS2 SSH on Windows for better compatibility
+            ssh_exe = self._get_ssh_executable()
+            if not ssh_exe:
+                return False, "SSH executable not found"
+
+            # Build SSH command with proper option parsing
+            # On Windows, ssh_opts may contain MSYS2-formatted paths that need special handling
+            ssh_cmd = [ssh_exe]
+
+            # Parse SSH options more carefully to handle quoted paths and Windows paths
+            ssh_options = self._parse_ssh_options(ssh_opts)
+            ssh_cmd.extend(ssh_options)
+            ssh_cmd.append(self.ssh_connection.ssh_destination)
+
             # Add sudo if we have universal_user
             universal_user = self.ssh_connection.connection_info.get('universal_user')
             if universal_user:
                 ssh_cmd.extend(['sudo', '-u', universal_user])
-            
+
             ssh_cmd.append(command)
-            
+
+            self.logger.debug(f"[SSH] Executing: {ssh_cmd}")
             result = subprocess.run(ssh_cmd, capture_output=True, text=True, timeout=30)
-            
+
             # Store SSH files for cleanup
             self.ssh_connection.ssh_key_file = ssh_key_file
             self.ssh_connection.known_hosts_file = known_hosts_file
-            
+
             if result.returncode == 0:
                 return True, result.stdout
             else:
-                return False, result.stderr or f"Command failed with code {result.returncode}"
-            
+                error_msg = result.stderr or f"Command failed with code {result.returncode}"
+
+                # Check for specific SSH host key verification errors
+                if "Host key verification failed" in error_msg:
+                    return self._handle_host_key_failure(error_msg)
+                elif "Permission denied" in error_msg:
+                    return False, "SSH authentication failed. Please check your SSH key configuration."
+
+                return False, error_msg
+
         except subprocess.TimeoutExpired:
             return False, "Command timed out"
         except Exception as e:
+            self.logger.error(f"[SSH] Exception during command execution: {e}")
             return False, str(e)
+
+    def _get_ssh_executable(self) -> Optional[str]:
+        """Get the appropriate SSH executable for the current platform"""
+        if not is_windows():
+            return 'ssh'
+
+        # On Windows, try to find MSYS2 SSH first for better compatibility
+        try:
+            from commands.sync_main import find_msys2_executable
+            msys2_ssh = find_msys2_executable('ssh')
+            if msys2_ssh:
+                return msys2_ssh
+        except ImportError:
+            pass
+
+        # Fallback to system SSH
+        import shutil
+        if shutil.which('ssh'):
+            return 'ssh'
+
+        return None
+
+    def _parse_ssh_options(self, ssh_opts: str) -> List[str]:
+        """Parse SSH options string into a list, handling quoted paths properly"""
+        import shlex
+        try:
+            # Use shlex to properly parse quoted arguments
+            return shlex.split(ssh_opts)
+        except ValueError:
+            # Fallback to simple split if shlex fails
+            return ssh_opts.split()
+
+    def _handle_host_key_failure(self, error_msg: str) -> Tuple[bool, str]:
+        """Handle SSH host key verification failures with security considerations"""
+        self.logger.warning(f"[SSH Security] Host key verification failed: {error_msg}")
+
+        # Check if this is a first-time connection (no host_entry in vault)
+        host_entry = self.ssh_connection.connection_info.get('host_entry')
+
+        if not host_entry:
+            # First-time connection - this should normally work with accept-new
+            # If it's still failing, there might be a configuration issue
+            return False, ("First-time SSH connection failed. This might be due to:\n"
+                          "• Network connectivity issues\n"
+                          "• SSH server configuration problems\n"
+                          "• Firewall blocking SSH access\n"
+                          "\nTry using 'rediacc term --dev' for troubleshooting.")
+        else:
+            # Host key exists but verification failed - potential security issue
+            machine_info = f"{self.ssh_connection.connection_info.get('ip', 'unknown')}"
+            return False, (f"⚠️  SECURITY WARNING: Host key verification failed for {machine_info}\n\n"
+                          "This could indicate:\n"
+                          "• Server was reinstalled or reconfigured\n"
+                          "• Potential man-in-the-middle attack\n"
+                          "• Network infrastructure changes\n\n"
+                          "Please verify with your system administrator before proceeding.\n"
+                          "If the server change is legitimate, update the machine's host key in the vault.")
+
+    def _get_connection_fingerprint(self) -> str:
+        """Get a safe fingerprint of the current connection for logging"""
+        if not self.ssh_connection or not self.ssh_connection.connection_info:
+            return "unknown"
+
+        # Create a safe identifier without exposing sensitive information
+        ip = self.ssh_connection.connection_info.get('ip', 'unknown')
+        user = self.ssh_connection.connection_info.get('user', 'unknown')
+        return f"{user}@{ip[:8]}..." if len(ip) > 8 else f"{user}@{ip}"
     
     def refresh_remote(self):
         """Refresh remote file list"""

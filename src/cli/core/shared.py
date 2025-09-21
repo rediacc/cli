@@ -378,9 +378,51 @@ def _decode_ssh_key(ssh_key: str) -> str:
         except: pass
     return ssh_key if ssh_key.endswith('\n') else ssh_key + '\n'
 
+def _convert_path_for_ssh(path: str) -> str:
+    """Convert Windows paths to MSYS2 format for SSH compatibility"""
+    if not path or not is_windows():
+        return path
+
+    # Convert Windows path to MSYS2 format for SSH
+    path = path.replace('\\', '/')
+    if ':' in path and len(path) > 2:
+        # Convert C:/path to /c/path format
+        drive = path[0].lower()
+        rest = path[2:] if path[1] == ':' else path
+        path = f'/{drive}{rest}'
+
+    return path
+
 def _setup_ssh_options(host_entry: str, known_hosts_path: str, key_path: str = None) -> str:
-    base_opts = f"-o StrictHostKeyChecking=yes -o UserKnownHostsFile={known_hosts_path}" if host_entry else f"-o StrictHostKeyChecking=accept-new -o UserKnownHostsFile={get_null_device()}"
-    return f"{base_opts} -i {key_path}" if key_path else base_opts
+    """Setup SSH options with proper path handling for cross-platform compatibility"""
+    # Convert paths for MSYS2 compatibility on Windows
+    if known_hosts_path:
+        known_hosts_path = _convert_path_for_ssh(known_hosts_path)
+    if key_path:
+        key_path = _convert_path_for_ssh(key_path)
+
+    # Security: Use different strategies based on host_entry availability
+    if host_entry:
+        # Host entry exists in vault - use strict checking to prevent MITM attacks
+        # This is the secure path for machines with known host keys
+        base_opts = f"-o StrictHostKeyChecking=yes -o UserKnownHostsFile={known_hosts_path}"
+        _track_ssh_operation("host_key_verification", "known_host", True)
+    else:
+        # No host entry - this is a first-time connection or dev mode
+        # For security, we still want to save the host key for future verification
+        # but we need to accept it initially to establish the connection
+
+        # Use a temporary known_hosts file to capture the host key
+        base_opts = f"-o StrictHostKeyChecking=accept-new -o UserKnownHostsFile={known_hosts_path or get_null_device()}"
+        _track_ssh_operation("host_key_verification", "new_host", True)
+
+    # Add additional security options
+    security_opts = "-o PasswordAuthentication=no -o PubkeyAuthentication=yes -o PreferredAuthentications=publickey"
+
+    # Combine all options
+    all_opts = f"{base_opts} {security_opts}"
+
+    return f"{all_opts} -i {key_path}" if key_path else all_opts
 
 def setup_ssh_agent_connection(ssh_key: str, host_entry: str = None) -> Tuple[str, str, str]:
     import subprocess
