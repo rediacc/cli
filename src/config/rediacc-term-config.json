@@ -41,8 +41,8 @@
       "echo -e \"\\033[1;32mConnected to Rediacc Repository:\\033[0m \\033[1;33m{repo}\\033[0m\"",
       "echo -e \"\\033[1;36m━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━\\033[0m\"",
       "echo",
-      "echo -e \"\\033[1;34mRepository Path:\\033[0m $REPO_PATH\"",
-      "echo -e \"\\033[1;34mDocker Socket:\\033[0m   $DOCKER_SOCKET\"",
+      "echo -e \"\\033[1;34mRepository Files:\\033[0m   $REPO_PATH\"",
+      "echo -e \"\\033[1;34mDocker Socket:\\033[0m    $DOCKER_SOCKET\"",
       "echo",
       "echo -e \"\\033[1;33mQuick Commands:\\033[0m\"",
       "echo \"  • status                       - Show repository status\"",
@@ -118,10 +118,10 @@
       "title": "When connected to a repository:",
       "subtitle": "Environment Variables Set:",
       "vars": {
-        "REPO_PATH": "Repository mount path",
-        "DOCKER_HOST": "Repository's Docker socket",
-        "DOCKER_FOLDER": "Docker configuration folder",
-        "DOCKER_SOCKET": "Docker socket path",
+        "REPO_PATH": "Repository filesystem path (where files are stored)",
+        "DOCKER_HOST": "Docker daemon connection (for container commands)",
+        "DOCKER_FOLDER": "Docker configuration and data folder",
+        "DOCKER_SOCKET": "Docker runtime socket path (hashed for short paths)",
         "DOCKER_DATA": "Docker data directory",
         "DOCKER_EXEC": "Docker exec directory"
       }
