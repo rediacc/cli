@@ -572,63 +572,63 @@ class MainWindow(BaseWindow):
         """Populate the Tools menu"""
         # Clear existing menu items
         self.tools_menu.delete(0, tk.END)
-        
-        # Terminal submenu
+
+        # Terminal & Command submenu
         terminal_menu = tk.Menu(self.tools_menu, tearoff=0)
         self.tools_menu.add_cascade(
-            label=i18n.get('terminal'),
+            label='Terminal & Commands',
             menu=terminal_menu
         )
-        
+
         terminal_menu.add_command(
             label=i18n.get('repository_terminal'),
             accelerator='Ctrl+T',
             command=self.open_repo_terminal
         )
-        
+
         terminal_menu.add_command(
             label=i18n.get('machine_terminal'),
             accelerator='Ctrl+Shift+T',
             command=self.open_machine_terminal
         )
-        
+
         terminal_menu.add_command(
             label=i18n.get('quick_command'),
             accelerator='Ctrl+K',
             command=self.show_quick_command
         )
 
-        terminal_menu.add_separator()
+        # VS Code submenu
+        vscode_menu = tk.Menu(self.tools_menu, tearoff=0)
+        self.tools_menu.add_cascade(
+            label='VS Code',
+            menu=vscode_menu
+        )
 
-        terminal_menu.add_command(
-            label='VS Code Repository',
+        vscode_menu.add_command(
+            label='Open Repository',
             accelerator='Ctrl+Shift+V',
             command=self.open_vscode_repo
         )
 
-        terminal_menu.add_command(
-            label='VS Code Machine',
+        vscode_menu.add_command(
+            label='Open Machine',
             accelerator='Ctrl+Alt+V',
             command=self.open_vscode_machine
         )
-        
-        # File Sync
-        self.tools_menu.add_command(
-            label=i18n.get('file_sync'),
-            accelerator='Ctrl+S',
-            command=lambda: None  # No tab switching needed
-        )
-        
+
         self.tools_menu.add_separator()
-        
-        # Transfer Options
+
+        # File Transfer
         self.tools_menu.add_command(
-            label=i18n.get('transfer_options'),
+            label='Transfer Options',
             accelerator='Ctrl+Shift+O',
             command=self.show_transfer_options_wrapper
         )
-        
-        # Console
+
+        self.tools_menu.add_separator()
+
+        # System
         self.tools_menu.add_command(
             label=i18n.get('console'),
             accelerator='F12',
@@ -641,7 +641,6 @@ class MainWindow(BaseWindow):
         self.root.bind_all('<Control-k>', lambda e: self.show_quick_command())
         self.root.bind_all('<Control-Shift-V>', lambda e: self.open_vscode_repo())
         self.root.bind_all('<Control-Alt-v>', lambda e: self.open_vscode_machine())
-        self.root.bind_all('<Control-s>', lambda e: None)  # No tab switching needed
         self.root.bind_all('<Control-Shift-O>', lambda e: self.show_transfer_options_wrapper())
         self.root.bind_all('<F12>', lambda e: self.show_console())
     
@@ -2912,7 +2911,11 @@ class MainWindow(BaseWindow):
             ('', ''),
             ('Tools Menu:', ''),
             ('Ctrl+T', 'Repository Terminal'),
-            ('Ctrl+S', 'File Sync'),
+            ('Ctrl+Shift+T', 'Machine Terminal'),
+            ('Ctrl+K', 'Quick Command'),
+            ('Ctrl+Shift+V', 'VS Code Repository'),
+            ('Ctrl+Alt+V', 'VS Code Machine'),
+            ('Ctrl+Shift+O', 'Transfer Options'),
             ('F12', 'Console'),
             ('', ''),
             ('Connection Menu:', ''),
