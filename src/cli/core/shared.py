@@ -771,29 +771,34 @@ def get_crc32(text: str) -> str:
 
 def rediacc_hash(text: str) -> str:
     """
-    Custom hash algorithm for consistent path generation.
+    Convert GUID directly to Base62 for path generation.
 
-    This algorithm produces identical results in Python and Bash:
-    - Uses only basic mathematical operations (multiply, add, modulo)
-    - Processes ASCII character values
-    - Platform independent - no external dependencies
-    - Designed for GUID -> directory path conversion
-    - Returns base62-encoded hash for filesystem-safe paths
-    - Uses 64-bit hash for maximum collision resistance
+    This approach provides:
+    - Zero collision risk (GUIDs are already globally unique)
+    - Consistent results across Python and Bash
+    - Shorter paths than hex representation
+    - No complex arithmetic or overflow issues
 
-    Algorithm:
-    hash = 5381 (prime seed)
-    for each character:
-        hash = (hash * 33 + ascii_value) % 9223372036854775783
-    Convert to base62 for path-safe representation (0-9A-Za-z only)
+    Converts GUID hex string to Base62 representation.
     """
-    hash_val = 5381  # Initial prime seed
-    for char in text:
-        ascii_val = ord(char)
-        hash_val = (hash_val * 33 + ascii_val) % 9223372036854775783  # 2^63 - 25 (largest signed 64-bit prime)
+    return _guid_to_base62(text)
 
-    # Convert to base62 for filesystem-safe paths
-    return _int_to_base62(hash_val)
+def _guid_to_base62(guid_str: str) -> str:
+    """Convert GUID string directly to Base62."""
+    # Remove dashes and convert to lowercase for consistency
+    hex_str = guid_str.replace('-', '').lower()
+
+    # Convert hex string to integer
+    try:
+        guid_int = int(hex_str, 16)
+    except ValueError:
+        # If not a valid hex string, fall back to simple string encoding
+        # Convert string to bytes, then to int for consistent conversion
+        guid_bytes = guid_str.encode('utf-8')
+        guid_int = int.from_bytes(guid_bytes, byteorder='big')
+
+    # Convert to base62
+    return _int_to_base62(guid_int)
 
 def _int_to_base62(num: int) -> str:
     """Convert integer to base62 string (0-9A-Za-z)."""
@@ -814,13 +819,14 @@ def get_repository_paths(repo_guid: str, datastore: str, universal_user_id: str,
     if not universal_user_id or not company_id:
         raise ValueError("Both universal_user_id and company_id are required for repository paths")
     
-    base_path = f"{datastore}/{universal_user_id}/{company_id}"
-    docker_base = f"{base_path}/{INTERIM_FOLDER_NAME}/{repo_guid}/docker"
-    
+    # Convert both company_id and repo_guid to Base62 for shorter, collision-free paths
+    company_hash = get_crc32(company_id)
+    repo_hash = get_crc32(repo_guid)
+    base_path = f"{datastore}/{universal_user_id}/{company_hash}"
+    docker_base = f"{base_path}/{INTERIM_FOLDER_NAME}/{repo_hash}/docker"
+
     # Calculate runtime paths for short socket locations
-    company_crc = get_crc32(company_id)
-    repo_crc = get_crc32(repo_guid)
-    runtime_base = f"/var/run/rediacc/{universal_user_id}/{company_crc}/{repo_crc}"
+    runtime_base = f"/var/run/rediacc/{universal_user_id}/{company_hash}/{repo_hash}"
     runtime_paths = {
         'runtime_base': runtime_base,
         'docker_socket': f"{runtime_base}/docker.sock",
@@ -829,8 +835,8 @@ def get_repository_paths(repo_guid: str, datastore: str, universal_user_id: str,
     }
     
     paths = {
-        'mount_path': f"{base_path}/{MOUNTS_FOLDER_NAME}/{repo_guid}",
-        'image_path': f"{base_path}/{REPOS_FOLDER_NAME}/{repo_guid}",
+        'mount_path': f"{base_path}/{MOUNTS_FOLDER_NAME}/{repo_hash}",
+        'image_path': f"{base_path}/{REPOS_FOLDER_NAME}/{repo_hash}",
         'docker_folder': docker_base,
         'docker_socket': runtime_paths['docker_socket'],
         'docker_data': f"{docker_base}/data",

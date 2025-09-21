@@ -398,7 +398,7 @@ class DualPaneFileBrowser:
         # Navigation frame using grid
         nav_frame = tk.Frame(self.remote_frame)
         nav_frame.grid(row=0, column=0, sticky='ew', padx=5, pady=5)
-        nav_frame.grid_columnconfigure(3, weight=1)  # Path entry column expands
+        nav_frame.grid_columnconfigure(2, weight=1)  # Path entry column expands
         
         # Navigation buttons with consistent width and spacing
         self.remote_up_button = ttk.Button(nav_frame, text='↑', width=4,
@@ -415,6 +415,12 @@ class DualPaneFileBrowser:
         self.remote_path_var = tk.StringVar(value=self.remote_current_path)
         self.remote_path_entry = ttk.Entry(nav_frame, textvariable=self.remote_path_var, state='readonly')
         self.remote_path_entry.grid(row=0, column=2, sticky='ew', padx=5)
+
+        # Paths info button
+        self.remote_paths_info_button = ttk.Button(nav_frame, text='ℹ️', width=4,
+                                                  command=self.copy_paths_to_clipboard)
+        self.remote_paths_info_button.grid(row=0, column=3, padx=(5, 0))
+        self.update_paths_tooltip()
         
         # Search frame using grid
         search_frame = tk.Frame(self.remote_frame)
@@ -763,6 +769,10 @@ class DualPaneFileBrowser:
         self.remote_up_button.config(state='normal')
         self.remote_home_button.config(state='normal')
         # Refresh button removed - use menu instead
+
+        # Update paths tooltip and path display with current connection info
+        self.update_paths_tooltip()
+        self.update_path_display()
         self.remote_path_entry.config(state='readonly')
         self.remote_search_entry.config(state='normal')
         self.remote_clear_button.config(state='normal')
@@ -1048,8 +1058,8 @@ class DualPaneFileBrowser:
                                    values=(size_text, modified_text, item['type']),
                                    tags=tags)
         
-        # Update path display
-        self.remote_path_var.set(self.remote_current_path)
+        # Update path display with appropriate label
+        self.update_path_display()
         
         # Update status with filter info
         status_text = i18n.get('remote_items').format(count=len(sorted_files))
@@ -1080,7 +1090,95 @@ class DualPaneFileBrowser:
         if path:
             self.remote_current_path = path
             self.refresh_remote()
-    
+
+    def update_paths_tooltip(self):
+        """Update the tooltip for the paths info button with all relevant paths"""
+        if hasattr(self, 'remote_paths_info_button') and self.ssh_connection and hasattr(self.ssh_connection, 'repo_paths'):
+            repo_paths = self.ssh_connection.repo_paths
+
+            # Build tooltip text using internationalized template
+            tooltip_text = i18n.get('paths_info_tooltip').format(
+                mount_path=repo_paths.get('mount_path', 'N/A'),
+                image_path=repo_paths.get('image_path', 'N/A'),
+                docker_folder=repo_paths.get('docker_folder', 'N/A'),
+                docker_socket=repo_paths.get('docker_socket', 'N/A'),
+                runtime_base=repo_paths.get('runtime_base', 'N/A'),
+                plugin_socket_dir=repo_paths.get('plugin_socket_dir', 'N/A')
+            )
+
+            # Apply tooltip to the info button
+            create_tooltip(self.remote_paths_info_button, tooltip_text)
+        elif hasattr(self, 'remote_paths_info_button'):
+            # No connection, show default message
+            create_tooltip(self.remote_paths_info_button, i18n.get('paths_info_no_connection'))
+
+    def update_path_display(self):
+        """Update the path display with appropriate label based on current location"""
+        if self.ssh_connection and hasattr(self.ssh_connection, 'repo_paths'):
+            repo_paths = self.ssh_connection.repo_paths
+            current_path = self.remote_current_path
+
+            # Determine what type of path we're currently viewing
+            if current_path == repo_paths.get('mount_path'):
+                label = i18n.get('path_label_repository_files')
+            elif current_path == repo_paths.get('image_path'):
+                label = i18n.get('path_label_repository_images')
+            elif current_path == repo_paths.get('docker_folder'):
+                label = i18n.get('path_label_docker_config')
+            elif current_path.startswith(repo_paths.get('runtime_base', '')):
+                label = i18n.get('path_label_runtime_path')
+            else:
+                # General path, try to determine relative to known paths
+                mount_path = repo_paths.get('mount_path', '')
+                if mount_path and current_path.startswith(mount_path):
+                    label = i18n.get('path_label_repository_files')
+                else:
+                    label = i18n.get('path_label_remote_path')
+
+            self.remote_path_var.set(f"{label}: {current_path}")
+        else:
+            self.remote_path_var.set(self.remote_current_path)
+
+    def copy_paths_to_clipboard(self):
+        """Copy all repository paths to clipboard"""
+        if self.ssh_connection and hasattr(self.ssh_connection, 'repo_paths'):
+            repo_paths = self.ssh_connection.repo_paths
+
+            # Build clipboard text with all paths
+            clipboard_text = "📋 Repository Paths:\n\n"
+            clipboard_text += f"📁 Repository Files:\n{repo_paths.get('mount_path', 'N/A')}\n\n"
+            clipboard_text += f"🖼️ Repository Images:\n{repo_paths.get('image_path', 'N/A')}\n\n"
+            clipboard_text += f"🐳 Docker Config:\n{repo_paths.get('docker_folder', 'N/A')}\n\n"
+            clipboard_text += f"🔌 Docker Socket:\n{repo_paths.get('docker_socket', 'N/A')}\n\n"
+            clipboard_text += f"⚡ Runtime Base:\n{repo_paths.get('runtime_base', 'N/A')}\n\n"
+            clipboard_text += f"🔧 Plugin Sockets:\n{repo_paths.get('plugin_socket_dir', 'N/A')}"
+
+            # Copy to clipboard
+            try:
+                self.parent.clipboard_clear()
+                self.parent.clipboard_append(clipboard_text)
+                self.parent.update()  # Ensure clipboard is updated
+
+                # Show success message in status bar or via temporary tooltip
+                self.show_temporary_message(i18n.get('paths_copied_to_clipboard'))
+            except Exception as e:
+                self.logger.error(f"Failed to copy to clipboard: {e}")
+                self.show_temporary_message("❌ Failed to copy to clipboard")
+        else:
+            self.show_temporary_message("❌ No repository connection")
+
+    def show_temporary_message(self, message):
+        """Show a temporary message to the user"""
+        # Update the info button text temporarily to show feedback
+        original_text = self.remote_paths_info_button.cget('text')
+        self.remote_paths_info_button.config(text='✅')
+
+        # Reset after 2 seconds
+        self.parent.after(2000, lambda: self.remote_paths_info_button.config(text=original_text))
+
+        # Also log the message
+        self.logger.info(message)
+
     def on_remote_double_click(self, event):
         """Handle double-click on remote file/folder"""
         selection = self.remote_tree.selection()
