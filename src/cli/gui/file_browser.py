@@ -2052,8 +2052,11 @@ class DualPaneFileBrowser:
             is_file = 'file' in item['tags']
             
             if is_file:
-                menu.add_command(label=i18n.get('preview'), 
+                menu.add_command(label=i18n.get('preview'),
                                command=lambda: self.preview_selected_file('local'))
+                menu.add_separator()
+                menu.add_command(label='Open in VS Code',
+                               command=lambda: self.open_file_in_vscode('local'))
                 menu.add_separator()
             
             menu.add_command(label=i18n.get('upload'), command=self.upload_selected,
@@ -2065,6 +2068,10 @@ class DualPaneFileBrowser:
                 menu.add_command(label=i18n.get('sync_folder'), 
                                command=lambda: self.sync_folder('upload'),
                                state='normal' if self.ssh_connection else 'disabled')
+            menu.add_separator()
+            menu.add_command(label='Open Folder in VS Code',
+                           command=lambda: self.open_folder_in_vscode(),
+                           state='normal')
             menu.add_separator()
             menu.add_command(label=i18n.get('refresh'), command=self.refresh_local)
             
@@ -2088,8 +2095,11 @@ class DualPaneFileBrowser:
             is_file = 'file' in item['tags']
             
             if is_file:
-                menu.add_command(label=i18n.get('preview'), 
+                menu.add_command(label=i18n.get('preview'),
                                command=lambda: self.preview_selected_file('remote'))
+                menu.add_separator()
+                menu.add_command(label='Open in VS Code',
+                               command=lambda: self.open_file_in_vscode('remote'))
                 menu.add_separator()
             
             menu.add_command(label=i18n.get('download'), command=self.download_selected)
@@ -2100,6 +2110,9 @@ class DualPaneFileBrowser:
                 menu.add_command(label=i18n.get('sync_folder'), 
                                command=lambda: self.sync_folder('download'),
                                state='normal' if self.ssh_connection else 'disabled')
+            menu.add_separator()
+            menu.add_command(label='Open Repository in VS Code',
+                           command=lambda: self.open_repository_in_vscode())
             menu.add_separator()
             menu.add_command(label=i18n.get('refresh'), command=self.refresh_remote)
             
@@ -2500,7 +2513,104 @@ class DualPaneFileBrowser:
         self.preview_text.delete(1.0, tk.END)
         self.preview_text.insert(1.0, content)
         self.preview_text.config(state='disabled')
-    
+
+    def open_file_in_vscode(self, source: str):
+        """Open the selected file in VS Code"""
+        # Get selected item
+        if source == 'local':
+            tree = self.local_tree
+            base_path = self.local_current_path
+        else:
+            tree = self.remote_tree
+            base_path = self.remote_current_path
+            if not self.ssh_connection:
+                return
+
+        selection = tree.selection()
+        if not selection:
+            return
+
+        item = tree.item(selection[0])
+        if 'dir' in item['tags']:
+            # Don't open directories in VS Code this way
+            return
+
+        filename = item['text'][2:]  # Remove icon
+
+        # For remote files, we need to use the main window's VS Code functionality
+        if source == 'remote' and hasattr(self.main_window, '_launch_vscode'):
+            # Get current team, machine, and repo from main window
+            team = self.main_window.team_combo.get()
+            machine = self.main_window.machine_combo.get()
+            repo = self.main_window.repo_combo.get()
+
+            if not all([team, machine, repo]):
+                messagebox.showerror('Error', 'Please select team, machine, and repository first')
+                return
+
+            # Launch VS Code connected to the repository
+            # The specific file will be accessible in the repository folder
+            self.main_window._launch_vscode(team, machine, repo)
+        elif source == 'local':
+            # For local files, open directly with VS Code
+            if hasattr(self.main_window, 'find_vscode_executable'):
+                vscode_cmd = self.main_window.find_vscode_executable()
+                if not vscode_cmd:
+                    messagebox.showerror(
+                        "VS Code Not Found",
+                        "VS Code is not installed or not found in PATH.\\n\\n"
+                        "Please install VS Code from: https://code.visualstudio.com/\\n\\n"
+                        "You can also set REDIACC_VSCODE_PATH environment variable to specify the path."
+                    )
+                    return
+
+                file_path = base_path / filename
+                try:
+                    subprocess.Popen([vscode_cmd, str(file_path)],
+                                   stdout=subprocess.DEVNULL,
+                                   stderr=subprocess.DEVNULL)
+                    self.logger.info(f"Opened {file_path} in VS Code")
+                except Exception as e:
+                    self.logger.error(f"Failed to open VS Code: {e}")
+                    messagebox.showerror("VS Code Error", f"Failed to open VS Code:\\n\\n{str(e)}")
+
+    def open_folder_in_vscode(self):
+        """Open the current local folder in VS Code"""
+        if hasattr(self.main_window, 'find_vscode_executable'):
+            vscode_cmd = self.main_window.find_vscode_executable()
+            if not vscode_cmd:
+                messagebox.showerror(
+                    "VS Code Not Found",
+                    "VS Code is not installed or not found in PATH.\\n\\n"
+                    "Please install VS Code from: https://code.visualstudio.com/\\n\\n"
+                    "You can also set REDIACC_VSCODE_PATH environment variable to specify the path."
+                )
+                return
+
+            try:
+                subprocess.Popen([vscode_cmd, str(self.local_current_path)],
+                               stdout=subprocess.DEVNULL,
+                               stderr=subprocess.DEVNULL)
+                self.logger.info(f"Opened {self.local_current_path} in VS Code")
+            except Exception as e:
+                self.logger.error(f"Failed to open VS Code: {e}")
+                messagebox.showerror("VS Code Error", f"Failed to open VS Code:\\n\\n{str(e)}")
+
+    def open_repository_in_vscode(self):
+        """Open the repository in VS Code"""
+        if hasattr(self.main_window, '_launch_vscode'):
+            # Get current team, machine, and repo from main window
+            team = self.main_window.team_combo.get()
+            machine = self.main_window.machine_combo.get()
+            repo = self.main_window.repo_combo.get()
+
+            if not all([team, machine, repo]):
+                messagebox.showerror('Error', 'Please select team, machine, and repository first')
+                return
+
+            # Launch VS Code connected to the repository
+            self.main_window._launch_vscode(team, machine, repo)
+
     def show_transfer_options(self):
         """Show transfer options dialog"""
         dialog = tk.Toplevel(self.parent)
