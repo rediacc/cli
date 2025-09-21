@@ -117,18 +117,27 @@ class WindowsProtocolHandler:
         """Get the command string for protocol handling"""
         python_exe = self.get_python_executable()
         
-        # Try to find the wrapper script first (more reliable)
+        # Find the wrapper script (rediacc.py)
         # Go up from src/cli/core to get to the CLI root directory
         cli_dir = Path(__file__).parent.parent.parent.parent
         wrapper_script = cli_dir / "rediacc.py"
         
         if wrapper_script.exists():
-            # Use the wrapper script which handles module imports correctly
+            # Always use the wrapper script for consistency
             return f'"{python_exe}" "{wrapper_script}" protocol-handler "%1"'
         else:
-            # Fallback to direct CLI script
-            cli_script = self.get_cli_script_path()
-            return f'"{python_exe}" "{cli_script}" protocol-handler "%1"'
+            # If wrapper doesn't exist, try to find it relative to the installed package
+            # This handles cases where the package is installed via pip
+            import cli
+            cli_package_dir = Path(cli.__file__).parent.parent
+            wrapper_script = cli_package_dir / "rediacc.py"
+            
+            if wrapper_script.exists():
+                return f'"{python_exe}" "{wrapper_script}" protocol-handler "%1"'
+            else:
+                # Last resort: assume rediacc.py is in the current working directory
+                # or accessible via PATH
+                return f'"{python_exe}" rediacc.py protocol-handler "%1"'
     
     def check_admin_privileges(self) -> bool:
         """Check if running with administrator privileges"""
@@ -449,47 +458,46 @@ def handle_protocol_url(url: str) -> int:
         # Execute the appropriate CLI tool based on the action
         action = parsed.get("action")
         
-        if action == "sync":
-            # Use rediacc-sync tool
-            python_exe = sys.executable
-            sync_script = os.path.join(os.path.dirname(os.path.dirname(__file__)), "commands", "sync_main.py")
-            
-            if os.path.exists(sync_script):
-                result = subprocess.run([python_exe, sync_script] + cmd_args[1:], timeout=300)
-                return result.returncode
-            else:
-                logger.error(f"Sync script not found: {sync_script}")
-                return 1
+        # Save original argv
+        original_argv = sys.argv[:]
         
-        elif action == "terminal":
-            # Use rediacc-term tool
-            python_exe = sys.executable
-            term_script = os.path.join(os.path.dirname(os.path.dirname(__file__)), "commands", "term_main.py")
+        try:
+            if action == "sync":
+                # Import and call sync_main directly
+                try:
+                    from ..commands import sync_main
+                    sys.argv = ["rediacc-sync"] + cmd_args[1:]
+                    return sync_main.main()
+                except ImportError as e:
+                    logger.error(f"Failed to import sync module: {e}")
+                    return 1
             
-            if os.path.exists(term_script):
-                result = subprocess.run([python_exe, term_script] + cmd_args[1:], timeout=300)
-                return result.returncode
+            elif action == "terminal":
+                # Import and call term_main directly
+                try:
+                    from ..commands import term_main
+                    sys.argv = ["rediacc-term"] + cmd_args[1:]
+                    return term_main.main()
+                except ImportError as e:
+                    logger.error(f"Failed to import term module: {e}")
+                    return 1
+            
+            elif action in ["plugin", "browser"]:
+                # Import and call cli_main directly
+                try:
+                    from ..commands import cli_main
+                    sys.argv = ["rediacc"] + cmd_args
+                    return cli_main.main()
+                except ImportError as e:
+                    logger.error(f"Failed to import CLI module: {e}")
+                    return 1
+            
             else:
-                logger.error(f"Terminal script not found: {term_script}")
-                return 1
-        
-        elif action in ["plugin", "browser"]:
-            # Use main CLI for plugin and browser actions
-            # Import and execute the CLI command
-            # We need to modify sys.argv to simulate the command being called
-            original_argv = sys.argv[:]
-            try:
-                sys.argv = ["rediacc"] + cmd_args
+                raise ValueError(f"Unsupported action: {action}")
                 
-                # Import and call the main CLI function (avoid circular import)
-                import importlib
-                cli_main = importlib.import_module('cli.commands.cli_main')
-                return cli_main.main()
-            finally:
-                sys.argv = original_argv
-        
-        else:
-            raise ValueError(f"Unsupported action: {action}")
+        finally:
+            # Restore original argv
+            sys.argv = original_argv
     
     except Exception as e:
         logger.error(f"Protocol handler error: {e}")

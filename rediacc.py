@@ -323,19 +323,29 @@ class RediaccCLI:
                 self.run_command([self.get_python_command(), '-m', 'pytest', 'tests/'] + args)
 
     def cmd_protocol_handler(self, url: str):
-        """Handle protocol URL - run as module to avoid import issues"""
+        """Handle protocol URL using direct import"""
         print(f"{Colors.GREEN}Handling protocol URL: {url}{Colors.NC}")
         
-        python_cmd = self.get_python_command()
+        # Add src directory to path if needed
+        src_dir = str(self.cli_root / 'src')
+        if src_dir not in sys.path:
+            sys.path.insert(0, src_dir)
         
-        # Change to CLI root and run as module to avoid relative import issues
-        original_cwd = os.getcwd()
         try:
-            os.chdir(self.cli_root)
-            cmd = [python_cmd, '-m', 'src.cli.commands.cli_main', 'protocol-handler', url]
-            self.run_command(cmd)
-        finally:
-            os.chdir(original_cwd)
+            # Import and call the protocol handler directly
+            from cli.core.protocol_handler import handle_protocol_url
+            exit_code = handle_protocol_url(url)
+            sys.exit(exit_code)
+        except ImportError as e:
+            print(f"{Colors.RED}Error: Failed to import protocol handler: {e}{Colors.NC}")
+            print(f"{Colors.YELLOW}Make sure the CLI is properly installed{Colors.NC}")
+            sys.exit(1)
+        except Exception as e:
+            print(f"{Colors.RED}Error handling protocol URL: {e}{Colors.NC}")
+            if self.verbose or os.environ.get('REDIACC_DEBUG'):
+                import traceback
+                traceback.print_exc()
+            sys.exit(1)
     
     def cmd_protocol_server(self, args: List[str]):
         """Start the protocol test server for manual testing"""
@@ -817,10 +827,9 @@ For detailed documentation, see docs/README.md"""
             elif command == 'protocol-server':
                 self.cmd_protocol_server(args)
             elif command == 'protocol-handler':
-                # Protocol handler - needs special handling to run as module
+                # Protocol handler - handle rediacc:// URLs
                 if args:
-                    url = args[0]
-                    self.cmd_protocol_handler(url)
+                    self.cmd_protocol_handler(args[0])
                 else:
                     print(f"{Colors.RED}Error: Protocol handler requires a URL argument{Colors.NC}")
                     sys.exit(1)
