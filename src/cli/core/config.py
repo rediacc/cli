@@ -1345,6 +1345,7 @@ class TerminalDetector:
         
         self.methods = {
             'win32': [
+                ('windows_terminal', self._test_windows_terminal_openssh),
                 ('msys2_mintty', self._test_msys2_mintty),
                 ('wsl_wt', self._test_wsl_windows_terminal),
                 ('wsl_powershell', self._test_wsl_powershell),
@@ -1518,6 +1519,43 @@ class TerminalDetector:
         cleanup_thread.start()
     
     # Windows terminal tests
+    def _test_windows_terminal_openssh(self) -> Tuple[bool, str]:
+        """Test Windows Terminal with Windows OpenSSH for GUI launches"""
+        import shutil
+        
+        # Only use on Windows
+        if sys.platform != 'win32':
+            return (False, "Not on Windows platform")
+        
+        # Check if Windows Terminal is available
+        wt_path = shutil.which('wt.exe')
+        if not wt_path:
+            return (False, "Windows Terminal not found")
+        
+        # Check if Windows OpenSSH is available
+        ssh_path = shutil.which('ssh.exe')
+        if not ssh_path:
+            return (False, "SSH not found")
+        
+        # Prefer Windows OpenSSH over MSYS2 SSH for GUI launches
+        # This ensures proper known_hosts handling
+        if 'msys' in ssh_path.lower():
+            # Look for Windows OpenSSH specifically
+            windows_ssh_paths = [
+                'C:\\Windows\\System32\\OpenSSH\\ssh.exe',
+                'C:\\Program Files\\OpenSSH\\ssh.exe'
+            ]
+            windows_ssh_found = False
+            for win_ssh in windows_ssh_paths:
+                if os.path.exists(win_ssh):
+                    windows_ssh_found = True
+                    break
+            
+            if not windows_ssh_found:
+                return (False, f"Windows OpenSSH not found (found MSYS2 SSH at {ssh_path})")
+        
+        return (True, "Windows Terminal with OpenSSH available")
+    
     def _test_msys2_mintty(self) -> Tuple[bool, str]:
         """Test MSYS2 mintty terminal"""
         msys2_path = self._find_msys2_installation()
@@ -1742,6 +1780,7 @@ class TerminalDetector:
         """
         launch_functions = {
             # Windows methods
+            'windows_terminal': self._launch_windows_terminal_openssh,
             'msys2_mintty': self._launch_msys2_mintty,
             'wsl_wt': self._launch_wsl_windows_terminal,
             'wsl_powershell': self._launch_wsl_powershell,
@@ -1845,6 +1884,61 @@ class TerminalDetector:
         return ' && '.join(exports) + ' && ' if exports else ''
     
     # Launch functions for each method
+    def _launch_windows_terminal_openssh(self, cli_dir: str, command: str, description: str):
+        """Launch using Windows Terminal with Windows OpenSSH for proper SSH handling"""
+        import subprocess
+        
+        # Use cmd.exe with && operator - this is the most reliable approach
+        # It handles complex commands with quotes without escaping issues
+        wt_args = [
+            'wt.exe',
+            '--maximized',
+            '--title', f'Rediacc: {description}',
+            'cmd.exe', '/k',  # /k keeps the window open after command completes
+            f'cd /d "{cli_dir}" && rediacc.bat {command}'
+        ]
+        
+        try:
+            # Set environment to ensure Windows OpenSSH is used
+            env = os.environ.copy()
+            
+            # Prioritize Windows OpenSSH in PATH
+            windows_ssh_paths = [
+                'C:\\Windows\\System32\\OpenSSH',
+                'C:\\Program Files\\OpenSSH'
+            ]
+            
+            current_path = env.get('PATH', '')
+            new_path_parts = []
+            
+            # Add Windows SSH paths first
+            for ssh_path in windows_ssh_paths:
+                if os.path.exists(ssh_path):
+                    new_path_parts.append(ssh_path)
+            
+            # Add rest of PATH
+            new_path_parts.extend(current_path.split(os.pathsep))
+            
+            # Remove duplicates while preserving order
+            seen = set()
+            final_path = []
+            for path in new_path_parts:
+                path_lower = path.lower()
+                if path_lower not in seen:
+                    seen.add(path_lower)
+                    final_path.append(path)
+            
+            env['PATH'] = os.pathsep.join(final_path)
+            
+            # Launch with modified environment
+            subprocess.Popen(wt_args, env=env, cwd=cli_dir)
+            self.logger.info(f"Launched Windows Terminal for: {description}")
+            
+        except Exception as e:
+            self.logger.error(f"Failed to launch Windows Terminal: {e}")
+            # Fall back to PowerShell directly
+            self._launch_powershell_direct(cli_dir, command, description)
+    
     def _launch_msys2_mintty(self, cli_dir: str, command: str, description: str):
         """Launch using MSYS2 mintty"""
         import shlex
