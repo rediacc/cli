@@ -1577,7 +1577,7 @@ class MainWindow(BaseWindow):
         # Ensure it's not empty
         return sanitized if sanitized else 'default'
 
-    def _configure_vscode_platform(self, connection_name: str):
+    def _configure_vscode_platform(self, connection_name: str, universal_user_id: str = None):
         """Configure VS Code to recognize the SSH host as Linux platform"""
         try:
             # Detect WSL environment
@@ -1640,6 +1640,29 @@ class MainWindow(BaseWindow):
                 settings['remote.SSH.remotePlatform'] = {}
 
             settings['remote.SSH.remotePlatform'][connection_name] = 'linux'
+            
+            # CRITICAL: Enable RemoteCommand support (required for user switching)
+            settings['remote.SSH.useLocalServer'] = True
+            settings['remote.SSH.enableRemoteCommand'] = True
+            settings['remote.SSH.showLoginTerminal'] = True  # Show what's happening during connection
+            settings['remote.SSH.localServerDownload'] = 'always'  # Force local server download
+            
+            # Configure terminal to use universal user (if provided)
+            if universal_user_id:
+                if 'terminal.integrated.profiles.linux' not in settings:
+                    settings['terminal.integrated.profiles.linux'] = {}
+                
+                # Add a profile for this connection that switches to universal user
+                settings['terminal.integrated.profiles.linux'][f'{connection_name}-{universal_user_id}'] = {
+                    'path': '/bin/bash',
+                    'args': ['-c', f'sudo -u {universal_user_id} bash -l']
+                }
+            
+            # Set it as default for this connection
+            if 'terminal.integrated.defaultProfile.linux' not in settings:
+                settings['terminal.integrated.defaultProfile.linux'] = {}
+            
+            # This doesn't work per-host, so we'll document the workaround instead
 
             # Write back settings
             with open(vscode_settings_file, 'w') as f:
@@ -1667,6 +1690,10 @@ class MainWindow(BaseWindow):
 
         def launch():
             try:
+                # Get universal user info for both repo and machine connections
+                from cli.core.shared import _get_universal_user_info
+                universal_user_name, universal_user_id, company_id = _get_universal_user_info()
+                
                 if repo:
                     # Repository connection - use RepositoryConnection
                     connection = RepositoryConnection(team, machine, repo)
@@ -1692,8 +1719,9 @@ class MainWindow(BaseWindow):
                     if not ssh_key:
                         raise Exception(f"SSH private key not found in vault for team '{team}'")
 
+                    # Universal user info already retrieved above for both repo and machine connections
+                    
                     # Calculate datastore path like terminal does
-                    universal_user_id = connection_info.get('universal_user_id')
                     if universal_user_id:
                         remote_path = f"{connection_info['datastore']}/{universal_user_id}"
                     else:
@@ -1781,10 +1809,16 @@ class MainWindow(BaseWindow):
                             else:
                                 i += 1
 
+                    # Build SSH config entry with RemoteCommand for universal user
+                    remote_command_line = ""
+                    if universal_user_id and universal_user_id != ssh_user:
+                        # Only add RemoteCommand if we need to switch users
+                        remote_command_line = f"    RemoteCommand sudo -H -u {universal_user_id} bash\n"
+                    
                     ssh_config_entry = f"""Host {connection_name}
     HostName {ssh_host}
     User {ssh_user}
-{chr(10).join(ssh_opts_lines) if ssh_opts_lines else ''}
+{remote_command_line}{chr(10).join(ssh_opts_lines) if ssh_opts_lines else ''}
     ServerAliveInterval 60
     ServerAliveCountMax 3
 """
@@ -1794,6 +1828,8 @@ class MainWindow(BaseWindow):
                     print(f"[DEBUG] Connection name: {connection_name}")
                     print(f"[DEBUG] SSH host: {ssh_host}")
                     print(f"[DEBUG] SSH user: {ssh_user}")
+                    print(f"[DEBUG] Universal user: {universal_user_id}")
+                    print(f"[DEBUG] Remote path: {remote_path}")
                     print(f"[DEBUG] SSH opts lines: {ssh_opts_lines}")
                     print(f"[DEBUG] Generated SSH config entry:")
                     print(ssh_config_entry)
@@ -1831,7 +1867,7 @@ class MainWindow(BaseWindow):
                     try:
                         # Configure VS Code to recognize the host as Linux
                         # We'll use a simple approach: add platform info to existing VS Code settings
-                        self._configure_vscode_platform(connection_name)
+                        self._configure_vscode_platform(connection_name, universal_user_id)
 
                         # Launch VS Code with SSH remote
                         vscode_uri = f"vscode-remote://ssh-remote+{connection_name}{remote_path}"
