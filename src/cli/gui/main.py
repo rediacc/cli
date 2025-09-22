@@ -630,6 +630,11 @@ class MainWindow(BaseWindow):
 
         # System
         self.tools_menu.add_command(
+            label=i18n.get('system_status'),
+            accelerator='Ctrl+I',
+            command=self.show_system_status
+        )
+        self.tools_menu.add_command(
             label=i18n.get('console'),
             accelerator='F12',
             command=self.show_console
@@ -642,6 +647,7 @@ class MainWindow(BaseWindow):
         self.root.bind_all('<Control-Shift-V>', lambda e: self.open_vscode_repo())
         self.root.bind_all('<Control-Alt-v>', lambda e: self.open_vscode_machine())
         self.root.bind_all('<Control-Shift-O>', lambda e: self.show_transfer_options_wrapper())
+        self.root.bind_all('<Control-i>', lambda e: self.show_system_status())
         self.root.bind_all('<F12>', lambda e: self.show_console())
     
     def populate_plugins_menu(self):
@@ -2937,12 +2943,21 @@ class MainWindow(BaseWindow):
         if hasattr(self, 'file_browser') and self.file_browser:
             self.file_browser.show_transfer_options()
     
+    def show_system_status(self):
+        """Show system status window"""
+        try:
+            from cli.gui.system_status import SystemStatusWindow
+            status_window = SystemStatusWindow(tk.Toplevel(self.root))
+        except Exception as e:
+            messagebox.showerror(i18n.get('error'), f"{i18n.get('failed_to_open_system_status')}: {e}")
+            self.logger.error(f"Error opening system status: {e}")
+
     def show_console(self):
         """Show debug console window"""
         console_window = tk.Toplevel(self.root)
         console_window.title(i18n.get('console'))
         center_window(console_window, 800, 600)
-        
+
         # Add a text widget for future console implementation
         text = tk.Text(console_window, bg='black', fg='white', font=('Consolas', 10))
         text.pack(fill='both', expand=True)
