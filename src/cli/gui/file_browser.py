@@ -702,14 +702,16 @@ class DualPaneFileBrowser:
             team = self.main_window.team_combo.get()
             machine = self.main_window.machine_combo.get()
             repo = self.main_window.repo_combo.get()
-            
+
             if (team and not self.main_window._is_placeholder_value(team, 'select_team') and
                 machine and not self.main_window._is_placeholder_value(machine, 'select_machine') and
                 repo and not self.main_window._is_placeholder_value(repo, 'select_repository')):
+                # Update button to connecting state immediately
+                self.connect_button.config(text=i18n.get('connecting'), state='disabled')
                 # Connect
                 self.connect_remote()
             else:
-                messagebox.showinfo(i18n.get('info'), 
+                messagebox.showinfo(i18n.get('info'),
                                   i18n.get('select_all_resources'))
     
     # Remote operations
@@ -837,11 +839,13 @@ class DualPaneFileBrowser:
             team = self.main_window.team_combo.get()
             machine = self.main_window.machine_combo.get()
             repo = self.main_window.repo_combo.get()
-            
+
             # Validate selections are not placeholder values
             if (team and not self.main_window._is_placeholder_value(team, 'select_team') and
                 machine and not self.main_window._is_placeholder_value(machine, 'select_machine') and
                 repo and not self.main_window._is_placeholder_value(repo, 'select_repository')):
+                # Update button to connecting state immediately
+                self.connect_button.config(text=i18n.get('connecting'), state='disabled')
                 self.connect_remote()
     
     def execute_remote_command(self, command: str) -> Tuple[bool, str]:
@@ -1227,17 +1231,22 @@ class DualPaneFileBrowser:
     
     def update_connect_button_state(self):
         """Update Connect button state based on repository selection"""
+        # Don't update button state if it's currently showing "Connecting..." (disabled)
+        current_text = self.connect_button.cget('text')
+        if current_text == i18n.get('connecting'):
+            return
+
         team = self.main_window.team_combo.get()
         machine = self.main_window.machine_combo.get()
         repo = self.main_window.repo_combo.get()
-        
+
         # Enable Connect button only if we have valid selections
         has_valid_selection = (
             team and not self.main_window._is_placeholder_value(team, 'select_team') and
             machine and not self.main_window._is_placeholder_value(machine, 'select_machine') and
             repo and not self.main_window._is_placeholder_value(repo, 'select_repository')
         )
-        
+
         self.connect_button.config(state='normal' if has_valid_selection else 'disabled')
     
     def get_selected_paths(self, tree: ttk.Treeview, base_path) -> List[Tuple[str, bool]]:
