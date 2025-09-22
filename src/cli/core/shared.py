@@ -17,6 +17,16 @@ from .config import (
 
 CLI_TOOL = os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))), 'commands', 'cli_main.py')
 
+def get_company_short(company_id: str) -> str:
+    """
+    Get shortened company ID for runtime paths to avoid socket path length issues.
+    Only shortens if company_id looks like a GUID (contains dashes), otherwise uses as-is.
+    """
+    if '-' in company_id:
+        return company_id.split('-')[0]  # Take first part before first dash
+    else:
+        return company_id  # Use as-is if not GUID-like
+
 def _track_ssh_operation(operation: str, host: str = "unknown", success: bool = True,
                         duration_ms: Optional[float] = None, error: Optional[str] = None, **kwargs):
     """Helper function to track SSH operations with telemetry"""
@@ -765,68 +775,20 @@ def get_machine_connection_info(machine_info: Dict[str, Any]) -> Dict[str, Any]:
         'host_entry': host_entry
     }
 
-def get_crc32(text: str) -> str:
-    """Calculate Rediacc hash for consistent path generation across Python and Bash."""
-    return rediacc_hash(text)
-
-def rediacc_hash(text: str) -> str:
-    """
-    Convert GUID directly to Base62 for path generation.
-
-    This approach provides:
-    - Zero collision risk (GUIDs are already globally unique)
-    - Consistent results across Python and Bash
-    - Shorter paths than hex representation
-    - No complex arithmetic or overflow issues
-
-    Converts GUID hex string to Base62 representation.
-    """
-    return _guid_to_base62(text)
-
-def _guid_to_base62(guid_str: str) -> str:
-    """Convert GUID string directly to Base62."""
-    # Remove dashes and convert to lowercase for consistency
-    hex_str = guid_str.replace('-', '').lower()
-
-    # Convert hex string to integer
-    try:
-        guid_int = int(hex_str, 16)
-    except ValueError:
-        # If not a valid hex string, fall back to simple string encoding
-        # Convert string to bytes, then to int for consistent conversion
-        guid_bytes = guid_str.encode('utf-8')
-        guid_int = int.from_bytes(guid_bytes, byteorder='big')
-
-    # Convert to base62
-    return _int_to_base62(guid_int)
-
-def _int_to_base62(num: int) -> str:
-    """Convert integer to base62 string (0-9A-Za-z)."""
-    if num == 0:
-        return '0'
-
-    base62_chars = "0123456789ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz"
-    result = ""
-
-    while num > 0:
-        result = base62_chars[num % 62] + result
-        num //= 62
-
-    return result
 
 def get_repository_paths(repo_guid: str, datastore: str, universal_user_id: str, company_id: str) -> Dict[str, str]:
     """Calculate repository paths. Both universal_user_id and company_id are required."""
     if not universal_user_id or not company_id:
         raise ValueError("Both universal_user_id and company_id are required for repository paths")
     
-    # Convert both company_id and repo_guid to Base62 for shorter, collision-free paths
-    company_hash = get_crc32(company_id)
-    repo_hash = get_crc32(repo_guid)
-    base_path = f"{datastore}/{universal_user_id}/{company_hash}"
-    docker_base = f"{base_path}/{INTERIM_FOLDER_NAME}/{repo_hash}/docker"
+    # Use original GUIDs for paths
+    base_path = f"{datastore}/{universal_user_id}/{company_id}"
+    docker_base = f"{base_path}/{INTERIM_FOLDER_NAME}/{repo_guid}/docker"
 
-    # Calculate runtime paths for short socket locations
-    runtime_base = f"/var/run/rediacc/{universal_user_id}/{company_hash}/{repo_hash}"
+    # Calculate runtime paths - use shortened company_id to avoid socket path length issues
+    # Only shorten if company_id looks like a GUID (contains dashes), otherwise use as-is
+    company_short = get_company_short(company_id)
+    runtime_base = f"/var/run/rediacc/{universal_user_id}/{company_short}/{repo_guid}"
     runtime_paths = {
         'runtime_base': runtime_base,
         'docker_socket': f"{runtime_base}/docker.sock",
@@ -835,8 +797,8 @@ def get_repository_paths(repo_guid: str, datastore: str, universal_user_id: str,
     }
     
     paths = {
-        'mount_path': f"{base_path}/{MOUNTS_FOLDER_NAME}/{repo_hash}",
-        'image_path': f"{base_path}/{REPOS_FOLDER_NAME}/{repo_hash}",
+        'mount_path': f"{base_path}/{MOUNTS_FOLDER_NAME}/{repo_guid}",
+        'image_path': f"{base_path}/{REPOS_FOLDER_NAME}/{repo_guid}",
         'docker_folder': docker_base,
         'docker_socket': runtime_paths['docker_socket'],
         'docker_data': f"{docker_base}/data",
