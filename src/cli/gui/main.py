@@ -1060,7 +1060,7 @@ class MainWindow(BaseWindow):
             
             # Update Connect button in file browser if it exists
             if hasattr(self, 'file_browser') and hasattr(self.file_browser, 'connect_button'):
-                self.file_browser.connect_button.config(text=i18n.get('disconnect'))
+                self.file_browser.connect_button.config(text=i18n.get('disconnect'), state='normal')
             
             if info_dict:
                 team = info_dict.get('team', 'Unknown')
@@ -1083,7 +1083,7 @@ class MainWindow(BaseWindow):
             
             # Update Connect button in file browser if it exists
             if hasattr(self, 'file_browser') and hasattr(self.file_browser, 'connect_button'):
-                self.file_browser.connect_button.config(text=i18n.get('connect'))
+                self.file_browser.connect_button.config(text=i18n.get('connect'), state='normal')
             
             # Update status bar
             if self.connection_status_label:
