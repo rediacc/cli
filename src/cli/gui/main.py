@@ -1477,7 +1477,13 @@ class MainWindow(BaseWindow):
         import os
         # Go up 4 levels: main.py -> gui -> cli -> src -> cli (root)
         cli_dir = os.path.dirname(os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__)))))
-        rediacc_path = os.path.join(cli_dir, 'rediacc')
+
+        # Use correct script based on platform
+        if is_windows():
+            rediacc_path = os.path.join(cli_dir, 'rediacc.bat')
+        else:
+            rediacc_path = os.path.join(cli_dir, 'rediacc')
+
         simple_cmd = f'{rediacc_path} {command}'
         
         # Use terminal detector to find best method
