@@ -592,6 +592,12 @@ class MainWindow(BaseWindow):
         )
 
         terminal_menu.add_command(
+            label=i18n.get('container_terminal'),
+            accelerator='Ctrl+Alt+T',
+            command=self.open_container_terminal
+        )
+
+        terminal_menu.add_command(
             label=i18n.get('machine_terminal'),
             accelerator='Ctrl+Shift+T',
             command=self.open_machine_terminal
@@ -647,6 +653,7 @@ class MainWindow(BaseWindow):
         
         # Bind accelerators
         self.root.bind_all('<Control-t>', lambda e: self.open_repo_terminal())
+        self.root.bind_all('<Control-Alt-t>', lambda e: self.open_container_terminal())
         self.root.bind_all('<Control-Shift-T>', lambda e: self.open_machine_terminal())
         self.root.bind_all('<Control-k>', lambda e: self.show_quick_command())
         self.root.bind_all('<Control-Shift-V>', lambda e: self.open_vscode_repo())
@@ -825,7 +832,7 @@ class MainWindow(BaseWindow):
         self.resource_frame.grid_columnconfigure(0, weight=1)  # Team column
         self.resource_frame.grid_columnconfigure(1, weight=1)  # Machine column
         self.resource_frame.grid_columnconfigure(2, weight=1)  # Repository column
-        self.resource_frame.grid_columnconfigure(3, weight=0)  # Connect button (fixed width)
+        self.resource_frame.grid_columnconfigure(3, weight=1)  # Container column
         self.resource_frame.grid_columnconfigure(4, weight=0)  # Status indicator (fixed width)
         
         # Row 1: Labels and Connect button
@@ -837,13 +844,17 @@ class MainWindow(BaseWindow):
                                      font=('Arial', 9), fg='#666666')
         self.machine_label.grid(row=0, column=1, sticky='w', padx=(5, 5), pady=(0, 2))
         
-        self.repo_label = tk.Label(self.resource_frame, text=i18n.get('repository'), 
+        self.repo_label = tk.Label(self.resource_frame, text=i18n.get('repository'),
                                   font=('Arial', 9), fg='#666666')
         self.repo_label.grid(row=0, column=2, sticky='w', padx=(5, 5), pady=(0, 2))
-        
+
+        self.container_label = tk.Label(self.resource_frame, text=i18n.get('container'),
+                                       font=('Arial', 9), fg='#666666')
+        self.container_label.grid(row=0, column=3, sticky='w', padx=(5, 5), pady=(0, 2))
+
         # Connection status indicator (just the light) - moved to where Connect button was
         self.connection_indicator = tk.Label(self.resource_frame, text='○', font=('Arial', 14), fg='#999999')
-        self.connection_indicator.grid(row=0, column=3, rowspan=2, padx=(10, 10))
+        self.connection_indicator.grid(row=0, column=4, rowspan=2, padx=(10, 10))
         
         # Row 2: Dropdown combos
         self.team_combo = ttk.Combobox(self.resource_frame, state='readonly')
@@ -863,6 +874,12 @@ class MainWindow(BaseWindow):
         self.repo_combo.grid(row=1, column=2, sticky='ew', padx=(5, 5), pady=(0, 5))
         self.repo_combo.bind('<<ComboboxSelected>>', lambda e: self.on_repository_changed())
         create_tooltip(self.repo_combo, i18n.get('repo_tooltip'))
+
+        self.container_combo = ttk.Combobox(self.resource_frame, state='readonly')
+        self.container_combo.set(i18n.get('select_container'))
+        self.container_combo.grid(row=1, column=3, sticky='ew', padx=(5, 5), pady=(0, 5))
+        self.container_combo.bind('<<ComboboxSelected>>', lambda e: self.on_container_changed())
+        create_tooltip(self.container_combo, i18n.get('container_tooltip'))
         
         # Hidden repo filter label (for backward compatibility)
         self.repo_filter_label = tk.Label(self.resource_frame, text="", font=('Arial', 9), fg='gray')
@@ -1437,11 +1454,15 @@ class MainWindow(BaseWindow):
             current_selection = (team, machine, repo)
             self.refresh_plugins()
             self.refresh_connections()
+            self.load_containers()
             # If we're on the file browser tab, reconnect immediately (but not during startup)
             if hasattr(self, 'file_browser') and not self.is_starting_up:
                 # This will trigger auto-connect in the file browser
                 self.file_browser.connect_if_needed()
             self.plugins_loaded_for = current_selection
+        else:
+            # Clear containers if no valid repository selection
+            self.update_containers([])
         
         # Update Connect button state in file browser
         if hasattr(self, 'file_browser') and self.file_browser:
@@ -1556,7 +1577,85 @@ class MainWindow(BaseWindow):
         # Also trigger change event to clear plugins
         self.on_repository_changed()
         self.update_activity_status()
-    
+
+    def load_containers(self):
+        """Load containers for selected repository"""
+        team = self.team_combo.get()
+        machine = self.machine_combo.get()
+        repo = self.repo_combo.get()
+
+        # Validate inputs
+        if not all([team, machine, repo]) or any(self._is_placeholder_value(x, f'select_{t}')
+                                               for x, t in [(team, 'team'), (machine, 'machine'), (repo, 'repository')]):
+            self.update_containers([])
+            return
+
+        self.activity_status_label.config(text=i18n.get('loading_containers'))
+
+        # Use the same pattern as plugin_main.py for proper Docker command execution
+        # Get connection and repository info like plugin commands do
+        try:
+            from cli.core.shared import RepositoryConnection, get_ssh_key_from_vault, SSHConnection
+
+            conn = RepositoryConnection(team, machine, repo)
+            conn.connect()
+
+            ssh_key = get_ssh_key_from_vault(team)
+            if not ssh_key:
+                self.logger.error("SSH key not found for container discovery")
+                self.update_containers([])
+                self.activity_status_label.config(text="SSH key not found")
+                return
+
+            universal_user = conn.connection_info.get('universal_user', 'rediacc')
+
+            # Use the proven pattern from plugin_main.py
+            docker_cmd = f"sudo -u {universal_user} bash -c 'export DOCKER_HOST=\"unix://{conn.repo_paths['docker_socket']}\" && docker ps --format \"{{{{.Names}}}}\" 2>/dev/null || true'"
+
+            with SSHConnection(ssh_key, conn.connection_info.get('host_entry')) as ssh_conn:
+                ssh_cmd = ['ssh'] + ssh_conn.ssh_opts.split() + [conn.ssh_destination, docker_cmd]
+
+                import subprocess
+                result = subprocess.run(ssh_cmd, capture_output=True, text=True, timeout=30)
+
+                if result.returncode == 0:
+                    output = result.stdout.strip()
+                    if output:
+                        # Split into lines and filter out empty lines
+                        containers = [line.strip() for line in output.split('\n') if line.strip()]
+                        self.logger.debug(f"Found containers: {containers}")
+                        self.update_containers(containers)
+                        self.activity_status_label.config(text=f"Found {len(containers)} containers")
+                    else:
+                        self.logger.debug("No containers found")
+                        self.update_containers([])
+                        self.activity_status_label.config(text="No containers running")
+                else:
+                    self.logger.error(f"Docker command failed: {result.stderr}")
+                    self.update_containers([])
+                    self.activity_status_label.config(text="Failed to access Docker")
+
+        except Exception as e:
+            self.logger.error(f"Container discovery failed: {e}")
+            self.update_containers([])
+            self.activity_status_label.config(text="Container discovery failed")
+
+    def update_containers(self, containers: list):
+        """Update container dropdown"""
+        self.container_combo['values'] = containers
+        if containers:
+            self.container_combo.set(i18n.get('select_container'))
+        else:
+            self.container_combo.set(i18n.get('select_container'))
+        self.update_activity_status()
+
+    def on_container_changed(self):
+        """Handle container selection change"""
+        # Update UI state when container changes
+        self.update_activity_status()
+        # Update menu states to enable/disable Container Terminal based on selection
+        self.update_menu_states()
+
     def _launch_terminal(self, command: str, description: str):
         """Common method to launch terminal with given command"""
         import os
@@ -1595,14 +1694,30 @@ class MainWindow(BaseWindow):
     def open_repo_terminal(self):
         """Open interactive repository terminal in new window"""
         team, machine, repo = self.team_combo.get(), self.machine_combo.get(), self.repo_combo.get()
-        
+
         if not all([team, machine, repo]):
             messagebox.showerror(i18n.get('error'), i18n.get('select_team_machine_repo'))
             return
-        
+
         command = f'term --team "{team}" --machine "{machine}" --repo "{repo}"'
         self._launch_terminal(command, i18n.get('an_interactive_repo_terminal'))
-    
+
+    def open_container_terminal(self):
+        """Open interactive container terminal in new window"""
+        team, machine, repo = self.team_combo.get(), self.machine_combo.get(), self.repo_combo.get()
+        container = self.container_combo.get()
+
+        if not all([team, machine, repo]):
+            messagebox.showerror(i18n.get('error'), i18n.get('select_team_machine_repo'))
+            return
+
+        if not container or self._is_placeholder_value(container, 'select_container'):
+            messagebox.showerror(i18n.get('error'), i18n.get('select_container_first'))
+            return
+
+        command = f'term --team "{team}" --machine "{machine}" --repo "{repo}" --container "{container}"'
+        self._launch_terminal(command, i18n.get('an_interactive_container_terminal'))
+
     def open_machine_terminal(self):
         """Open interactive machine terminal in new window (without repository)"""
         team, machine = self.team_combo.get(), self.machine_combo.get()
@@ -3180,11 +3295,13 @@ Version: 1.0.0
         self._update_combo_placeholder(self.team_combo, 'select_team')
         self._update_combo_placeholder(self.machine_combo, 'select_machine')
         self._update_combo_placeholder(self.repo_combo, 'select_repository')
+        self._update_combo_placeholder(self.container_combo, 'select_container')
         
         # Update labels
         self.team_label.config(text=i18n.get('team'))
         self.machine_label.config(text=i18n.get('machine'))
         self.repo_label.config(text=i18n.get('repository'))
+        self.container_label.config(text=i18n.get('container'))
         
         # Update Connect button text in file browser
         if hasattr(self, 'file_browser') and hasattr(self.file_browser, 'connect_button'):
@@ -3263,17 +3380,25 @@ Version: 1.0.0
 
         self.view_menu.entryconfig(0, state='normal' if has_selection_or_connected else 'disabled')  # Show Preview
         self.view_menu.entryconfig(2, state='normal' if has_selection_or_connected else 'disabled')  # Local Files Only
-        self.view_menu.entryconfig(3, state='normal' if has_selection_or_connected else 'disabled')  # Remote Files Only
+        self.view_menu.entryconfig(3, state='normal' if has_selection_or_connected else 'disabled')  # Repository Files Only
         self.view_menu.entryconfig(4, state='normal' if has_selection_or_connected else 'disabled')  # Split View
         self.view_menu.entryconfig(6, state='normal' if file_browser_active else 'disabled')  # Refresh Local (always available when file browser active)
-        self.view_menu.entryconfig(7, state='normal' if self.is_connected else 'disabled')  # Refresh Remote (requires connection)
+        self.view_menu.entryconfig(7, state='normal' if self.is_connected else 'disabled')  # Refresh Repository (requires connection)
         self.view_menu.entryconfig(8, state='normal' if has_selection_or_connected else 'disabled')  # Refresh All
 
         # Update Tools menu states with enhanced logic
         terminal_submenu = self.tools_menu.nametowidget(self.tools_menu.entryconfig(0, 'menu')[-1])
         terminal_submenu.entryconfig(0, state='normal' if self.connection_capable else 'disabled')  # Repository Terminal
-        terminal_submenu.entryconfig(1, state='normal' if machine_accessible else 'disabled')  # Machine Terminal
-        terminal_submenu.entryconfig(2, state='normal' if machine_accessible else 'disabled')  # Quick Command
+
+        # Container terminal: requires repository selection + container selection
+        container_available = (self.connection_capable and
+                             hasattr(self, 'container_combo') and
+                             self.container_combo.get() and
+                             not self._is_placeholder_value(self.container_combo.get(), 'select_container'))
+        terminal_submenu.entryconfig(1, state='normal' if container_available else 'disabled')  # Container Terminal
+
+        terminal_submenu.entryconfig(2, state='normal' if machine_accessible else 'disabled')  # Machine Terminal
+        terminal_submenu.entryconfig(3, state='normal' if machine_accessible else 'disabled')  # Quick Command
 
         # VS Code submenu
         vscode_submenu = self.tools_menu.nametowidget(self.tools_menu.entryconfig(1, 'menu')[-1])

@@ -75,6 +75,7 @@
   "messages": {
     "connecting_machine": "Connecting to machine '{machine}'...",
     "connecting_repository": "Connecting to repository '{repo}' on machine '{machine}'...",
+    "connecting_container": "Connecting to container '{container}' in repository '{repo}' on machine '{machine}'...",
     "fetching_info": "Fetching machine information...",
     "retrieving_ssh_key": "Retrieving SSH key...",
     "ssh_key_not_found": "SSH private key not found in vault for team '{team}'",
@@ -82,6 +83,8 @@
     "ssh_agent_failed": "SSH agent setup failed, falling back to temporary files: {error}",
     "executing_command": "Executing command: {command}",
     "executing_as_user": "Executing command as {user}: {command}",
+    "executing_container_command": "Executing command in container '{container}': {command}",
+    "entering_container": "Entering container '{container}' (trying bash, falling back to sh if needed)...",
     "working_directory": "Working directory: {path}",
     "opening_terminal": "Opening interactive terminal...",
     "exit_instruction": "Type 'exit' to disconnect."
@@ -108,6 +111,14 @@
       "enter_container": {
         "title": "Enter a specific container:",
         "command": "%(prog)s --token=<GUID> --team=MyTeam --machine=server1 --repo=myrepo --command=\"docker exec -it mycontainer bash\""
+      },
+      "direct_container": {
+        "title": "Connect directly to a container:",
+        "command": "%(prog)s --token=<GUID> --team=MyTeam --machine=server1 --repo=myrepo --container=mycontainer"
+      },
+      "container_command": {
+        "title": "Execute command in a container:",
+        "command": "%(prog)s --token=<GUID> --team=MyTeam --machine=server1 --repo=myrepo --container=mycontainer --command=\"ls -la\""
       },
       "docker_status": {
         "title": "Check Docker status:",

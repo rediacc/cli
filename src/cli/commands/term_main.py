@@ -150,18 +150,75 @@ def connect_to_terminal(args):
         
         universal_user = conn.connection_info.get('universal_user', 'rediacc')
         ssh_cmd = ['ssh', '-tt', *ssh_conn.ssh_opts.split(), conn.ssh_destination]
-        escaped_env = ssh_env_setup.replace("'", "'\"'\"'")
-        
+        import shlex
+
         if args.command:
-            full_command = escaped_env + args.command
+            # Simplified approach: execute command in a basic environment without complex setup
             print_message('executing_command', command=args.command)
+            # Set up minimal environment and execute the command
+            minimal_env = env_exports + get_config_value('cd_logic', 'basic') + '\n'
+            script_content = minimal_env + args.command
+            ssh_cmd.extend(['sudo', '-u', universal_user, 'bash', '-c', script_content])
         else:
+            # For interactive terminal, use the existing complex setup that works
             print_message('opening_terminal'); print_message('exit_instruction', 'YELLOW')
-            full_command = escaped_env + "exec bash -l"
-        
-        ssh_cmd.append(f"sudo -u {universal_user} bash -c '{full_command}'")
+            full_command = ssh_env_setup + "exec bash -l"
+            escaped_env = full_command.replace("'", "'\"'\"'")
+            ssh_cmd.append(f"sudo -u {universal_user} bash -c '{escaped_env}'")
         result = subprocess.run(ssh_cmd)
         handle_ssh_exit_code(result.returncode, "repository terminal")
+
+
+def connect_to_container(args):
+    print_message('connecting_container', 'HEADER', container=args.container, repo=args.repo, machine=args.machine)
+
+    from cli.core.shared import validate_machine_accessibility, handle_ssh_exit_code
+
+    conn = RepositoryConnection(args.team, args.machine, args.repo); conn.connect()
+    validate_machine_accessibility(args.machine, args.team, conn.connection_info['ip'], args.repo)
+
+    original_host_entry = conn.connection_info.get('host_entry') if args.dev else None
+    if args.dev: conn.connection_info['host_entry'] = None
+    ssh_key = get_ssh_key_from_vault(args.team)
+    if not ssh_key:
+        error_exit(MESSAGES.get('ssh_key_not_found', 'SSH key not found').format(team=args.team))
+
+    host_entry = None if args.dev else conn.connection_info.get('host_entry')
+
+    with SSHConnection(ssh_key, host_entry) as ssh_conn:
+        if ssh_conn.is_using_agent:
+            print_message('ssh_agent_setup', pid=ssh_conn.agent_pid)
+
+        if args.dev and original_host_entry is not None:
+            conn.connection_info['host_entry'] = original_host_entry
+        repo_paths = conn.repo_paths
+        docker_socket = repo_paths['docker_socket']
+        docker_host = f"unix://{docker_socket}"
+
+        env_template = CONFIG.get('environment_exports', {})
+        env_format_vars = {'repo_mount_path': repo_paths['mount_path'], 'docker_host': docker_host, 'docker_folder': repo_paths['docker_folder'], 'docker_socket': docker_socket, 'docker_data': repo_paths['docker_data'], 'docker_exec': repo_paths['docker_exec']}
+        env_exports = '\n'.join(f'export {key}=\'{value.format(**env_format_vars)}\'' for key, value in env_template.items()) + '\n'
+
+        universal_user = conn.connection_info.get('universal_user', 'rediacc')
+        ssh_cmd = ['ssh', '-tt', *ssh_conn.ssh_opts.split(), conn.ssh_destination]
+
+        # Set up the environment first (same as repository terminal)
+        ssh_env_setup = env_exports
+
+        if args.command:
+            # Execute command inside container
+            ssh_env_setup += f"docker exec -it {args.container} bash -c '{args.command}'"
+            print_message('executing_container_command', container=args.container, command=args.command)
+        else:
+            # Interactive container access - use the same pattern as existing enter_container function
+            print_message('entering_container', container=args.container)
+            print_message('exit_instruction', 'YELLOW')
+            ssh_env_setup += f"docker exec -it {args.container} bash || docker exec -it {args.container} sh"
+
+        escaped_env = ssh_env_setup.replace("'", "'\"'\"'")
+        ssh_cmd.append(f"sudo -u {universal_user} bash -c '{escaped_env}'")
+        result = subprocess.run(ssh_cmd)
+        handle_ssh_exit_code(result.returncode, "container terminal")
 
 @track_command('term')
 def main():
@@ -202,6 +259,7 @@ def main():
     
     # Add repo separately since it has different requirements
     parser.add_argument('--repo', help='Target repository name (optional - if not specified, connects to machine only)')
+    parser.add_argument('--container', help='Container name to connect to directly (requires --repo)')
     parser.add_argument('--command', help='Command to execute (interactive shell if not specified)')
     parser.add_argument('--dev', action='store_true', help='Development mode - relaxes SSH host key checking')
     
@@ -212,11 +270,17 @@ def main():
     
     if args.verbose: logger.debug("Rediacc CLI Term starting up"); logger.debug(f"Arguments: {vars(args)}")
     if not (args.team and args.machine): parser.error("--team and --machine are required in CLI mode")
+    if args.container and not args.repo: parser.error("--container requires --repo to be specified")
     
     initialize_cli_command(args, parser)
 
     try:
-        (connect_to_terminal if args.repo else connect_to_machine)(args)
+        if args.container:
+            connect_to_container(args)
+        elif args.repo:
+            connect_to_terminal(args)
+        else:
+            connect_to_machine(args)
     finally:
         # Shutdown telemetry
         shutdown_telemetry()
