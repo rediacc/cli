@@ -132,6 +132,11 @@ class MainWindow(BaseWindow):
         self.activity_status_label = None
         self.performance_status_label = None
         self.user_status_label = None
+
+        # Connection state tracking
+        self.is_connected = False
+        self.connection_details = {}
+        self.connection_capable = False
         self.session_timer_label = None
         
         # Activity animation
@@ -1100,6 +1105,9 @@ class MainWindow(BaseWindow):
         # Update tooltip
         if hasattr(self.connection_status_label, '_tooltip'):
             self.connection_status_label._tooltip.config(text=tooltip)
+
+        # Update menu states when connection status changes
+        self.update_menu_states()
     
     def update_activity_status(self, operation: str = None, file_count: int = 0, size: int = 0):
         """Update the activity monitor section"""
@@ -1280,7 +1288,78 @@ class MainWindow(BaseWindow):
         """Create a tooltip for a widget"""
         # Simple tooltip implementation - store reference for updates
         widget._tooltip = type('Tooltip', (), {'text': text, 'config': lambda self, **kw: setattr(self, 'text', kw.get('text', self.text))})()
-    
+
+    # Connection State Helper Methods
+
+    def _check_connection_capability(self):
+        """Check if current selection can establish SSH connection"""
+        team = self.team_combo.get()
+        machine = self.machine_combo.get()
+        repo = self.repo_combo.get()
+
+        # Must have team, machine, and repo selected
+        if not all([team, machine, repo]) or any(x in [i18n.get('select_team'), i18n.get('select_machine'), i18n.get('select_repository')] for x in [team, machine, repo]):
+            return False
+
+        try:
+            # Check if machine exists and has valid connection info
+            machine_info = get_machine_info_with_team(team, machine)
+            if not machine_info:
+                return False
+
+            # Check if we have SSH credentials
+            ssh_key = get_ssh_key_from_vault(team)
+            if not ssh_key:
+                return False
+
+            return True
+        except Exception:
+            return False
+
+    def _check_machine_accessibility(self):
+        """Check if machine is accessible (for machine-only operations)"""
+        team = self.team_combo.get()
+        machine = self.machine_combo.get()
+
+        # Must have team and machine selected
+        if not all([team, machine]) or any(x in [i18n.get('select_team'), i18n.get('select_machine')] for x in [team, machine]):
+            return False
+
+        try:
+            # Check if machine exists and has valid connection info
+            machine_info = get_machine_info_with_team(team, machine)
+            if not machine_info:
+                return False
+
+            # Check if we have SSH credentials
+            ssh_key = get_ssh_key_from_vault(team)
+            if not ssh_key:
+                return False
+
+            return True
+        except Exception:
+            return False
+
+    def _update_connection_state(self):
+        """Update connection state and capability flags"""
+        # Update connection capability
+        self.connection_capable = self._check_connection_capability()
+
+        # Update connection status based on file browser
+        if hasattr(self, 'file_browser') and self.file_browser:
+            self.is_connected = bool(self.file_browser.ssh_connection)
+            if self.is_connected:
+                self.connection_details = {
+                    'team': self.team_combo.get(),
+                    'machine': self.machine_combo.get(),
+                    'repo': self.repo_combo.get()
+                }
+            else:
+                self.connection_details = {}
+        else:
+            self.is_connected = False
+            self.connection_details = {}
+
     def load_initial_data(self):
         """Load initial data after mainloop starts"""
         self.load_teams()
@@ -2964,12 +3043,18 @@ class MainWindow(BaseWindow):
         text.insert('1.0', 'Debug console - Not implemented\n')
     
     def connect(self):
-        """Connect action (placeholder)"""
-        messagebox.showinfo(i18n.get('info'), i18n.get('not_implemented'))
-    
+        """Connect action - delegates to file browser"""
+        if hasattr(self, 'file_browser') and self.file_browser:
+            self.file_browser.connect()
+        else:
+            messagebox.showwarning(i18n.get('warning'), "File browser not available")
+
     def disconnect(self):
-        """Disconnect action (placeholder)"""
-        messagebox.showinfo(i18n.get('info'), i18n.get('not_implemented'))
+        """Disconnect action - delegates to file browser"""
+        if hasattr(self, 'file_browser') and self.file_browser:
+            self.file_browser.disconnect()
+        else:
+            messagebox.showwarning(i18n.get('warning'), "File browser not available")
     
     
     def show_documentation(self):
@@ -3150,42 +3235,57 @@ Version: 1.0.0
     
     def update_menu_states(self):
         """Update menu item states based on current application state"""
+        # Update connection state first
+        self._update_connection_state()
+
         # Check if we have a valid selection
         has_team = bool(self.team_combo.get())
         has_machine = bool(self.machine_combo.get())
         has_repo = bool(self.repo_combo.get())
         has_full_selection = has_team and has_machine and has_repo
-        
+
+        # Check for machine accessibility (for machine-only operations)
+        machine_accessible = self._check_machine_accessibility()
+
         # Update Edit menu states
         file_browser_active = hasattr(self, 'file_browser') and self.file_browser
-        
-        self.edit_menu.entryconfig(0, state='normal' if file_browser_active else 'disabled')  # Cut
-        self.edit_menu.entryconfig(1, state='normal' if file_browser_active else 'disabled')  # Copy
-        self.edit_menu.entryconfig(2, state='normal' if file_browser_active else 'disabled')  # Paste
-        self.edit_menu.entryconfig(3, state='normal' if file_browser_active else 'disabled')  # Select All
-        self.edit_menu.entryconfig(5, state='normal' if file_browser_active else 'disabled')  # Find
-        self.edit_menu.entryconfig(6, state='normal' if file_browser_active else 'disabled')  # Clear Filter
-        
+        has_files_or_connected = file_browser_active and (self.is_connected or file_browser_active)
+
+        self.edit_menu.entryconfig(0, state='normal' if has_files_or_connected else 'disabled')  # Cut
+        self.edit_menu.entryconfig(1, state='normal' if has_files_or_connected else 'disabled')  # Copy
+        self.edit_menu.entryconfig(2, state='normal' if has_files_or_connected else 'disabled')  # Paste
+        self.edit_menu.entryconfig(3, state='normal' if has_files_or_connected else 'disabled')  # Select All
+        self.edit_menu.entryconfig(5, state='normal' if has_files_or_connected else 'disabled')  # Find
+        self.edit_menu.entryconfig(6, state='normal' if has_files_or_connected else 'disabled')  # Clear Filter
+
         # Update View menu states
-        self.view_menu.entryconfig(0, state='normal' if file_browser_active else 'disabled')  # Show Preview
-        self.view_menu.entryconfig(2, state='normal' if file_browser_active else 'disabled')  # Local Files Only
-        self.view_menu.entryconfig(3, state='normal' if file_browser_active else 'disabled')  # Remote Files Only
-        self.view_menu.entryconfig(4, state='normal' if file_browser_active else 'disabled')  # Split View
-        self.view_menu.entryconfig(6, state='normal' if file_browser_active else 'disabled')  # Refresh Local
-        self.view_menu.entryconfig(7, state='normal' if file_browser_active else 'disabled')  # Refresh Remote
-        self.view_menu.entryconfig(8, state='normal' if file_browser_active else 'disabled')  # Refresh All
-        
-        # Update Tools menu states
+        has_selection_or_connected = file_browser_active and (has_full_selection or self.is_connected)
+
+        self.view_menu.entryconfig(0, state='normal' if has_selection_or_connected else 'disabled')  # Show Preview
+        self.view_menu.entryconfig(2, state='normal' if has_selection_or_connected else 'disabled')  # Local Files Only
+        self.view_menu.entryconfig(3, state='normal' if has_selection_or_connected else 'disabled')  # Remote Files Only
+        self.view_menu.entryconfig(4, state='normal' if has_selection_or_connected else 'disabled')  # Split View
+        self.view_menu.entryconfig(6, state='normal' if file_browser_active else 'disabled')  # Refresh Local (always available when file browser active)
+        self.view_menu.entryconfig(7, state='normal' if self.is_connected else 'disabled')  # Refresh Remote (requires connection)
+        self.view_menu.entryconfig(8, state='normal' if has_selection_or_connected else 'disabled')  # Refresh All
+
+        # Update Tools menu states with enhanced logic
         terminal_submenu = self.tools_menu.nametowidget(self.tools_menu.entryconfig(0, 'menu')[-1])
-        terminal_submenu.entryconfig(0, state='normal' if has_full_selection else 'disabled')  # Repository Terminal
-        terminal_submenu.entryconfig(1, state='normal' if has_machine else 'disabled')  # Machine Terminal
-        terminal_submenu.entryconfig(4, state='normal' if has_full_selection else 'disabled')  # VS Code Repository
-        terminal_submenu.entryconfig(5, state='normal' if has_machine else 'disabled')  # VS Code Machine
-        
-        # Update Connection menu states
-        # TODO: Implement connection state tracking
-        self.connection_menu.entryconfig(0, state='disabled')  # Connect - will be enabled when disconnected
-        self.connection_menu.entryconfig(1, state='disabled')  # Disconnect - will be enabled when connected
+        terminal_submenu.entryconfig(0, state='normal' if self.connection_capable else 'disabled')  # Repository Terminal
+        terminal_submenu.entryconfig(1, state='normal' if machine_accessible else 'disabled')  # Machine Terminal
+        terminal_submenu.entryconfig(2, state='normal' if machine_accessible else 'disabled')  # Quick Command
+
+        # VS Code submenu
+        vscode_submenu = self.tools_menu.nametowidget(self.tools_menu.entryconfig(1, 'menu')[-1])
+        vscode_submenu.entryconfig(0, state='normal' if self.connection_capable else 'disabled')  # VS Code Repository
+        vscode_submenu.entryconfig(1, state='normal' if machine_accessible else 'disabled')  # VS Code Machine
+
+        # Transfer Options (index 3 after separator at 2)
+        self.tools_menu.entryconfig(3, state='normal' if self.connection_capable else 'disabled')  # Transfer Options
+
+        # Update Connection menu states with proper logic
+        self.connection_menu.entryconfig(0, state='normal' if self.connection_capable and not self.is_connected else 'disabled')  # Connect
+        self.connection_menu.entryconfig(1, state='normal' if self.is_connected else 'disabled')  # Disconnect
         
         # Update recent connections
         self.update_recent_connections()
