@@ -328,7 +328,7 @@ class WindowsProtocolHandler:
 class ProtocolUrlParser:
     """Parse and handle rediacc:// protocol URLs"""
     
-    VALID_ACTIONS = {"sync", "terminal", "plugin", "browser"}
+    VALID_ACTIONS = {"sync", "terminal", "plugin", "browser", "desktop"}
     PROTOCOL_SCHEME = "rediacc"
     
     def __init__(self):
@@ -405,10 +405,10 @@ class ProtocolUrlParser:
         params = parsed_url["params"]
         
         if not action:
-            # Default to terminal action if no action specified (most commonly useful)
-            action = "terminal"
+            # Default to desktop action if no action specified (opens desktop app with team/machine/repo selection)
+            action = "desktop"
             parsed_url["action"] = action  # Update the parsed URL so it's consistent
-            logger.info(f"No action specified in URL, defaulting to terminal action")
+            logger.info(f"No action specified in URL, defaulting to desktop action")
         
         # Build base command based on action
         if action == "sync":
@@ -476,14 +476,19 @@ class ProtocolUrlParser:
             if "port" in params:
                 cmd.extend(["--port", params["port"]])
         
+        elif action == "desktop":
+            # Desktop action - opens desktop app with optional preselected values
+            cmd = ["desktop"]
+            cmd.extend(["--token", token, "--team", team, "--machine", machine, "--repo", repository])
+
         elif action == "browser":
-            # File browser action - use GUI application
-            cmd = ["gui"]  # Use the GUI application for file browsing
+            # File browser action - use desktop application
+            cmd = ["desktop"]  # Use the desktop application for file browsing
             cmd.extend(["--token", token, "--team", team, "--machine", machine, "--repo", repository])
 
             if "path" in params:
                 cmd.extend(["--path", params["path"]])
-        
+
         else:
             raise ValueError(f"Unsupported action: {action}")
         
@@ -555,6 +560,21 @@ def handle_protocol_url(url: str, is_protocol_call: bool = False) -> int:
                     exit_code = 1
                 except SystemExit as e:
                     exit_code = e.code if e.code is not None else 1
+
+            elif action == "desktop":
+                # Import and call desktop GUI directly
+                try:
+                    from ..gui.main import launch_gui
+                    # Pass arguments to desktop GUI for preselection
+                    sys.argv = ["rediacc-desktop"] + cmd_args[1:]
+                    launch_gui()  # This function calls sys.exit() internally
+                    exit_code = 0  # Should not reach here normally
+                except ImportError as e:
+                    logger.error(f"Failed to import desktop GUI module: {e}")
+                    command_error = f"Failed to import desktop GUI module: {e}"
+                    exit_code = 1
+                except SystemExit as e:
+                    exit_code = e.code if e.code is not None else 0
 
             else:
                 raise ValueError(f"Unsupported action: {action}")
