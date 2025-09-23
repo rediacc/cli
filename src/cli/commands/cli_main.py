@@ -2461,10 +2461,22 @@ def main():
         # Handle protocol URL (used when browser calls rediacc:// URLs)
         try:
             from ..core.protocol_handler import handle_protocol_url
-            return handle_protocol_url(args.url)
+            # Set is_protocol_call=True since this is the protocol-handler command
+            return handle_protocol_url(args.url, is_protocol_call=True)
         except Exception as e:
             logger.error(f"Protocol handler error: {e}")
-            print(f"Error handling protocol URL: {e}", file=sys.stderr)
+
+            # For protocol handler calls, use the wait mechanism
+            try:
+                from ..core.protocol_handler import display_protocol_error_with_wait
+                display_protocol_error_with_wait(str(e))
+            except ImportError:
+                # Fallback if we can't import the wait function
+                print(f"Error handling protocol URL: {e}", file=sys.stderr)
+                print("\nThis window will close in 30 seconds...", file=sys.stderr)
+                import time
+                time.sleep(30)
+
             return 1
     elif args.command == 'protocol':
         # Handle protocol registration commands

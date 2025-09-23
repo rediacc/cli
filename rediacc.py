@@ -325,26 +325,43 @@ class RediaccCLI:
     def cmd_protocol_handler(self, url: str):
         """Handle protocol URL using direct import"""
         print(f"{Colors.GREEN}Handling protocol URL: {url}{Colors.NC}")
-        
+
         # Add src directory to path if needed
         src_dir = str(self.cli_root / 'src')
         if src_dir not in sys.path:
             sys.path.insert(0, src_dir)
-        
+
         try:
             # Import and call the protocol handler directly
+            # Set is_protocol_call=True since this is called from protocol registration
             from cli.core.protocol_handler import handle_protocol_url
-            exit_code = handle_protocol_url(url)
+            exit_code = handle_protocol_url(url, is_protocol_call=True)
             sys.exit(exit_code)
         except ImportError as e:
-            print(f"{Colors.RED}Error: Failed to import protocol handler: {e}{Colors.NC}")
+            error_msg = f"Failed to import protocol handler: {e}"
+            print(f"{Colors.RED}Error: {error_msg}{Colors.NC}")
             print(f"{Colors.YELLOW}Make sure the CLI is properly installed{Colors.NC}")
+
+            # Show wait dialog for protocol calls
+            from cli.core.protocol_handler import display_protocol_error_with_wait
+            display_protocol_error_with_wait(error_msg)
             sys.exit(1)
         except Exception as e:
-            print(f"{Colors.RED}Error handling protocol URL: {e}{Colors.NC}")
+            error_msg = f"Error handling protocol URL: {e}"
+            print(f"{Colors.RED}{error_msg}{Colors.NC}")
             if self.verbose or os.environ.get('REDIACC_DEBUG'):
                 import traceback
                 traceback.print_exc()
+
+            # Show wait dialog for protocol calls
+            try:
+                from cli.core.protocol_handler import display_protocol_error_with_wait
+                display_protocol_error_with_wait(str(e))
+            except ImportError:
+                # Fallback if we can't import the wait function
+                print("\nThis window will close in 30 seconds...", file=sys.stderr)
+                time.sleep(30)
+
             sys.exit(1)
     
     def cmd_protocol_server(self, args: List[str]):
