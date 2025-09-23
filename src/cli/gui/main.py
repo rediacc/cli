@@ -75,13 +75,19 @@ from cli.gui.utilities import (
 class MainWindow(BaseWindow):
     """Main window with Terminal and File Sync tools"""
     
-    def __init__(self):
+    def __init__(self, preselected_token=None, preselected_team=None, preselected_machine=None, preselected_repo=None):
         title = i18n.get('app_title')
         if __version__ != 'dev':
             title += f' v{__version__}'
         super().__init__(tk.Tk(), title)
         self.logger = get_logger(__name__)
         self.runner = SubprocessRunner()
+
+        # Store preselected values
+        self.preselected_token = preselected_token
+        self.preselected_team = preselected_team
+        self.preselected_machine = preselected_machine
+        self.preselected_repo = preselected_repo
         
         # Use global API client instance
         self.api_client = client
@@ -167,6 +173,9 @@ class MainWindow(BaseWindow):
         
         # Schedule initial data load after mainloop starts to prevent blocking
         self.root.after(100, self.load_initial_data)
+
+        # Set up preselection flag to trigger after initial load
+        self._preselection_pending = bool(self.preselected_team or self.preselected_machine or self.preselected_repo)
         
         # Start auto-refresh for plugin connections
         self.auto_refresh_connections()
@@ -1380,6 +1389,53 @@ class MainWindow(BaseWindow):
     def load_initial_data(self):
         """Load initial data after mainloop starts"""
         self.load_teams()
+
+    def apply_preselected_values(self):
+        """Apply preselected values from command line arguments"""
+        if not self._preselection_pending:
+            return
+
+        # Apply team selection
+        if self.preselected_team:
+            current_values = list(self.team_combo['values']) if self.team_combo['values'] else []
+            if self.preselected_team in current_values:
+                self.team_combo.set(self.preselected_team)
+                self.on_team_changed()
+                self.logger.info(f"Applied preselected team: {self.preselected_team}")
+            else:
+                self.logger.warning(f"Preselected team '{self.preselected_team}' not found in available teams")
+
+        # Apply machine selection (after team is loaded)
+        if self.preselected_machine and self.preselected_team:
+            self.root.after(500, self._apply_preselected_machine)
+
+        # Apply repository selection (after machine is loaded)
+        if self.preselected_repo and self.preselected_team and self.preselected_machine:
+            self.root.after(1000, self._apply_preselected_repo)
+
+        self._preselection_pending = False
+
+    def _apply_preselected_machine(self):
+        """Apply preselected machine after team data is loaded"""
+        if self.preselected_machine:
+            current_values = list(self.machine_combo['values']) if self.machine_combo['values'] else []
+            if self.preselected_machine in current_values:
+                self.machine_combo.set(self.preselected_machine)
+                self.on_machine_changed()
+                self.logger.info(f"Applied preselected machine: {self.preselected_machine}")
+            else:
+                self.logger.warning(f"Preselected machine '{self.preselected_machine}' not found in available machines")
+
+    def _apply_preselected_repo(self):
+        """Apply preselected repository after machine data is loaded"""
+        if self.preselected_repo:
+            current_values = list(self.repo_combo['values']) if self.repo_combo['values'] else []
+            if self.preselected_repo in current_values:
+                self.repo_combo.set(self.preselected_repo)
+                self.on_repository_changed()
+                self.logger.info(f"Applied preselected repository: {self.preselected_repo}")
+            else:
+                self.logger.warning(f"Preselected repository '{self.preselected_repo}' not found in available repositories")
     
     def load_teams(self):
         """Load available teams"""
@@ -1479,6 +1535,10 @@ class MainWindow(BaseWindow):
         else:
             self.team_combo.set(i18n.get('select_team'))
         self.update_activity_status()
+
+        # Apply preselected values after teams are loaded
+        if hasattr(self, '_preselection_pending') and self._preselection_pending:
+            self.root.after(200, self.apply_preselected_values)
     
     def load_machines(self):
         """Load machines for selected team"""
@@ -3573,6 +3633,10 @@ def launch_gui():
     parser = argparse.ArgumentParser(description='Rediacc CLI GUI Application')
     parser.add_argument('-v', '--verbose', action='store_true',
                         help='Enable verbose logging')
+    parser.add_argument('--token', type=str, help='API token for authentication')
+    parser.add_argument('--team', type=str, help='Team name to pre-select')
+    parser.add_argument('--machine', type=str, help='Machine name to pre-select')
+    parser.add_argument('--repo', type=str, help='Repository name to pre-select')
     args = parser.parse_args()
     
     # Check for verbose flag from either command line or environment
@@ -3623,20 +3687,36 @@ def launch_gui():
     # Register signal handler
     signal.signal(signal.SIGINT, signal_handler)
     
-    # Check if already authenticated and token is valid
+    # Apply token from command line if provided, before checking validity
+    if args.token:
+        try:
+            from cli.core.config import get_default_config_manager
+            config_manager = get_default_config_manager()
+            # config_manager is already a TokenManager instance
+            config_manager.set_token(args.token)
+            logger.info("Applied token from command line arguments")
+        except Exception as e:
+            logger.error(f"Failed to apply token from command line: {e}")
+
+    # Check if already authenticated and token is valid (including newly applied token)
     token_valid = check_token_validity()
-    
+
     try:
         if token_valid:
             logger.debug("Token is valid, launching main window...")
-            main_window_instance = MainWindow()
+            main_window_instance = MainWindow(
+                preselected_token=args.token,
+                preselected_team=args.team,
+                preselected_machine=args.machine,
+                preselected_repo=args.repo
+            )
             main_window_instance.root.mainloop()
         else:
             logger.debug("No valid token, showing login window...")
             def on_login_success():
                 logger.debug("Login successful, closing login window...")
                 login_window.root.quit()  # Stop the login window's mainloop
-            
+
             login_window = LoginWindow(on_login_success)
             # Make the main loop check for interrupts periodically
             def check_interrupt():
@@ -3646,11 +3726,16 @@ def launch_gui():
                     pass
             check_interrupt()
             login_window.root.mainloop()
-            
+
             # After login window closes, destroy it and create main window
             logger.debug("Login window closed, launching main window...")
             login_window.root.destroy()
-            main_window_instance = MainWindow()
+            main_window_instance = MainWindow(
+                preselected_token=args.token,
+                preselected_team=args.team,
+                preselected_machine=args.machine,
+                preselected_repo=args.repo
+            )
             main_window_instance.root.mainloop()
     except Exception as e:
         logger.error(f"Critical error in main execution: {e}")
