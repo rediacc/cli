@@ -1303,7 +1303,7 @@ class DualPaneFileBrowser:
             for local_path, is_dir in local_paths:
                 try:
                     # Build rsync command
-                    cmd = [rsync_cmd, '-av', '--progress']
+                    cmd = [rsync_cmd, '-av', '--protocol=31', '--progress']
                     
                     # Apply transfer options
                     cmd = self.apply_transfer_options(cmd)
@@ -1542,7 +1542,7 @@ class DualPaneFileBrowser:
                         return False, "Sync cancelled by user"
             
             # Build rsync command
-            rsync_cmd = [get_rsync_command(), '-av', '--progress', '-e', ssh_cmd]
+            rsync_cmd = [get_rsync_command(), '-av', '--protocol=31', '--progress', '-e', ssh_cmd]
             
             if universal_user:
                 rsync_cmd.extend(['--rsync-path', f'sudo -u {universal_user} rsync'])

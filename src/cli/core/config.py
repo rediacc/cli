@@ -622,34 +622,63 @@ class TokenManager:
     def get_token(cls, override_token: Optional[str] = None) -> Optional[str]:
         if not cls._initialized:
             TokenManager()
-        
+
         if override_token:
             if cls.validate_token(override_token):
+                if os.environ.get('REDIACC_DEBUG'):
+                    print(f"DEBUG: Using override token: {override_token[:16]}...{override_token[-8:] if len(override_token) > 24 else override_token}", file=sys.stderr)
                 return override_token
+            if os.environ.get('REDIACC_DEBUG'):
+                print("DEBUG: Override token provided but invalid format", file=sys.stderr)
             logger.warning("Invalid override token format")
             return None
-        
+
+        # Check for REDIACC_TOKEN and migrate it to config file once
         env_token = os.environ.get('REDIACC_TOKEN')
         if env_token:
             if cls.validate_token(env_token):
-                return env_token
-            logger.warning("Invalid token in REDIACC_TOKEN environment variable")
-        
+                if os.environ.get('REDIACC_DEBUG'):
+                    print(f"DEBUG: Found REDIACC_TOKEN - migrating to config file: {env_token[:16]}...{env_token[-8:] if len(env_token) > 24 else env_token}", file=sys.stderr)
+                try:
+                    cls.set_token(env_token)
+                    if os.environ.get('REDIACC_DEBUG'):
+                        print(f"DEBUG: REDIACC_TOKEN saved to config file", file=sys.stderr)
+
+                    # Clear the environment variable so we use config file from now on
+                    del os.environ['REDIACC_TOKEN']
+                    if os.environ.get('REDIACC_DEBUG'):
+                        print(f"DEBUG: REDIACC_TOKEN environment variable cleared - using config file for rotation", file=sys.stderr)
+                except Exception as e:
+                    if os.environ.get('REDIACC_DEBUG'):
+                        print(f"DEBUG: Failed to migrate REDIACC_TOKEN to config: {e}", file=sys.stderr)
+                        # Fall back to using the env token if migration fails
+                        print(f"DEBUG: Using REDIACC_TOKEN directly as fallback", file=sys.stderr)
+                    return env_token
+            else:
+                if os.environ.get('REDIACC_DEBUG'):
+                    print("DEBUG: Token in REDIACC_TOKEN env var is invalid format", file=sys.stderr)
+                logger.warning("Invalid token in REDIACC_TOKEN environment variable")
+
+        # Use config file token (normal path after migration)
         try:
             config = cls._load_from_config()
             token = config.get('token')
             if token and cls.validate_token(token):
+                if os.environ.get('REDIACC_DEBUG'):
+                    print(f"DEBUG: Using token from config file: {token[:16]}...{token[-8:] if len(token) > 24 else token}", file=sys.stderr)
                 return token
-            
-            logger.debug("No valid token found in config file")
-            logger.debug(f"Config contains: {list(config.keys())}")
-            if token:
-                logger.debug(f"Token validation failed for token: {token[:8]}...")
+
+            if os.environ.get('REDIACC_DEBUG'):
+                if token:
+                    print(f"DEBUG: Token in config file is invalid format: {token[:16]}...{token[-8:] if len(token) > 24 else token}", file=sys.stderr)
+                else:
+                    print("DEBUG: No token found in config file", file=sys.stderr)
         except Exception as e:
-            logger.error(f"Error loading config: {e}")
-            import traceback
-            traceback.print_exc()
-        
+            if os.environ.get('REDIACC_DEBUG'):
+                print(f"DEBUG: Error loading config: {e}", file=sys.stderr)
+
+        if os.environ.get('REDIACC_DEBUG'):
+            print("DEBUG: No valid token found from any source", file=sys.stderr)
         return None
     
     @classmethod

@@ -256,7 +256,8 @@ class SuperClient:
             track_api_call('POST', endpoint, status_code, duration_ms)
 
             if status_code >= 500:
-                print(f"DEBUG: Endpoint URL: {url}\nDEBUG: HTTP Error {status_code} occurred", file=sys.stderr)
+                if os.environ.get('REDIACC_DEBUG'):
+                    print(f"DEBUG: Endpoint URL: {url}\nDEBUG: HTTP Error {status_code} occurred", file=sys.stderr)
 
             return (self._process_api_response(response_text, status_code)
                    if status_code == 200 else
@@ -269,7 +270,8 @@ class SuperClient:
             # Track API error telemetry
             track_api_call('POST', endpoint, None, duration_ms, error_msg)
 
-            print(f"DEBUG: Request error for endpoint: {url}\nDEBUG: Error details: {error_msg}", file=sys.stderr)
+            if os.environ.get('REDIACC_DEBUG'):
+                print(f"DEBUG: Request error for endpoint: {url}\nDEBUG: Error details: {error_msg}", file=sys.stderr)
 
             if "HTTP " in error_msg and ":" in error_msg:
                 try:
@@ -316,15 +318,34 @@ class SuperClient:
         token = TokenManager.get_token()
         if not token:
             return {"error": "Not authenticated. Please login first.", "status_code": 401}
-        
+
+        # DEBUG: Print token information for debugging
+        if os.environ.get('REDIACC_DEBUG'):
+            print(f"DEBUG: Making token request to endpoint '{endpoint}'", file=sys.stderr)
+            print(f"DEBUG: Current token: {token[:16]}...{token[-8:] if len(token) > 24 else token}", file=sys.stderr)
+            print(f"DEBUG: Token length: {len(token)} characters", file=sys.stderr)
+            if retry_count > 0:
+                print(f"DEBUG: Retry attempt: {retry_count}", file=sys.stderr)
+
         # Ensure vault info is loaded (for CLI usage)
-        if (endpoint != 'GetCompanyVault' and self.should_use_vault_encryption and 
+        if (endpoint != 'GetCompanyVault' and self.should_use_vault_encryption and
             self.config_manager and hasattr(self.config_manager, '_ensure_vault_info')):
             self.config_manager._ensure_vault_info()
             self._show_vault_warning_if_needed()
-        
+
         response = self.request(endpoint, data, {"Rediacc-RequestToken": token})
-        
+
+        # DEBUG: Print response information for debugging
+        if os.environ.get('REDIACC_DEBUG'):
+            if response:
+                print(f"DEBUG: Response status: {response.get('status_code', 'unknown')}", file=sys.stderr)
+                if response.get('error'):
+                    print(f"DEBUG: Response error: {response.get('error')}", file=sys.stderr)
+                if 'nextRequestToken' in response or any('nextRequestToken' in str(rs) for rs in response.get('resultSets', [])):
+                    print("DEBUG: New token found in response for rotation", file=sys.stderr)
+            else:
+                print("DEBUG: No response received from request", file=sys.stderr)
+
         # Handle token expiration with retry
         if response and response.get('status_code') == 401 and retry_count < 2:
             time.sleep(0.1 * (retry_count + 1))
@@ -347,15 +368,19 @@ class SuperClient:
             self._vault_warning_shown = True
     
     def _extract_token_from_response(self, response):
-        """Extract nextRequestToken from various response structures"""
-        for result_set in response.get('resultSets', []):
-            if result_set and result_set.get('data'):
-                for data_row in result_set['data']:
+        """Extract nextRequestToken from response, prioritizing resultSets[0] for token rotation"""
+        # First, check resultSets[0] which contains the main session token rotation
+        result_sets = response.get('resultSets', [])
+        if result_sets and len(result_sets) > 0:
+            first_result_set = result_sets[0]
+            if first_result_set and first_result_set.get('data'):
+                for data_row in first_result_set['data']:
                     if data_row and isinstance(data_row, dict):
                         token = data_row.get('nextRequestToken') or data_row.get('NextRequestToken')
                         if token:
                             return token
-        
+
+        # Fallback to top-level response token
         return response.get('nextRequestToken') or response.get('NextRequestToken')
     
     def _update_token_if_needed(self, response, current_token):
@@ -376,22 +401,24 @@ class SuperClient:
                     import json
                     print(f"DEBUG: Response structure: {json.dumps(response, indent=2)}", file=sys.stderr)
         
-        if os.environ.get('REDIACC_DEBUG'):
-            skip_reasons = {
-                not new_token: "no new token found", 
-                new_token == current_token: "new token same as current",
-                bool(os.environ.get('REDIACC_TOKEN')): "REDIACC_TOKEN env var set",
-                hasattr(self.config_manager, 'is_token_overridden') and self.config_manager.is_token_overridden(): "token was overridden"
-            }
-            for condition, reason in skip_reasons.items():
-                if condition:
-                    print(f"DEBUG: Token update skipped - {reason}", file=sys.stderr)
-                    break
-        
-        if (not new_token or new_token == current_token or 
-            os.environ.get('REDIACC_TOKEN') or 
-            (hasattr(self.config_manager, 'is_token_overridden') and self.config_manager.is_token_overridden())):
+        # Check if token rotation should be skipped
+        skip_reasons = []
+        if not new_token:
+            skip_reasons.append("no new token found")
+        if new_token == current_token:
+            skip_reasons.append("new token same as current")
+        if hasattr(self.config_manager, 'is_token_overridden') and self.config_manager.is_token_overridden():
+            skip_reasons.append("token was overridden")
+
+        if skip_reasons:
+            if os.environ.get('REDIACC_DEBUG'):
+                print(f"DEBUG: Token update skipped - {'; '.join(skip_reasons)}", file=sys.stderr)
             return
+
+        # IMPORTANT: Allow token rotation even when REDIACC_TOKEN is set
+        # REDIACC_TOKEN should only be used for initial authentication
+        if os.environ.get('REDIACC_DEBUG'):
+            print(f"DEBUG: Token rotation proceeding - updating from {current_token[:8]}... to {new_token[:8]}...", file=sys.stderr)
         
         stored_token = TokenManager.get_token()
         if os.environ.get('REDIACC_DEBUG'):
@@ -410,7 +437,7 @@ class SuperClient:
                     print("DEBUG: Token updated via CLI config manager", file=sys.stderr)
             else:
                 auth_info = TokenManager.get_auth_info()
-                TokenManager.set_token(new_token, 
+                TokenManager.set_token(new_token,
                                      email=auth_info.get('email') if auth_info else None,
                                      company=auth_info.get('company') if auth_info else None,
                                      vault_company=auth_info.get('vault_company') if auth_info else None)

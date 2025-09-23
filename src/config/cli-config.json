@@ -4776,6 +4776,26 @@
             }
           }
         }
+      },
+      "fork-authentication-request": {
+        "endpoint": "ForkAuthenticationRequest",
+        "params": "lambda args: {'childName': args.child_name, 'tokenExpirationHours': args.token_expiration_hours}",
+        "help": {
+          "parameters": {
+            "child_name": {
+              "description": "",
+              "required": true,
+              "example": "",
+              "type": "string"
+            },
+            "token_expiration_hours": {
+              "description": "",
+              "required": true,
+              "example": "",
+              "type": "integer"
+            }
+          }
+        }
       }
     },
     "team": {
