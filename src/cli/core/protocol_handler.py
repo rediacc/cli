@@ -11,6 +11,7 @@ import re
 import subprocess
 import urllib.parse
 import platform
+import time
 from typing import Dict, Any, Optional, List, Tuple
 from pathlib import Path
 
@@ -22,6 +23,29 @@ logger = get_logger(__name__)
 class ProtocolHandlerError(Exception):
     """Protocol handler specific errors"""
     pass
+
+def display_protocol_error_with_wait(error_message: str, wait_seconds: int = 30):
+    """Display error message with countdown for protocol handler calls"""
+    print("\n" + "="*60, file=sys.stderr)
+    print("REDIACC PROTOCOL HANDLER ERROR", file=sys.stderr)
+    print("="*60, file=sys.stderr)
+    print(f"\nError: {error_message}\n", file=sys.stderr)
+    print("This window will close automatically in 30 seconds.", file=sys.stderr)
+    print("You can close it manually or wait for the countdown.\n", file=sys.stderr)
+    print("For help, visit: https://docs.rediacc.com/cli/troubleshooting", file=sys.stderr)
+    print("="*60, file=sys.stderr)
+
+    # Countdown with overwrite
+    for i in range(wait_seconds, 0, -1):
+        print(f"\rClosing in {i:2d} seconds... (Press Ctrl+C to close immediately)", end="", file=sys.stderr)
+        sys.stderr.flush()
+        try:
+            time.sleep(1)
+        except KeyboardInterrupt:
+            print("\n\nClosed by user.", file=sys.stderr)
+            break
+
+    print("\n", file=sys.stderr)
 
 def get_platform() -> str:
     """Get the current platform (windows, linux, macos)"""
@@ -411,13 +435,36 @@ class ProtocolUrlParser:
         elif action == "terminal":
             cmd = ["term"]
             cmd.extend(["--token", token, "--team", team, "--machine", machine, "--repo", repository])
-            
+
             # Optional terminal parameters
             if "command" in params:
                 cmd.extend(["--command", params["command"]])
-            if "terminalType" in params and params["terminalType"] == "machine":
-                # Connect to machine directly instead of repository
-                cmd = ["term", "--token", token, "--team", team, "--machine", machine]
+            if "terminalType" in params:
+                if params["terminalType"] == "machine":
+                    # Connect to machine directly instead of repository
+                    cmd = ["term", "--token", token, "--team", team, "--machine", machine]
+                elif params["terminalType"] == "container":
+                    # Container-specific terminal operations
+                    if "containerId" in params:
+                        container_id = params["containerId"]
+                        container_action = params.get("action", "terminal")
+
+                        if container_action == "logs":
+                            # View container logs
+                            lines = params.get("lines", "100")
+                            follow = params.get("follow", "false").lower() in ["true", "yes", "1"]
+                            container_cmd = f"docker logs --tail {lines}"
+                            if follow:
+                                container_cmd += " -f"
+                            container_cmd += f" {container_id}"
+                            cmd.extend(["--command", container_cmd])
+                        elif container_action == "stats":
+                            # View container stats
+                            cmd.extend(["--command", f"docker stats {container_id}"])
+                        else:
+                            # Execute shell in container
+                            shell = params.get("shell", "bash")
+                            cmd.extend(["--command", f"docker exec -it {container_id} {shell}"])
         
         elif action == "plugin":
             # Plugin action might need different handling
@@ -442,66 +489,108 @@ class ProtocolUrlParser:
         
         return cmd
 
-def handle_protocol_url(url: str) -> int:
-    """Handle a protocol URL by parsing and executing the appropriate CLI command"""
+def handle_protocol_url(url: str, is_protocol_call: bool = False) -> int:
+    """Handle a protocol URL by parsing and executing the appropriate CLI command
+
+    Args:
+        url: The rediacc:// URL to handle
+        is_protocol_call: True if this is called from Windows protocol handler registry
+    """
     try:
         logger.info(f"Handling protocol URL: {url}")
-        
+
         parser = ProtocolUrlParser()
         parsed = parser.parse_url(url)
-        
+
         logger.debug(f"Parsed URL components: {parsed}")
-        
+
         cmd_args = parser.build_cli_command(parsed)
         logger.info(f"Executing command: {cmd_args}")
-        
+
         # Execute the appropriate CLI tool based on the action
         action = parsed.get("action")
-        
+
         # Save original argv
         original_argv = sys.argv[:]
-        
+
+        exit_code = 0
+        command_error = None
+
         try:
             if action == "sync":
                 # Import and call sync_main directly
                 try:
                     from ..commands import sync_main
                     sys.argv = ["rediacc-sync"] + cmd_args[1:]
-                    return sync_main.main()
+                    exit_code = sync_main.main()
                 except ImportError as e:
                     logger.error(f"Failed to import sync module: {e}")
-                    return 1
-            
+                    command_error = f"Failed to import sync module: {e}"
+                    exit_code = 1
+                except SystemExit as e:
+                    exit_code = e.code if e.code is not None else 1
+
             elif action == "terminal":
                 # Import and call term_main directly
                 try:
                     from ..commands import term_main
                     sys.argv = ["rediacc-term"] + cmd_args[1:]
-                    return term_main.main()
+                    exit_code = term_main.main()
                 except ImportError as e:
                     logger.error(f"Failed to import term module: {e}")
-                    return 1
-            
+                    command_error = f"Failed to import term module: {e}"
+                    exit_code = 1
+                except SystemExit as e:
+                    exit_code = e.code if e.code is not None else 1
+
             elif action in ["plugin", "browser"]:
                 # Import and call cli_main directly
                 try:
                     from ..commands import cli_main
                     sys.argv = ["rediacc"] + cmd_args
-                    return cli_main.main()
+                    exit_code = cli_main.main()
                 except ImportError as e:
                     logger.error(f"Failed to import CLI module: {e}")
-                    return 1
-            
+                    command_error = f"Failed to import CLI module: {e}"
+                    exit_code = 1
+                except SystemExit as e:
+                    exit_code = e.code if e.code is not None else 1
+
             else:
                 raise ValueError(f"Unsupported action: {action}")
-                
+
         finally:
             # Restore original argv
             sys.argv = original_argv
-    
+
+        # Check if downstream command failed and we're in protocol call mode
+        if is_protocol_call and exit_code != 0:
+            if command_error:
+                error_message = command_error
+            else:
+                # Create a more descriptive error message based on the action and exit code
+                action_name = action.capitalize() if action else "Command"
+                if exit_code == 1:
+                    error_message = f"{action_name} operation failed - this may be due to invalid credentials, network issues, or missing permissions"
+                else:
+                    error_message = f"{action_name} operation failed with exit code {exit_code}"
+
+            logger.error(f"Protocol handler downstream command failed: {error_message}")
+            display_protocol_error_with_wait(error_message)
+
+        return exit_code
+
     except Exception as e:
         logger.error(f"Protocol handler error: {e}")
-        print(f"Error handling protocol URL: {e}", file=sys.stderr)
+        error_msg = f"Error handling protocol URL: {e}"
+
+        if is_protocol_call:
+            # Show user-friendly error with wait when called from protocol handler
+            display_protocol_error_with_wait(str(e))
+        else:
+            # Normal CLI usage - just print error
+            print(error_msg, file=sys.stderr)
+
         return 1
 
 def register_protocol(force: bool = False, system_wide: bool = False) -> bool:
