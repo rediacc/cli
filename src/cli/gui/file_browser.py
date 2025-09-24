@@ -36,6 +36,14 @@ from cli.core.shared import (
     is_windows
 )
 
+# Import sync functionality
+from cli.commands.sync_main import (
+    get_rsync_command,
+    get_rsync_ssh_command,
+    prepare_rsync_paths,
+    run_platform_command
+)
+
 # Import GUI components
 from cli.gui.base import create_tooltip
 from cli.gui.utilities import (
@@ -1257,95 +1265,63 @@ class DualPaneFileBrowser:
                 for item_id in tree.selection()
                 for item in [tree.item(item_id)]]
     
-    def perform_selective_rsync(self, local_paths: List[Tuple[str, bool]], remote_base: str, 
+    def perform_selective_rsync(self, local_paths: List[Tuple[str, bool]], remote_base: str,
                                 direction: str = 'upload', progress_callback=None) -> Tuple[bool, str]:
-        """Perform selective rsync transfer for specific files/folders"""
+        """Perform selective rsync transfer for specific files/folders using corrected sync_main.py functions"""
         try:
             # Check if sync mode is enabled (any sync option active)
-            is_sync_mode = (self.transfer_options.get('mirror', False) or 
+            is_sync_mode = (self.transfer_options.get('mirror', False) or
                            self.transfer_options.get('verify', False) or
                            self.transfer_options.get('preview_sync', False))
-            
+
             # If sync mode and single folder selected, use optimized sync
             if is_sync_mode and len(local_paths) == 1 and local_paths[0][1]:  # Single folder
                 return self.perform_folder_sync(local_paths[0][0], remote_base, direction, progress_callback)
-            # Get rsync command based on platform
-            rsync_cmd = 'rsync'
-            if is_windows():
-                # Try to find rsync in MSYS2
-                msys2_paths = ['C:\\msys64\\usr\\bin', 'C:\\msys2\\usr\\bin']
-                for path in msys2_paths:
-                    rsync_path = os.path.join(path, 'rsync.exe')
-                    if os.path.exists(rsync_path):
-                        rsync_cmd = rsync_path
-                        break
-            
-            # Set up SSH
+
+            # Set up SSH using sync_main functionality
             ssh_opts, ssh_key_file, known_hosts_file = self.ssh_connection.setup_ssh()
-            
-            # Convert SSH key path for MSYS2
-            if is_windows():
-                ssh_key_file_msys = ssh_key_file.replace('\\', '/')
-                if ':' in ssh_key_file_msys:
-                    drive = ssh_key_file_msys[0].lower()
-                    ssh_key_file_msys = f'/{drive}/{ssh_key_file_msys[3:]}'
-                ssh_opts = ssh_opts.replace(ssh_key_file, ssh_key_file_msys)
-            
-            # Build SSH command
-            ssh_cmd = f'ssh {ssh_opts}'
-            
+            ssh_cmd = get_rsync_ssh_command(ssh_opts)
+
             # Get universal user if available
             universal_user = self.ssh_connection.connection_info.get('universal_user')
-            
+
             success_count = 0
             error_messages = []
-            
+
             for local_path, is_dir in local_paths:
                 try:
-                    # Build rsync command
-                    cmd = [rsync_cmd, '-av', '--protocol=31', '--progress']
-                    
+                    # Build rsync command using corrected sync_main functions
+                    cmd = [get_rsync_command(), '-av', '--verbose', '--inplace', '--progress']
+
                     # Apply transfer options
                     cmd = self.apply_transfer_options(cmd)
-                    
+
                     # Add SSH command
                     cmd.extend(['-e', ssh_cmd])
-                    
+
                     # Add sudo if needed
                     if universal_user:
                         cmd.extend(['--rsync-path', f'sudo -u {universal_user} rsync'])
-                    
+
                     if direction == 'upload':
                         # Ensure trailing slash for directories
                         source = local_path
                         if is_dir and not source.endswith('/'):
                             source += '/'
-                        
-                        self.logger.debug(f"[GUI DEBUG] Upload - original local source: {source!r}")
-                        
-                        # Convert Windows path for rsync if needed
-                        if is_windows():
-                            # MSYS2 rsync expects local Windows paths in /c/Users/... format
-                            # C:/Users/... format was being interpreted as remote by MSYS2 rsync
-                            self.logger.debug(f"[GUI DEBUG] Windows detected, converting source path")
-                            original_source = source
-                            source = source.replace('\\', '/')
-                            if ':' in source:
-                                drive = source[0].lower()  # Use lowercase for /c/ format
-                                source = f'/{drive}/{source[3:]}'
-                            self.logger.debug(f"[GUI DEBUG] Converted source: {original_source!r} -> {source!r}")
-                        
+
                         # Build destination
                         dest = f"{self.ssh_connection.ssh_destination}:{remote_base}"
                         if not remote_base.endswith('/'):
                             dest += '/'
-                        
+
                         # For single file, preserve the filename
                         if not is_dir:
-                            # Add the filename to destination
                             filename = os.path.basename(local_path)
                             dest = f"{self.ssh_connection.ssh_destination}:{remote_base}/{filename}"
-                        
+
+                        # Use corrected path preparation
+                        source, dest = prepare_rsync_paths(source, dest)
+
                         self.logger.debug(f"[GUI DEBUG] Final upload paths: source={source!r}, dest={dest!r}")
                         cmd.extend([source, dest])
                     else:  # download
@@ -1353,70 +1329,48 @@ class DualPaneFileBrowser:
                         source = f"{self.ssh_connection.ssh_destination}:{local_path}"
                         if is_dir and not source.endswith('/'):
                             source += '/'
-                        
+
                         # Build destination
                         dest = str(self.local_current_path)
-                        self.logger.debug(f"[GUI DEBUG] Download - original local dest: {dest!r}")
-                        
-                        if is_windows():
-                            # Convert Windows path for rsync
-                            # MSYS2 rsync expects local Windows paths in /c/Users/... format
-                            # C:/Users/... format was being interpreted as remote by MSYS2 rsync
-                            self.logger.debug(f"[GUI DEBUG] Windows detected, converting dest path")
-                            original_dest = dest
-                            dest = dest.replace('\\', '/')
-                            if ':' in dest:
-                                drive = dest[0].lower()  # Use lowercase for /c/ format
-                                dest = f'/{drive}/{dest[3:]}'
-                            self.logger.debug(f"[GUI DEBUG] Converted dest: {original_dest!r} -> {dest!r}")
-                        
                         if not dest.endswith('/'):
                             dest += '/'
-                        
+
                         # For single file download, preserve filename
                         if not is_dir:
                             filename = os.path.basename(local_path)
-                            if is_windows():
-                                dest_file = os.path.join(str(self.local_current_path), filename)
-                                dest_file = dest_file.replace('\\', '/')
-                                if ':' in dest_file:
-                                    # Use MSYS2 format (/c/path) for local Windows paths
-                                    drive = dest_file[0].lower()
-                                    dest = f'/{drive}/{dest_file[3:]}'
-                                else:
-                                    dest = dest_file
-                            else:
-                                dest = os.path.join(str(self.local_current_path), filename)
-                        
+                            dest = os.path.join(str(self.local_current_path), filename)
+
+                        # Use corrected path preparation
+                        source, dest = prepare_rsync_paths(source, dest)
+
+                        self.logger.debug(f"[GUI DEBUG] Final download paths: source={source!r}, dest={dest!r}")
                         cmd.extend([source, dest])
-                    
+
                     # Log the complete command for debugging
                     self.logger.debug(f"[GUI DEBUG] COMPLETE RSYNC COMMAND: {cmd}")
                     self.logger.debug(f"[GUI DEBUG] Command as string: {' '.join(cmd)}")
-                    
-                    # Critical validation for Windows
+
+                    # Run rsync using direct subprocess.Popen for streaming output
+                    # Note: We need streaming output for progress updates, so we can't use run_platform_command here
                     if is_windows():
-                        source_in_cmd = cmd[-2]
-                        dest_in_cmd = cmd[-1]
-                        self.logger.debug(f"[GUI DEBUG] Final Windows validation:")
-                        self.logger.debug(f"[GUI DEBUG]   Source in command: {source_in_cmd!r}")
-                        self.logger.debug(f"[GUI DEBUG]   Dest in command: {dest_in_cmd!r}")
-                        self.logger.debug(f"[GUI DEBUG]   Source has @: {'@' in source_in_cmd}")
-                        self.logger.debug(f"[GUI DEBUG]   Dest has @: {'@' in dest_in_cmd}")
-                        
-                        # Check for the problematic condition
-                        if '@' not in source_in_cmd and '@' not in dest_in_cmd:
-                            self.logger.error(f"[GUI ERROR] CRITICAL: Both paths appear local - this WILL cause the 'both remote' error!")
-                            self.logger.error(f"[GUI ERROR] Source: {source_in_cmd!r}")
-                            self.logger.error(f"[GUI ERROR] Dest: {dest_in_cmd!r}")
-                    
-                    # Run rsync
-                    process = subprocess.Popen(cmd, stdout=subprocess.PIPE, stderr=subprocess.PIPE, 
-                                             text=True, bufsize=1)
-                    
+                        # On Windows, wrap in MSYS2 bash like run_platform_command does
+                        # Convert the rsync command to use just 'rsync' since we set PATH
+                        cmd_for_bash = cmd.copy()
+                        cmd_for_bash[0] = 'rsync'  # Replace full path with just 'rsync'
+
+                        # Properly quote command parts for bash
+                        cmd_parts = [f'"{part}"' if ' ' in part or '\\' in part else part for part in cmd_for_bash]
+                        bash_command = f'export PATH=/usr/bin:$PATH && {" ".join(cmd_parts)}'
+                        bash_cmd = ['C:\\msys64\\usr\\bin\\bash.exe', '-c', bash_command]
+                        process = subprocess.Popen(bash_cmd, stdout=subprocess.PIPE, stderr=subprocess.PIPE,
+                                                 text=True, bufsize=1)
+                    else:
+                        process = subprocess.Popen(cmd, stdout=subprocess.PIPE, stderr=subprocess.PIPE,
+                                                 text=True, bufsize=1)
+
                     # Store process reference for cancellation
                     self.current_transfer_process = process
-                    
+
                     # Process output for progress
                     for line in process.stdout:
                         # Check if cancelled
@@ -1425,7 +1379,6 @@ class DualPaneFileBrowser:
                             break
                         if progress_callback:
                             # Parse progress: "1,234,567  45%  123.45MB/s    0:00:10"
-                            # Also handle: "xfr#1, to-chk=0/1"
                             if '%' in line:
                                 try:
                                     # Find percentage in line
@@ -1433,7 +1386,7 @@ class DualPaneFileBrowser:
                                     if match:
                                         percent = int(match.group(1))
                                         progress_callback(percent, line.strip())
-                                        
+
                                         # Extract speed info for status bar
                                         speed_match = re.search(r'([\d.]+[KMG]?B/s)', line)
                                         if speed_match:
@@ -1447,41 +1400,45 @@ class DualPaneFileBrowser:
                                                 speed = float(speed_str[:-4]) * 1024 * 1024 * 1024
                                             else:
                                                 speed = float(speed_str[:-3])
-                                            
+
                                             # Update performance status bar
                                             self.parent.after(0, lambda s=speed: self.main_window.update_performance_status(speed=s))
                                 except:
                                     pass
-                    
+
                     # Wait for completion
                     process.wait()
-                    
+                    returncode = process.returncode
+                    stderr = process.stderr.read()
+
                     # Clear process reference
                     self.current_transfer_process = None
-                    
+
                     # Check if cancelled
                     if self.transfer_cancelled:
                         error_messages.append(f"{os.path.basename(local_path)}: Cancelled by user")
                         break
-                    elif process.returncode == 0:
+                    elif returncode == 0:
                         success_count += 1
+                    elif returncode == 23 and any(x in stderr for x in ["lost+found", "Permission denied"]):
+                        # Partial success - some files couldn't be accessed (usually system files)
+                        success_count += 1
+                        self.logger.warning(f"[GUI WARNING] Partial transfer success for {local_path}: {stderr}")
                     else:
-                        stderr = process.stderr.read()
                         self.logger.error(f"[GUI ERROR] rsync failed for {local_path}")
-                        self.logger.error(f"[GUI ERROR] Return code: {process.returncode}")
+                        self.logger.error(f"[GUI ERROR] Return code: {returncode}")
                         self.logger.error(f"[GUI ERROR] STDERR: {stderr!r}")
-                        self.logger.error(f"[GUI ERROR] STDOUT: {process.stdout.read()!r}")
                         error_messages.append(f"{os.path.basename(local_path)}: {stderr}")
-                    
+
                 except Exception as e:
                     error_messages.append(f"{os.path.basename(local_path)}: {str(e)}")
-            
+
             # Clean up SSH files
             if ssh_key_file and os.path.exists(ssh_key_file):
                 os.unlink(ssh_key_file)
             if known_hosts_file and os.path.exists(known_hosts_file):
                 os.unlink(known_hosts_file)
-            
+
             # Return results
             if success_count == len(local_paths):
                 return True, f"Successfully transferred {success_count} items"
@@ -1489,16 +1446,15 @@ class DualPaneFileBrowser:
                 return False, f"Transferred {success_count}/{len(local_paths)} items. Errors: " + "; ".join(error_messages)
             else:
                 return False, "Transfer failed: " + "; ".join(error_messages)
-                
+
         except Exception as e:
             return False, f"Transfer error: {str(e)}"
     
     def perform_folder_sync(self, folder_path: str, remote_base: str, direction: str, progress_callback=None) -> Tuple[bool, str]:
         """Perform optimized folder sync using sync-specific options"""
         try:
-            # Import sync utilities from the commands module
-            sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
-            from commands.sync_main import get_rsync_command, get_rsync_ssh_command, prepare_rsync_paths, get_rsync_changes, parse_rsync_changes, display_changes_and_confirm
+            # Import additional sync utilities for preview functionality
+            from cli.commands.sync_main import get_rsync_changes, parse_rsync_changes
             
             # Get SSH options
             ssh_opts, ssh_key_file, known_hosts_file = self.ssh_connection.setup_ssh()
@@ -1541,8 +1497,8 @@ class DualPaneFileBrowser:
                     if not self.show_sync_preview(changes, direction):
                         return False, "Sync cancelled by user"
             
-            # Build rsync command
-            rsync_cmd = [get_rsync_command(), '-av', '--protocol=31', '--progress', '-e', ssh_cmd]
+            # Build rsync command (removed problematic --protocol=31)
+            rsync_cmd = [get_rsync_command(), '-av', '--verbose', '--inplace', '--progress', '-e', ssh_cmd]
             
             if universal_user:
                 rsync_cmd.extend(['--rsync-path', f'sudo -u {universal_user} rsync'])
@@ -1561,9 +1517,22 @@ class DualPaneFileBrowser:
             
             rsync_cmd.extend([source, dest])
             
-            # Run rsync
-            process = subprocess.Popen(rsync_cmd, stdout=subprocess.PIPE, stderr=subprocess.PIPE, 
-                                     text=True, bufsize=1)
+            # Run rsync using direct subprocess.Popen for streaming output
+            if is_windows():
+                # On Windows, wrap in MSYS2 bash like run_platform_command does
+                # Convert the rsync command to use just 'rsync' since we set PATH
+                cmd_for_bash = rsync_cmd.copy()
+                cmd_for_bash[0] = 'rsync'  # Replace full path with just 'rsync'
+
+                # Properly quote command parts for bash
+                cmd_parts = [f'"{part}"' if ' ' in part or '\\' in part else part for part in cmd_for_bash]
+                bash_command = f'export PATH=/usr/bin:$PATH && {" ".join(cmd_parts)}'
+                bash_cmd = ['C:\\msys64\\usr\\bin\\bash.exe', '-c', bash_command]
+                process = subprocess.Popen(bash_cmd, stdout=subprocess.PIPE, stderr=subprocess.PIPE,
+                                         text=True, bufsize=1)
+            else:
+                process = subprocess.Popen(rsync_cmd, stdout=subprocess.PIPE, stderr=subprocess.PIPE,
+                                         text=True, bufsize=1)
             
             # Store process reference for cancellation
             self.current_transfer_process = process

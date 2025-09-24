@@ -134,7 +134,7 @@ def run_platform_command(cmd: List[str], **kwargs) -> subprocess.CompletedProces
 
 def get_rsync_changes(source: str, dest: str, ssh_cmd: str, options: Dict[str, Any], universal_user: str = None) -> Optional[str]:
     source, dest = prepare_rsync_paths(source, dest)
-    rsync_cmd = [get_rsync_command(), '-av', '--protocol=31', '--dry-run', '--itemize-changes', '-e', ssh_cmd]
+    rsync_cmd = [get_rsync_command(), '-av', '--dry-run', '--itemize-changes', '-e', ssh_cmd]
     if universal_user and ('@' in source or '@' in dest): rsync_cmd.extend(['--rsync-path', f'sudo -u {universal_user} rsync'])
     if options.get('mirror'): rsync_cmd.extend(['--delete', '--exclude', '*.sock'])
     rsync_cmd.extend(['--checksum', '--ignore-times'] if options.get('verify') else ['--partial', '--append-verify'])
@@ -205,7 +205,7 @@ def perform_rsync(source: str, dest: str, ssh_cmd: str, options: Dict[str, Any],
         if not dry_run_output: print(colorize("Failed to analyze changes", 'RED')); return False
         if not display_changes_and_confirm(parse_rsync_changes(dry_run_output), "Upload" if '@' in dest else "Download"): return False
     
-    rsync_cmd = [get_rsync_command(), '-av', '--protocol=31', '--verbose', '--inplace', '--no-whole-file', '-e', ssh_cmd, '--progress']
+    rsync_cmd = [get_rsync_command(), '-av', '--verbose', '--inplace', '--no-whole-file', '-e', ssh_cmd, '--progress']
     
     if universal_user and ('@' in source or '@' in dest): rsync_cmd.extend(['--rsync-path', f'sudo -u {universal_user} rsync'])
     if options.get('mirror'): rsync_cmd.extend(['--delete', '--exclude', '*.sock'])

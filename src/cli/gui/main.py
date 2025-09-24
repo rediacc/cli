@@ -75,7 +75,7 @@ from cli.gui.utilities import (
 class MainWindow(BaseWindow):
     """Main window with Terminal and File Sync tools"""
     
-    def __init__(self, preselected_token=None, preselected_team=None, preselected_machine=None, preselected_repo=None):
+    def __init__(self, preselected_token=None, preselected_team=None, preselected_machine=None, preselected_repo=None, preselected_container_id=None, preselected_container_name=None):
         title = i18n.get('app_title')
         if __version__ != 'dev':
             title += f' v{__version__}'
@@ -88,6 +88,8 @@ class MainWindow(BaseWindow):
         self.preselected_team = preselected_team
         self.preselected_machine = preselected_machine
         self.preselected_repo = preselected_repo
+        self.preselected_container_id = preselected_container_id
+        self.preselected_container_name = preselected_container_name
         
         # Use global API client instance
         self.api_client = client
@@ -3637,6 +3639,8 @@ def launch_gui():
     parser.add_argument('--team', type=str, help='Team name to pre-select')
     parser.add_argument('--machine', type=str, help='Machine name to pre-select')
     parser.add_argument('--repo', type=str, help='Repository name to pre-select')
+    parser.add_argument('--container-id', type=str, help='Container ID to pre-select')
+    parser.add_argument('--container-name', type=str, help='Container name to pre-select')
     args = parser.parse_args()
     
     # Check for verbose flag from either command line or environment
@@ -3708,7 +3712,9 @@ def launch_gui():
                 preselected_token=args.token,
                 preselected_team=args.team,
                 preselected_machine=args.machine,
-                preselected_repo=args.repo
+                preselected_repo=args.repo,
+                preselected_container_id=getattr(args, 'container_id', None),
+                preselected_container_name=getattr(args, 'container_name', None)
             )
             main_window_instance.root.mainloop()
         else:
@@ -3734,7 +3740,9 @@ def launch_gui():
                 preselected_token=args.token,
                 preselected_team=args.team,
                 preselected_machine=args.machine,
-                preselected_repo=args.repo
+                preselected_repo=args.repo,
+                preselected_container_id=getattr(args, 'container_id', None),
+                preselected_container_name=getattr(args, 'container_name', None)
             )
             main_window_instance.root.mainloop()
     except Exception as e:
