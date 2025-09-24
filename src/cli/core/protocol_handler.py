@@ -349,22 +349,53 @@ class ProtocolUrlParser:
             path_parts = [p for p in parsed.path.split('/') if p]
 
             # Check if token is in hostname (netloc) or path
-            if parsed.netloc and len(path_parts) >= 3:
-                # Format 2: token in hostname, path has team/machine/repository[/action]
+            if parsed.netloc and len(path_parts) >= 2:
+                # Format 2: token in hostname, path has team/machine[/repository][/action]
                 token = parsed.netloc
                 team = urllib.parse.unquote(path_parts[0])
                 machine = urllib.parse.unquote(path_parts[1])
-                repository = urllib.parse.unquote(path_parts[2])
-                action_index = 3
-            elif len(path_parts) >= 4:
-                # Format 1: token/team/machine/repository[/action] in path
+
+                # Check if we have repository or action next
+                if len(path_parts) >= 3:
+                    # Could be repository or action
+                    third_part = path_parts[2]
+                    if third_part in self.VALID_ACTIONS:
+                        # Third part is action, no repository
+                        repository = ""
+                        action_index = 2
+                    else:
+                        # Third part is repository
+                        repository = urllib.parse.unquote(third_part)
+                        action_index = 3
+                else:
+                    # Only team/machine provided
+                    repository = ""
+                    action_index = 2
+
+            elif len(path_parts) >= 3:
+                # Format 1: token/team/machine[/repository][/action] in path
                 token = urllib.parse.unquote(path_parts[0])
                 team = urllib.parse.unquote(path_parts[1])
                 machine = urllib.parse.unquote(path_parts[2])
-                repository = urllib.parse.unquote(path_parts[3])
-                action_index = 4
+
+                # Check if we have repository or action next
+                if len(path_parts) >= 4:
+                    # Could be repository or action
+                    fourth_part = path_parts[3]
+                    if fourth_part in self.VALID_ACTIONS:
+                        # Fourth part is action, no repository
+                        repository = ""
+                        action_index = 3
+                    else:
+                        # Fourth part is repository
+                        repository = urllib.parse.unquote(fourth_part)
+                        action_index = 4
+                else:
+                    # Only token/team/machine provided
+                    repository = ""
+                    action_index = 3
             else:
-                raise ValueError("URL must contain at least token, team, machine, and repository")
+                raise ValueError("URL must contain at least token, team, and machine")
 
             result = {
                 "protocol": self.PROTOCOL_SCHEME,
@@ -479,7 +510,15 @@ class ProtocolUrlParser:
         elif action == "desktop":
             # Desktop action - opens desktop app with optional preselected values
             cmd = ["desktop"]
-            cmd.extend(["--token", token, "--team", team, "--machine", machine, "--repo", repository])
+            cmd.extend(["--token", token, "--team", team, "--machine", machine])
+            # Only add repository if it's provided and not empty
+            if repository and repository.strip():
+                cmd.extend(["--repo", repository])
+            # Add container parameters if present
+            if "containerId" in params:
+                cmd.extend(["--container-id", params["containerId"]])
+            if "containerName" in params:
+                cmd.extend(["--container-name", params["containerName"]])
 
         elif action == "browser":
             # File browser action - use desktop application
