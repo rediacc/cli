@@ -71,7 +71,7 @@
     "logs": "logs() {\n    local container=\"${1:-}\"\n    local lines=\"${2:-50}\"\n    if [ -z \"$container\" ]; then\n        echo \"Usage: logs <container_name_or_id> [lines]\"\n        echo \"Available containers:\"\n        docker ps -a --format \"table {{.Names}}\\t{{.Status}}\"\n        return 1\n    fi\n    docker logs --tail \"$lines\" -f \"$container\"\n}",
     "status": "status() {\n    echo -e '\\033[1;36m━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━\\033[0m'\n    echo -e '\\033[1;32mRepository Status\\033[0m'\n    echo -e '\\033[1;36m━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━\\033[0m'\n    echo -e \"\\n\\033[1;34mDocker Status:\\033[0m\"\n    if docker version >/dev/null 2>&1; then\n        echo \"  ✓ Docker daemon is running\"\n        docker ps -q | wc -l | xargs -I {} echo \"  • {} containers running\"\n    else\n        echo \"  ✗ Docker daemon is not accessible\"\n    fi\n    echo -e \"\\n\\033[1;34mRepository Files:\\033[0m\"\n    ls -la \"$REPO_PATH\" 2>/dev/null | tail -n +2 | head -10\n    echo \"\"\n}"
   },
-  "ps1_prompt": "\\[\\033[01;32m\\][\\u@{repo}\\[\\033[00m\\]:\\[\\033[01;34m\\]\\w\\[\\033[00m\\]]\\$ ",
+  "ps1_prompt": "\\[\\033[01;32m\\]{repo}\\[\\033[00m\\] \\$ ",
   "messages": {
     "connecting_machine": "Connecting to machine '{machine}'...",
     "connecting_repository": "Connecting to repository '{repo}' on machine '{machine}'...",
