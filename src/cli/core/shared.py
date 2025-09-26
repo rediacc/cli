@@ -961,7 +961,11 @@ def validate_machine_accessibility(machine_name: str, team_name: str, ip: str, r
     wait_for_enter("Press Enter to exit...")
     sys.exit(1)  # Keep as is - this is a special user interaction case
 
-def handle_ssh_exit_code(returncode: int, connection_type: str = "machine"):
+def handle_ssh_exit_code(returncode, connection_type: str = "machine"):
+    # Handle None return code (process terminated by signal, normal for interactive exit)
+    if returncode is None:
+        returncode = 0  # Treat as successful exit
+
     success = returncode == 0
     error = None
 

@@ -100,4 +100,5 @@ version = {attr = "cli._version.__version__"}
 [tool.setuptools.package-data]
 cli = [
     "../config/*.json",
+    "assets/*",
 ]

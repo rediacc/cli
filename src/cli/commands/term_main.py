@@ -133,6 +133,9 @@ def connect_to_terminal(args):
         env_template = CONFIG.get('environment_exports', {})
         env_format_vars = {'repo_mount_path': repo_mount_path, 'docker_host': docker_host, 'docker_folder': repo_paths['docker_folder'], 'docker_socket': docker_socket, 'docker_data': repo_paths['docker_data'], 'docker_exec': repo_paths['docker_exec']}
         env_exports = '\n'.join(f'export {key}=\'{value.format(**env_format_vars)}\'' for key, value in env_template.items()) + '\n'
+        env_exports += f'export REDIACC_REPO="{args.repo}"\n'
+        env_exports += f'export REDIACC_TEAM="{args.team}"\n'
+        env_exports += f'export REDIACC_MACHINE="{args.machine}"\n'
         
         cd_logic = get_config_value('cd_logic', 'basic')
         
@@ -140,13 +143,19 @@ def connect_to_terminal(args):
         else:
             extended_cd_logic = get_config_value('cd_logic', 'extended')
             bash_funcs = CONFIG.get('bash_functions', {})
-            ps1_prompt = CONFIG.get('ps1_prompt', '').format(repo=args.repo)
+            format_vars = {
+                'repo': args.repo,
+                'team': args.team,
+                'machine': args.machine,
+                'bridge': getattr(args, 'bridge', 'N/A')
+            }
+            ps1_prompt = CONFIG.get('ps1_prompt', '').format(**format_vars)
             commands = CONFIG.get('repository_welcome', {}).get('commands', [])
-            welcome_lines = [cmd.format(repo=args.repo) for cmd in commands]
+            welcome_lines = [cmd.format(**format_vars) for cmd in commands]
             functions = '\n\n'.join(bash_funcs.values())
             exports = 'export -f enter_container\nexport -f logs\nexport -f status'
-            
-            ssh_env_setup = f"""{env_exports}export PS1='{ps1_prompt}'\n{extended_cd_logic}\n\n{functions}\n\n{exports}\n\n{chr(10).join(welcome_lines)}\n"""
+
+            ssh_env_setup = f"""{env_exports}{extended_cd_logic}\n\n{functions}\n\n{exports}\n\n{chr(10).join(welcome_lines)}\n\nexport PS1='{ps1_prompt}'\n"""
         
         universal_user = conn.connection_info.get('universal_user', 'rediacc')
         ssh_cmd = ['ssh', '-tt', *ssh_conn.ssh_opts.split(), conn.ssh_destination]
@@ -162,7 +171,7 @@ def connect_to_terminal(args):
         else:
             # For interactive terminal, use the existing complex setup that works
             print_message('opening_terminal'); print_message('exit_instruction', 'YELLOW')
-            full_command = ssh_env_setup + "exec bash -l"
+            full_command = ssh_env_setup + "exec bash"
             escaped_env = full_command.replace("'", "'\"'\"'")
             ssh_cmd.append(f"sudo -u {universal_user} bash -c '{escaped_env}'")
         result = subprocess.run(ssh_cmd)
@@ -281,6 +290,10 @@ def main():
             connect_to_terminal(args)
         else:
             connect_to_machine(args)
+        return 0  # Successful completion
+    except Exception as e:
+        logger.error(f"Terminal operation failed: {e}")
+        return 1  # Failure
     finally:
         # Shutdown telemetry
         shutdown_telemetry()

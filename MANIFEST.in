@@ -11,6 +11,7 @@ recursive-include src/config *.json
 
 # Include package data
 recursive-include src/cli *.py
+recursive-include src/cli/assets *
 
 # Exclude unnecessary files
 global-exclude __pycache__
