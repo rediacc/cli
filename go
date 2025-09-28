@@ -172,7 +172,8 @@ function host_setup() {
         git
     
     echo "Installing PyPI publishing tools..."
-    sudo apt-get install -y twine
+    # Install specific twine version to avoid PEP 639 metadata compatibility issues
+    sudo pip3 install twine==6.0.1
     
     # Only install Docker in native environments
     if [ "$is_codespace" = false ]; then
