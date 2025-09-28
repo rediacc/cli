@@ -148,23 +148,13 @@ def build_package(base_dir):
         subprocess.run([sys.executable, "-m", "pip", "install", "--quiet", "--upgrade", "--break-system-packages", "build", "setuptools", "wheel"], check=False)
         python_cmd = [sys.executable]
     
-    # Build the package
+    # Build the package using the build module directly
     result = subprocess.run(
-        python_cmd + ["-m", "build"],
+        [sys.executable, "-m", "build"],
         cwd=base_dir,
         capture_output=True,
         text=True
     )
-    
-    # If build fails, try setup.py directly
-    if result.returncode != 0:
-        print("⚠️  Build module failed, trying setup.py directly...")
-        result = subprocess.run(
-            python_cmd + ["setup.py", "sdist", "bdist_wheel"],
-            cwd=base_dir,
-            capture_output=True,
-            text=True
-        )
     
     if result.returncode != 0:
         print(f"✗ Build failed:\n{result.stderr}")
@@ -189,13 +179,13 @@ def validate_package(base_dir):
         pip_check = subprocess.run([str(venv_python), "-m", "pip", "--version"], capture_output=True)
         if pip_check.returncode == 0:
             use_venv = True
-            # Ensure twine is installed in the virtual environment
-            subprocess.run([str(venv_python), "-m", "pip", "install", "--quiet", "twine", "check-wheel-contents"], check=True)
+            # Ensure twine is installed in the virtual environment (use working version)
+            subprocess.run([str(venv_python), "-m", "pip", "install", "--quiet", "twine==6.0.1", "check-wheel-contents"], check=True)
             python_cmd = [str(venv_python)]
     
     if not use_venv:
         # Fall back to system Python with --break-system-packages
-        subprocess.run([sys.executable, "-m", "pip", "install", "--quiet", "--upgrade", "--break-system-packages", "twine", "check-wheel-contents"], check=False)
+        subprocess.run([sys.executable, "-m", "pip", "install", "--quiet", "--upgrade", "--break-system-packages", "twine==6.0.1", "check-wheel-contents"], check=False)
         python_cmd = [sys.executable]
     
     # Check the distribution - expand glob manually
@@ -275,7 +265,11 @@ def upload_package(base_dir, repository="testpypi", token=None):
     )
     
     if result.returncode != 0:
-        print(f"✗ Upload failed:\n{result.stderr}")
+        print(f"✗ Upload failed:")
+        if result.stdout:
+            print(f"STDOUT:\n{result.stdout}")
+        if result.stderr:
+            print(f"STDERR:\n{result.stderr}")
         return False
     
     print(f"✓ Successfully uploaded to {repository}")

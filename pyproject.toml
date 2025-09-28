@@ -5,8 +5,9 @@ build-backend = "setuptools.build_meta"
 [project]
 name = "rediacc"
 dynamic = ["version"]
-description = "Infrastructure protection platform with 60-second recovery. Instant cloning, time-travel recovery, and 90% storage reduction for disaster prevention."
+description = "Infrastructure protection platform with 100-second recovery. Instant cloning, time-travel recovery, and 99.99% storage reduction for disaster prevention."
 readme = "README_PYPI.md"
+license = "MIT"
 authors = [
     {name = "Rediacc Team", email = "info@rediacc.com"}
 ]
@@ -32,7 +33,7 @@ keywords = [
     "cloud-failover",
     "database-cloning",
     "snapshot",
-    "copy-on-write",
+    "smart-deduplication",
 ]
 classifiers = [
     "Development Status :: 4 - Beta",
@@ -90,9 +91,8 @@ rediacc-gui = "cli.gui.main:main"
 
 [tool.setuptools]
 package-dir = {"" = "src"}
-packages = ["cli", "cli.commands", "cli.core", "cli.gui"]
+packages = ["cli", "cli.commands", "cli.core", "cli.gui", "cli.assets"]
 include-package-data = true
-license-files = []  # Disable automatic license file detection to avoid PyPI metadata issues
 
 [tool.setuptools.dynamic]
 version = {attr = "cli._version.__version__"}
