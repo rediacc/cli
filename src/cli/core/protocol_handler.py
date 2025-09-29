@@ -551,6 +551,25 @@ def handle_protocol_url(url: str, is_protocol_call: bool = False) -> int:
         cmd_args = parser.build_cli_command(parsed)
         logger.info(f"Executing command: {cmd_args}")
 
+        # Store the token in config file for proper rotation before executing commands
+        token = parsed.get("token")
+        if token:
+            try:
+                from .config import TokenManager
+                if TokenManager.validate_token(token):
+                    TokenManager.set_token(token)
+                    logger.debug(f"Token stored in config for rotation: {token[:8]}...")
+                else:
+                    logger.warning(f"Invalid token format received from protocol URL")
+                    if is_protocol_call:
+                        display_protocol_error_with_wait("Invalid token format in protocol URL")
+                        return 1
+            except Exception as e:
+                logger.error(f"Failed to store token from protocol URL: {e}")
+                if is_protocol_call:
+                    display_protocol_error_with_wait(f"Token storage error: {e}")
+                    return 1
+
         # Execute the appropriate CLI tool based on the action
         action = parsed.get("action")
 

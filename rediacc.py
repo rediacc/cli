@@ -699,7 +699,7 @@ class RediaccCLI:
             try:
                 sys.path.insert(0, str(self.cli_root / 'src'))
                 from cli.core.config import TokenManager
-                token = TokenManager().get_token()
+                token = TokenManager.get_token()
                 if token:
                     cmd_args = ['--token', token] + cmd_args
             except:

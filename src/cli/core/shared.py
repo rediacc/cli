@@ -136,8 +136,10 @@ def run_command(cmd, capture_output=True, check=True, quiet=False):
             error_exit(error_msg)
     
     try:
-        if not capture_output: return subprocess.run(cmd, check=False, env=os.environ.copy())
-        result = subprocess.run(cmd, capture_output=True, text=True, check=False, env=os.environ.copy())
+        # Create clean environment without token variables to avoid stale token propagation
+        clean_env = {k: v for k, v in os.environ.items() if not k.startswith('REDIACC_TOKEN')}
+        if not capture_output: return subprocess.run(cmd, check=False, env=clean_env)
+        result = subprocess.run(cmd, capture_output=True, text=True, check=False, env=clean_env)
         if result.returncode != 0 and check:
                 try:
                     error_data = json.loads(result.stdout)
@@ -823,7 +825,8 @@ def initialize_cli_command(args, parser, requires_cli_tool=True):
     """
     # Validate authentication
     if hasattr(args, 'token') and args.token:
-        os.environ['REDIACC_TOKEN'] = args.token
+        # Store token directly in config file for proper rotation
+        TokenManager.set_token(args.token)
     elif not TokenManager.get_token():
         parser.error("No authentication token available. Please login first.")
     

@@ -2396,8 +2396,8 @@ def main():
                         error = f"Invalid token format: {TokenManager.mask_token(args.token)}"
                         print(format_output(None, args.output, None, error))
                         return 1
-                    os.environ['REDIACC_TOKEN'] = args.token
-                    config_manager.set_token_overridden(True)
+                    # Store token directly in config file for proper rotation
+                    TokenManager.set_token(args.token)
                 
                 handler = CommandHandler(config_manager, args.output)
                 
@@ -2444,8 +2444,8 @@ def main():
             output = format_output(None, output_format, None, error)
             print(output)
             return 1
-        os.environ['REDIACC_TOKEN'] = args.token
-        config_manager.set_token_overridden(True)
+        # Store token directly in config file for proper rotation
+        TokenManager.set_token(args.token)
     
     handler = CommandHandler(config_manager, output_format)
     
