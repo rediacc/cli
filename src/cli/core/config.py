@@ -633,13 +633,37 @@ class TokenManager:
             logger.warning("Invalid override token format")
             return None
 
-        # Priority 1: Use config file token (most recent and reliable)
+        # Check for REDIACC_TOKEN and migrate it to config file once
+        env_token = os.environ.get('REDIACC_TOKEN')
+        if env_token:
+            if cls.validate_token(env_token):
+                if os.environ.get('REDIACC_DEBUG'):
+                    print(f"DEBUG: Found REDIACC_TOKEN - migrating to config file: {env_token[:16]}...{env_token[-8:] if len(env_token) > 24 else env_token}", file=sys.stderr)
+                try:
+                    cls.set_token(env_token)
+                    if os.environ.get('REDIACC_DEBUG'):
+                        print(f"DEBUG: REDIACC_TOKEN saved to config file", file=sys.stderr)
+
+                    # Clear the environment variable so we use config file from now on
+                    del os.environ['REDIACC_TOKEN']
+                    if os.environ.get('REDIACC_DEBUG'):
+                        print(f"DEBUG: REDIACC_TOKEN environment variable cleared - using config file for rotation", file=sys.stderr)
+                except Exception as e:
+                    if os.environ.get('REDIACC_DEBUG'):
+                        print(f"DEBUG: Failed to migrate REDIACC_TOKEN to config: {e}", file=sys.stderr)
+                        # Fall back to using the env token if migration fails
+                        print(f"DEBUG: Using REDIACC_TOKEN directly as fallback", file=sys.stderr)
+                    return env_token
+            else:
+                if os.environ.get('REDIACC_DEBUG'):
+                    print("DEBUG: Token in REDIACC_TOKEN env var is invalid format", file=sys.stderr)
+                logger.warning("Invalid token in REDIACC_TOKEN environment variable")
+
+        # Use config file token (normal path after migration)
         try:
             config = cls._load_from_config()
             token = config.get('token')
-            migration_completed = config.get('env_migration_completed', False)
-
-            if token and cls.validate_token_with_freshness(token):
+            if token and cls.validate_token(token):
                 if os.environ.get('REDIACC_DEBUG'):
                     print(f"DEBUG: Using token from config file: {token[:16]}...{token[-8:] if len(token) > 24 else token}", file=sys.stderr)
                 return token
@@ -652,38 +676,6 @@ class TokenManager:
         except Exception as e:
             if os.environ.get('REDIACC_DEBUG'):
                 print(f"DEBUG: Error loading config: {e}", file=sys.stderr)
-            config = {}
-            migration_completed = False
-
-        # Priority 2: Check for REDIACC_TOKEN and migrate it to config file (one-time only)
-        env_token = os.environ.get('REDIACC_TOKEN')
-        if env_token and not migration_completed:
-            if cls.validate_token(env_token):
-                if os.environ.get('REDIACC_DEBUG'):
-                    print(f"DEBUG: Found REDIACC_TOKEN - performing one-time migration to config file: {env_token[:16]}...{env_token[-8:] if len(env_token) > 24 else env_token}", file=sys.stderr)
-                try:
-                    # Save token and mark migration as completed
-                    config = cls._load_from_config() if 'config' not in locals() else config
-                    config['token'] = env_token
-                    config['token_updated_at'] = datetime.now(timezone.utc).isoformat()
-                    config['env_migration_completed'] = True
-                    cls._save_config(config)
-
-                    if os.environ.get('REDIACC_DEBUG'):
-                        print(f"DEBUG: REDIACC_TOKEN migrated to config file and marked as completed", file=sys.stderr)
-                    return env_token
-                except Exception as e:
-                    if os.environ.get('REDIACC_DEBUG'):
-                        print(f"DEBUG: Failed to migrate REDIACC_TOKEN to config: {e}", file=sys.stderr)
-                        print(f"DEBUG: Using REDIACC_TOKEN directly as fallback", file=sys.stderr)
-                    return env_token
-            else:
-                if os.environ.get('REDIACC_DEBUG'):
-                    print("DEBUG: Token in REDIACC_TOKEN env var is invalid format", file=sys.stderr)
-                logger.warning("Invalid token in REDIACC_TOKEN environment variable")
-        elif env_token and migration_completed:
-            if os.environ.get('REDIACC_DEBUG'):
-                print(f"DEBUG: REDIACC_TOKEN found but migration already completed - ignoring environment variable", file=sys.stderr)
 
         if os.environ.get('REDIACC_DEBUG'):
             print("DEBUG: No valid token found from any source", file=sys.stderr)
@@ -698,16 +690,14 @@ class TokenManager:
         
         config['token'] = token
         config['token_updated_at'] = datetime.now(timezone.utc).isoformat()
-        # Mark migration as completed when setting a new token (e.g., after login)
-        config['env_migration_completed'] = True
-
+        
         if email:
             config['email'] = email
         if company:
             config['company'] = company
         if vault_company is not None:
             config['vault_company'] = vault_company
-
+        
         cls._save_config(config)
     
     @classmethod
@@ -719,8 +709,8 @@ class TokenManager:
             
         config = cls._load_from_config()
         
-        # Remove auth-related fields and reset migration flag
-        auth_fields = ['token', 'token_updated_at', 'email', 'company', 'vault_company', 'env_migration_completed']
+        # Remove auth-related fields
+        auth_fields = ['token', 'token_updated_at', 'email', 'company', 'vault_company']
         for field in auth_fields:
             config.pop(field, None)
         
@@ -747,42 +737,10 @@ class TokenManager:
         """Validate token format (UUID/GUID)"""
         if not token:
             return False
-
+        
         # GUID pattern: 8-4-4-4-12 hexadecimal digits
         guid_pattern = r'^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$'
         return bool(re.match(guid_pattern, token, re.IGNORECASE))
-
-    @classmethod
-    def validate_token_with_freshness(cls, token: Optional[str], max_age_hours: int = 24) -> bool:
-        """Validate token format and check if it's not too old"""
-        if not cls.validate_token(token):
-            return False
-
-        try:
-            config = cls._load_from_config()
-            token_updated_at = config.get('token_updated_at')
-
-            if not token_updated_at:
-                # No timestamp available, assume token is valid
-                if os.environ.get('REDIACC_DEBUG'):
-                    print("DEBUG: Token has no timestamp - assuming valid", file=sys.stderr)
-                return True
-
-            # Parse the timestamp and check age
-            token_time = datetime.fromisoformat(token_updated_at.replace('Z', '+00:00'))
-            age_hours = (datetime.now(timezone.utc) - token_time).total_seconds() / 3600
-
-            if age_hours > max_age_hours:
-                if os.environ.get('REDIACC_DEBUG'):
-                    print(f"DEBUG: Token is too old ({age_hours:.1f} hours > {max_age_hours} hours)", file=sys.stderr)
-                return False
-
-            return True
-
-        except Exception as e:
-            if os.environ.get('REDIACC_DEBUG'):
-                print(f"DEBUG: Error checking token freshness: {e} - assuming valid", file=sys.stderr)
-            return True
     
     @staticmethod
     def mask_token(token: Optional[str]) -> Optional[str]:
