@@ -22,30 +22,6 @@ from .env_config import EnvironmentConfig
 from .telemetry import track_api_call, track_event
 
 
-class InMemoryTokenStore:
-    def __init__(self):
-        self.tokens: Dict[str, str] = {}
-        self.active_session: Optional[str] = None
-        
-    def set_token(self, key: str, token: str):
-        self.tokens[key] = token
-        self.active_session = key
-        
-    def get_token(self, key: Optional[str] = None) -> Optional[str]:
-        key = key or self.active_session
-        return self.tokens.get(key) if key else None
-        
-    def clear_token(self, key: Optional[str] = None):
-        key = key or self.active_session
-        if key and key in self.tokens:
-            del self.tokens[key]
-            if self.active_session == key:
-                self.active_session = None
-                
-    def set_active_session(self, key: str):
-        if key in self.tokens:
-            self.active_session = key
-
 
 class SuperClient:
     PASSWORD_SALT = 'Rd!@cc111$ecur3P@$w0rd$@lt#H@$h'
@@ -80,7 +56,6 @@ class SuperClient:
             except ImportError:
                 self.use_requests = False
         
-        self.token_store = InMemoryTokenStore()
         
         # Log mode in verbose output
         if os.environ.get('REDIACC_DEBUG'):
@@ -407,16 +382,13 @@ class SuperClient:
             skip_reasons.append("no new token found")
         if new_token == current_token:
             skip_reasons.append("new token same as current")
-        if hasattr(self.config_manager, 'is_token_overridden') and self.config_manager.is_token_overridden():
-            skip_reasons.append("token was overridden")
 
         if skip_reasons:
             if os.environ.get('REDIACC_DEBUG'):
                 print(f"DEBUG: Token update skipped - {'; '.join(skip_reasons)}", file=sys.stderr)
             return
 
-        # IMPORTANT: Allow token rotation even when REDIACC_TOKEN is set
-        # REDIACC_TOKEN should only be used for initial authentication
+        # Token rotation is handled via config file
         if os.environ.get('REDIACC_DEBUG'):
             print(f"DEBUG: Token rotation proceeding - updating from {current_token[:8]}... to {new_token[:8]}...", file=sys.stderr)
         
@@ -600,7 +572,7 @@ class SuperClient:
         
         # Handle logout - clear token
         if endpoint == 'DeleteUserRequest' and result['success']:
-            self.token_store.clear_token()
+            pass  # Logout handled via normal API response
         
         return self._format_response(endpoint, result['data'], args) if result['success'] else result
     
@@ -610,9 +582,8 @@ class SuperClient:
         """Make API request with automatic token rotation (for testing)"""
         request_headers = {'Content-Type': 'application/json', 'Accept': 'application/json'}
         
-        # Add authentication token
-        token = token if token is not None else self.token_store.get_token()
-        if token:  # Only add header if token is not empty string
+        # Add authentication token - this is only for test compatibility
+        if token is not None and token:  # Only add header if token is not empty string
             request_headers['Rediacc-RequestToken'] = token
             
         if headers:
@@ -622,10 +593,8 @@ class SuperClient:
         
         # Handle response for testing
         if 'error' not in response:
-            # Handle token rotation from response body
-            new_token = self._extract_token_from_response(response)
-            if new_token and self.token_store.active_session:
-                self.token_store.set_token(self.token_store.active_session, new_token)
+            # Token rotation is handled by the main CLI via TokenManager
+            # This method is primarily for test compatibility
             
             return {'success': True, 'data': response, 'status_code': 200}
         else:
@@ -684,10 +653,7 @@ class SuperClient:
             }
             
             # Special handling for CreateAuthenticationRequest
-            if endpoint == 'CreateAuthenticationRequest':
-                session_key = f"session_{args.get('email', '')}"
-                self.token_store.active_session = session_key
-                self.token_store.set_token(session_key, "")
+            # Authentication session setup handled by main CLI
             
             return headers
         
@@ -725,8 +691,6 @@ class SimpleConfigManager:
     def needs_vault_info_fetch(self):
         return False
     
-    def is_token_overridden(self):
-        return bool(os.environ.get('REDIACC_TOKEN'))
     
     def load_vault_info_from_config(self):
         pass

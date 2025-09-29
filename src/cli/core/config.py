@@ -443,6 +443,10 @@ else:
     print("Warning: No file locking mechanism available", file=sys.stderr)
 
 
+def _clean_environment():
+    """Get environment copy without token variables to prevent stale token propagation"""
+    return {k: v for k, v in os.environ.items() if not k.startswith('REDIACC_TOKEN')}
+
 # TOKEN MANAGER MODULE
 
 try:
@@ -508,7 +512,6 @@ class TokenManager:
                     self._vault_company = None
                     self._company_name = None
                     self._vault_info_fetched = False
-                    self._token_overridden = False
                     TokenManager._initialized = True
     
     @classmethod
@@ -633,33 +636,7 @@ class TokenManager:
             logger.warning("Invalid override token format")
             return None
 
-        # Check for REDIACC_TOKEN and migrate it to config file once
-        env_token = os.environ.get('REDIACC_TOKEN')
-        if env_token:
-            if cls.validate_token(env_token):
-                if os.environ.get('REDIACC_DEBUG'):
-                    print(f"DEBUG: Found REDIACC_TOKEN - migrating to config file: {env_token[:16]}...{env_token[-8:] if len(env_token) > 24 else env_token}", file=sys.stderr)
-                try:
-                    cls.set_token(env_token)
-                    if os.environ.get('REDIACC_DEBUG'):
-                        print(f"DEBUG: REDIACC_TOKEN saved to config file", file=sys.stderr)
-
-                    # Clear the environment variable so we use config file from now on
-                    del os.environ['REDIACC_TOKEN']
-                    if os.environ.get('REDIACC_DEBUG'):
-                        print(f"DEBUG: REDIACC_TOKEN environment variable cleared - using config file for rotation", file=sys.stderr)
-                except Exception as e:
-                    if os.environ.get('REDIACC_DEBUG'):
-                        print(f"DEBUG: Failed to migrate REDIACC_TOKEN to config: {e}", file=sys.stderr)
-                        # Fall back to using the env token if migration fails
-                        print(f"DEBUG: Using REDIACC_TOKEN directly as fallback", file=sys.stderr)
-                    return env_token
-            else:
-                if os.environ.get('REDIACC_DEBUG'):
-                    print("DEBUG: Token in REDIACC_TOKEN env var is invalid format", file=sys.stderr)
-                logger.warning("Invalid token in REDIACC_TOKEN environment variable")
-
-        # Use config file token (normal path after migration)
+        # Use config file token
         try:
             config = cls._load_from_config()
             token = config.get('token')
@@ -856,13 +833,6 @@ class TokenManager:
         self._vault_company = config.get('vault_company')
         self._company_name = config.get('company')
     
-    def set_token_overridden(self, overridden: bool = True):
-        """Mark that token was overridden via command line"""
-        self._token_overridden = overridden
-    
-    def is_token_overridden(self) -> bool:
-        """Check if token was overridden via command line"""
-        return self._token_overridden
     
     # Enhanced set_token to update internal state
     @classmethod
@@ -1995,7 +1965,7 @@ class TerminalDetector:
         bash_cmd = f'{env_exports}cd "{msys2_cli_dir}" && python3 {cli_script} {escaped_args}'
         
         # Launch maximized with -w max option
-        subprocess.Popen([mintty_exe, '-w', 'max', '-e', bash_exe, '-l', '-c', bash_cmd], env=os.environ.copy())
+        subprocess.Popen([mintty_exe, '-w', 'max', '-e', bash_exe, '-l', '-c', bash_cmd], env=_clean_environment())
     
     def _launch_wsl_windows_terminal(self, cli_dir: str, command: str, description: str):
         """Launch using WSL with Windows Terminal"""
@@ -2034,7 +2004,7 @@ class TerminalDetector:
         except Exception:
             # Fallback to cmd.exe method if direct launch fails
             cmd_str = f'wt.exe --maximized new-tab wsl.exe -e bash -c "{wsl_command}"'
-            subprocess.Popen(['cmd.exe', '/c', cmd_str], cwd=os.environ.get('WINDIR', 'C:\\Windows'), env=os.environ.copy())
+            subprocess.Popen(['cmd.exe', '/c', cmd_str], cwd=os.environ.get('WINDIR', 'C:\\Windows'), env=_clean_environment())
     
     def _launch_wsl_powershell(self, cli_dir: str, command: str, description: str):
         """Launch using WSL with PowerShell"""
@@ -2089,7 +2059,7 @@ class TerminalDetector:
         
         # Use start with /D to set working directory and /max to maximize
         cmd_cmd = f'start /max "WSL Terminal" /D "%WINDIR%" wsl bash -c "cd {cli_dir} && {cli_script} {args}"'
-        subprocess.Popen(['cmd.exe', '/c', cmd_cmd], env=os.environ.copy())
+        subprocess.Popen(['cmd.exe', '/c', cmd_cmd], env=_clean_environment())
     
     def _launch_msys2_windows_terminal(self, cli_dir: str, command: str, description: str):
         """Launch using MSYS2 with Windows Terminal"""
@@ -2117,7 +2087,7 @@ class TerminalDetector:
         bash_cmd = f'{env_exports}cd "{msys2_cli_dir}" && python3 {cli_script} {escaped_args}'
         wt_cmd = f'wt.exe --maximized new-tab "{bash_exe}" -l -c "{bash_cmd}"'
         
-        subprocess.Popen(['cmd.exe', '/c', wt_cmd], env=os.environ.copy())
+        subprocess.Popen(['cmd.exe', '/c', wt_cmd], env=_clean_environment())
     
     def _launch_msys2_bash_direct(self, cli_dir: str, command: str, description: str):
         """Launch using MSYS2 bash directly (no new window)"""
@@ -2144,7 +2114,7 @@ class TerminalDetector:
         env_exports = self._get_env_exports()
         bash_cmd = f'{env_exports}cd "{msys2_cli_dir}" && python3 {cli_script} {escaped_args}'
         
-        subprocess.Popen([bash_exe, '-l', '-c', bash_cmd], env=os.environ.copy())
+        subprocess.Popen([bash_exe, '-l', '-c', bash_cmd], env=_clean_environment())
     
     def _launch_powershell_direct(self, cli_dir: str, command: str, description: str):
         """Launch using PowerShell directly"""
@@ -2167,7 +2137,7 @@ class TerminalDetector:
         env_exports = self._get_env_exports_powershell()
         ps_cmd = f'Start-Process powershell -WindowStyle Maximized -ArgumentList "-Command", "{env_exports}cd \\"{cli_dir}\\"; python3 {cli_script} {escaped_args}"'
         
-        subprocess.Popen(['powershell.exe', '-Command', ps_cmd], env=os.environ.copy())
+        subprocess.Popen(['powershell.exe', '-Command', ps_cmd], env=_clean_environment())
     
     def _launch_cmd_direct(self, cli_dir: str, command: str, description: str):
         """Launch using cmd.exe directly"""
@@ -2191,7 +2161,7 @@ class TerminalDetector:
         cmd_str = f'{env_exports}cd /d "{cli_dir}" && python {cli_script} {escaped_args}'
         
         # Launch maximized
-        subprocess.Popen(['cmd.exe', '/c', f'start /max cmd /c {cmd_str}'], env=os.environ.copy())
+        subprocess.Popen(['cmd.exe', '/c', f'start /max cmd /c {cmd_str}'], env=_clean_environment())
     
     def _launch_macos_terminal(self, cli_dir: str, command: str, description: str):
         """Launch using macOS Terminal.app"""
@@ -2199,49 +2169,49 @@ class TerminalDetector:
         cmd_str = f'{env_exports}cd {cli_dir} && ./rediacc {command}'
         # Launch Terminal.app (maximizing is handled by macOS Window Manager)
         # Note: Terminal.app doesn't have a direct maximize flag
-        subprocess.Popen(['open', '-a', 'Terminal', '--', 'bash', '-c', cmd_str], env=os.environ.copy())
+        subprocess.Popen(['open', '-a', 'Terminal', '--', 'bash', '-c', cmd_str], env=_clean_environment())
     
     def _launch_gnome_terminal(self, cli_dir: str, command: str, description: str):
         """Launch using GNOME Terminal"""
         env_exports = self._get_env_exports()
         cmd_str = f'{env_exports}cd {cli_dir} && ./rediacc {command}'
         # Launch maximized
-        subprocess.Popen(['gnome-terminal', '--maximize', '--', 'bash', '-c', cmd_str], env=os.environ.copy())
+        subprocess.Popen(['gnome-terminal', '--maximize', '--', 'bash', '-c', cmd_str], env=_clean_environment())
     
     def _launch_konsole(self, cli_dir: str, command: str, description: str):
         """Launch using KDE Konsole"""
         env_exports = self._get_env_exports()
         cmd_str = f'{env_exports}cd {cli_dir} && ./rediacc {command}'
         # Launch maximized
-        subprocess.Popen(['konsole', '--fullscreen', '-e', 'bash', '-c', cmd_str], env=os.environ.copy())
+        subprocess.Popen(['konsole', '--fullscreen', '-e', 'bash', '-c', cmd_str], env=_clean_environment())
     
     def _launch_xfce4_terminal(self, cli_dir: str, command: str, description: str):
         """Launch using XFCE4 Terminal"""
         env_exports = self._get_env_exports()
         cmd_str = f'{env_exports}cd {cli_dir} && ./rediacc {command}'
         # Launch maximized
-        subprocess.Popen(['xfce4-terminal', '--maximize', '-e', f'bash -c "{cmd_str}"'], env=os.environ.copy())
+        subprocess.Popen(['xfce4-terminal', '--maximize', '-e', f'bash -c "{cmd_str}"'], env=_clean_environment())
     
     def _launch_mate_terminal(self, cli_dir: str, command: str, description: str):
         """Launch using MATE Terminal"""
         env_exports = self._get_env_exports()
         cmd_str = f'{env_exports}cd {cli_dir} && ./rediacc {command}'
         # Launch maximized
-        subprocess.Popen(['mate-terminal', '--maximize', '-e', f'bash -c "{cmd_str}"'], env=os.environ.copy())
+        subprocess.Popen(['mate-terminal', '--maximize', '-e', f'bash -c "{cmd_str}"'], env=_clean_environment())
     
     def _launch_terminator(self, cli_dir: str, command: str, description: str):
         """Launch using Terminator"""
         env_exports = self._get_env_exports()
         cmd_str = f'{env_exports}cd {cli_dir} && ./rediacc {command}'
         # Launch maximized
-        subprocess.Popen(['terminator', '--maximise', '-e', f'bash -c "{cmd_str}"'], env=os.environ.copy())
+        subprocess.Popen(['terminator', '--maximise', '-e', f'bash -c "{cmd_str}"'], env=_clean_environment())
     
     def _launch_xterm(self, cli_dir: str, command: str, description: str):
         """Launch using XTerm"""
         env_exports = self._get_env_exports()
         cmd_str = f'{env_exports}cd {cli_dir} && ./rediacc {command}'
         # Launch maximized with geometry
-        subprocess.Popen(['xterm', '-maximized', '-e', 'bash', '-c', cmd_str], env=os.environ.copy())
+        subprocess.Popen(['xterm', '-maximized', '-e', 'bash', '-c', cmd_str], env=_clean_environment())
 
 
 # ============================================================================
