@@ -2460,7 +2460,13 @@ def main():
     if args.command == 'protocol-handler':
         # Handle protocol URL (used when browser calls rediacc:// URLs)
         try:
-            from ..core.protocol_handler import handle_protocol_url
+            try:
+                from ..core.protocol_handler import handle_protocol_url
+            except ImportError:
+                # Fallback for when relative imports don't work
+                sys.path.insert(0, os.path.join(os.path.dirname(__file__), '..', 'core'))
+                from protocol_handler import handle_protocol_url
+            
             # Set is_protocol_call=True since this is the protocol-handler command
             return handle_protocol_url(args.url, is_protocol_call=True)
         except Exception as e:
@@ -2468,7 +2474,13 @@ def main():
 
             # For protocol handler calls, use the wait mechanism
             try:
-                from ..core.protocol_handler import display_protocol_error_with_wait
+                try:
+                    from ..core.protocol_handler import display_protocol_error_with_wait
+                except ImportError:
+                    # Fallback for when relative imports don't work
+                    sys.path.insert(0, os.path.join(os.path.dirname(__file__), '..', 'core'))
+                    from protocol_handler import display_protocol_error_with_wait
+                
                 display_protocol_error_with_wait(str(e))
             except ImportError:
                 # Fallback if we can't import the wait function
