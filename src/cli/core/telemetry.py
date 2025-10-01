@@ -255,13 +255,18 @@ class TelemetryService:
             'User-Agent': f'{self.service_name}/{self.service_version}'
         }
 
-        response = requests.post(
-            self.endpoint,
-            json=data,
-            headers=headers,
-            timeout=10
-        )
-        response.raise_for_status()
+        try:
+            response = requests.post(
+                self.endpoint,
+                json=data,
+                headers=headers,
+                timeout=10
+            )
+            # Don't raise for HTTP errors - telemetry should be non-blocking
+            if response.status_code >= 400:
+                self._log_error(f"Telemetry server returned HTTP {response.status_code}: {response.text[:200]}")
+        except requests.exceptions.RequestException as e:
+            self._log_error(f"Telemetry request failed: {e}")
 
     def _send_with_urllib(self, data: Dict[str, Any]):
         """Send telemetry using urllib (fallback)"""
@@ -279,9 +284,16 @@ class TelemetryService:
             }
         )
 
-        with urllib.request.urlopen(req, timeout=10) as response:
-            if response.status >= 400:
-                raise Exception(f"HTTP {response.status}")
+        try:
+            with urllib.request.urlopen(req, timeout=10) as response:
+                if response.status >= 400:
+                    self._log_error(f"Telemetry server returned HTTP {response.status}")
+        except urllib.error.HTTPError as e:
+            self._log_error(f"Telemetry HTTP error: {e.code} - {e.reason}")
+        except urllib.error.URLError as e:
+            self._log_error(f"Telemetry URL error: {e}")
+        except Exception as e:
+            self._log_error(f"Telemetry request failed: {e}")
 
     def _log_error(self, message: str):
         """Log telemetry errors (only in debug mode)"""
