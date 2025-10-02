@@ -18,23 +18,13 @@ from pathlib import Path
 import re
 
 def get_latest_git_tag():
-    """Get the latest version tag from git."""
+    """Get the latest version tag from git - prefers local repo tags."""
     try:
-        # Try to find git root (could be parent directory in monorepo)
         script_dir = Path(__file__).parent.parent.absolute()
-        
-        # Check if we're in a submodule (cli/.git is a file pointing to parent)
-        git_file = script_dir / ".git"
-        if git_file.exists() and git_file.is_file():
-            # We're in a submodule, use parent directory for git commands
-            git_dir = script_dir.parent
-        elif (script_dir / ".git").is_dir():
-            # We're in a regular git repo
-            git_dir = script_dir
-        else:
-            # Try parent directory
-            git_dir = script_dir.parent
-        
+
+        # Always try current directory first (standalone or submodule)
+        git_dir = script_dir
+
         result = subprocess.run(
             ["git", "tag", "-l", "v[0-9]*.[0-9]*.[0-9]*"],
             cwd=str(git_dir),
@@ -43,9 +33,25 @@ def get_latest_git_tag():
             check=True
         )
         tags = result.stdout.strip().split('\n')
+
+        # If no tags found AND we're in a submodule, try parent directory
+        if (not tags or tags == ['']):
+            git_file = script_dir / ".git"
+            if git_file.exists() and git_file.is_file():
+                # We're in a submodule, try parent directory as fallback
+                git_dir = script_dir.parent
+                result = subprocess.run(
+                    ["git", "tag", "-l", "v[0-9]*.[0-9]*.[0-9]*"],
+                    cwd=str(git_dir),
+                    capture_output=True,
+                    text=True,
+                    check=True
+                )
+                tags = result.stdout.strip().split('\n')
+
         if not tags or tags == ['']:
             return None
-        
+
         # Sort tags using version sort
         sorted_tags = subprocess.run(
             ["sort", "-V"],
@@ -54,7 +60,7 @@ def get_latest_git_tag():
             text=True,
             check=True
         ).stdout.strip().split('\n') if tags else []
-        
+
         return sorted_tags[-1] if sorted_tags else None
     except subprocess.CalledProcessError:
         return None
