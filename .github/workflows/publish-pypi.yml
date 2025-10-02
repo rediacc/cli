@@ -1,0 +1,91 @@
+name: Publish to PyPI
+
+on:
+  push:
+    tags:
+      - 'v[0-9]+.[0-9]+.[0-9]+'
+      - 'v[0-9]+.[0-9]+.[0-9]+-*'
+  workflow_dispatch:
+    inputs:
+      version:
+        description: 'Version to publish (e.g., v0.1.41 or 0.1.41)'
+        required: false
+        type: string
+      skip-testpypi:
+        description: 'Skip TestPyPI publishing'
+        required: false
+        type: boolean
+        default: false
+      skip-pypi:
+        description: 'Skip PyPI publishing (TestPyPI only)'
+        required: false
+        type: boolean
+        default: false
+
+jobs:
+  publish:
+    name: Build and Publish Package
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0  # Fetch all history for proper tag detection
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+
+      - name: Install dependencies
+        run: |
+          python -m pip install --upgrade pip
+          pip install build twine
+
+      - name: Publish package
+        env:
+          PYPI_TOKEN: ${{ secrets.PYPI_API_TOKEN }}
+          TESTPYPI_TOKEN: ${{ secrets.TESTPYPI_API_TOKEN }}
+        run: |
+          # Build publish command
+          CMD="./scripts/publish.sh"
+
+          # Add version if specified
+          if [ -n "${{ inputs.version }}" ]; then
+            CMD="$CMD --version=${{ inputs.version }}"
+          fi
+
+          # Add skip flags if requested
+          if [ "${{ inputs.skip-testpypi }}" = "true" ]; then
+            CMD="$CMD --skip-testpypi"
+          fi
+
+          if [ "${{ inputs.skip-pypi }}" = "true" ]; then
+            CMD="$CMD --skip-pypi"
+          fi
+
+          # Add token arguments
+          CMD="$CMD --token-pypi=$PYPI_TOKEN --token-testpypi=$TESTPYPI_TOKEN"
+
+          # Generate release notes to file
+          CMD="$CMD --release-notes=RELEASE_NOTES.md"
+
+          # Execute publish script
+          echo "Running: $CMD"
+          eval "$CMD"
+
+      - name: Upload distribution artifacts
+        uses: actions/upload-artifact@v4
+        with:
+          name: python-package-distributions
+          path: dist/
+
+      - name: Create GitHub Release
+        if: startsWith(github.ref, 'refs/tags/')
+        uses: softprops/action-gh-release@v1
+        with:
+          body_path: RELEASE_NOTES.md
+          files: dist/*
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
