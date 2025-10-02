@@ -33,6 +33,52 @@ jobs:
         with:
           fetch-depth: 0  # Fetch all history for proper tag detection
 
+      - name: Detect or Create Tag
+        id: detect-tag
+        run: |
+          # Determine the version/tag to use
+          if [[ "${{ github.ref }}" == refs/tags/* ]]; then
+            # Triggered by tag push - use that tag
+            TAG_NAME="${{ github.ref_name }}"
+            echo "Using existing tag from push: $TAG_NAME"
+            echo "tag_created=false" >> $GITHUB_OUTPUT
+          elif [ -n "${{ inputs.version }}" ]; then
+            # Manual trigger with version input
+            VERSION="${{ inputs.version }}"
+            # Normalize to v-prefixed format
+            if [[ "$VERSION" != v* ]]; then
+              TAG_NAME="v$VERSION"
+            else
+              TAG_NAME="$VERSION"
+            fi
+
+            # Check if tag already exists
+            if git rev-parse "$TAG_NAME" >/dev/null 2>&1; then
+              echo "Tag $TAG_NAME already exists"
+              echo "tag_created=false" >> $GITHUB_OUTPUT
+            else
+              # Create new tag at current commit
+              echo "Creating new tag: $TAG_NAME"
+              git config user.name "github-actions[bot]"
+              git config user.email "github-actions[bot]@users.noreply.github.com"
+              git tag -a "$TAG_NAME" -m "Release $TAG_NAME"
+              git push origin "$TAG_NAME"
+              echo "tag_created=true" >> $GITHUB_OUTPUT
+            fi
+          else
+            # Try to detect from current commit
+            TAG_NAME=$(git describe --exact-match --tags HEAD 2>/dev/null || echo "")
+            if [ -z "$TAG_NAME" ]; then
+              echo "Error: No version specified and not on a tag"
+              exit 1
+            fi
+            echo "Detected tag from current commit: $TAG_NAME"
+            echo "tag_created=false" >> $GITHUB_OUTPUT
+          fi
+
+          echo "tag_name=$TAG_NAME" >> $GITHUB_OUTPUT
+          echo "Final tag: $TAG_NAME"
+
       - name: Set up Python
         uses: actions/setup-python@v5
         with:
@@ -82,10 +128,13 @@ jobs:
           path: dist/
 
       - name: Create GitHub Release
-        if: startsWith(github.ref, 'refs/tags/')
         uses: softprops/action-gh-release@v1
         with:
+          tag_name: ${{ steps.detect-tag.outputs.tag_name }}
+          name: Release ${{ steps.detect-tag.outputs.tag_name }}
           body_path: RELEASE_NOTES.md
           files: dist/*
+          draft: false
+          prerelease: false
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
