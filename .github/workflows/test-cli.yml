@@ -1,0 +1,250 @@
+name: CLI Test Suite
+
+on:
+  push:
+    branches: [ main, develop ]
+  pull_request:
+    branches: [ main, develop ]
+  workflow_dispatch:  # Allow manual triggers
+
+# Set permissions for GITHUB_TOKEN
+permissions:
+  contents: read
+  pull-requests: write
+  checks: write
+
+jobs:
+  test:
+    name: Test on ${{ matrix.os }} - Python ${{ matrix.python-version }}
+    runs-on: ${{ matrix.os }}
+
+    strategy:
+      fail-fast: false  # Continue testing other combinations if one fails
+      matrix:
+        os: [ubuntu-latest, windows-latest, macos-latest]
+        python-version: ['3.8', '3.9', '3.10', '3.11', '3.12', '3.13']
+        # Exclude combinations that are problematic or unnecessary
+        exclude:
+          # Python 3.13 may not be available on all runners yet
+          - os: windows-latest
+            python-version: '3.13'
+          - os: macos-latest
+            python-version: '3.13'
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v5
+
+      - name: Set up Python ${{ matrix.python-version }}
+        uses: actions/setup-python@v6
+        with:
+          python-version: ${{ matrix.python-version }}
+          cache: 'pip'  # Cache pip dependencies automatically
+          cache-dependency-path: |
+            requirements.txt
+            requirements-dev.txt
+            pyproject.toml
+
+      # Platform-specific system dependencies
+      - name: Install system dependencies (Linux)
+        if: runner.os == 'Linux'
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y xdg-utils rsync openssh-client
+          # Desktop environment tools for protocol handler testing
+          sudo apt-get install -y desktop-file-utils
+
+      - name: Install system dependencies (macOS)
+        if: runner.os == 'macOS'
+        run: |
+          # duti for protocol handler registration (optional)
+          brew install duti || true
+          # rsync and openssh are pre-installed on macOS
+
+      - name: Install system dependencies (Windows)
+        if: runner.os == 'Windows'
+        run: |
+          # Install rsync and openssh using chocolatey
+          choco install rsync openssh -y
+        shell: pwsh
+
+      # Install Python dependencies
+      - name: Upgrade pip
+        run: |
+          python -m pip install --upgrade pip setuptools wheel
+
+      - name: Install package with test dependencies
+        run: |
+          pip install -e ".[test,dev]"
+
+      # Run tests with coverage
+      - name: Run tests with pytest
+        run: |
+          pytest tests/ -v \
+            --cov=cli \
+            --cov-report=term-missing:skip-covered \
+            --cov-report=xml \
+            --cov-report=html \
+            --junitxml=test-results/junit.xml \
+            --tb=short
+        shell: bash  # Use bash even on Windows for consistency
+        continue-on-error: false  # Fail the job if tests fail
+
+      # Upload coverage to Codecov
+      - name: Upload coverage to Codecov
+        uses: codecov/codecov-action@v5
+        with:
+          files: ./coverage.xml
+          flags: ${{ runner.os }}-py${{ matrix.python-version }}
+          name: ${{ matrix.os }}-${{ matrix.python-version }}
+          fail_ci_if_error: false  # Don't fail CI if Codecov upload fails
+          verbose: true
+        env:
+          CODECOV_TOKEN: ${{ secrets.CODECOV_TOKEN }}
+
+      # Upload test results
+      - name: Upload test results
+        if: always()  # Always upload, even if tests fail
+        uses: actions/upload-artifact@v4
+        with:
+          name: test-results-${{ matrix.os }}-py${{ matrix.python-version }}
+          path: test-results/
+          retention-days: 30
+
+      # Upload coverage HTML report
+      - name: Upload coverage HTML
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: coverage-html-${{ matrix.os }}-py${{ matrix.python-version }}
+          path: htmlcov/
+          retention-days: 30
+
+  # Protocol handler tests (platform-specific)
+  protocol-handler-test:
+    name: Protocol Handler - ${{ matrix.os }}
+    runs-on: ${{ matrix.os }}
+
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-latest, windows-latest, macos-latest]
+        python-version: ['3.12']  # Test on latest stable Python only
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v5
+
+      - name: Set up Python ${{ matrix.python-version }}
+        uses: actions/setup-python@v6
+        with:
+          python-version: ${{ matrix.python-version }}
+          cache: 'pip'
+
+      - name: Install system dependencies (Linux)
+        if: runner.os == 'Linux'
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y xdg-utils desktop-file-utils
+
+      - name: Install system dependencies (macOS)
+        if: runner.os == 'macOS'
+        run: |
+          brew install duti || true
+
+      - name: Install package
+        run: |
+          pip install -e ".[test]"
+
+      - name: Run protocol handler tests
+        run: |
+          pytest tests/protocol/ -v --tb=short
+        shell: bash
+        continue-on-error: true  # Protocol tests may fail in CI environment
+
+  # Installation test
+  installation-test:
+    name: Installation Test - ${{ matrix.os }}
+    runs-on: ${{ matrix.os }}
+
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-latest, windows-latest, macos-latest]
+        python-version: ['3.12']
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v5
+
+      - name: Set up Python ${{ matrix.python-version }}
+        uses: actions/setup-python@v6
+        with:
+          python-version: ${{ matrix.python-version }}
+
+      - name: Test package installation
+        run: |
+          pip install .
+
+      - name: Verify console scripts
+        run: |
+          rediacc --version || echo "rediacc command not found"
+          rediacc-sync --help || echo "rediacc-sync command not found"
+          rediacc-term --help || echo "rediacc-term command not found"
+        shell: bash
+        continue-on-error: true  # Some commands may require additional setup
+
+  # Code quality checks
+  code-quality:
+    name: Code Quality
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v5
+
+      - name: Set up Python
+        uses: actions/setup-python@v6
+        with:
+          python-version: '3.12'
+          cache: 'pip'
+
+      - name: Install dependencies
+        run: |
+          pip install -e ".[dev]"
+
+      - name: Run Black (code formatting check)
+        run: |
+          black --check src/ tests/
+        continue-on-error: true  # Don't fail CI on formatting issues
+
+      - name: Run Flake8 (linting)
+        run: |
+          flake8 src/ --count --select=E9,F63,F7,F82 --show-source --statistics
+          flake8 src/ --count --exit-zero --max-complexity=10 --max-line-length=127 --statistics
+        continue-on-error: true
+
+      - name: Run MyPy (type checking)
+        run: |
+          mypy src/cli --ignore-missing-imports
+        continue-on-error: true  # Type checking is advisory
+
+  # Test summary
+  test-summary:
+    name: Test Summary
+    runs-on: ubuntu-latest
+    needs: [test, protocol-handler-test, installation-test, code-quality]
+    if: always()
+
+    steps:
+      - name: Check test results
+        run: |
+          echo "Test job status: ${{ needs.test.result }}"
+          echo "Protocol handler test status: ${{ needs.protocol-handler-test.result }}"
+          echo "Installation test status: ${{ needs.installation-test.result }}"
+          echo "Code quality status: ${{ needs.code-quality.result }}"
+
+          if [ "${{ needs.test.result }}" != "success" ]; then
+            echo "::error::Main tests failed"
+            exit 1
+          fi
