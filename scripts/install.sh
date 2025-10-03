@@ -416,7 +416,7 @@ main() {
     
     # Final status
     print_header "Installation Summary"
-    
+
     if check_python >/dev/null 2>&1 && check_rsync >/dev/null 2>&1 && check_ssh >/dev/null 2>&1; then
         print_success "All requirements satisfied!"
         echo
@@ -426,7 +426,7 @@ main() {
         echo "  ./rediacc sync download --help"
         echo "  ./rediacc term --help"
         echo
-        
+
         # Optionally create symlinks
         if [[ "$PATH" =~ "$HOME/.local/bin" ]] || [[ "$PATH" =~ "$HOME/bin" ]]; then
             if $AUTO_INSTALL; then
@@ -434,7 +434,7 @@ main() {
             else
                 read -p "Would you like to create symlinks in your PATH for easier access? (y/N) " CREATE_SYMLINKS
             fi
-            
+
             if [[ "$CREATE_SYMLINKS" =~ ^[Yy]$ ]]; then
                 # Determine target directory
                 if [[ "$PATH" =~ "$HOME/.local/bin" ]]; then
@@ -442,17 +442,76 @@ main() {
                 else
                     BIN_DIR="$HOME/bin"
                 fi
-                
+
                 mkdir -p "$BIN_DIR"
-                
+
                 # Create symlinks
                 ln -sf "$PWD/rediacc" "$BIN_DIR/rediacc"
-                
+
                 print_success "Created symlinks in $BIN_DIR"
                 print_info "You can now run commands from anywhere:"
                 echo "  rediacc login"
                 echo "  rediacc sync upload --help"
                 echo "  rediacc term --help"
+            fi
+        fi
+
+        # Protocol registration
+        echo
+        print_header "Protocol Registration"
+        print_info "Registering rediacc:// protocol for browser integration..."
+
+        if [[ "$OS" == "linux" ]]; then
+            # Check for xdg-utils on Linux
+            if command_exists xdg-mime && command_exists update-desktop-database; then
+                if $AUTO_INSTALL; then
+                    REGISTER_PROTOCOL="y"
+                else
+                    read -p "Would you like to register rediacc:// protocol for browser integration? (Y/n) " REGISTER_PROTOCOL
+                    REGISTER_PROTOCOL=${REGISTER_PROTOCOL:-y}
+                fi
+
+                if [[ "$REGISTER_PROTOCOL" =~ ^[Yy]$ ]]; then
+                    if $PYTHON_CMD "$PWD/rediacc.py" protocol register 2>/dev/null; then
+                        print_success "Protocol registered successfully"
+                        print_info "You can now click rediacc:// links in your browser"
+                    else
+                        print_warning "Failed to register protocol automatically"
+                        print_info "You can register it manually later:"
+                        echo "  ./rediacc protocol register"
+                    fi
+                fi
+            else
+                print_warning "xdg-utils not found - protocol registration skipped"
+                print_info "Install xdg-utils to enable protocol registration:"
+                echo "  Ubuntu/Debian: sudo apt install xdg-utils"
+                echo "  Fedora/RHEL: sudo dnf install xdg-utils"
+                echo "  Arch: sudo pacman -S xdg-utils"
+                print_info "Then register protocol:"
+                echo "  ./rediacc protocol register"
+            fi
+        elif [[ "$OS" == "macos" ]]; then
+            # macOS protocol registration
+            if $AUTO_INSTALL; then
+                REGISTER_PROTOCOL="y"
+            else
+                read -p "Would you like to register rediacc:// protocol for browser integration? (Y/n) " REGISTER_PROTOCOL
+                REGISTER_PROTOCOL=${REGISTER_PROTOCOL:-y}
+            fi
+
+            if [[ "$REGISTER_PROTOCOL" =~ ^[Yy]$ ]]; then
+                if $PYTHON_CMD "$PWD/rediacc.py" protocol register 2>/dev/null; then
+                    print_success "Protocol registered successfully"
+                    print_info "You can now click rediacc:// links in your browser"
+                    if ! command_exists duti; then
+                        print_info "For enhanced protocol support, consider installing duti:"
+                        echo "  brew install duti"
+                    fi
+                else
+                    print_warning "Failed to register protocol automatically"
+                    print_info "You can register it manually later:"
+                    echo "  ./rediacc protocol register"
+                fi
             fi
         fi
     else
