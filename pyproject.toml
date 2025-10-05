@@ -7,7 +7,7 @@ name = "rediacc"
 dynamic = ["version"]
 description = "Infrastructure protection platform with 100-second recovery. Instant cloning, time-travel recovery, and 99.99% storage reduction for disaster prevention."
 readme = "README_PYPI.md"
-license = "MIT"
+license = {text = "MIT"}
 authors = [
     {name = "Rediacc Team", email = "info@rediacc.com"}
 ]
