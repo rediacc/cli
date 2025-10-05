@@ -37,30 +37,73 @@ jobs:
       - name: Start Cloudflare Tunnel
         id: tunnel
         run: |
-          # Start cloudflared tunnel in background
-          cloudflared tunnel --url http://localhost --logfile /tmp/cloudflared.log &
-          TUNNEL_PID=$!
-          echo "tunnel_pid=$TUNNEL_PID" >> $GITHUB_OUTPUT
+          MAX_RETRIES=3
+          RETRY_COUNT=0
+          TUNNEL_URL=""
 
-          # Wait for tunnel to register connection
-          echo "Waiting for tunnel to establish..."
-          for i in {1..60}; do
-            if grep -q 'Registered tunnel connection' /tmp/cloudflared.log 2>/dev/null; then
-              TUNNEL_URL=$(grep -o 'https://[a-z0-9-]*\.trycloudflare\.com' /tmp/cloudflared.log | head -1)
-              if [ -n "$TUNNEL_URL" ]; then
-                echo "url=$TUNNEL_URL" >> $GITHUB_OUTPUT
-                echo "✓ Tunnel URL: $TUNNEL_URL"
+          while [ $RETRY_COUNT -lt $MAX_RETRIES ] && [ -z "$TUNNEL_URL" ]; do
+            echo "Tunnel creation attempt $((RETRY_COUNT + 1))/$MAX_RETRIES..."
+
+            # Kill any existing cloudflared process
+            pkill -f cloudflared || true
+            sleep 2
+
+            # Remove old log
+            rm -f /tmp/cloudflared.log
+
+            # Start cloudflared tunnel in background
+            cloudflared tunnel --url http://localhost --logfile /tmp/cloudflared.log &
+            TUNNEL_PID=$!
+            echo "Started cloudflared with PID: $TUNNEL_PID"
+
+            # Wait for tunnel to register connection (success indicator)
+            for i in {1..30}; do
+              # Check if tunnel connection is registered (key success indicator)
+              if grep -q 'Registered tunnel connection' /tmp/cloudflared.log 2>/dev/null; then
+                echo "✓ Tunnel connection registered"
+
+                # Extract URL from logs
+                TUNNEL_URL=$(grep -o 'https://[a-z0-9-]*\.trycloudflare\.com' /tmp/cloudflared.log | head -1)
+                if [ -n "$TUNNEL_URL" ]; then
+                  echo "url=$TUNNEL_URL" >> $GITHUB_OUTPUT
+                  echo "tunnel_pid=$TUNNEL_PID" >> $GITHUB_OUTPUT
+                  echo "✓ Tunnel URL obtained: $TUNNEL_URL"
+                  break 2  # Break out of both loops
+                fi
+              fi
+
+              # Check for REAL API errors (ignore certificate warnings)
+              if grep '"level":"error"' /tmp/cloudflared.log 2>/dev/null | grep -v 'origincert' | grep -v 'origin certificate' | grep -q '.'; then
+                echo "⚠ Real API error detected in logs"
                 break
               fi
-            fi
 
-            # Check for real API errors
-            if grep '"level":"error"' /tmp/cloudflared.log 2>/dev/null | grep -v 'origincert' | grep -v 'origin certificate' | grep -q '.'; then
-              echo "API error detected, waiting..."
-            fi
+              sleep 2
+            done
 
-            sleep 2
+            # If we didn't get a URL, check logs and retry
+            if [ -z "$TUNNEL_URL" ]; then
+              echo "Failed to get tunnel URL on attempt $((RETRY_COUNT + 1))"
+
+              # Check for real API errors (not certificate warnings)
+              if grep '"level":"error"' /tmp/cloudflared.log 2>/dev/null | grep -v 'origincert' | grep -v 'origin certificate' | grep -q '.'; then
+                echo "Cloudflare API error detected, retrying..."
+                grep '"level":"error"' /tmp/cloudflared.log | grep -v 'origincert' | grep -v 'origin certificate' | head -3
+              fi
+
+              kill $TUNNEL_PID 2>/dev/null || true
+              RETRY_COUNT=$((RETRY_COUNT + 1))
+              sleep 5
+            fi
           done
+
+          # Final check
+          if [ -z "$TUNNEL_URL" ]; then
+            echo "✗ Failed to create tunnel after $MAX_RETRIES attempts"
+            echo "=== Last cloudflared.log ==="
+            cat /tmp/cloudflared.log || true
+            exit 1
+          fi
 
       - name: Verify Tunnel
         run: |
