@@ -24,11 +24,9 @@ jobs:
     steps:
       - name: Checkout repository
         uses: actions/checkout@v5
-        with:
-          submodules: recursive
 
       - name: Start Elite Services
-        uses: ./cloud/elite/action
+        uses: rediacc/elite/action@v1.0.4
         env:
           DOCKER_REGISTRY_USERNAME: ${{ secrets.DOCKER_REGISTRY_USERNAME }}
           DOCKER_REGISTRY_PASSWORD: ${{ secrets.DOCKER_REGISTRY_PASSWORD }}
