@@ -4,6 +4,10 @@
 
 set -e
 
+# Change to the tests directory (script location)
+SCRIPT_DIR="$( cd "$( dirname "${BASH_SOURCE[0]}" )" && pwd )"
+cd "$SCRIPT_DIR"
+
 echo "========================================="
 echo "Rediacc CLI Integration Test Runner"
 echo "========================================="
