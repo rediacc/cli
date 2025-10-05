@@ -26,7 +26,9 @@ jobs:
         uses: actions/checkout@v5
 
       - name: Start Elite Services
-        uses: rediacc/elite/action@v1.0.4
+        uses: rediacc/elite/action@main
+        with:
+          keep-alive: 'true'
         env:
           DOCKER_REGISTRY_USERNAME: ${{ secrets.DOCKER_REGISTRY_USERNAME }}
           DOCKER_REGISTRY_PASSWORD: ${{ secrets.DOCKER_REGISTRY_PASSWORD }}
@@ -71,6 +73,15 @@ jobs:
       - name: Shutdown Cloudflare Tunnel
         if: always()
         uses: AnimMouse/setup-cloudflared/shutdown@v2
+
+      - name: Cleanup Elite Services
+        if: always()
+        run: |
+          # Stop all rediacc containers
+          docker ps -a --filter "name=rediacc-" --format "{{.Names}}" | xargs -r docker stop || true
+          docker ps -a --filter "name=rediacc-" --format "{{.Names}}" | xargs -r docker rm || true
+          # Remove networks
+          docker network ls --filter "name=rediacc_" --format "{{.Name}}" | xargs -r docker network rm || true
 
   # Linux tests - runs first with all Python versions
   test-linux:
