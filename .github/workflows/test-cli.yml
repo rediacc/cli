@@ -267,6 +267,7 @@ jobs:
           SYSTEM_ADMIN_EMAIL: admin@rediacc.io
           SYSTEM_ADMIN_PASSWORD: admin
           REDIACC_TEST_ACTIVATION_CODE: "111111"
+          API_TIMEOUT: 300  # 5 minutes for service preparation
         run: |
           ./run_integration_ci.sh
         continue-on-error: true  # Don't fail build on integration test failures yet
