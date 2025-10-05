@@ -1,4 +1,4 @@
-# Rediacc CLI - Infrastructure Protection Platform
+# Rediacc CLI - Infrastructure Automation Platform
 
 [![CI Test Suite](https://github.com/rediacc/cli/actions/workflows/test-cli.yml/badge.svg)](https://github.com/rediacc/cli/actions/workflows/test-cli.yml)
 [![codecov](https://codecov.io/gh/rediacc/cli/branch/main/graph/badge.svg)](https://codecov.io/gh/rediacc/cli)
@@ -6,23 +6,16 @@
 [![Python Versions](https://img.shields.io/pypi/pyversions/rediacc.svg)](https://pypi.org/project/rediacc/)
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](https://opensource.org/licenses/MIT)
 
-**Built for 60-second recovery from infrastructure failures.** Instant cloning, time-travel recovery, and 90% storage reduction.
+Command-line tools for the Rediacc Infrastructure Automation Platform.
 
-This directory contains the Rediacc command-line tools for infrastructure protection and disaster recovery.
+## Overview
 
-## 🚀 Why Rediacc?
+Rediacc is an infrastructure automation platform that enables:
+- **Accelerated Development Operations**: Instant environment provisioning and production-like testing environments
+- **Next-Generation Disaster Recovery**: Continuous snapshots with 5X-10X reduction in backup overhead
+- **AI-Safe Infrastructure Operations**: Instant production clones for safe AI system interactions
 
-### Protection Against Common Disasters
-- **AI Agent Risks**: Isolate AI operations with instant cloning - production stays safe
-- **Regional Outages**: Cross-continental failover for business continuity
-- **Data Loss Events**: Time-travel recovery from any point in the last 3 weeks
-
-### Your Protection Arsenal
-- **🤖 AI Safety**: AI works on clones, production untouchable
-- **💰 90% Storage Savings**: 300TB → 3TB for 10TB database
-- **⏰ Time Travel**: Restore to any point in last 3 weeks
-- **🌍 Cross-Continental**: Instant failover between regions
-- **🚀 Instant Scaling**: Clone 100TB in 3 seconds
+The CLI provides command-line access to Rediacc's distributed task execution system, resource management, and remote infrastructure operations
 
 ## Configuration
 
@@ -37,21 +30,23 @@ Required:
 - `SYSTEM_HTTP_PORT`: API port (e.g., 7322)
 - `SYSTEM_API_URL`: API URL (e.g., http://localhost:7322/api)
 
-## Quick Start - Get Protected in 60 Seconds
+## Quick Start
 
 ```bash
 # Linux/macOS
-./rediacc login                                      # Authenticate
-./rediacc create clone --source prod --name ai-safe # Create AI-safe environment
-./rediacc backup create --repo production           # Instant backup
-./rediacc restore --point-in-time "1 hour ago"      # Time travel recovery
+./rediacc setup --auto          # Install dependencies
+./rediacc login                 # Authenticate with API
+./rediacc list teams            # List available teams
+./rediacc list team-machines    # List machines
+./rediacc sync upload --help    # File synchronization
+./rediacc term --help           # Terminal access
+./rediacc desktop               # Launch desktop application
 
 # Windows
-rediacc.bat login                                   # Authenticate
-rediacc.bat create clone --source prod --name test  # Safe testing environment
-
-# Launch desktop application for visual management
-./rediacc desktop                                    # Desktop application
+rediacc.bat setup --auto
+rediacc.bat login
+rediacc.bat list teams
+rediacc.bat desktop
 ```
 
 ## Directory Structure
@@ -70,20 +65,29 @@ cli/
 └── tests/             # Test files
 ```
 
-## 📊 Key Benefits
+## Key Features
 
-- **90% storage reduction** with Copy-on-Write technology
-- **60-second recovery** from any disaster scenario
-- **3-week retention** with hourly snapshots
-- **Instant cloning** even for 100TB databases
-- **Cross-continental** replication and failover
+### Core Tools
+- **rediacc**: Main CLI for API operations and resource management
+- **rediacc sync**: File synchronization using rsync over SSH
+- **rediacc term**: Interactive SSH terminal access to repositories
+- **rediacc plugin**: SSH tunnel management for secure connections
+- **rediacc desktop**: GUI application for visual system management
+
+### Capabilities
+- Distributed task execution via queue system
+- Secure credential storage with vault encryption
+- Cross-platform support (Linux, macOS, Windows)
+- Team and machine resource management
+- Repository and storage operations
+- Audit logging and session management
 
 ## Documentation
 
 - [Complete CLI Guide](docs/README.md) - All commands and features
-- [Disaster Recovery](docs/guides/) - Recovery procedures
-- [Desktop Application Documentation](docs/DESKTOP.md) - Desktop application interface
-- [AI Safety Guide](https://rediacc.com/docs/guides/ai-safety) - Protect against AI disasters
+- [Desktop Application](docs/DESKTOP.md) - Desktop application interface
+- [System Architecture](../CLAUDE.md) - Communication flow and component architecture
+- [Installation Guide](docs/INSTALLATION.md) - Detailed installation instructions
 
 ## Installation
 
@@ -112,14 +116,13 @@ docker run -it --rm -v ./cli/.config:/home/rediacc/.config rediacc/cli:latest /b
 
 See [docker/README.md](docker/README.md) for complete Docker documentation including details about the local config directory.
 
-## 🆘 Emergency Support
+## Support
 
-**Currently experiencing downtime?** Contact emergency@rediacc.com for immediate assistance.
-
-- **Community Forum**: https://community.rediacc.com
-- **Enterprise Support**: 24/7 for Premium/Elite customers
-- **Documentation**: https://rediacc.com/docs
+For issues or questions:
+- Check the [documentation](docs/README.md)
+- Review the [troubleshooting guide](docs/TROUBLESHOOTING.md)
+- Visit https://www.rediacc.com for platform information
 
 ## License
 
-Proprietary - Part of the Rediacc infrastructure protection platform. Free tier available.
+Proprietary - Part of the Rediacc infrastructure automation platform.
