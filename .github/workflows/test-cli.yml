@@ -58,11 +58,14 @@ jobs:
             TUNNEL_PID=$!
             echo "Started cloudflared with PID: $TUNNEL_PID"
 
-            # Wait for tunnel URL to appear in logs
+            # Wait for tunnel to register connection (success indicator)
             for i in {1..30}; do
-              # Look for the success message specifically
-              if grep -q 'Your quick Tunnel has been created' /tmp/cloudflared.log 2>/dev/null; then
-                TUNNEL_URL=$(grep 'Your quick Tunnel has been created' /tmp/cloudflared.log | grep -o 'https://[a-z0-9-]*\.trycloudflare\.com' | head -1)
+              # Check if tunnel connection is registered (key success indicator)
+              if grep -q 'Registered tunnel connection' /tmp/cloudflared.log 2>/dev/null; then
+                echo "✓ Tunnel connection registered"
+
+                # Extract URL from logs
+                TUNNEL_URL=$(grep -o 'https://[a-z0-9-]*\.trycloudflare\.com' /tmp/cloudflared.log | head -1)
                 if [ -n "$TUNNEL_URL" ]; then
                   echo "url=$TUNNEL_URL" >> $GITHUB_OUTPUT
                   echo "tunnel_pid=$TUNNEL_PID" >> $GITHUB_OUTPUT
@@ -71,9 +74,9 @@ jobs:
                 fi
               fi
 
-              # Check for API errors
-              if grep -q '"level":"error"' /tmp/cloudflared.log 2>/dev/null; then
-                echo "⚠ API error detected in logs"
+              # Check for REAL API errors (ignore certificate warnings)
+              if grep '"level":"error"' /tmp/cloudflared.log 2>/dev/null | grep -v 'origincert' | grep -v 'origin certificate' | grep -q '.'; then
+                echo "⚠ Real API error detected in logs"
                 break
               fi
 
@@ -83,10 +86,13 @@ jobs:
             # If we didn't get a URL, check logs and retry
             if [ -z "$TUNNEL_URL" ]; then
               echo "Failed to get tunnel URL on attempt $((RETRY_COUNT + 1))"
-              if grep -q '"level":"error"' /tmp/cloudflared.log 2>/dev/null; then
+
+              # Check for real API errors (not certificate warnings)
+              if grep '"level":"error"' /tmp/cloudflared.log 2>/dev/null | grep -v 'origincert' | grep -v 'origin certificate' | grep -q '.'; then
                 echo "Cloudflare API error detected, retrying..."
-                grep '"level":"error"' /tmp/cloudflared.log | head -3
+                grep '"level":"error"' /tmp/cloudflared.log | grep -v 'origincert' | grep -v 'origin certificate' | head -3
               fi
+
               kill $TUNNEL_PID 2>/dev/null || true
               RETRY_COUNT=$((RETRY_COUNT + 1))
               sleep 5
