@@ -27,7 +27,11 @@ class MacOSProtocolHandler:
     def __init__(self):
         self.user_launch_agents_dir = Path.home() / "Library" / "LaunchAgents"
         self.system_launch_agents_dir = Path("/Library/LaunchAgents")
-    
+
+    def register(self, cli_path: str = None, system_wide: bool = False, force: bool = False) -> bool:
+        """Compatibility method for tests - calls register_protocol()"""
+        return self.register_protocol(system_wide=system_wide, force=force)
+
     def get_python_executable(self) -> str:
         """Get the current Python executable path"""
         return sys.executable

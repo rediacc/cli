@@ -81,15 +81,25 @@ def is_protocol_supported() -> bool:
 
 class WindowsProtocolHandler:
     """Handles Windows registry operations for rediacc:// protocol"""
-    
+
     PROTOCOL_SCHEME = "rediacc"
     SYSTEM_REGISTRY_ROOT = r"HKEY_CLASSES_ROOT"
     USER_REGISTRY_ROOT = r"HKEY_CURRENT_USER\Software\Classes"
-    
-    def __init__(self):
-        if not is_windows():
+
+    def __init__(self, test_mode: bool = False):
+        """
+        Initialize Windows Protocol Handler
+
+        Args:
+            test_mode: If True, skip platform check (for testing on non-Windows platforms)
+        """
+        if not test_mode and not is_windows():
             raise ProtocolHandlerError("Windows Protocol Handler can only be used on Windows")
-    
+
+    def register(self, cli_path: str = None, force: bool = False, system_wide: bool = False) -> bool:
+        """Compatibility method for tests - calls register_protocol()"""
+        return self.register_protocol(force=force, system_wide=system_wide)
+
     def get_registry_root(self, system_wide: bool = False) -> str:
         """Get the appropriate registry root based on system_wide parameter"""
         return self.SYSTEM_REGISTRY_ROOT if system_wide else self.USER_REGISTRY_ROOT

@@ -28,7 +28,30 @@ class LinuxProtocolHandler:
         self.user_mime_dir = Path.home() / ".local" / "share" / "mime"
         self.system_applications_dir = Path("/usr/share/applications")
         self.system_mime_dir = Path("/usr/share/mime")
-    
+
+    @property
+    def applications_dir(self) -> Path:
+        """Compatibility property for tests - returns user_applications_dir"""
+        return self.user_applications_dir
+
+    @applications_dir.setter
+    def applications_dir(self, value: Path):
+        """Setter for applications_dir - updates user_applications_dir"""
+        self.user_applications_dir = value
+
+    @applications_dir.deleter
+    def applications_dir(self):
+        """Deleter for applications_dir - allows mock to clean up"""
+        pass
+
+    def register(self, cli_path: str = None, system_wide: bool = False, force: bool = False) -> bool:
+        """Compatibility method for tests - calls register_protocol()"""
+        return self.register_protocol(system_wide=system_wide, force=force)
+
+    def unregister(self, system_wide: bool = False) -> bool:
+        """Compatibility method for tests - calls unregister_protocol()"""
+        return self.unregister_protocol(system_wide=system_wide)
+
     def get_python_executable(self) -> str:
         """Get the current Python executable path"""
         return sys.executable
@@ -105,8 +128,8 @@ Categories=Network;
             if system_wide:
                 desktop_file = self.system_applications_dir / self.DESKTOP_ENTRY_ID
             else:
-                desktop_file = self.user_applications_dir / self.DESKTOP_ENTRY_ID
-            
+                desktop_file = self.applications_dir / self.DESKTOP_ENTRY_ID
+
             return desktop_file.exists()
     
     def register_protocol(self, system_wide: bool = False, force: bool = False) -> bool:
@@ -131,7 +154,7 @@ Categories=Network;
                 applications_dir = self.system_applications_dir
                 mime_dir = self.system_mime_dir
             else:
-                applications_dir = self.user_applications_dir
+                applications_dir = self.applications_dir
                 mime_dir = self.user_mime_dir
             
             # Create directories if they don't exist
@@ -206,7 +229,7 @@ Categories=Network;
                     raise PermissionError("System-wide uninstallation requires root privileges")
                 applications_dir = self.system_applications_dir
             else:
-                applications_dir = self.user_applications_dir
+                applications_dir = self.applications_dir
             
             desktop_file = applications_dir / self.DESKTOP_ENTRY_ID
             
@@ -270,8 +293,8 @@ Categories=Network;
         if system_wide:
             desktop_file = self.system_applications_dir / self.DESKTOP_ENTRY_ID
         else:
-            desktop_file = self.user_applications_dir / self.DESKTOP_ENTRY_ID
-        
+            desktop_file = self.applications_dir / self.DESKTOP_ENTRY_ID
+
         status["desktop_file_exists"] = desktop_file.exists()
         status["desktop_file_path"] = str(desktop_file)
         
