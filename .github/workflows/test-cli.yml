@@ -34,6 +34,11 @@ jobs:
       - name: Setup Cloudflare Tunnel
         uses: AnimMouse/setup-cloudflared@v2
 
+      - name: Configure UDP Buffer Sizes
+        run: |
+          sudo sysctl -w net.core.rmem_max=7500000
+          sudo sysctl -w net.core.wmem_max=7500000
+
       - name: Start Cloudflare Tunnel
         id: tunnel
         run: |
