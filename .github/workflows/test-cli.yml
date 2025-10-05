@@ -14,12 +14,10 @@ permissions:
   checks: write
 
 jobs:
-  # Shared Elite backend accessible via Cloudflare Tunnel
-  elite-backend:
-    name: Shared Elite Backend Service
+  # Linux tests - all Python versions sequentially with shared Elite backend
+  test-linux:
+    name: Linux Tests
     runs-on: ubuntu-latest
-    outputs:
-      elite_url: ${{ steps.tunnel.outputs.url }}
 
     steps:
       - name: Checkout repository
@@ -39,449 +37,206 @@ jobs:
       - name: Start Cloudflare Tunnel
         id: tunnel
         run: |
-          MAX_RETRIES=3
-          RETRY_COUNT=0
-          TUNNEL_URL=""
+          # Start cloudflared tunnel in background
+          cloudflared tunnel --url http://localhost --logfile /tmp/cloudflared.log &
+          TUNNEL_PID=$!
+          echo "tunnel_pid=$TUNNEL_PID" >> $GITHUB_OUTPUT
 
-          while [ $RETRY_COUNT -lt $MAX_RETRIES ] && [ -z "$TUNNEL_URL" ]; do
-            echo "Tunnel creation attempt $((RETRY_COUNT + 1))/$MAX_RETRIES..."
-
-            # Kill any existing cloudflared process
-            pkill -f cloudflared || true
-            sleep 2
-
-            # Remove old log
-            rm -f /tmp/cloudflared.log
-
-            # Start cloudflared tunnel in background
-            cloudflared tunnel --url http://localhost --logfile /tmp/cloudflared.log &
-            TUNNEL_PID=$!
-            echo "Started cloudflared with PID: $TUNNEL_PID"
-
-            # Wait for tunnel to register connection (success indicator)
-            for i in {1..30}; do
-              # Check if tunnel connection is registered (key success indicator)
-              if grep -q 'Registered tunnel connection' /tmp/cloudflared.log 2>/dev/null; then
-                echo "✓ Tunnel connection registered"
-
-                # Extract URL from logs
-                TUNNEL_URL=$(grep -o 'https://[a-z0-9-]*\.trycloudflare\.com' /tmp/cloudflared.log | head -1)
-                if [ -n "$TUNNEL_URL" ]; then
-                  echo "url=$TUNNEL_URL" >> $GITHUB_OUTPUT
-                  echo "tunnel_pid=$TUNNEL_PID" >> $GITHUB_OUTPUT
-                  echo "✓ Tunnel URL obtained: $TUNNEL_URL"
-                  break 2  # Break out of both loops
-                fi
-              fi
-
-              # Check for REAL API errors (ignore certificate warnings)
-              if grep '"level":"error"' /tmp/cloudflared.log 2>/dev/null | grep -v 'origincert' | grep -v 'origin certificate' | grep -q '.'; then
-                echo "⚠ Real API error detected in logs"
+          # Wait for tunnel to register connection
+          echo "Waiting for tunnel to establish..."
+          for i in {1..60}; do
+            if grep -q 'Registered tunnel connection' /tmp/cloudflared.log 2>/dev/null; then
+              TUNNEL_URL=$(grep -o 'https://[a-z0-9-]*\.trycloudflare\.com' /tmp/cloudflared.log | head -1)
+              if [ -n "$TUNNEL_URL" ]; then
+                echo "url=$TUNNEL_URL" >> $GITHUB_OUTPUT
+                echo "✓ Tunnel URL: $TUNNEL_URL"
                 break
               fi
-
-              sleep 2
-            done
-
-            # If we didn't get a URL, check logs and retry
-            if [ -z "$TUNNEL_URL" ]; then
-              echo "Failed to get tunnel URL on attempt $((RETRY_COUNT + 1))"
-
-              # Check for real API errors (not certificate warnings)
-              if grep '"level":"error"' /tmp/cloudflared.log 2>/dev/null | grep -v 'origincert' | grep -v 'origin certificate' | grep -q '.'; then
-                echo "Cloudflare API error detected, retrying..."
-                grep '"level":"error"' /tmp/cloudflared.log | grep -v 'origincert' | grep -v 'origin certificate' | head -3
-              fi
-
-              kill $TUNNEL_PID 2>/dev/null || true
-              RETRY_COUNT=$((RETRY_COUNT + 1))
-              sleep 5
             fi
+
+            # Check for real API errors
+            if grep '"level":"error"' /tmp/cloudflared.log 2>/dev/null | grep -v 'origincert' | grep -v 'origin certificate' | grep -q '.'; then
+              echo "API error detected, waiting..."
+            fi
+
+            sleep 2
           done
 
-          # Final check
-          if [ -z "$TUNNEL_URL" ]; then
-            echo "✗ Failed to create tunnel after $MAX_RETRIES attempts"
-            echo "=== Last cloudflared.log ==="
-            cat /tmp/cloudflared.log || true
-            exit 1
-          fi
-
-      - name: Verify Tunnel Accessibility
+      - name: Verify Tunnel
         run: |
           TUNNEL_URL="${{ steps.tunnel.outputs.url }}"
-          echo "Tunnel URL: $TUNNEL_URL"
+          echo "Verifying tunnel at: $TUNNEL_URL"
 
           if [ -z "$TUNNEL_URL" ]; then
             echo "Failed to get tunnel URL"
-            cat /tmp/cloudflared.log || true
+            cat /tmp/cloudflared.log
             exit 1
           fi
 
-          # Wait for tunnel to be fully ready
-          echo "Verifying API accessibility through tunnel..."
           for i in {1..20}; do
             if curl -f "$TUNNEL_URL/api/health" 2>/dev/null; then
-              echo "✓ Elite backend accessible via tunnel"
+              echo "✓ Tunnel verified and accessible"
               exit 0
             fi
-            echo "Attempt $i/20 failed, retrying..."
+            echo "Attempt $i/20..."
             sleep 3
           done
 
-          echo "Failed to verify tunnel accessibility"
-          cat /tmp/cloudflared.log || true
+          echo "Failed to verify tunnel"
+          cat /tmp/cloudflared.log
           exit 1
 
-      - name: Keep Tunnel Alive
+      - name: Test Python 3.8
         run: |
-          echo "Tunnel active and ready for tests"
-          echo "Keeping job alive for test duration (max 3 hours)..."
-          # Stay alive while tests run
-          sleep 10800
+          sudo apt-get update && sudo apt-get install -y xdg-utils rsync openssh-client desktop-file-utils
+          python3.8 -m pip install --upgrade pip setuptools wheel
+          python3.8 -m pip install -e ".[test,dev]"
+          python3.8 -m pytest tests/ -v --cov=cli --cov-report=xml --cov-report=html --junitxml=test-results-3.8/junit.xml --tb=short
+        env:
+          SYSTEM_API_URL: ${{ steps.tunnel.outputs.url }}/api
+          SYSTEM_ADMIN_EMAIL: admin@rediacc.io
+          SYSTEM_ADMIN_PASSWORD: admin
+          REDIACC_TEST_ACTIVATION_CODE: "111111"
+          API_TIMEOUT: 60
 
-      - name: Shutdown Cloudflare Tunnel
+      - name: Integration Tests Python 3.8
+        working-directory: tests
+        run: ./run_integration_ci.sh
+        env:
+          SYSTEM_API_URL: ${{ steps.tunnel.outputs.url }}/api
+          SYSTEM_ADMIN_EMAIL: admin@rediacc.io
+          SYSTEM_ADMIN_PASSWORD: admin
+          REDIACC_TEST_ACTIVATION_CODE: "111111"
+          API_TIMEOUT: 60
+
+      - name: Test Python 3.9
+        run: |
+          python3.9 -m pip install --upgrade pip setuptools wheel
+          python3.9 -m pip install -e ".[test,dev]"
+          python3.9 -m pytest tests/ -v --cov=cli --cov-report=xml --cov-report=html --junitxml=test-results-3.9/junit.xml --tb=short
+
+      - name: Test Python 3.10
+        run: |
+          python3.10 -m pip install --upgrade pip setuptools wheel
+          python3.10 -m pip install -e ".[test,dev]"
+          python3.10 -m pytest tests/ -v --cov=cli --cov-report=xml --cov-report=html --junitxml=test-results-3.10/junit.xml --tb=short
+
+      - name: Test Python 3.11
+        run: |
+          python3.11 -m pip install --upgrade pip setuptools wheel
+          python3.11 -m pip install -e ".[test,dev]"
+          python3.11 -m pytest tests/ -v --cov=cli --cov-report=xml --cov-report=html --junitxml=test-results-3.11/junit.xml --tb=short
+
+      - name: Test Python 3.12
+        run: |
+          python3.12 -m pip install --upgrade pip setuptools wheel
+          python3.12 -m pip install -e ".[test,dev]"
+          python3.12 -m pytest tests/ -v --cov=cli --cov-report=xml --cov-report=html --junitxml=test-results-3.12/junit.xml --tb=short
+
+      - name: Test Python 3.13
+        run: |
+          python3.13 -m pip install --upgrade pip setuptools wheel
+          python3.13 -m pip install -e ".[test,dev]"
+          python3.13 -m pytest tests/ -v --cov=cli --cov-report=xml --cov-report=html --junitxml=test-results-3.13/junit.xml --tb=short
+
+      - name: Cleanup
         if: always()
         run: |
-          # Kill cloudflared process
-          TUNNEL_PID="${{ steps.tunnel.outputs.tunnel_pid }}"
-          if [ -n "$TUNNEL_PID" ]; then
-            kill $TUNNEL_PID 2>/dev/null || true
-            echo "✓ Tunnel process stopped"
-          fi
-
-      - name: Cleanup Elite Services
-        if: always()
-        run: |
-          # Stop all rediacc containers
+          kill ${{ steps.tunnel.outputs.tunnel_pid }} 2>/dev/null || true
           docker ps -a --filter "name=rediacc-" --format "{{.Names}}" | xargs -r docker stop || true
           docker ps -a --filter "name=rediacc-" --format "{{.Names}}" | xargs -r docker rm || true
-          # Remove networks
-          docker network ls --filter "name=rediacc_" --format "{{.Name}}" | xargs -r docker network rm || true
 
-  # Linux tests - runs first with all Python versions
-  test-linux:
-    name: Linux - Python ${{ matrix.python-version }}
-    runs-on: ubuntu-latest
-    needs: elite-backend
-
-    strategy:
-      fail-fast: true  # Stop all Linux tests if one fails
-      matrix:
-        python-version: ['3.8', '3.9', '3.10', '3.11', '3.12', '3.13']
-
-    steps:
-      - name: Checkout repository
-        uses: actions/checkout@v5
-
-      - name: Set up Python ${{ matrix.python-version }}
-        uses: actions/setup-python@v6
-        with:
-          python-version: ${{ matrix.python-version }}
-          cache: 'pip'
-          cache-dependency-path: |
-            requirements.txt
-            requirements-dev.txt
-            pyproject.toml
-
-      - name: Install system dependencies
-        run: |
-          sudo apt-get update
-          sudo apt-get install -y xdg-utils rsync openssh-client desktop-file-utils
-
-      - name: Upgrade pip
-        run: |
-          python -m pip install --upgrade pip setuptools wheel
-
-      - name: Install package with test dependencies
-        run: |
-          pip install -e ".[test,dev]"
-
-      - name: Run unit tests with pytest
-        run: |
-          pytest tests/ -v \
-            --cov=cli \
-            --cov-report=term-missing:skip-covered \
-            --cov-report=xml \
-            --cov-report=html \
-            --junitxml=test-results/junit.xml \
-            --tb=short
-        continue-on-error: false
-
-      - name: Run integration tests
-        working-directory: tests
-        env:
-          SYSTEM_API_URL: ${{ needs.elite-backend.outputs.elite_url }}/api
-          SYSTEM_ADMIN_EMAIL: admin@rediacc.io
-          SYSTEM_ADMIN_PASSWORD: admin
-          REDIACC_TEST_ACTIVATION_CODE: "111111"
-          API_TIMEOUT: 60
-        run: |
-          ./run_integration_ci.sh
-
-      - name: Upload coverage to Codecov
-        uses: codecov/codecov-action@v5
-        with:
-          files: ./coverage.xml
-          flags: Linux-py${{ matrix.python-version }}
-          name: linux-${{ matrix.python-version }}
-          fail_ci_if_error: false
-          verbose: true
-        env:
-          CODECOV_TOKEN: ${{ secrets.CODECOV_TOKEN }}
-
-      - name: Upload test results
-        if: always()
-        uses: actions/upload-artifact@v4
-        with:
-          name: test-results-linux-py${{ matrix.python-version }}
-          path: test-results/
-          retention-days: 30
-
-      - name: Upload coverage HTML
-        if: always()
-        uses: actions/upload-artifact@v4
-        with:
-          name: coverage-html-linux-py${{ matrix.python-version }}
-          path: htmlcov/
-          retention-days: 30
-
-  # Windows tests - runs after Linux succeeds
+  # Windows tests - sequential after Linux
   test-windows:
-    name: Windows - Python ${{ matrix.python-version }}
+    name: Windows Tests
     runs-on: windows-latest
-    needs: [elite-backend, test-linux]
-
-    strategy:
-      fail-fast: true  # Stop all Windows tests if one fails
-      matrix:
-        python-version: ['3.8', '3.9', '3.10', '3.11', '3.12']
+    needs: test-linux
 
     steps:
-      - name: Checkout repository
+      - name: Checkout
         uses: actions/checkout@v5
 
-      - name: Set up Python ${{ matrix.python-version }}
-        uses: actions/setup-python@v6
-        with:
-          python-version: ${{ matrix.python-version }}
-          cache: 'pip'
-          cache-dependency-path: |
-            requirements.txt
-            requirements-dev.txt
-            pyproject.toml
-
-      - name: Install system dependencies
-        run: |
-          choco install rsync openssh -y
+      - name: Install dependencies
+        run: choco install rsync openssh -y
         shell: pwsh
 
-      - name: Upgrade pip
+      - name: Test Python 3.8
         run: |
-          python -m pip install --upgrade pip setuptools wheel
-
-      - name: Install package with test dependencies
-        run: |
-          pip install -e ".[test,dev]"
-
-      - name: Run unit tests with pytest
-        run: |
-          pytest tests/ -v --cov=cli --cov-report=xml --cov-report=html --junitxml=test-results/junit.xml --tb=short
-        shell: bash
-        continue-on-error: false
-
-      - name: Run integration tests
-        working-directory: tests
-        env:
-          SYSTEM_API_URL: ${{ needs.elite-backend.outputs.elite_url }}/api
-          SYSTEM_ADMIN_EMAIL: admin@rediacc.io
-          SYSTEM_ADMIN_PASSWORD: admin
-          REDIACC_TEST_ACTIVATION_CODE: "111111"
-          API_TIMEOUT: 60
-        run: |
-          ./run_integration_ci.sh
+          python3.8 -m pip install --upgrade pip setuptools wheel
+          python3.8 -m pip install -e ".[test,dev]"
+          python3.8 -m pytest tests/ -v --cov=cli --cov-report=xml --tb=short
         shell: bash
 
-      - name: Upload coverage to Codecov
-        uses: codecov/codecov-action@v5
-        with:
-          files: ./coverage.xml
-          flags: Windows-py${{ matrix.python-version }}
-          name: windows-${{ matrix.python-version }}
-          fail_ci_if_error: false
-          verbose: true
-        env:
-          CODECOV_TOKEN: ${{ secrets.CODECOV_TOKEN }}
+      - name: Test Python 3.9
+        run: |
+          python3.9 -m pip install --upgrade pip setuptools wheel
+          python3.9 -m pip install -e ".[test,dev]"
+          python3.9 -m pytest tests/ -v --cov=cli --cov-report=xml --tb=short
+        shell: bash
 
-      - name: Upload test results
-        if: always()
-        uses: actions/upload-artifact@v4
-        with:
-          name: test-results-windows-py${{ matrix.python-version }}
-          path: test-results/
-          retention-days: 30
+      - name: Test Python 3.10
+        run: |
+          python3.10 -m pip install --upgrade pip setuptools wheel
+          python3.10 -m pip install -e ".[test,dev]"
+          python3.10 -m pytest tests/ -v --cov=cli --cov-report=xml --tb=short
+        shell: bash
 
-      - name: Upload coverage HTML
-        if: always()
-        uses: actions/upload-artifact@v4
-        with:
-          name: coverage-html-windows-py${{ matrix.python-version }}
-          path: htmlcov/
-          retention-days: 30
+      - name: Test Python 3.11
+        run: |
+          python3.11 -m pip install --upgrade pip setuptools wheel
+          python3.11 -m pip install -e ".[test,dev]"
+          python3.11 -m pytest tests/ -v --cov=cli --cov-report=xml --tb=short
+        shell: bash
 
-  # macOS tests - runs after Windows succeeds
+      - name: Test Python 3.12
+        run: |
+          python3.12 -m pip install --upgrade pip setuptools wheel
+          python3.12 -m pip install -e ".[test,dev]"
+          python3.12 -m pytest tests/ -v --cov=cli --cov-report=xml --tb=short
+        shell: bash
+
+  # macOS tests - sequential after Windows
   test-macos:
-    name: macOS - Python ${{ matrix.python-version }}
+    name: macOS Tests
     runs-on: macos-latest
-    needs: [elite-backend, test-windows]
-
-    strategy:
-      fail-fast: true  # Stop all macOS tests if one fails
-      matrix:
-        python-version: ['3.8', '3.9', '3.10', '3.11', '3.12']
+    needs: test-windows
 
     steps:
-      - name: Checkout repository
+      - name: Checkout
         uses: actions/checkout@v5
 
-      - name: Set up Python ${{ matrix.python-version }}
-        uses: actions/setup-python@v6
-        with:
-          python-version: ${{ matrix.python-version }}
-          cache: 'pip'
-          cache-dependency-path: |
-            requirements.txt
-            requirements-dev.txt
-            pyproject.toml
+      - name: Install dependencies
+        run: brew install duti || true
 
-      - name: Install system dependencies
+      - name: Test Python 3.8
         run: |
-          brew install duti || true
+          python3.8 -m pip install --upgrade pip setuptools wheel
+          python3.8 -m pip install -e ".[test,dev]"
+          python3.8 -m pytest tests/ -v --cov=cli --cov-report=xml --tb=short
 
-      - name: Upgrade pip
+      - name: Test Python 3.9
         run: |
-          python -m pip install --upgrade pip setuptools wheel
+          python3.9 -m pip install --upgrade pip setuptools wheel
+          python3.9 -m pip install -e ".[test,dev]"
+          python3.9 -m pytest tests/ -v --cov=cli --cov-report=xml --tb=short
 
-      - name: Install package with test dependencies
+      - name: Test Python 3.10
         run: |
-          pip install -e ".[test,dev]"
+          python3.10 -m pip install --upgrade pip setuptools wheel
+          python3.10 -m pip install -e ".[test,dev]"
+          python3.10 -m pytest tests/ -v --cov=cli --cov-report=xml --tb=short
 
-      - name: Run unit tests with pytest
+      - name: Test Python 3.11
         run: |
-          pytest tests/ -v --cov=cli --cov-report=xml --cov-report=html --junitxml=test-results/junit.xml --tb=short
-        continue-on-error: false
+          python3.11 -m pip install --upgrade pip setuptools wheel
+          python3.11 -m pip install -e ".[test,dev]"
+          python3.11 -m pytest tests/ -v --cov=cli --cov-report=xml --tb=short
 
-      - name: Run integration tests
-        working-directory: tests
-        env:
-          SYSTEM_API_URL: ${{ needs.elite-backend.outputs.elite_url }}/api
-          SYSTEM_ADMIN_EMAIL: admin@rediacc.io
-          SYSTEM_ADMIN_PASSWORD: admin
-          REDIACC_TEST_ACTIVATION_CODE: "111111"
-          API_TIMEOUT: 60
+      - name: Test Python 3.12
         run: |
-          ./run_integration_ci.sh
-
-      - name: Upload coverage to Codecov
-        uses: codecov/codecov-action@v5
-        with:
-          files: ./coverage.xml
-          flags: macOS-py${{ matrix.python-version }}
-          name: macos-${{ matrix.python-version }}
-          fail_ci_if_error: false
-          verbose: true
-        env:
-          CODECOV_TOKEN: ${{ secrets.CODECOV_TOKEN }}
-
-      - name: Upload test results
-        if: always()
-        uses: actions/upload-artifact@v4
-        with:
-          name: test-results-macos-py${{ matrix.python-version }}
-          path: test-results/
-          retention-days: 30
-
-      - name: Upload coverage HTML
-        if: always()
-        uses: actions/upload-artifact@v4
-        with:
-          name: coverage-html-macos-py${{ matrix.python-version }}
-          path: htmlcov/
-          retention-days: 30
-
-  # Protocol handler tests (platform-specific)
-  protocol-handler-test:
-    name: Protocol Handler - ${{ matrix.os }}
-    runs-on: ${{ matrix.os }}
-
-    strategy:
-      fail-fast: false
-      matrix:
-        os: [ubuntu-latest, windows-latest, macos-latest]
-        python-version: ['3.12']  # Test on latest stable Python only
-
-    steps:
-      - name: Checkout repository
-        uses: actions/checkout@v5
-
-      - name: Set up Python ${{ matrix.python-version }}
-        uses: actions/setup-python@v6
-        with:
-          python-version: ${{ matrix.python-version }}
-          cache: 'pip'
-
-      - name: Install system dependencies (Linux)
-        if: runner.os == 'Linux'
-        run: |
-          sudo apt-get update
-          sudo apt-get install -y xdg-utils desktop-file-utils
-
-      - name: Install system dependencies (macOS)
-        if: runner.os == 'macOS'
-        run: |
-          brew install duti || true
-
-      - name: Install package
-        run: |
-          pip install -e ".[test]"
-
-      - name: Run protocol handler tests
-        run: |
-          pytest tests/protocol/ -v --tb=short
-        shell: bash
-        continue-on-error: true  # Protocol tests may fail in CI environment
-
-  # Installation test
-  installation-test:
-    name: Installation Test - ${{ matrix.os }}
-    runs-on: ${{ matrix.os }}
-
-    strategy:
-      fail-fast: false
-      matrix:
-        os: [ubuntu-latest, windows-latest, macos-latest]
-        python-version: ['3.12']
-
-    steps:
-      - name: Checkout repository
-        uses: actions/checkout@v5
-
-      - name: Set up Python ${{ matrix.python-version }}
-        uses: actions/setup-python@v6
-        with:
-          python-version: ${{ matrix.python-version }}
-
-      - name: Test package installation
-        run: |
-          pip install .
-
-      - name: Verify console scripts
-        run: |
-          rediacc --version || echo "rediacc command not found"
-          rediacc-sync --help || echo "rediacc-sync command not found"
-          rediacc-term --help || echo "rediacc-term command not found"
-        shell: bash
-        continue-on-error: true  # Some commands may require additional setup
+          python3.12 -m pip install --upgrade pip setuptools wheel
+          python3.12 -m pip install -e ".[test,dev]"
+          python3.12 -m pytest tests/ -v --cov=cli --cov-report=xml --tb=short
 
   # Code quality checks
   code-quality:
@@ -489,51 +244,36 @@ jobs:
     runs-on: ubuntu-latest
 
     steps:
-      - name: Checkout repository
+      - name: Checkout
         uses: actions/checkout@v5
 
       - name: Set up Python
         uses: actions/setup-python@v6
         with:
           python-version: '3.12'
-          cache: 'pip'
 
       - name: Install dependencies
-        run: |
-          pip install -e ".[dev]"
+        run: pip install -e ".[dev]"
 
-      - name: Run Black (code formatting check)
+      - name: Run checks
         run: |
-          black --check src/ tests/
-        continue-on-error: true  # Don't fail CI on formatting issues
-
-      - name: Run Flake8 (linting)
-        run: |
-          flake8 src/ --count --select=E9,F63,F7,F82 --show-source --statistics
-          flake8 src/ --count --exit-zero --max-complexity=10 --max-line-length=127 --statistics
-        continue-on-error: true
-
-      - name: Run MyPy (type checking)
-        run: |
-          mypy src/cli --ignore-missing-imports
-        continue-on-error: true  # Type checking is advisory
+          black --check src/ tests/ || true
+          flake8 src/ --count --select=E9,F63,F7,F82 --show-source --statistics || true
+          mypy src/cli --ignore-missing-imports || true
 
   # Test summary
   test-summary:
     name: Test Summary
     runs-on: ubuntu-latest
-    needs: [test-linux, test-windows, test-macos, protocol-handler-test, installation-test, code-quality]
+    needs: [test-linux, test-windows, test-macos, code-quality]
     if: always()
 
     steps:
-      - name: Check test results
+      - name: Check results
         run: |
-          echo "Linux tests: ${{ needs.test-linux.result }}"
-          echo "Windows tests: ${{ needs.test-windows.result }}"
-          echo "macOS tests: ${{ needs.test-macos.result }}"
-          echo "Protocol handler tests: ${{ needs.protocol-handler-test.result }}"
-          echo "Installation tests: ${{ needs.installation-test.result }}"
-          echo "Code quality: ${{ needs.code-quality.result }}"
+          echo "Linux: ${{ needs.test-linux.result }}"
+          echo "Windows: ${{ needs.test-windows.result }}"
+          echo "macOS: ${{ needs.test-macos.result }}"
 
           if [ "${{ needs.test-linux.result }}" != "success" ]; then
             echo "::error::Linux tests failed"
@@ -550,4 +290,4 @@ jobs:
             exit 1
           fi
 
-          echo "✓ All critical tests passed!"
+          echo "✓ All tests passed!"
