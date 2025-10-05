@@ -28,7 +28,7 @@ if __name__ == "__main__":
     sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
 # Import core functionality
-from cli.core.config import get_logger, i18n
+from cli.core.config import get_logger, i18n, TokenManager
 from cli.core.shared import (
     RepositoryConnection,
     colorize,
@@ -63,7 +63,12 @@ class DualPaneFileBrowser:
         self.logger = get_logger(__name__)
         
         # Current paths
-        self.local_current_path = Path.home()
+        # Try to load saved path, fallback to home if invalid
+        saved_path = TokenManager.get_config_value('gui_local_browser_path')
+        if saved_path and Path(saved_path).exists() and Path(saved_path).is_dir():
+            self.local_current_path = Path(saved_path)
+        else:
+            self.local_current_path = Path.home()
         self.remote_current_path = '/'
         
         # SSH connection info
@@ -635,11 +640,13 @@ class DualPaneFileBrowser:
         if parent != self.local_current_path:
             self.local_current_path = parent
             self.refresh_local()
+            self.save_local_path()
     
     def navigate_local_home(self):
         """Navigate to home directory in local pane"""
         self.local_current_path = Path.home()
         self.refresh_local()
+        self.save_local_path()
     
     def navigate_local_to_path(self):
         """Navigate to path entered in local path entry"""
@@ -648,11 +655,12 @@ class DualPaneFileBrowser:
             if path.exists() and path.is_dir():
                 self.local_current_path = path
                 self.refresh_local()
+                self.save_local_path()
             else:
-                messagebox.showerror(i18n.get('error'), 
+                messagebox.showerror(i18n.get('error'),
                                    i18n.get('invalid_directory'))
         except Exception as e:
-            messagebox.showerror(i18n.get('error'), 
+            messagebox.showerror(i18n.get('error'),
                                i18n.get('invalid_path').format(error=str(e)))
     
     def on_local_double_click(self, event):
@@ -665,7 +673,15 @@ class DualPaneFileBrowser:
                 dir_name = item['text'][2:]  # Remove icon
                 self.local_current_path = self.local_current_path / dir_name
                 self.refresh_local()
+                self.save_local_path()
     
+    def save_local_path(self):
+        """Save current local path to config for persistence"""
+        try:
+            TokenManager.set_config_value('gui_local_browser_path', str(self.local_current_path))
+        except Exception as e:
+            self.logger.warning(f"Failed to save local browser path: {e}")
+
     def on_local_selection_changed(self, event):
         """Handle selection change in local pane"""
         self.local_selected = self.local_tree.selection()
