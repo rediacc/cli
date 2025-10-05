@@ -57,8 +57,8 @@ If you prefer to build manually:
 ```bash
 cd cli
 
-# Install build tools
-pip install build twine
+# Install build tools (packaging>=24.1 required for PEP 639 support)
+pip install build twine "packaging>=24.1"
 
 # Update version in src/cli/_version.py
 # Edit the file and change __version__ = "0.1.0"
@@ -255,7 +255,7 @@ jobs:
         python-version: '3.9'
     - name: Install dependencies
       run: |
-        pip install build twine
+        pip install build twine "packaging>=24.1"
     - name: Build package
       run: python -m build
     - name: Publish to PyPI
