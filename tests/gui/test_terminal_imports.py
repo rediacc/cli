@@ -163,10 +163,10 @@ def test_terminal_command():
             # Print each line of the error indented
             for line in error.split('\n'):
                 print(f"    {line}")
-        return 1
+        assert False, f"Terminal command has {len(errors)} error(s)"
     else:
         print("  ✓ Terminal command is working correctly")
-        return 0
+        # Test passes, no assertion needed
 
 if __name__ == "__main__":
     sys.exit(test_terminal_command())
