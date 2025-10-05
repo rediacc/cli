@@ -5,9 +5,10 @@ default_timeout: 30
 
 # Test environment
 test_environment:
-  api_url: "${env.SYSTEM_API_URL}"
+  # API URL with fallback for CI environment
+  api_url: "${env.SYSTEM_API_URL:-http://localhost/api}"
   # Activation code for test accounts
-  activation_code: "111111"
+  activation_code: "${env.REDIACC_TEST_ACTIVATION_CODE:-111111}"
 
 # Common test data
 test_data:
