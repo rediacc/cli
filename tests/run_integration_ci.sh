@@ -51,9 +51,17 @@ export REDIACC_TEST_ACTIVATION_CODE="$ACTIVATION_CODE"
 # Run integration tests
 # Start with basic company/team/user tests (01xxx series)
 echo "Running basic integration tests (01xxx series)..."
-python run_tests.py "yaml/community/01*.yaml"
 
-EXIT_CODE=$?
+EXIT_CODE=0
+for test_file in yaml/community/01*.yaml; do
+    if [ -f "$test_file" ]; then
+        echo "Running: $test_file"
+        python run_tests.py "$test_file"
+        if [ $? -ne 0 ]; then
+            EXIT_CODE=1
+        fi
+    fi
+done
 
 echo ""
 echo "========================================="
