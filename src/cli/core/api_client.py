@@ -39,13 +39,14 @@ class SuperClient:
     def __init__(self, sandbox_mode=False):
         if SuperClient._initialized:
             return
-        
+
         SuperClient._initialized = True
         self.sandbox_mode = sandbox_mode
         self.user_agent = SuperClient.USER_AGENT
         self.base_headers = {"Content-Type": "application/json", "User-Agent": self.user_agent}
         self.config_manager = None
         self._vault_warning_shown = False
+        self._test_mode_token = None  # Token storage for test mode
         self.use_requests = self._should_use_requests()
         
         if self.use_requests:
@@ -562,43 +563,47 @@ class SuperClient:
         endpoint = self._map_command_to_endpoint(command)
         data = self._prepare_request_data(endpoint, args)
         headers = self._get_special_headers(endpoint, args)
-        
+
         # Unauthenticated endpoints that should NOT send a token
-        unauthenticated_endpoints = ['CreateNewCompany', 'ActivateUserAccount', 
+        unauthenticated_endpoints = ['CreateNewCompany', 'ActivateUserAccount',
                                    'CreateAuthenticationRequest', 'IsRegistered']
-        
-        token = '' if endpoint in unauthenticated_endpoints else None
+
+        # Use stored token for authenticated endpoints, empty string for unauthenticated
+        token = '' if endpoint in unauthenticated_endpoints else (self._test_mode_token or '')
         result = self._make_test_request(endpoint, data, token=token, headers=headers)
-        
+
+        # Extract and store token from successful responses
+        if result['success'] and result.get('data'):
+            new_token = self._extract_token_from_response(result['data'])
+            if new_token:
+                self._test_mode_token = new_token
+
         # Handle logout - clear token
         if endpoint == 'DeleteUserRequest' and result['success']:
-            pass  # Logout handled via normal API response
-        
+            self._test_mode_token = None
+
         return self._format_response(endpoint, result['data'], args) if result['success'] else result
     
-    def _make_test_request(self, endpoint: str, data: Dict[str, Any], 
-                          token: Optional[str] = None, 
+    def _make_test_request(self, endpoint: str, data: Dict[str, Any],
+                          token: Optional[str] = None,
                           headers: Optional[Dict[str, str]] = None) -> Dict[str, Any]:
         """Make API request with automatic token rotation (for testing)"""
         request_headers = {'Content-Type': 'application/json', 'Accept': 'application/json'}
-        
-        # Add authentication token - this is only for test compatibility
-        if token is not None and token:  # Only add header if token is not empty string
+
+        # Add authentication token if provided (but not empty string)
+        if token:  # Simple truthy check - empty string will not add header
             request_headers['Rediacc-RequestToken'] = token
-            
+
         if headers:
             request_headers.update(headers)
-        
+
         response = self.request(endpoint, data, request_headers)
-        
+
         # Handle response for testing
         if 'error' not in response:
-            # Token rotation is handled by the main CLI via TokenManager
-            # This method is primarily for test compatibility
-            
             return {'success': True, 'data': response, 'status_code': 200}
         else:
-            return {'success': False, 'error': response['error'], 
+            return {'success': False, 'error': response['error'],
                    'status_code': response.get('status_code', 500)}
     
     def _format_response(self, endpoint: str, raw_response: Dict[str, Any], args: Dict[str, Any]) -> Dict[str, Any]:
