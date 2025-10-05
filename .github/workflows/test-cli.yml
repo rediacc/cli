@@ -241,7 +241,7 @@ jobs:
 
       # Start Elite services
       - name: Start Rediacc Elite Services
-        uses: rediacc/elite/action@v1.0.3
+        uses: rediacc/elite/action@v1.0.4
         env:
           DOCKER_REGISTRY_USERNAME: ${{ secrets.DOCKER_REGISTRY_USERNAME }}
           DOCKER_REGISTRY_PASSWORD: ${{ secrets.DOCKER_REGISTRY_PASSWORD }}
