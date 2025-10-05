@@ -86,12 +86,21 @@ jobs:
           cat /tmp/cloudflared.log
           exit 1
 
-      - name: Test Python 3.8
+      - name: Install system dependencies
         run: |
-          sudo apt-get update && sudo apt-get install -y xdg-utils rsync openssh-client desktop-file-utils
-          python3.8 -m pip install --upgrade pip setuptools wheel
-          python3.8 -m pip install -e ".[test,dev]"
-          python3.8 -m pytest tests/ -v --cov=cli --cov-report=xml --cov-report=html --junitxml=test-results-3.8/junit.xml --tb=short
+          sudo apt-get update
+          sudo apt-get install -y xdg-utils rsync openssh-client desktop-file-utils
+
+      - name: Test Python 3.8
+        uses: actions/setup-python@v6
+        with:
+          python-version: '3.8'
+
+      - name: Run tests Python 3.8
+        run: |
+          python -m pip install --upgrade pip setuptools wheel
+          python -m pip install -e ".[test,dev]"
+          python -m pytest tests/ -v --cov=cli --cov-report=xml --cov-report=html --junitxml=test-results-3.8/junit.xml --tb=short
         env:
           SYSTEM_API_URL: ${{ steps.tunnel.outputs.url }}/api
           SYSTEM_ADMIN_EMAIL: admin@rediacc.io
@@ -99,7 +108,7 @@ jobs:
           REDIACC_TEST_ACTIVATION_CODE: "111111"
           API_TIMEOUT: 60
 
-      - name: Integration Tests Python 3.8
+      - name: Integration tests Python 3.8
         working-directory: tests
         run: ./run_integration_ci.sh
         env:
@@ -109,35 +118,60 @@ jobs:
           REDIACC_TEST_ACTIVATION_CODE: "111111"
           API_TIMEOUT: 60
 
-      - name: Test Python 3.9
-        run: |
-          python3.9 -m pip install --upgrade pip setuptools wheel
-          python3.9 -m pip install -e ".[test,dev]"
-          python3.9 -m pytest tests/ -v --cov=cli --cov-report=xml --cov-report=html --junitxml=test-results-3.9/junit.xml --tb=short
+      - name: Setup Python 3.9
+        uses: actions/setup-python@v6
+        with:
+          python-version: '3.9'
 
-      - name: Test Python 3.10
+      - name: Run tests Python 3.9
         run: |
-          python3.10 -m pip install --upgrade pip setuptools wheel
-          python3.10 -m pip install -e ".[test,dev]"
-          python3.10 -m pytest tests/ -v --cov=cli --cov-report=xml --cov-report=html --junitxml=test-results-3.10/junit.xml --tb=short
+          python -m pip install --upgrade pip setuptools wheel
+          python -m pip install -e ".[test,dev]"
+          python -m pytest tests/ -v --cov=cli --cov-report=xml --cov-report=html --junitxml=test-results-3.9/junit.xml --tb=short
 
-      - name: Test Python 3.11
-        run: |
-          python3.11 -m pip install --upgrade pip setuptools wheel
-          python3.11 -m pip install -e ".[test,dev]"
-          python3.11 -m pytest tests/ -v --cov=cli --cov-report=xml --cov-report=html --junitxml=test-results-3.11/junit.xml --tb=short
+      - name: Setup Python 3.10
+        uses: actions/setup-python@v6
+        with:
+          python-version: '3.10'
 
-      - name: Test Python 3.12
+      - name: Run tests Python 3.10
         run: |
-          python3.12 -m pip install --upgrade pip setuptools wheel
-          python3.12 -m pip install -e ".[test,dev]"
-          python3.12 -m pytest tests/ -v --cov=cli --cov-report=xml --cov-report=html --junitxml=test-results-3.12/junit.xml --tb=short
+          python -m pip install --upgrade pip setuptools wheel
+          python -m pip install -e ".[test,dev]"
+          python -m pytest tests/ -v --cov=cli --cov-report=xml --cov-report=html --junitxml=test-results-3.10/junit.xml --tb=short
 
-      - name: Test Python 3.13
+      - name: Setup Python 3.11
+        uses: actions/setup-python@v6
+        with:
+          python-version: '3.11'
+
+      - name: Run tests Python 3.11
         run: |
-          python3.13 -m pip install --upgrade pip setuptools wheel
-          python3.13 -m pip install -e ".[test,dev]"
-          python3.13 -m pytest tests/ -v --cov=cli --cov-report=xml --cov-report=html --junitxml=test-results-3.13/junit.xml --tb=short
+          python -m pip install --upgrade pip setuptools wheel
+          python -m pip install -e ".[test,dev]"
+          python -m pytest tests/ -v --cov=cli --cov-report=xml --cov-report=html --junitxml=test-results-3.11/junit.xml --tb=short
+
+      - name: Setup Python 3.12
+        uses: actions/setup-python@v6
+        with:
+          python-version: '3.12'
+
+      - name: Run tests Python 3.12
+        run: |
+          python -m pip install --upgrade pip setuptools wheel
+          python -m pip install -e ".[test,dev]"
+          python -m pytest tests/ -v --cov=cli --cov-report=xml --cov-report=html --junitxml=test-results-3.12/junit.xml --tb=short
+
+      - name: Setup Python 3.13
+        uses: actions/setup-python@v6
+        with:
+          python-version: '3.13'
+
+      - name: Run tests Python 3.13
+        run: |
+          python -m pip install --upgrade pip setuptools wheel
+          python -m pip install -e ".[test,dev]"
+          python -m pytest tests/ -v --cov=cli --cov-report=xml --cov-report=html --junitxml=test-results-3.13/junit.xml --tb=short
 
       - name: Cleanup
         if: always()
@@ -156,43 +190,68 @@ jobs:
       - name: Checkout
         uses: actions/checkout@v5
 
-      - name: Install dependencies
+      - name: Install system dependencies
         run: choco install rsync openssh -y
         shell: pwsh
 
-      - name: Test Python 3.8
+      - name: Setup Python 3.8
+        uses: actions/setup-python@v6
+        with:
+          python-version: '3.8'
+
+      - name: Run tests Python 3.8
         run: |
-          python3.8 -m pip install --upgrade pip setuptools wheel
-          python3.8 -m pip install -e ".[test,dev]"
-          python3.8 -m pytest tests/ -v --cov=cli --cov-report=xml --tb=short
+          python -m pip install --upgrade pip setuptools wheel
+          python -m pip install -e ".[test,dev]"
+          python -m pytest tests/ -v --cov=cli --cov-report=xml --tb=short
         shell: bash
 
-      - name: Test Python 3.9
+      - name: Setup Python 3.9
+        uses: actions/setup-python@v6
+        with:
+          python-version: '3.9'
+
+      - name: Run tests Python 3.9
         run: |
-          python3.9 -m pip install --upgrade pip setuptools wheel
-          python3.9 -m pip install -e ".[test,dev]"
-          python3.9 -m pytest tests/ -v --cov=cli --cov-report=xml --tb=short
+          python -m pip install --upgrade pip setuptools wheel
+          python -m pip install -e ".[test,dev]"
+          python -m pytest tests/ -v --cov=cli --cov-report=xml --tb=short
         shell: bash
 
-      - name: Test Python 3.10
+      - name: Setup Python 3.10
+        uses: actions/setup-python@v6
+        with:
+          python-version: '3.10'
+
+      - name: Run tests Python 3.10
         run: |
-          python3.10 -m pip install --upgrade pip setuptools wheel
-          python3.10 -m pip install -e ".[test,dev]"
-          python3.10 -m pytest tests/ -v --cov=cli --cov-report=xml --tb=short
+          python -m pip install --upgrade pip setuptools wheel
+          python -m pip install -e ".[test,dev]"
+          python -m pytest tests/ -v --cov=cli --cov-report=xml --tb=short
         shell: bash
 
-      - name: Test Python 3.11
+      - name: Setup Python 3.11
+        uses: actions/setup-python@v6
+        with:
+          python-version: '3.11'
+
+      - name: Run tests Python 3.11
         run: |
-          python3.11 -m pip install --upgrade pip setuptools wheel
-          python3.11 -m pip install -e ".[test,dev]"
-          python3.11 -m pytest tests/ -v --cov=cli --cov-report=xml --tb=short
+          python -m pip install --upgrade pip setuptools wheel
+          python -m pip install -e ".[test,dev]"
+          python -m pytest tests/ -v --cov=cli --cov-report=xml --tb=short
         shell: bash
 
-      - name: Test Python 3.12
+      - name: Setup Python 3.12
+        uses: actions/setup-python@v6
+        with:
+          python-version: '3.12'
+
+      - name: Run tests Python 3.12
         run: |
-          python3.12 -m pip install --upgrade pip setuptools wheel
-          python3.12 -m pip install -e ".[test,dev]"
-          python3.12 -m pytest tests/ -v --cov=cli --cov-report=xml --tb=short
+          python -m pip install --upgrade pip setuptools wheel
+          python -m pip install -e ".[test,dev]"
+          python -m pytest tests/ -v --cov=cli --cov-report=xml --tb=short
         shell: bash
 
   # macOS tests - sequential after Windows
@@ -205,38 +264,63 @@ jobs:
       - name: Checkout
         uses: actions/checkout@v5
 
-      - name: Install dependencies
+      - name: Install system dependencies
         run: brew install duti || true
 
-      - name: Test Python 3.8
-        run: |
-          python3.8 -m pip install --upgrade pip setuptools wheel
-          python3.8 -m pip install -e ".[test,dev]"
-          python3.8 -m pytest tests/ -v --cov=cli --cov-report=xml --tb=short
+      - name: Setup Python 3.8
+        uses: actions/setup-python@v6
+        with:
+          python-version: '3.8'
 
-      - name: Test Python 3.9
+      - name: Run tests Python 3.8
         run: |
-          python3.9 -m pip install --upgrade pip setuptools wheel
-          python3.9 -m pip install -e ".[test,dev]"
-          python3.9 -m pytest tests/ -v --cov=cli --cov-report=xml --tb=short
+          python -m pip install --upgrade pip setuptools wheel
+          python -m pip install -e ".[test,dev]"
+          python -m pytest tests/ -v --cov=cli --cov-report=xml --tb=short
 
-      - name: Test Python 3.10
-        run: |
-          python3.10 -m pip install --upgrade pip setuptools wheel
-          python3.10 -m pip install -e ".[test,dev]"
-          python3.10 -m pytest tests/ -v --cov=cli --cov-report=xml --tb=short
+      - name: Setup Python 3.9
+        uses: actions/setup-python@v6
+        with:
+          python-version: '3.9'
 
-      - name: Test Python 3.11
+      - name: Run tests Python 3.9
         run: |
-          python3.11 -m pip install --upgrade pip setuptools wheel
-          python3.11 -m pip install -e ".[test,dev]"
-          python3.11 -m pytest tests/ -v --cov=cli --cov-report=xml --tb=short
+          python -m pip install --upgrade pip setuptools wheel
+          python -m pip install -e ".[test,dev]"
+          python -m pytest tests/ -v --cov=cli --cov-report=xml --tb=short
 
-      - name: Test Python 3.12
+      - name: Setup Python 3.10
+        uses: actions/setup-python@v6
+        with:
+          python-version: '3.10'
+
+      - name: Run tests Python 3.10
         run: |
-          python3.12 -m pip install --upgrade pip setuptools wheel
-          python3.12 -m pip install -e ".[test,dev]"
-          python3.12 -m pytest tests/ -v --cov=cli --cov-report=xml --tb=short
+          python -m pip install --upgrade pip setuptools wheel
+          python -m pip install -e ".[test,dev]"
+          python -m pytest tests/ -v --cov=cli --cov-report=xml --tb=short
+
+      - name: Setup Python 3.11
+        uses: actions/setup-python@v6
+        with:
+          python-version: '3.11'
+
+      - name: Run tests Python 3.11
+        run: |
+          python -m pip install --upgrade pip setuptools wheel
+          python -m pip install -e ".[test,dev]"
+          python -m pytest tests/ -v --cov=cli --cov-report=xml --tb=short
+
+      - name: Setup Python 3.12
+        uses: actions/setup-python@v6
+        with:
+          python-version: '3.12'
+
+      - name: Run tests Python 3.12
+        run: |
+          python -m pip install --upgrade pip setuptools wheel
+          python -m pip install -e ".[test,dev]"
+          python -m pytest tests/ -v --cov=cli --cov-report=xml --tb=short
 
   # Code quality checks
   code-quality:
