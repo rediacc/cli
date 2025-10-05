@@ -28,6 +28,7 @@ from cli.core.protocol_handler import ProtocolUrlParser
 
 
 @pytest.mark.skipif(not PLAYWRIGHT_AVAILABLE, reason="Playwright not available")
+@pytest.mark.playwright
 class TestProtocolPlaywrightIntegration:
     """Test protocol integration using Playwright browser automation"""
 
@@ -461,6 +462,7 @@ class TestProtocolPlaywrightIntegration:
 
 
 @pytest.mark.skipif(not PLAYWRIGHT_AVAILABLE, reason="Playwright not available")
+@pytest.mark.playwright
 class TestProtocolBrowserCompatibility:
     """Test protocol compatibility across different browsers"""
 
@@ -532,6 +534,7 @@ class TestProtocolBrowserCompatibility:
 
 
 @pytest.mark.skipif(not PLAYWRIGHT_AVAILABLE, reason="Playwright not available")
+@pytest.mark.playwright
 class TestProtocolMockHandling:
     """Test protocol handling with mocked CLI responses"""
 
