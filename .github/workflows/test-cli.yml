@@ -14,22 +14,76 @@ permissions:
   checks: write
 
 jobs:
-  test:
-    name: Test on ${{ matrix.os }} - Python ${{ matrix.python-version }}
-    runs-on: ${{ matrix.os }}
+  # Shared Elite backend accessible via Cloudflare Tunnel
+  elite-backend:
+    name: Shared Elite Backend Service
+    runs-on: ubuntu-latest
+    outputs:
+      elite_url: ${{ steps.tunnel.outputs.url }}
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v5
+        with:
+          submodules: recursive
+
+      - name: Start Elite Services
+        uses: ./cloud/elite/action
+        env:
+          DOCKER_REGISTRY_USERNAME: ${{ secrets.DOCKER_REGISTRY_USERNAME }}
+          DOCKER_REGISTRY_PASSWORD: ${{ secrets.DOCKER_REGISTRY_PASSWORD }}
+
+      - name: Setup Cloudflare Tunnel
+        uses: AnimMouse/setup-cloudflared@v2
+
+      - name: Start Cloudflare Tunnel
+        id: tunnel
+        uses: AnimMouse/setup-cloudflared/tunnel@v2
+        with:
+          url: http://localhost
+
+      - name: Verify Tunnel Accessibility
+        run: |
+          echo "Waiting for tunnel to be ready..."
+          sleep 10
+
+          # The tunnel URL is automatically set in GITHUB_OUTPUT
+          echo "Tunnel URL: ${{ steps.tunnel.outputs.url }}"
+
+          # Verify API is accessible through tunnel
+          for i in {1..10}; do
+            if curl -f "${{ steps.tunnel.outputs.url }}/api/health" 2>/dev/null; then
+              echo "✓ Elite backend accessible via tunnel"
+              exit 0
+            fi
+            echo "Attempt $i/10 failed, retrying..."
+            sleep 3
+          done
+
+          echo "Failed to verify tunnel accessibility"
+          exit 1
+
+      - name: Keep Tunnel Alive
+        run: |
+          echo "Tunnel active and ready for tests"
+          echo "Keeping job alive for test duration (max 3 hours)..."
+          # Stay alive while tests run
+          sleep 10800
+
+      - name: Shutdown Cloudflare Tunnel
+        if: always()
+        uses: AnimMouse/setup-cloudflared/shutdown@v2
+
+  # Linux tests - runs first with all Python versions
+  test-linux:
+    name: Linux - Python ${{ matrix.python-version }}
+    runs-on: ubuntu-latest
+    needs: elite-backend
 
     strategy:
-      fail-fast: false  # Continue testing other combinations if one fails
+      fail-fast: true  # Stop all Linux tests if one fails
       matrix:
-        os: [ubuntu-latest, windows-latest, macos-latest]
         python-version: ['3.8', '3.9', '3.10', '3.11', '3.12', '3.13']
-        # Exclude combinations that are problematic or unnecessary
-        exclude:
-          # Python 3.13 may not be available on all runners yet
-          - os: windows-latest
-            python-version: '3.13'
-          - os: macos-latest
-            python-version: '3.13'
 
     steps:
       - name: Checkout repository
@@ -39,36 +93,17 @@ jobs:
         uses: actions/setup-python@v6
         with:
           python-version: ${{ matrix.python-version }}
-          cache: 'pip'  # Cache pip dependencies automatically
+          cache: 'pip'
           cache-dependency-path: |
             requirements.txt
             requirements-dev.txt
             pyproject.toml
 
-      # Platform-specific system dependencies
-      - name: Install system dependencies (Linux)
-        if: runner.os == 'Linux'
+      - name: Install system dependencies
         run: |
           sudo apt-get update
-          sudo apt-get install -y xdg-utils rsync openssh-client
-          # Desktop environment tools for protocol handler testing
-          sudo apt-get install -y desktop-file-utils
+          sudo apt-get install -y xdg-utils rsync openssh-client desktop-file-utils
 
-      - name: Install system dependencies (macOS)
-        if: runner.os == 'macOS'
-        run: |
-          # duti for protocol handler registration (optional)
-          brew install duti || true
-          # rsync and openssh are pre-installed on macOS
-
-      - name: Install system dependencies (Windows)
-        if: runner.os == 'Windows'
-        run: |
-          # Install rsync and openssh using chocolatey
-          choco install rsync openssh -y
-        shell: pwsh
-
-      # Install Python dependencies
       - name: Upgrade pip
         run: |
           python -m pip install --upgrade pip setuptools wheel
@@ -77,8 +112,7 @@ jobs:
         run: |
           pip install -e ".[test,dev]"
 
-      # Run tests with coverage
-      - name: Run tests with pytest
+      - name: Run unit tests with pytest
         run: |
           pytest tests/ -v \
             --cov=cli \
@@ -87,36 +121,206 @@ jobs:
             --cov-report=html \
             --junitxml=test-results/junit.xml \
             --tb=short
-        shell: bash  # Use bash even on Windows for consistency
-        continue-on-error: false  # Fail the job if tests fail
+        continue-on-error: false
 
-      # Upload coverage to Codecov
+      - name: Run integration tests
+        working-directory: tests
+        env:
+          SYSTEM_API_URL: ${{ needs.elite-backend.outputs.elite_url }}/api
+          SYSTEM_ADMIN_EMAIL: admin@rediacc.io
+          SYSTEM_ADMIN_PASSWORD: admin
+          REDIACC_TEST_ACTIVATION_CODE: "111111"
+          API_TIMEOUT: 60
+        run: |
+          ./run_integration_ci.sh
+
       - name: Upload coverage to Codecov
         uses: codecov/codecov-action@v5
         with:
           files: ./coverage.xml
-          flags: ${{ runner.os }}-py${{ matrix.python-version }}
-          name: ${{ matrix.os }}-${{ matrix.python-version }}
-          fail_ci_if_error: false  # Don't fail CI if Codecov upload fails
+          flags: Linux-py${{ matrix.python-version }}
+          name: linux-${{ matrix.python-version }}
+          fail_ci_if_error: false
           verbose: true
         env:
           CODECOV_TOKEN: ${{ secrets.CODECOV_TOKEN }}
 
-      # Upload test results
       - name: Upload test results
-        if: always()  # Always upload, even if tests fail
+        if: always()
         uses: actions/upload-artifact@v4
         with:
-          name: test-results-${{ matrix.os }}-py${{ matrix.python-version }}
+          name: test-results-linux-py${{ matrix.python-version }}
           path: test-results/
           retention-days: 30
 
-      # Upload coverage HTML report
       - name: Upload coverage HTML
         if: always()
         uses: actions/upload-artifact@v4
         with:
-          name: coverage-html-${{ matrix.os }}-py${{ matrix.python-version }}
+          name: coverage-html-linux-py${{ matrix.python-version }}
+          path: htmlcov/
+          retention-days: 30
+
+  # Windows tests - runs after Linux succeeds
+  test-windows:
+    name: Windows - Python ${{ matrix.python-version }}
+    runs-on: windows-latest
+    needs: [elite-backend, test-linux]
+
+    strategy:
+      fail-fast: true  # Stop all Windows tests if one fails
+      matrix:
+        python-version: ['3.8', '3.9', '3.10', '3.11', '3.12']
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v5
+
+      - name: Set up Python ${{ matrix.python-version }}
+        uses: actions/setup-python@v6
+        with:
+          python-version: ${{ matrix.python-version }}
+          cache: 'pip'
+          cache-dependency-path: |
+            requirements.txt
+            requirements-dev.txt
+            pyproject.toml
+
+      - name: Install system dependencies
+        run: |
+          choco install rsync openssh -y
+        shell: pwsh
+
+      - name: Upgrade pip
+        run: |
+          python -m pip install --upgrade pip setuptools wheel
+
+      - name: Install package with test dependencies
+        run: |
+          pip install -e ".[test,dev]"
+
+      - name: Run unit tests with pytest
+        run: |
+          pytest tests/ -v --cov=cli --cov-report=xml --cov-report=html --junitxml=test-results/junit.xml --tb=short
+        shell: bash
+        continue-on-error: false
+
+      - name: Run integration tests
+        working-directory: tests
+        env:
+          SYSTEM_API_URL: ${{ needs.elite-backend.outputs.elite_url }}/api
+          SYSTEM_ADMIN_EMAIL: admin@rediacc.io
+          SYSTEM_ADMIN_PASSWORD: admin
+          REDIACC_TEST_ACTIVATION_CODE: "111111"
+          API_TIMEOUT: 60
+        run: |
+          ./run_integration_ci.sh
+        shell: bash
+
+      - name: Upload coverage to Codecov
+        uses: codecov/codecov-action@v5
+        with:
+          files: ./coverage.xml
+          flags: Windows-py${{ matrix.python-version }}
+          name: windows-${{ matrix.python-version }}
+          fail_ci_if_error: false
+          verbose: true
+        env:
+          CODECOV_TOKEN: ${{ secrets.CODECOV_TOKEN }}
+
+      - name: Upload test results
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: test-results-windows-py${{ matrix.python-version }}
+          path: test-results/
+          retention-days: 30
+
+      - name: Upload coverage HTML
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: coverage-html-windows-py${{ matrix.python-version }}
+          path: htmlcov/
+          retention-days: 30
+
+  # macOS tests - runs after Windows succeeds
+  test-macos:
+    name: macOS - Python ${{ matrix.python-version }}
+    runs-on: macos-latest
+    needs: [elite-backend, test-windows]
+
+    strategy:
+      fail-fast: true  # Stop all macOS tests if one fails
+      matrix:
+        python-version: ['3.8', '3.9', '3.10', '3.11', '3.12']
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v5
+
+      - name: Set up Python ${{ matrix.python-version }}
+        uses: actions/setup-python@v6
+        with:
+          python-version: ${{ matrix.python-version }}
+          cache: 'pip'
+          cache-dependency-path: |
+            requirements.txt
+            requirements-dev.txt
+            pyproject.toml
+
+      - name: Install system dependencies
+        run: |
+          brew install duti || true
+
+      - name: Upgrade pip
+        run: |
+          python -m pip install --upgrade pip setuptools wheel
+
+      - name: Install package with test dependencies
+        run: |
+          pip install -e ".[test,dev]"
+
+      - name: Run unit tests with pytest
+        run: |
+          pytest tests/ -v --cov=cli --cov-report=xml --cov-report=html --junitxml=test-results/junit.xml --tb=short
+        continue-on-error: false
+
+      - name: Run integration tests
+        working-directory: tests
+        env:
+          SYSTEM_API_URL: ${{ needs.elite-backend.outputs.elite_url }}/api
+          SYSTEM_ADMIN_EMAIL: admin@rediacc.io
+          SYSTEM_ADMIN_PASSWORD: admin
+          REDIACC_TEST_ACTIVATION_CODE: "111111"
+          API_TIMEOUT: 60
+        run: |
+          ./run_integration_ci.sh
+
+      - name: Upload coverage to Codecov
+        uses: codecov/codecov-action@v5
+        with:
+          files: ./coverage.xml
+          flags: macOS-py${{ matrix.python-version }}
+          name: macos-${{ matrix.python-version }}
+          fail_ci_if_error: false
+          verbose: true
+        env:
+          CODECOV_TOKEN: ${{ secrets.CODECOV_TOKEN }}
+
+      - name: Upload test results
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: test-results-macos-py${{ matrix.python-version }}
+          path: test-results/
+          retention-days: 30
+
+      - name: Upload coverage HTML
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: coverage-html-macos-py${{ matrix.python-version }}
           path: htmlcov/
           retention-days: 30
 
@@ -229,74 +433,36 @@ jobs:
           mypy src/cli --ignore-missing-imports
         continue-on-error: true  # Type checking is advisory
 
-  # Integration tests with Elite backend
-  integration-test:
-    name: Integration Tests (with Elite Backend)
-    runs-on: ubuntu-latest
-    if: always()  # Run even if unit tests fail
-
-    steps:
-      - name: Checkout CLI repository
-        uses: actions/checkout@v5
-
-      # Start Elite services
-      - name: Start Rediacc Elite Services
-        uses: rediacc/elite/action@v1.0.4
-        env:
-          DOCKER_REGISTRY_USERNAME: ${{ secrets.DOCKER_REGISTRY_USERNAME }}
-          DOCKER_REGISTRY_PASSWORD: ${{ secrets.DOCKER_REGISTRY_PASSWORD }}
-
-      # Setup Python for CLI
-      - name: Set up Python
-        uses: actions/setup-python@v6
-        with:
-          python-version: '3.12'
-          cache: 'pip'
-          cache-dependency-path: requirements.txt
-
-      # Install CLI
-      - name: Install CLI with dependencies
-        run: |
-          pip install -e ".[test]"
-
-      # Run integration tests
-      - name: Run Integration Tests
-        working-directory: tests
-        env:
-          SYSTEM_API_URL: http://localhost/api
-          SYSTEM_ADMIN_EMAIL: admin@rediacc.io
-          SYSTEM_ADMIN_PASSWORD: admin
-          REDIACC_TEST_ACTIVATION_CODE: "111111"
-          API_TIMEOUT: 300  # 5 minutes for service preparation
-        run: |
-          ./run_integration_ci.sh
-        continue-on-error: true  # Don't fail build on integration test failures yet
-
-      # Upload test results
-      - name: Upload integration test results
-        if: always()
-        uses: actions/upload-artifact@v4
-        with:
-          name: integration-test-results
-          path: tests/test_results/
-          retention-days: 30
-
   # Test summary
   test-summary:
     name: Test Summary
     runs-on: ubuntu-latest
-    needs: [test, protocol-handler-test, installation-test, code-quality]
+    needs: [test-linux, test-windows, test-macos, protocol-handler-test, installation-test, code-quality]
     if: always()
 
     steps:
       - name: Check test results
         run: |
-          echo "Test job status: ${{ needs.test.result }}"
-          echo "Protocol handler test status: ${{ needs.protocol-handler-test.result }}"
-          echo "Installation test status: ${{ needs.installation-test.result }}"
-          echo "Code quality status: ${{ needs.code-quality.result }}"
+          echo "Linux tests: ${{ needs.test-linux.result }}"
+          echo "Windows tests: ${{ needs.test-windows.result }}"
+          echo "macOS tests: ${{ needs.test-macos.result }}"
+          echo "Protocol handler tests: ${{ needs.protocol-handler-test.result }}"
+          echo "Installation tests: ${{ needs.installation-test.result }}"
+          echo "Code quality: ${{ needs.code-quality.result }}"
 
-          if [ "${{ needs.test.result }}" != "success" ]; then
-            echo "::error::Main tests failed"
+          if [ "${{ needs.test-linux.result }}" != "success" ]; then
+            echo "::error::Linux tests failed"
             exit 1
           fi
+
+          if [ "${{ needs.test-windows.result }}" != "success" ]; then
+            echo "::error::Windows tests failed"
+            exit 1
+          fi
+
+          if [ "${{ needs.test-macos.result }}" != "success" ]; then
+            echo "::error::macOS tests failed"
+            exit 1
+          fi
+
+          echo "✓ All critical tests passed!"
