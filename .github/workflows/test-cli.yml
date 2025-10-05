@@ -38,29 +38,49 @@ jobs:
 
       - name: Start Cloudflare Tunnel
         id: tunnel
-        uses: AnimMouse/setup-cloudflared/tunnel@v2
-        with:
-          url: http://localhost
+        run: |
+          # Start cloudflared tunnel in background
+          cloudflared tunnel --url http://localhost --logfile /tmp/cloudflared.log &
+          TUNNEL_PID=$!
+          echo "tunnel_pid=$TUNNEL_PID" >> $GITHUB_OUTPUT
+
+          # Wait for tunnel URL to appear in logs
+          echo "Waiting for tunnel URL..."
+          for i in {1..30}; do
+            if grep -q "trycloudflare.com" /tmp/cloudflared.log 2>/dev/null; then
+              TUNNEL_URL=$(grep -o "https://[a-z0-9-]*\.trycloudflare\.com" /tmp/cloudflared.log | head -1)
+              echo "url=$TUNNEL_URL" >> $GITHUB_OUTPUT
+              echo "✓ Tunnel URL obtained: $TUNNEL_URL"
+              break
+            fi
+            echo "Waiting for tunnel... ($i/30)"
+            sleep 2
+          done
 
       - name: Verify Tunnel Accessibility
         run: |
-          echo "Waiting for tunnel to be ready..."
-          sleep 10
+          TUNNEL_URL="${{ steps.tunnel.outputs.url }}"
+          echo "Tunnel URL: $TUNNEL_URL"
 
-          # The tunnel URL is automatically set in GITHUB_OUTPUT
-          echo "Tunnel URL: ${{ steps.tunnel.outputs.url }}"
+          if [ -z "$TUNNEL_URL" ]; then
+            echo "Failed to get tunnel URL"
+            cat /tmp/cloudflared.log || true
+            exit 1
+          fi
 
-          # Verify API is accessible through tunnel
-          for i in {1..10}; do
-            if curl -f "${{ steps.tunnel.outputs.url }}/api/health" 2>/dev/null; then
+          # Wait for tunnel to be fully ready
+          echo "Verifying API accessibility through tunnel..."
+          for i in {1..20}; do
+            if curl -f "$TUNNEL_URL/api/health" 2>/dev/null; then
               echo "✓ Elite backend accessible via tunnel"
               exit 0
             fi
-            echo "Attempt $i/10 failed, retrying..."
+            echo "Attempt $i/20 failed, retrying..."
             sleep 3
           done
 
           echo "Failed to verify tunnel accessibility"
+          cat /tmp/cloudflared.log || true
           exit 1
 
       - name: Keep Tunnel Alive
@@ -72,7 +92,13 @@ jobs:
 
       - name: Shutdown Cloudflare Tunnel
         if: always()
-        uses: AnimMouse/setup-cloudflared/shutdown@v2
+        run: |
+          # Kill cloudflared process
+          TUNNEL_PID="${{ steps.tunnel.outputs.tunnel_pid }}"
+          if [ -n "$TUNNEL_PID" ]; then
+            kill $TUNNEL_PID 2>/dev/null || true
+            echo "✓ Tunnel process stopped"
+          fi
 
       - name: Cleanup Elite Services
         if: always()
