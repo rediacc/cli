@@ -147,13 +147,13 @@ class TestProtocolRegistration:
             from cli.core.macos_protocol_handler import MacOSProtocolHandler
             handler = MacOSProtocolHandler()
 
-            # Mock LSSetDefaultHandlerForURLScheme
-            with patch('cli.core.macos_protocol_handler.objc') as mock_objc:
-                with patch('cli.core.macos_protocol_handler.AppKit') as mock_appkit:
-                    mock_bundle = Mock()
-                    mock_bundle.bundleIdentifier.return_value = 'com.rediacc.cli'
-                    mock_appkit.NSBundle.mainBundle.return_value = mock_bundle
+            # Mock subprocess.run to simulate successful registration
+            mock_result = Mock()
+            mock_result.returncode = 0
+            mock_result.stdout = ""
 
+            with patch('subprocess.run', return_value=mock_result):
+                with patch.object(handler, 'is_protocol_registered', return_value=False):
                     result = handler.register(str(self.test_cli_path))
                     assert result is True
 
