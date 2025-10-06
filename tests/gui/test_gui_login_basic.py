@@ -16,6 +16,16 @@ import pytest
 # Add parent directories to path
 sys.path.insert(0, str(Path(__file__).parent.parent.parent / 'src'))
 
+# Import screenshot helper
+try:
+    from tests.utils.screenshot_helper import ScreenshotHelper
+    screenshot_helper = ScreenshotHelper()
+    SCREENSHOTS_ENABLED = True
+except Exception as e:
+    print(f"⚠ Screenshots disabled: {e}")
+    screenshot_helper = None
+    SCREENSHOTS_ENABLED = False
+
 # Load environment variables manually
 env_path = Path(__file__).parent.parent.parent.parent / '.env'
 if env_path.exists():
@@ -170,16 +180,21 @@ class GUITestSuite:
         def fill_and_click():
             """Fill wrong credentials and click login"""
             print("Testing with wrong credentials...")
-            
+
             # Enter wrong credentials
             window.email_entry.delete(0, 'end')
             window.password_entry.delete(0, 'end')
             window.email_entry.insert(0, 'wrong@test.com')
             window.password_entry.insert(0, 'wrongpass')
-            
+
+            # Take screenshot before login attempt
+            if SCREENSHOTS_ENABLED:
+                window.root.update()
+                screenshot_helper.take_screenshot_safe("wrong_creds_before_login", "Wrong credentials - before login")
+
             print("  Entering wrong credentials...")
             window.login_button.invoke()
-            
+
             # Check status after a delay
             window.root.after(3000, check_status)
         
@@ -192,16 +207,21 @@ class GUITestSuite:
                     is_error = status_color in ['red', '#ff0000', '#dc3545', '#e74c3c', '#FF6B35']
                 except:
                     is_error = False
-                
+
                 if is_error and status:
                     print(f"  ❌ Error shown (red): {status}")
-                
-                if status and ('error' in status.lower() or 'failed' in status.lower() or 
+
+                if status and ('error' in status.lower() or 'failed' in status.lower() or
                              'invalid' in status.lower() or 'not found' in status.lower()):
                     print(f"✓ Login correctly failed with wrong credentials")
                     print(f"  Error message: {status}")
                     login_failed[0] = True
-            
+
+                    # Take screenshot of error state
+                    if SCREENSHOTS_ENABLED:
+                        window.root.update()
+                        screenshot_helper.take_screenshot_safe("wrong_creds_error", "Wrong credentials - error displayed")
+
             test_complete[0] = True
             window.root.quit()
         
@@ -293,10 +313,15 @@ class GUITestSuite:
             window.password_entry.delete(0, 'end')
             window.email_entry.insert(0, email)
             window.password_entry.insert(0, password)
-            
+
+            # Take screenshot before login
+            if SCREENSHOTS_ENABLED:
+                window.root.update()
+                screenshot_helper.take_screenshot_safe("real_login_before", "Real login - before attempt")
+
             print("  Attempting login...")
             window.login_button.invoke()
-            
+
             # Check status periodically
             window.root.after(1000, lambda: check_status(0))
         
@@ -329,11 +354,23 @@ class GUITestSuite:
                 # Check for success/failure
                 if 'successful' in status.lower():
                     print("  ✓ Login successful!")
+
+                    # Take screenshot of success
+                    if SCREENSHOTS_ENABLED:
+                        window.root.update()
+                        screenshot_helper.take_screenshot_safe("real_login_success", "Real login - success")
+
                     # Wait a bit then quit
                     window.root.after(1000, lambda: finish_test())
                     return
                 elif any(word in status.lower() for word in ['error', 'failed', 'invalid', 'incorrect', 'wrong']):
                     print(f"  ✗ Login failed with: {status}")
+
+                    # Take screenshot of error
+                    if SCREENSHOTS_ENABLED:
+                        window.root.update()
+                        screenshot_helper.take_screenshot_safe("real_login_error", "Real login - error")
+
                     window.root.after(500, lambda: finish_test())
                     return
             
@@ -459,6 +496,11 @@ class GUITestSuite:
 
             def verify_placeholders():
                 """Verify that dropdowns show placeholders instead of auto-selected values"""
+                # Take screenshot before checking
+                if SCREENSHOTS_ENABLED:
+                    main_window.root.update()
+                    screenshot_helper.take_screenshot_safe("dropdown_placeholders", "Dropdown placeholders - checking state")
+
                 # Check team dropdown
                 team_value = main_window.team_combo.get()
                 teams = main_window.team_combo['values']
@@ -692,12 +734,17 @@ class GUITestSuite:
             def launch_terminal():
                 """Try to launch machine terminal from Tools menu"""
                 print("  Attempting to launch machine terminal...")
-                
+
+                # Take screenshot before launching terminal
+                if SCREENSHOTS_ENABLED:
+                    main_window.root.update()
+                    screenshot_helper.take_screenshot_safe("terminal_before_launch", "Terminal - before launch")
+
                 try:
                     # Check if we have valid selection
                     team = main_window.team_combo.get()
                     machine = main_window.machine_combo.get()
-                    
+
                     if team and machine:
                         print(f"    Team: {team}, Machine: {machine}")
                         
