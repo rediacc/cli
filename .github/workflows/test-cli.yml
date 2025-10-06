@@ -12,12 +12,15 @@ permissions:
   contents: read
   pull-requests: write
   checks: write
+  actions: read  # Required for shared-backend to monitor test job status
 
 jobs:
-  # Linux tests - all Python versions sequentially with shared Elite backend
-  test-linux:
-    name: Linux Tests
+  # Shared backend - provides Elite Services + Cloudflare Tunnel for all test platforms
+  shared-backend:
+    name: Shared Backend (Elite + Tunnel)
     runs-on: ubuntu-latest
+    outputs:
+      tunnel_url: ${{ steps.tunnel.outputs.url }}
 
     steps:
       - name: Checkout repository
@@ -135,6 +138,143 @@ jobs:
           echo "Failed to verify tunnel"
           cat /tmp/cloudflared.log
           exit 1
+
+      - name: Share Tunnel URL via Artifact
+        run: |
+          echo "${{ steps.tunnel.outputs.url }}" > tunnel-url.txt
+          echo "Tunnel URL saved to artifact: ${{ steps.tunnel.outputs.url }}"
+
+      - name: Upload Tunnel URL Artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: tunnel-url
+          path: tunnel-url.txt
+          retention-days: 1
+
+      - name: Keep Backend Alive - Wait for test completion signals
+        if: always()
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          echo "=========================================="
+          echo "Shared backend is ready!"
+          echo "Tunnel URL: ${{ steps.tunnel.outputs.url }}"
+          echo "=========================================="
+          echo ""
+          echo "Waiting for test jobs to complete..."
+          echo "Monitoring for completion artifacts from: linux, windows, macos"
+          echo ""
+
+          # Wait for completion artifacts from all test jobs
+          TIMEOUT=7200  # 2 hours max wait
+          ELAPSED=0
+
+          while [ $ELAPSED -lt $TIMEOUT ]; do
+            # Check for completion artifacts
+            ARTIFACTS=$(gh api "/repos/${{ github.repository }}/actions/runs/${{ github.run_id }}/artifacts" --jq '.artifacts[].name' 2>/dev/null || echo "")
+
+            # Use grep -q to check existence (returns 0 if found, 1 if not)
+            if echo "$ARTIFACTS" | grep -q "^test-complete-linux$"; then
+              LINUX_DONE=1
+            else
+              LINUX_DONE=0
+            fi
+
+            if echo "$ARTIFACTS" | grep -q "^test-complete-windows$"; then
+              WINDOWS_DONE=1
+            else
+              WINDOWS_DONE=0
+            fi
+
+            if echo "$ARTIFACTS" | grep -q "^test-complete-macos$"; then
+              MACOS_DONE=1
+            else
+              MACOS_DONE=0
+            fi
+
+            echo "Completion signals received:"
+            echo "  Linux: $([ "$LINUX_DONE" -eq 1 ] && echo '✓' || echo '⏳')"
+            echo "  Windows: $([ "$WINDOWS_DONE" -eq 1 ] && echo '✓' || echo '⏳')"
+            echo "  macOS: $([ "$MACOS_DONE" -eq 1 ] && echo '✓' || echo '⏳')"
+
+            if [ "$LINUX_DONE" -eq 1 ] && [ "$WINDOWS_DONE" -eq 1 ] && [ "$MACOS_DONE" -eq 1 ]; then
+              echo ""
+              echo "✓ All test jobs completed!"
+              break
+            fi
+
+            echo "  → Waiting... (${ELAPSED}s elapsed)"
+            echo ""
+            sleep 30
+            ELAPSED=$((ELAPSED + 30))
+          done
+
+          if [ $ELAPSED -ge $TIMEOUT ]; then
+            echo "⚠ Timeout reached after ${TIMEOUT}s - proceeding with cleanup"
+          fi
+
+      - name: Cleanup
+        if: always()
+        run: |
+          echo "Cleaning up shared backend resources..."
+          kill ${{ steps.tunnel.outputs.tunnel_pid }} 2>/dev/null || true
+          docker ps -a --filter "name=rediacc-" --format "{{.Names}}" | xargs -r docker stop || true
+          docker ps -a --filter "name=rediacc-" --format "{{.Names}}" | xargs -r docker rm || true
+          echo "✓ Cleanup complete"
+
+  # Linux tests - all Python versions sequentially
+  test-linux:
+    name: Linux Tests
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v5
+
+      - name: Wait for and Download Tunnel URL
+        id: download-artifact
+        uses: actions/download-artifact@v4
+        with:
+          name: tunnel-url
+        continue-on-error: true
+
+      - name: Retry Download Tunnel URL
+        if: steps.download-artifact.outcome == 'failure'
+        run: |
+          MAX_WAIT=1500  # 25 minutes (Elite Services can take 20+ min to pull images)
+          ELAPSED=0
+
+          while [ $ELAPSED -lt $MAX_WAIT ]; do
+            MINUTES=$((ELAPSED / 60))
+            SECONDS=$((ELAPSED % 60))
+            echo "Waiting for tunnel URL artifact... (${MINUTES}m ${SECONDS}s elapsed)"
+
+            if gh run download ${{ github.run_id }} -n tunnel-url 2>/dev/null; then
+              echo "✓ Tunnel URL artifact downloaded after ${MINUTES}m ${SECONDS}s"
+              break
+            fi
+
+            sleep 10
+            ELAPSED=$((ELAPSED + 10))
+          done
+
+          if [ $ELAPSED -ge $MAX_WAIT ]; then
+            echo "::error::Timeout after ${MAX_WAIT}s waiting for backend to upload tunnel URL"
+            exit 1
+          fi
+        env:
+          GH_TOKEN: ${{ github.token }}
+
+      - name: Load Tunnel URL
+        id: tunnel
+        run: |
+          if [ ! -f tunnel-url.txt ]; then
+            echo "::error::Tunnel URL artifact not found after retry attempts"
+            exit 1
+          fi
+          TUNNEL_URL=$(cat tunnel-url.txt)
+          echo "url=$TUNNEL_URL" >> $GITHUB_OUTPUT
+          echo "Tunnel URL loaded: $TUNNEL_URL"
 
       - name: Install system dependencies
         run: |
@@ -254,22 +394,73 @@ jobs:
           retention-days: 30
           if-no-files-found: ignore
 
-      - name: Cleanup
+      - name: Signal Completion
         if: always()
-        run: |
-          kill ${{ steps.tunnel.outputs.tunnel_pid }} 2>/dev/null || true
-          docker ps -a --filter "name=rediacc-" --format "{{.Names}}" | xargs -r docker stop || true
-          docker ps -a --filter "name=rediacc-" --format "{{.Names}}" | xargs -r docker rm || true
+        run: echo "done" > test-complete-linux.txt
 
-  # Windows tests - sequential after Linux
+      - name: Upload Completion Signal
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: test-complete-linux
+          path: test-complete-linux.txt
+          retention-days: 1
+
+  # Windows tests - now parallel with Linux
   test-windows:
     name: Windows Tests
     runs-on: windows-latest
-    needs: test-linux
 
     steps:
       - name: Checkout
         uses: actions/checkout@v5
+
+      - name: Wait for and Download Tunnel URL
+        id: download-artifact
+        uses: actions/download-artifact@v4
+        with:
+          name: tunnel-url
+        continue-on-error: true
+
+      - name: Retry Download Tunnel URL
+        if: steps.download-artifact.outcome == 'failure'
+        run: |
+          MAX_WAIT=1500  # 25 minutes (Elite Services can take 20+ min to pull images)
+          ELAPSED=0
+
+          while [ $ELAPSED -lt $MAX_WAIT ]; do
+            MINUTES=$((ELAPSED / 60))
+            SECONDS=$((ELAPSED % 60))
+            echo "Waiting for tunnel URL artifact... (${MINUTES}m ${SECONDS}s elapsed)"
+
+            if gh run download ${{ github.run_id }} -n tunnel-url 2>/dev/null; then
+              echo "✓ Tunnel URL artifact downloaded after ${MINUTES}m ${SECONDS}s"
+              break
+            fi
+
+            sleep 10
+            ELAPSED=$((ELAPSED + 10))
+          done
+
+          if [ $ELAPSED -ge $MAX_WAIT ]; then
+            echo "::error::Timeout after ${MAX_WAIT}s waiting for backend to upload tunnel URL"
+            exit 1
+          fi
+        env:
+          GH_TOKEN: ${{ github.token }}
+        shell: bash
+
+      - name: Load Tunnel URL
+        id: tunnel
+        run: |
+          if [ ! -f tunnel-url.txt ]; then
+            echo "::error::Tunnel URL artifact not found after retry attempts"
+            exit 1
+          fi
+          TUNNEL_URL=$(cat tunnel-url.txt)
+          echo "url=$TUNNEL_URL" >> $GITHUB_OUTPUT
+          echo "Tunnel URL loaded: $TUNNEL_URL"
+        shell: bash
 
       # Setup headless display for GUI testing (tkinter, etc.)
       # Uses Mesa3D offscreen rendering to enable GUI tests on headless Windows runners
@@ -284,7 +475,7 @@ jobs:
         run: choco install rsync openssh -y
         shell: pwsh
 
-      # Python 3.8
+      # Python 3.8 - with integration tests
       - name: Setup Python 3.8
         uses: actions/setup-python@v6
         with:
@@ -292,8 +483,14 @@ jobs:
 
       - name: Run tests Python 3.8
         timeout-minutes: 20
-        run: ./scripts/ci-test-runner.sh windows-latest 3.8
+        run: ./scripts/ci-test-runner.sh windows-latest 3.8 true
         shell: bash
+        env:
+          SYSTEM_API_URL: ${{ steps.tunnel.outputs.url }}/api
+          SYSTEM_ADMIN_EMAIL: admin@rediacc.io
+          SYSTEM_ADMIN_PASSWORD: admin
+          REDIACC_TEST_ACTIVATION_CODE: "111111"
+          API_TIMEOUT: 60
 
       # Python 3.9
       - name: Setup Python 3.9
@@ -305,6 +502,12 @@ jobs:
         timeout-minutes: 20
         run: ./scripts/ci-test-runner.sh windows-latest 3.9
         shell: bash
+        env:
+          SYSTEM_API_URL: ${{ steps.tunnel.outputs.url }}/api
+          SYSTEM_ADMIN_EMAIL: admin@rediacc.io
+          SYSTEM_ADMIN_PASSWORD: admin
+          REDIACC_TEST_ACTIVATION_CODE: "111111"
+          API_TIMEOUT: 60
 
       # Python 3.10
       - name: Setup Python 3.10
@@ -316,6 +519,12 @@ jobs:
         timeout-minutes: 20
         run: ./scripts/ci-test-runner.sh windows-latest 3.10
         shell: bash
+        env:
+          SYSTEM_API_URL: ${{ steps.tunnel.outputs.url }}/api
+          SYSTEM_ADMIN_EMAIL: admin@rediacc.io
+          SYSTEM_ADMIN_PASSWORD: admin
+          REDIACC_TEST_ACTIVATION_CODE: "111111"
+          API_TIMEOUT: 60
 
       # Python 3.11
       - name: Setup Python 3.11
@@ -327,6 +536,12 @@ jobs:
         timeout-minutes: 20
         run: ./scripts/ci-test-runner.sh windows-latest 3.11
         shell: bash
+        env:
+          SYSTEM_API_URL: ${{ steps.tunnel.outputs.url }}/api
+          SYSTEM_ADMIN_EMAIL: admin@rediacc.io
+          SYSTEM_ADMIN_PASSWORD: admin
+          REDIACC_TEST_ACTIVATION_CODE: "111111"
+          API_TIMEOUT: 60
 
       # Python 3.12
       - name: Setup Python 3.12
@@ -338,6 +553,12 @@ jobs:
         timeout-minutes: 20
         run: ./scripts/ci-test-runner.sh windows-latest 3.12
         shell: bash
+        env:
+          SYSTEM_API_URL: ${{ steps.tunnel.outputs.url }}/api
+          SYSTEM_ADMIN_EMAIL: admin@rediacc.io
+          SYSTEM_ADMIN_PASSWORD: admin
+          REDIACC_TEST_ACTIVATION_CODE: "111111"
+          API_TIMEOUT: 60
 
       - name: Upload CI Outputs
         if: always()
@@ -356,20 +577,77 @@ jobs:
           retention-days: 30
           if-no-files-found: ignore
 
-  # macOS tests - sequential after Windows
+      - name: Signal Completion
+        if: always()
+        run: echo "done" > test-complete-windows.txt
+        shell: bash
+
+      - name: Upload Completion Signal
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: test-complete-windows
+          path: test-complete-windows.txt
+          retention-days: 1
+
+  # macOS tests - now parallel with Linux and Windows
   test-macos:
     name: macOS Tests
     runs-on: macos-latest
-    needs: test-windows
 
     steps:
       - name: Checkout
         uses: actions/checkout@v5
 
+      - name: Wait for and Download Tunnel URL
+        id: download-artifact
+        uses: actions/download-artifact@v4
+        with:
+          name: tunnel-url
+        continue-on-error: true
+
+      - name: Retry Download Tunnel URL
+        if: steps.download-artifact.outcome == 'failure'
+        run: |
+          MAX_WAIT=1500  # 25 minutes (Elite Services can take 20+ min to pull images)
+          ELAPSED=0
+
+          while [ $ELAPSED -lt $MAX_WAIT ]; do
+            MINUTES=$((ELAPSED / 60))
+            SECONDS=$((ELAPSED % 60))
+            echo "Waiting for tunnel URL artifact... (${MINUTES}m ${SECONDS}s elapsed)"
+
+            if gh run download ${{ github.run_id }} -n tunnel-url 2>/dev/null; then
+              echo "✓ Tunnel URL artifact downloaded after ${MINUTES}m ${SECONDS}s"
+              break
+            fi
+
+            sleep 10
+            ELAPSED=$((ELAPSED + 10))
+          done
+
+          if [ $ELAPSED -ge $MAX_WAIT ]; then
+            echo "::error::Timeout after ${MAX_WAIT}s waiting for backend to upload tunnel URL"
+            exit 1
+          fi
+        env:
+          GH_TOKEN: ${{ github.token }}
+
+      - name: Load Tunnel URL
+        id: tunnel
+        run: |
+          if [ ! -f tunnel-url.txt ]; then
+            echo "::error::Tunnel URL artifact not found after retry attempts"
+            exit 1
+          fi
+          TUNNEL_URL=$(cat tunnel-url.txt)
+          echo "url=$TUNNEL_URL" >> $GITHUB_OUTPUT
+          echo "Tunnel URL loaded: $TUNNEL_URL"
+
       - name: Install system dependencies
         run: brew install duti || true
 
-      # Python 3.8
+      # Python 3.8 - with integration tests
       - name: Setup Python 3.8
         uses: actions/setup-python@v6
         with:
@@ -377,7 +655,13 @@ jobs:
 
       - name: Run tests Python 3.8
         timeout-minutes: 20
-        run: ./scripts/ci-test-runner.sh macos-latest 3.8
+        run: ./scripts/ci-test-runner.sh macos-latest 3.8 true
+        env:
+          SYSTEM_API_URL: ${{ steps.tunnel.outputs.url }}/api
+          SYSTEM_ADMIN_EMAIL: admin@rediacc.io
+          SYSTEM_ADMIN_PASSWORD: admin
+          REDIACC_TEST_ACTIVATION_CODE: "111111"
+          API_TIMEOUT: 60
 
       # Python 3.9
       - name: Setup Python 3.9
@@ -388,6 +672,12 @@ jobs:
       - name: Run tests Python 3.9
         timeout-minutes: 20
         run: ./scripts/ci-test-runner.sh macos-latest 3.9
+        env:
+          SYSTEM_API_URL: ${{ steps.tunnel.outputs.url }}/api
+          SYSTEM_ADMIN_EMAIL: admin@rediacc.io
+          SYSTEM_ADMIN_PASSWORD: admin
+          REDIACC_TEST_ACTIVATION_CODE: "111111"
+          API_TIMEOUT: 60
 
       # Python 3.10
       - name: Setup Python 3.10
@@ -398,6 +688,12 @@ jobs:
       - name: Run tests Python 3.10
         timeout-minutes: 20
         run: ./scripts/ci-test-runner.sh macos-latest 3.10
+        env:
+          SYSTEM_API_URL: ${{ steps.tunnel.outputs.url }}/api
+          SYSTEM_ADMIN_EMAIL: admin@rediacc.io
+          SYSTEM_ADMIN_PASSWORD: admin
+          REDIACC_TEST_ACTIVATION_CODE: "111111"
+          API_TIMEOUT: 60
 
       # Python 3.11
       - name: Setup Python 3.11
@@ -408,6 +704,12 @@ jobs:
       - name: Run tests Python 3.11
         timeout-minutes: 20
         run: ./scripts/ci-test-runner.sh macos-latest 3.11
+        env:
+          SYSTEM_API_URL: ${{ steps.tunnel.outputs.url }}/api
+          SYSTEM_ADMIN_EMAIL: admin@rediacc.io
+          SYSTEM_ADMIN_PASSWORD: admin
+          REDIACC_TEST_ACTIVATION_CODE: "111111"
+          API_TIMEOUT: 60
 
       # Python 3.12
       - name: Setup Python 3.12
@@ -418,6 +720,12 @@ jobs:
       - name: Run tests Python 3.12
         timeout-minutes: 20
         run: ./scripts/ci-test-runner.sh macos-latest 3.12
+        env:
+          SYSTEM_API_URL: ${{ steps.tunnel.outputs.url }}/api
+          SYSTEM_ADMIN_EMAIL: admin@rediacc.io
+          SYSTEM_ADMIN_PASSWORD: admin
+          REDIACC_TEST_ACTIVATION_CODE: "111111"
+          API_TIMEOUT: 60
 
       - name: Upload CI Outputs
         if: always()
@@ -435,6 +743,18 @@ jobs:
           path: test-screenshots/
           retention-days: 30
           if-no-files-found: ignore
+
+      - name: Signal Completion
+        if: always()
+        run: echo "done" > test-complete-macos.txt
+
+      - name: Upload Completion Signal
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: test-complete-macos
+          path: test-complete-macos.txt
+          retention-days: 1
 
   # Code quality checks
   code-quality:
