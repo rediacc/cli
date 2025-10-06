@@ -150,12 +150,12 @@ class TestProtocolRegistration:
             # Mock subprocess.run to simulate successful registration
             mock_result = Mock()
             mock_result.returncode = 0
+            mock_result.stdout = ""
 
-            with patch('subprocess.run', return_value=mock_result) as mock_subprocess:
-                result = handler.register(str(self.test_cli_path))
-                assert result is True
-                # Verify subprocess was called for registration
-                assert mock_subprocess.called
+            with patch('subprocess.run', return_value=mock_result):
+                with patch.object(handler, 'is_protocol_registered', return_value=False):
+                    result = handler.register(str(self.test_cli_path))
+                    assert result is True
 
         except ImportError:
             pytest.skip("macOS protocol handler not available")

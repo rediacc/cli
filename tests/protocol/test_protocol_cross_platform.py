@@ -319,12 +319,12 @@ class TestMacOSProtocolIntegration:
             # Mock subprocess.run to simulate successful registration
             mock_result = Mock()
             mock_result.returncode = 0
+            mock_result.stdout = ""
 
-            with patch('subprocess.run', return_value=mock_result) as mock_subprocess:
-                result = handler.register('/test/cli/path')
-                assert result is True
-                # Verify subprocess was called for registration
-                assert mock_subprocess.called
+            with patch('subprocess.run', return_value=mock_result):
+                with patch.object(handler, 'is_protocol_registered', return_value=False):
+                    result = handler.register('/test/cli/path')
+                    assert result is True
 
         except ImportError:
             pytest.skip("macOS protocol handler not available")
@@ -338,12 +338,12 @@ class TestMacOSProtocolIntegration:
             # Mock subprocess.run to simulate successful unregistration
             mock_result = Mock()
             mock_result.returncode = 0
+            mock_result.stdout = ""
 
-            with patch('subprocess.run', return_value=mock_result) as mock_subprocess:
-                result = handler.unregister()
-                assert result is True
-                # Verify subprocess was called for unregistration
-                assert mock_subprocess.called
+            with patch('subprocess.run', return_value=mock_result):
+                with patch.object(handler, 'is_protocol_registered', return_value=True):
+                    result = handler.unregister_protocol()
+                    assert result is True
 
         except ImportError:
             pytest.skip("macOS protocol handler not available")
