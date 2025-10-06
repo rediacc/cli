@@ -95,14 +95,16 @@ class TestWindowsProtocolIntegration:
 
             with patch('cli.core.protocol_handler.is_windows', return_value=True):
                 with patch('subprocess.run', return_value=mock_result) as mock_subprocess:
-                    # Test registration
-                    result = handler.register(str(self.temp_dir / 'test_cli.exe'))
-                    assert result is True
+                    # Mock is_protocol_registered to return False so registration proceeds
+                    with patch.object(handler, 'is_protocol_registered', return_value=False):
+                        # Test registration
+                        result = handler.register(str(self.temp_dir / 'test_cli.exe'))
+                        assert result is True
 
-                    # Verify subprocess was called for registry operations
-                    assert mock_subprocess.called
-                    # Should be called 4 times for the 4 registry operations
-                    assert mock_subprocess.call_count >= 4
+                        # Verify subprocess was called for registry operations
+                        assert mock_subprocess.called
+                        # Should be called 4 times for the 4 registry operations
+                        assert mock_subprocess.call_count >= 4
 
         except ImportError:
             pytest.skip("Windows protocol handler not available")
@@ -119,10 +121,12 @@ class TestWindowsProtocolIntegration:
             mock_result.stderr = ""
 
             with patch('subprocess.run', return_value=mock_result) as mock_subprocess:
-                result = handler.unregister()
-                assert result is True
-                # Verify subprocess was called for registry deletion
-                assert mock_subprocess.called
+                # Mock is_protocol_registered to return True so unregistration proceeds
+                with patch.object(handler, 'is_protocol_registered', return_value=True):
+                    result = handler.unregister_protocol()
+                    assert result is True
+                    # Verify subprocess was called for registry deletion
+                    assert mock_subprocess.called
 
         except ImportError:
             pytest.skip("Windows protocol handler not available")
@@ -148,15 +152,21 @@ class TestWindowsProtocolIntegration:
         """Test detection of administrator privileges on Windows"""
         try:
             from cli.core.protocol_handler import WindowsProtocolHandler
-            handler = WindowsProtocolHandler()
+            handler = WindowsProtocolHandler(test_mode=True)
 
-            with patch('cli.core.protocol_handler.ctypes') as mock_ctypes:
-                mock_ctypes.windll.shell32.IsUserAnAdmin.return_value = 1
-                with patch.object(handler, '_has_admin_privileges') as mock_admin:
-                    mock_admin.return_value = True
-                    # Should detect admin privileges correctly
-                    result = handler.register('/test/path')
-                    # Registration attempt should be made regardless of result
+            # Mock subprocess.run for both admin check and registry operations
+            mock_result = Mock()
+            mock_result.returncode = 0
+            mock_result.stderr = ""
+
+            with patch('subprocess.run', return_value=mock_result) as mock_subprocess:
+                with patch.object(handler, 'is_protocol_registered', return_value=False):
+                    # Test that admin check works (returns True when subprocess succeeds)
+                    assert handler.check_admin_privileges() is True
+
+                    # Test registration with admin privileges
+                    result = handler.register_protocol(system_wide=False)
+                    assert result is True
 
         except ImportError:
             pytest.skip("Windows protocol handler not available")

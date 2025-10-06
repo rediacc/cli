@@ -361,7 +361,7 @@ class ProtocolUrlParser:
             # Check if token is in hostname (netloc) or path
             if parsed.netloc and len(path_parts) >= 2:
                 # Format 2: token in hostname, path has team/machine[/repository][/action]
-                token = parsed.netloc
+                token = parsed.netloc.replace('\n', '').replace('\r', '')
                 team = urllib.parse.unquote(path_parts[0])
                 machine = urllib.parse.unquote(path_parts[1])
 
@@ -384,7 +384,7 @@ class ProtocolUrlParser:
 
             elif len(path_parts) >= 3:
                 # Format 1: token/team/machine[/repository][/action] in path
-                token = urllib.parse.unquote(path_parts[0])
+                token = urllib.parse.unquote(path_parts[0]).replace('\n', '').replace('\r', '')
                 team = urllib.parse.unquote(path_parts[1])
                 machine = urllib.parse.unquote(path_parts[2])
 
