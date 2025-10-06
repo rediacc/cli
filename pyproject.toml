@@ -78,6 +78,7 @@ test = [
     "pytest-cov>=4.0",
     "pyyaml>=6.0",
     "playwright>=1.40.0",  # For protocol testing
+    "mss>=9.0.0",  # For cross-platform screenshots in CI
 ]
 
 [project.scripts]

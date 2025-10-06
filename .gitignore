@@ -135,3 +135,7 @@ bin/
 tests/test_results/
 cli_output.json
 raw_cli_output.json
+
+# CI artifacts
+test-screenshots/
+ci-outputs/
