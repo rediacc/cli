@@ -86,24 +86,23 @@ class TestWindowsProtocolIntegration:
         """Test Windows registry operations for protocol registration"""
         try:
             from cli.core.protocol_handler import WindowsProtocolHandler
-            handler = WindowsProtocolHandler()
+            handler = WindowsProtocolHandler(test_mode=True)
 
-            # Test with mock registry operations
+            # Mock subprocess.run to simulate successful registry operations
+            mock_result = Mock()
+            mock_result.returncode = 0
+            mock_result.stderr = ""
+
             with patch('cli.core.protocol_handler.is_windows', return_value=True):
-                with patch.object(handler, '_open_registry_key') as mock_open:
-                    with patch.object(handler, '_create_registry_key') as mock_create:
-                        with patch.object(handler, '_set_registry_value') as mock_set:
-                            mock_key = Mock()
-                            mock_open.return_value = mock_key
-                            mock_create.return_value = mock_key
+                with patch('subprocess.run', return_value=mock_result) as mock_subprocess:
+                    # Test registration
+                    result = handler.register(str(self.temp_dir / 'test_cli.exe'))
+                    assert result is True
 
-                            # Test registration
-                            result = handler.register(str(self.temp_dir / 'test_cli.exe'))
-                            assert result is True
-
-                            # Verify registry operations were called
-                            assert mock_create.called
-                            assert mock_set.called
+                    # Verify subprocess was called for registry operations
+                    assert mock_subprocess.called
+                    # Should be called 4 times for the 4 registry operations
+                    assert mock_subprocess.call_count >= 4
 
         except ImportError:
             pytest.skip("Windows protocol handler not available")
@@ -112,12 +111,18 @@ class TestWindowsProtocolIntegration:
         """Test Windows protocol unregistration"""
         try:
             from cli.core.protocol_handler import WindowsProtocolHandler
-            handler = WindowsProtocolHandler()
+            handler = WindowsProtocolHandler(test_mode=True)
 
-            with patch.object(handler, '_delete_registry_key') as mock_delete:
+            # Mock subprocess.run to simulate successful registry deletion
+            mock_result = Mock()
+            mock_result.returncode = 0
+            mock_result.stderr = ""
+
+            with patch('subprocess.run', return_value=mock_result) as mock_subprocess:
                 result = handler.unregister()
                 assert result is True
-                mock_delete.assert_called()
+                # Verify subprocess was called for registry deletion
+                assert mock_subprocess.called
 
         except ImportError:
             pytest.skip("Windows protocol handler not available")

@@ -84,20 +84,21 @@ class TestProtocolRegistration:
         """Test Windows protocol registration"""
         try:
             from cli.core.protocol_handler import WindowsProtocolHandler
-            handler = WindowsProtocolHandler()
+            handler = WindowsProtocolHandler(test_mode=True)
+
+            # Mock subprocess.run to simulate successful registry operations
+            mock_result = Mock()
+            mock_result.returncode = 0
+            mock_result.stderr = ""
 
             # Test registration with mock registry operations
             with patch('cli.core.protocol_handler.is_windows', return_value=True):
-                with patch.object(handler, '_create_registry_key') as mock_create:
-                    with patch.object(handler, '_set_registry_value') as mock_set:
-                        mock_create.return_value = Mock()
+                with patch('subprocess.run', return_value=mock_result) as mock_subprocess:
+                    result = handler.register(str(self.test_cli_path))
+                    assert result is True
 
-                        result = handler.register(str(self.test_cli_path))
-                        assert result is True
-
-                        # Verify registry operations were called
-                        assert mock_create.called
-                        assert mock_set.called
+                    # Verify subprocess was called for registry operations
+                    assert mock_subprocess.called
 
         except ImportError:
             pytest.skip("Windows protocol handler not available")
