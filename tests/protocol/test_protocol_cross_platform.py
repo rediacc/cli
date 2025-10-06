@@ -316,23 +316,15 @@ class TestMacOSProtocolIntegration:
             from cli.core.macos_protocol_handler import MacOSProtocolHandler
             handler = MacOSProtocolHandler()
 
-            # Mock Objective-C components
-            with patch('cli.core.macos_protocol_handler.objc') as mock_objc:
-                with patch('cli.core.macos_protocol_handler.AppKit') as mock_appkit:
-                    with patch('cli.core.macos_protocol_handler.CoreServices') as mock_core:
-                        # Mock bundle identifier
-                        mock_bundle = Mock()
-                        mock_bundle.bundleIdentifier.return_value = 'com.rediacc.cli'
-                        mock_appkit.NSBundle.mainBundle.return_value = mock_bundle
+            # Mock subprocess.run to simulate successful registration
+            mock_result = Mock()
+            mock_result.returncode = 0
 
-                        # Mock LSSetDefaultHandlerForURLScheme
-                        mock_core.LSSetDefaultHandlerForURLScheme.return_value = 0
-
-                        result = handler.register('/test/cli/path')
-                        assert result is True
-
-                        # Verify URL scheme registration was attempted
-                        mock_core.LSSetDefaultHandlerForURLScheme.assert_called()
+            with patch('subprocess.run', return_value=mock_result) as mock_subprocess:
+                result = handler.register('/test/cli/path')
+                assert result is True
+                # Verify subprocess was called for registration
+                assert mock_subprocess.called
 
         except ImportError:
             pytest.skip("macOS protocol handler not available")
@@ -343,12 +335,15 @@ class TestMacOSProtocolIntegration:
             from cli.core.macos_protocol_handler import MacOSProtocolHandler
             handler = MacOSProtocolHandler()
 
-            with patch('cli.core.macos_protocol_handler.objc') as mock_objc:
-                with patch('cli.core.macos_protocol_handler.CoreServices') as mock_core:
-                    mock_core.LSSetDefaultHandlerForURLScheme.return_value = 0
+            # Mock subprocess.run to simulate successful unregistration
+            mock_result = Mock()
+            mock_result.returncode = 0
 
-                    result = handler.unregister()
-                    assert result is True
+            with patch('subprocess.run', return_value=mock_result) as mock_subprocess:
+                result = handler.unregister()
+                assert result is True
+                # Verify subprocess was called for unregistration
+                assert mock_subprocess.called
 
         except ImportError:
             pytest.skip("macOS protocol handler not available")
@@ -357,17 +352,13 @@ class TestMacOSProtocolIntegration:
         """Test macOS application bundle handling"""
         try:
             from cli.core.macos_protocol_handler import MacOSProtocolHandler
+
+            # Test that handler can be instantiated successfully
             handler = MacOSProtocolHandler()
+            assert handler is not None
 
-            # Test bundle identifier generation
-            with patch('cli.core.macos_protocol_handler.AppKit') as mock_appkit:
-                mock_bundle = Mock()
-                mock_bundle.bundleIdentifier.return_value = None
-                mock_appkit.NSBundle.mainBundle.return_value = mock_bundle
-
-                # Should handle missing bundle identifier gracefully
-                bundle_id = handler._get_bundle_identifier()
-                assert bundle_id is not None
+            # Test that protocol scheme is set correctly
+            assert handler.PROTOCOL_SCHEME == "rediacc"
 
         except ImportError:
             pytest.skip("macOS protocol handler not available")
