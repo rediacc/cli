@@ -240,6 +240,15 @@ jobs:
       - name: Checkout
         uses: actions/checkout@v5
 
+      # Setup headless display for GUI testing (tkinter, etc.)
+      # Uses Mesa3D offscreen rendering to enable GUI tests on headless Windows runners
+      - name: Setup Headless Display
+        uses: pyvista/setup-headless-display-action@v3
+        with:
+          mesa3d-release: 24.3.0
+          install-mesa3d-offscreen: true
+          pyvista: false
+
       - name: Install system dependencies
         run: choco install rsync openssh -y
         shell: pwsh
