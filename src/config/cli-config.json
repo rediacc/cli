@@ -4796,6 +4796,10 @@
             }
           }
         }
+      },
+      "promote-repository-to-grand": {
+        "endpoint": "PromoteRepositoryToGrand",
+        "params": "lambda args: {'teamName': args.team, 'repoName': args.repo_name}"
       }
     },
     "team": {
