@@ -13,6 +13,7 @@ permissions:
   pull-requests: write
   checks: write
   actions: read  # Required for shared-backend to monitor test job status
+  packages: read  # Required for pulling Docker images from ghcr.io
 
 jobs:
   # Shared backend - provides Elite Services + Cloudflare Tunnel for all test platforms
@@ -31,8 +32,8 @@ jobs:
         with:
           keep-alive: 'true'
         env:
-          DOCKER_REGISTRY_USERNAME: ${{ secrets.DOCKER_REGISTRY_USERNAME }}
-          DOCKER_REGISTRY_PASSWORD: ${{ secrets.DOCKER_REGISTRY_PASSWORD }}
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          GITHUB_ACTOR: ${{ github.actor }}
 
       - name: Configure UDP Buffer Sizes
         run: |

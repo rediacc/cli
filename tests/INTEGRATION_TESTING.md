@@ -34,8 +34,8 @@ The workflow uses the [Elite GitHub Action](../../cloud/elite/action/):
 ```yaml
 - uses: ./monorepo/cloud/elite/action
   env:
-    DOCKER_REGISTRY_USERNAME: ${{ secrets.DOCKER_REGISTRY_USERNAME }}
-    DOCKER_REGISTRY_PASSWORD: ${{ secrets.DOCKER_REGISTRY_PASSWORD }}
+    GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+    GITHUB_ACTOR: ${{ github.actor }}
 ```
 
 This automatically:
