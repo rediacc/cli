@@ -168,14 +168,22 @@ Examples:
 - `0.2.1` - Bug fixes
 - `1.0.0` - First stable release
 
-### Pre-release Versions
+### Version Policy
 
-For alpha/beta releases:
-```python
-__version__ = "1.0.0a1"  # Alpha 1
-__version__ = "1.0.0b1"  # Beta 1
-__version__ = "1.0.0rc1" # Release Candidate 1
-```
+**Only pure semantic versioning is supported for releases.**
+
+Allowed formats:
+- `1.0.0` - Production releases
+- `0.1.5` - Development releases
+
+**Not allowed:**
+- `1.0.0-alpha`, `1.0.0-beta` - Pre-release suffixes not supported
+- `1.0.0+meta` - Build metadata not supported
+
+For testing pre-release features:
+- Use branch-based testing instead of version tags
+- Use manual workflow dispatch with version input
+- Create draft GitHub releases without publishing
 
 ## Configuration Files
 

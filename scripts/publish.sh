@@ -121,10 +121,11 @@ VERSION_TAG="v${VERSION_NORMALIZED}"
 
 log_info "Publishing Rediacc CLI version: $VERSION_NORMALIZED"
 
-# Validate version format (semantic versioning)
-if ! [[ "$VERSION_NORMALIZED" =~ ^[0-9]+\.[0-9]+\.[0-9]+(-[a-zA-Z0-9.-]+)?(\+[a-zA-Z0-9.-]+)?$ ]]; then
+# Validate version format (pure semantic versioning only)
+if ! [[ "$VERSION_NORMALIZED" =~ ^[0-9]+\.[0-9]+\.[0-9]+$ ]]; then
     log_error "Invalid version format: $VERSION_NORMALIZED"
-    log_error "Expected semantic version (e.g., 1.2.3 or 1.2.3-beta.1)"
+    log_error "Expected pure semantic version (e.g., 1.2.3)"
+    log_error "Pre-release and metadata suffixes are not supported"
     exit 1
 fi
 
