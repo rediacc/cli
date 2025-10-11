@@ -78,6 +78,22 @@ jobs:
           echo "tag_name=$TAG_NAME" >> $GITHUB_OUTPUT
           echo "Final tag: $TAG_NAME"
 
+      - name: Get commit SHA from tag
+        id: get-sha
+        run: |
+          COMMIT_SHA=$(git rev-parse ${{ steps.detect-tag.outputs.tag_name }}^{commit})
+          echo "commit_sha=$COMMIT_SHA" >> $GITHUB_OUTPUT
+          echo "Commit SHA: $COMMIT_SHA"
+
+      - name: Verify pre-built packages exist
+        uses: dawidd6/action-download-artifact@v3
+        with:
+          workflow: test-cli.yml
+          commit: ${{ steps.get-sha.outputs.commit_sha }}
+          name: python-packages-${{ steps.get-sha.outputs.commit_sha }}
+          path: dist-verify/
+          github_token: ${{ secrets.GITHUB_TOKEN }}
+
       - name: Set up Python
         uses: actions/setup-python@v5
         with:
@@ -88,37 +104,37 @@ jobs:
           python -m pip install --upgrade pip
           pip install build twine "packaging>=24.1"
 
-      - name: Publish package
-        env:
-          PYPI_TOKEN: ${{ secrets.PYPI_API_TOKEN }}
-          TESTPYPI_TOKEN: ${{ secrets.TESTPYPI_API_TOKEN }}
+      - name: Build with release version
         run: |
-          # Build publish command
-          CMD="./scripts/publish.sh"
+          # Clean any previous builds
+          rm -rf dist/ build/ *.egg-info src/*.egg-info
 
-          # Add version if specified
-          if [ -n "${{ inputs.version }}" ]; then
-            CMD="$CMD --version=${{ inputs.version }}"
-          fi
+          # Build with proper release version
+          TAG_NAME="${{ steps.detect-tag.outputs.tag_name }}"
+          VERSION_NORMALIZED="${TAG_NAME#v}"
 
-          # Add skip flags if requested
-          if [ "${{ inputs.skip-testpypi }}" = "true" ]; then
-            CMD="$CMD --skip-testpypi"
-          fi
+          python3 scripts/build-pypi.py "$VERSION_NORMALIZED"
 
-          if [ "${{ inputs.skip-pypi }}" = "true" ]; then
-            CMD="$CMD --skip-pypi"
-          fi
+      - name: Publish to TestPyPI
+        if: ${{ inputs.skip-testpypi != true }}
+        env:
+          TWINE_USERNAME: __token__
+          TWINE_PASSWORD: ${{ secrets.TESTPYPI_API_TOKEN }}
+        run: |
+          python3 -m twine upload --repository testpypi dist/*
 
-          # Add token arguments
-          CMD="$CMD --token-pypi=$PYPI_TOKEN --token-testpypi=$TESTPYPI_TOKEN"
+      - name: Publish to PyPI
+        if: ${{ inputs.skip-pypi != true }}
+        env:
+          TWINE_USERNAME: __token__
+          TWINE_PASSWORD: ${{ secrets.PYPI_API_TOKEN }}
+        run: |
+          python3 -m twine upload dist/*
 
-          # Generate release notes to file
-          CMD="$CMD --release-notes=RELEASE_NOTES.md"
-
-          # Execute publish script
-          echo "Running: $CMD"
-          eval "$CMD"
+      - name: Generate release notes
+        run: |
+          TAG_NAME="${{ steps.detect-tag.outputs.tag_name }}"
+          ./scripts/generate-release-notes.sh "$TAG_NAME" > RELEASE_NOTES.md
 
       - name: Upload distribution artifacts
         uses: actions/upload-artifact@v4
