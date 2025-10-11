@@ -553,56 +553,6 @@
           ]
         }
       },
-      "schedule": {
-        "endpoint": "CreateSchedule",
-        "params": "lambda args: {'teamName': args.team, 'scheduleName': args.schedule, 'scheduleVault': get_vault_data(args) or '{}'}",
-        "success_msg": "Successfully created schedule: {name} for team {team}",
-        "help": {
-          "description": "Create a scheduled task",
-          "details": "Schedules automatically create queue items at specified intervals. They support cron expressions, time zones, and can be configured to run specific functions on target machines.",
-          "parameters": {
-            "team": {
-              "description": "Team that will own this schedule",
-              "required": true,
-              "example": "ops-team"
-            },
-            "vault": {
-              "description": "JSON with schedule configuration (cron, function, target)",
-              "required": false,
-              "example": "{\"cron\": \"0 2 * * *\", \"timezone\": \"UTC\", \"function\": \"repo_push\", \"machine\": \"backup-01\", \"params\": {...}}"
-            },
-            "schedule": {
-              "description": "",
-              "required": true,
-              "example": "",
-              "type": "string"
-            }
-          },
-          "examples": [
-            {
-              "command": "rediacc create schedule ops-team daily-backup",
-              "description": "Create a basic schedule"
-            },
-            {
-              "command": "rediacc create schedule prod hourly-sync --vault '{\"cron\":\"0 * * * *\",\"function\":\"repo_pull\",\"machine\":\"sync-01\"}'",
-              "description": "Create hourly sync schedule"
-            }
-          ],
-          "notes": "Schedules require Premium or Elite subscription. Cron expressions follow standard format. Schedule execution creates queue items with configured priority.",
-          "rules": [
-            "Schedule name must be unique within the team",
-            "User must be a member of the specified team",
-            "Schedule vault data cannot be null or empty",
-            "Company must not have exceeded schedule resource limits",
-            "Schedules require Premium or Elite subscription plan",
-            "Team must exist within the user's company",
-            "Vault data must be valid JSON format",
-            "Resource limits depend on subscription plan",
-            "Schedule names are case-sensitive",
-            "Cron expressions must follow standard format"
-          ]
-        }
-      },
       "queue-item": {
         "endpoint": "CreateQueueItem",
         "params": "lambda args: {'teamName': args.team, 'machineName': args.machine, 'bridgeName': args.bridge, 'queueVault': get_vault_data(args) or '{}', 'priority': args.priority}",
@@ -1230,44 +1180,6 @@
           ]
         }
       },
-      "team-schedules": {
-        "endpoint": "GetTeamSchedules",
-        "params": "lambda args: {'teamName': args.team}",
-        "help": {
-          "description": "List scheduled tasks for a team",
-          "details": "Shows all scheduled tasks (cron jobs) configured for a team. Schedules automatically create queue items at specified intervals.",
-          "parameters": {
-            "team": {
-              "description": "Team name to list schedules from",
-              "required": true,
-              "example": "ops-team"
-            }
-          },
-          "examples": [
-            {
-              "command": "rediacc list team-schedules ops-team",
-              "description": "List all schedules in ops-team"
-            },
-            {
-              "command": "rediacc list team-schedules backup-team --output json",
-              "description": "Get schedule details in JSON format"
-            }
-          ],
-          "notes": "Requires Premium or Elite subscription. Shows cron expressions, target machines, and functions. You must be a team member.",
-          "rules": [
-            "User must be authenticated with valid token",
-            "Must be member of the team to view schedules",
-            "Teams must belong to user's company",
-            "Schedule viewing has no subscription limits",
-            "Creating schedules requires Premium/Elite subscription",
-            "Optional team filtering with comma-separated names",
-            "Shows schedule name, team, and encrypted configuration",
-            "Vault data includes cron expressions and parameters",
-            "Results sorted by team name then schedule name",
-            "Company encryption passphrase used for vault decryption"
-          ]
-        }
-      },
       "team-storages": {
         "endpoint": "GetTeamStorages",
         "params": "lambda args: {'teamName': args.team}",
@@ -1603,51 +1515,6 @@
             "Cloud storage data is not deleted, only the configuration",
             "Operation is permanent and cannot be undone",
             "Storage deletion is tracked in audit logs"
-          ]
-        }
-      },
-      "schedule": {
-        "endpoint": "DeleteSchedule",
-        "params": "lambda args: {'teamName': args.team, 'scheduleName': args.schedule}",
-        "confirm_msg": "Are you sure you want to delete schedule '{name}' from team '{team}'?",
-        "success_msg": "Successfully deleted schedule: {name}",
-        "help": {
-          "description": "Delete a schedule from the system",
-          "details": "Permanently removes a scheduled task. Any pending executions will be cancelled, but running tasks will complete. The schedule must be disabled before deletion.",
-          "parameters": {
-            "team": {
-              "help": "Team that owns the schedule",
-              "required": true
-            },
-            "schedule": {
-              "description": "",
-              "required": true,
-              "example": "",
-              "type": "string"
-            }
-          },
-          "examples": [
-            {
-              "command": "rediacc rm schedule nightly-backup --team ops",
-              "description": "Delete schedule with confirmation"
-            },
-            {
-              "command": "rediacc rm schedule old-sync --team dev --force",
-              "description": "Force delete without confirmation"
-            }
-          ],
-          "notes": "Disable schedule before deletion. Running tasks will complete. History is retained for audit. Requires Premium/Elite.",
-          "rules": [
-            "User must be authenticated to perform this operation",
-            "User must be a member of the specified team",
-            "Schedule must exist within the team",
-            "Schedule must be disabled before deletion",
-            "Cannot delete schedules with running queue items",
-            "All pending scheduled tasks will be cancelled",
-            "Schedule history is retained for audit purposes",
-            "Associated schedule vault data will be deleted",
-            "Operation is permanent and cannot be undone",
-            "Schedule deletion is tracked in audit logs"
           ]
         }
       },
@@ -2168,100 +2035,6 @@
             "Cloud storage credentials can be updated",
             "Connection strings and API keys must be valid",
             "Changes take effect on next backup operation",
-            "Vault update is tracked in audit logs"
-          ]
-        }
-      },
-      "schedule": {
-        "endpoint": "UpdateScheduleName",
-        "params": "lambda args: {'teamName': args.team, 'currentScheduleName': args.current_schedule_name, 'newScheduleName': args.new_name}",
-        "success_msg": "Successfully updated schedule name: {name} → {new_name}",
-        "help": {
-          "description": "Rename a scheduled task",
-          "details": "Changes the name of an existing schedule. The cron expression and task configuration remain unchanged.",
-          "parameters": {
-            "team": {
-              "description": "Team that owns the schedule",
-              "required": true,
-              "example": "ops-team"
-            },
-            "current_schedule_name": {
-              "description": "",
-              "required": true,
-              "example": ""
-            },
-            "new_name": {
-              "description": "New schedule name (unique within team)",
-              "required": true,
-              "example": "daily-backup"
-            }
-          },
-          "rules": [
-            "User must be authenticated to perform this operation",
-            "User must be a member of the specified team",
-            "Current schedule name must exist within the team",
-            "New schedule name must be unique within the team",
-            "New name must be between 1 and 50 characters",
-            "New name cannot be empty or only whitespace",
-            "Schedule timing and configuration remain unchanged",
-            "Schedule enabled/disabled state is preserved",
-            "Execution history is maintained",
-            "Name change is tracked in audit logs"
-          ]
-        }
-      },
-      "schedule-vault": {
-        "endpoint": "UpdateScheduleVault",
-        "params": "lambda args: {'teamName': args.team, 'scheduleName': args.schedule, 'scheduleVault': get_vault_data(args) or '{}', 'vaultVersion': args.vault_version}",
-        "success_msg": "Successfully updated schedule vault: {name}",
-        "help": {
-          "description": "Update schedule configuration",
-          "details": "Updates the encrypted vault containing schedule settings including cron expression, target machine, function, and parameters.",
-          "parameters": {
-            "team": {
-              "description": "Team that owns the schedule",
-              "required": true,
-              "example": "ops-team"
-            },
-            "vault": {
-              "description": "JSON with schedule configuration",
-              "required": false,
-              "example": "{\"cron\": \"0 2 * * *\", \"function\": \"repo_push\", \"machine\": \"backup-01\", \"params\": {...}}"
-            },
-            "schedule": {
-              "description": "",
-              "required": true,
-              "example": "",
-              "type": "string"
-            },
-            "vault_version": {
-              "description": "",
-              "required": false,
-              "example": "",
-              "type": "string"
-            }
-          },
-          "examples": [
-            {
-              "command": "rediacc update schedule-vault ops backup --vault '{\"cron\":\"0 3 * * *\"}'",
-              "description": "Change schedule time to 3 AM"
-            },
-            {
-              "command": "rediacc update schedule-vault prod sync --vault-file new-schedule.json",
-              "description": "Update complete schedule config"
-            }
-          ],
-          "notes": "Requires Premium or Elite subscription. Changes take effect at next scheduled run. Use standard cron format.",
-          "rules": [
-            "User must be authenticated to perform this operation",
-            "User must be a member of the specified team",
-            "Schedule must exist within the team",
-            "Vault data must be valid JSON format",
-            "Vault data is encrypted before storage",
-            "Maximum vault size is 64KB after encryption",
-            "Schedule timing, repositories, and actions can be updated",
-            "Cron expressions must be valid if included",
-            "Changes take effect on next schedule evaluation",
             "Vault update is tracked in audit logs"
           ]
         }
@@ -4799,7 +4572,23 @@
       },
       "promote-repository-to-grand": {
         "endpoint": "PromoteRepositoryToGrand",
-        "params": "lambda args: {'teamName': args.team, 'repoName': args.repo_name}"
+        "params": "lambda args: {'teamName': args.team, 'repoName': args.repo_name}",
+        "help": {
+          "parameters": {
+            "team": {
+              "description": "",
+              "required": true,
+              "example": "",
+              "type": "string"
+            },
+            "repo_name": {
+              "description": "",
+              "required": true,
+              "example": "",
+              "type": "string"
+            }
+          }
+        }
       }
     },
     "team": {
