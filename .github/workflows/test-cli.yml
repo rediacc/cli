@@ -5,6 +5,8 @@ on:
   # (tests run once on PR, not again after merge to main)
   pull_request:
     branches: [ main, develop ]
+  push:
+    branches: [ main ]  # Build packages when merging to main
   workflow_dispatch:  # Allow manual triggers for emergency testing
 
 # Set permissions for GITHUB_TOKEN
@@ -742,3 +744,43 @@ jobs:
           fi
 
           echo "✓ All tests passed!"
+
+  # Build distribution packages after merge to main
+  build-packages:
+    name: Build Distribution Packages
+    runs-on: ubuntu-latest
+    if: github.event_name == 'push' && github.ref == 'refs/heads/main'
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v5
+        with:
+          fetch-depth: 0  # Need full history for version detection
+
+      - name: Set up Python
+        uses: actions/setup-python@v6
+        with:
+          python-version: '3.12'
+
+      - name: Install build dependencies
+        run: |
+          python -m pip install --upgrade pip
+          pip install build twine "packaging>=24.1"
+
+      - name: Build packages
+        run: |
+          # Build uses development version from git describe
+          python -m build
+
+          # Verify packages were created
+          ls -lah dist/
+
+          # Check packages
+          python -m twine check dist/*
+
+      - name: Upload distribution packages
+        uses: actions/upload-artifact@v4
+        with:
+          name: python-packages-${{ github.sha }}
+          path: dist/
+          retention-days: 90
