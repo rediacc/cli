@@ -16,7 +16,7 @@ from typing import Dict, Any, Optional, List, Tuple
 from pathlib import Path
 
 from .shared import is_windows
-from .config import get_logger
+from .config import get_logger, get_config_file
 
 logger = get_logger(__name__)
 
@@ -557,6 +557,45 @@ def handle_protocol_url(url: str, is_protocol_call: bool = False) -> int:
         parsed = parser.parse_url(url)
 
         logger.debug(f"Parsed URL components: {parsed}")
+
+        # Extract and set API URL if provided in query parameters
+        api_url = parsed.get('params', {}).get('apiUrl')
+        if api_url:
+            try:
+                import json
+                from pathlib import Path
+
+                # Get config file path
+                config_file = get_config_file('config.json')
+
+                # Load existing config
+                config_data = {}
+                if config_file.exists():
+                    with open(config_file, 'r') as f:
+                        try:
+                            config_data = json.load(f)
+                        except json.JSONDecodeError:
+                            logger.warning("Failed to parse existing config file, will create new one")
+                            config_data = {}
+
+                # Update API URL in config
+                config_data['api_url'] = api_url
+
+                # Save updated config
+                with open(config_file, 'w') as f:
+                    json.dump(config_data, f, indent=2)
+
+                # Also set environment variable for current session
+                os.environ['SYSTEM_API_URL'] = api_url
+
+                logger.info(f"Updated API URL from protocol: {api_url}")
+            except Exception as e:
+                logger.error(f"Failed to set API URL from protocol: {e}")
+                if is_protocol_call:
+                    display_protocol_error_with_wait(f"Failed to configure API URL: {e}")
+                    return 1
+        else:
+            logger.debug("No apiUrl parameter in protocol URL, using configured API URL")
 
         cmd_args = parser.build_cli_command(parsed)
         logger.info(f"Executing command: {cmd_args}")
