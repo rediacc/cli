@@ -15,85 +15,115 @@ import hashlib
 import time
 import logging
 from pathlib import Path
-from typing import Dict, Any, Optional
+from typing import Dict, Any
 
 # Setup logging for debugging
-logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(levelname)s - %(message)s')
+logging.basicConfig(level=logging.INFO, format="%(asctime)s - %(levelname)s - %(message)s")
 logger = logging.getLogger(__name__)
+
 
 def get_setup_state_file() -> Path:
     """Get the path to the setup state file"""
     if platform.system().lower() == "windows":
         # Windows: use AppData/Local
-        state_dir = Path(os.environ.get('LOCALAPPDATA', Path.home() / 'AppData' / 'Local')) / 'rediacc'
+        state_dir = Path(os.environ.get("LOCALAPPDATA", Path.home() / "AppData" / "Local")) / "rediacc"
     else:
         # Unix: use XDG_CONFIG_HOME or ~/.config
-        config_home = os.environ.get('XDG_CONFIG_HOME', Path.home() / '.config')
-        state_dir = Path(config_home) / 'rediacc'
-    
+        config_home = os.environ.get("XDG_CONFIG_HOME", Path.home() / ".config")
+        state_dir = Path(config_home) / "rediacc"
+
     state_dir.mkdir(parents=True, exist_ok=True)
-    return state_dir / 'setup_state.json'
+    return state_dir / "setup_state.json"
+
 
 def load_setup_state() -> Dict[str, Any]:
     """Load the current setup state"""
     state_file = get_setup_state_file()
     if not state_file.exists():
         return {
-            'version': '1.0',
-            'last_setup': None,
-            'path_configured': False,
-            'protocol_registered': False,
-            'dependencies_checked': False,
-            'setup_hash': None,
-            'executable_path': None,
-            'scripts_directory': None,
-            'failures': []
+            "version": "1.0",
+            "last_setup": None,
+            "path_configured": False,
+            "protocol_registered": False,
+            "dependencies_checked": False,
+            "setup_hash": None,
+            "executable_path": None,
+            "scripts_directory": None,
+            "failures": [],
         }
-    
+
     try:
-        with open(state_file, 'r', encoding='utf-8') as f:
-            return json.load(f)
+        with open(state_file, "r", encoding="utf-8") as f:
+            data = json.load(f)
+            if isinstance(data, dict):
+                return data
+            else:
+                logger.warning("Setup state file contains invalid format, resetting...")
+                return {
+                    "version": "1.0",
+                    "last_setup": None,
+                    "path_configured": False,
+                    "protocol_registered": False,
+                    "dependencies_checked": False,
+                    "setup_hash": None,
+                    "executable_path": None,
+                    "scripts_directory": None,
+                    "failures": [],
+                }
     except (json.JSONDecodeError, IOError):
         logger.warning("Invalid setup state file, resetting...")
-        return load_setup_state()  # Return default state
+        return {
+            "version": "1.0",
+            "last_setup": None,
+            "path_configured": False,
+            "protocol_registered": False,
+            "dependencies_checked": False,
+            "setup_hash": None,
+            "executable_path": None,
+            "scripts_directory": None,
+            "failures": [],
+        }
+
 
 def save_setup_state(state: Dict[str, Any]):
     """Save the current setup state"""
-    state['last_setup'] = time.time()
+    state["last_setup"] = time.time()
     state_file = get_setup_state_file()
     try:
-        with open(state_file, 'w', encoding='utf-8') as f:
+        with open(state_file, "w", encoding="utf-8") as f:
             json.dump(state, f, indent=2)
     except IOError as e:
         logger.error(f"Failed to save setup state: {e}")
+
 
 def get_current_setup_hash() -> str:
     """Generate a hash of current installation state for change detection"""
     python_exe = sys.executable
     package_location = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
-    
+
     # Include key installation details
     data = {
-        'python_executable': python_exe,
-        'package_location': package_location,
-        'platform': platform.platform(),
-        'python_version': sys.version,
+        "python_executable": python_exe,
+        "package_location": package_location,
+        "platform": platform.platform(),
+        "python_version": sys.version,
     }
-    
+
     # Add Scripts directory for Windows
     if platform.system().lower() == "windows":
         scripts_dir = get_scripts_directory()
         if scripts_dir:
-            data['scripts_directory'] = str(scripts_dir)
-    
+            data["scripts_directory"] = str(scripts_dir)
+
     hash_str = json.dumps(data, sort_keys=True)
     return hashlib.sha256(hash_str.encode()).hexdigest()
+
 
 def detect_windows_store_python() -> bool:
     """Detect if this is Windows Store Python installation"""
     python_exe = sys.executable
-    return ("Microsoft\\WindowsApps" in python_exe or 
-            "Packages\\PythonSoftwareFoundation" in python_exe)
+    return "Microsoft\\WindowsApps" in python_exe or "Packages\\PythonSoftwareFoundation" in python_exe
+
 
 def get_scripts_directory() -> Path:
     """
@@ -102,12 +132,12 @@ def get_scripts_directory() -> Path:
     """
     python_exe = Path(sys.executable)
     python_dir = python_exe.parent
-    
+
     # For traditional Python installations
     scripts_dir = python_dir / "Scripts"
     if scripts_dir.exists():
         return scripts_dir
-    
+
     # For Windows Store Python installations
     if detect_windows_store_python():
         # Path structure: ...\PythonSoftwareFoundation.Python.X.Y_...\LocalCache\local-packages\PythonXYZ\Scripts
@@ -121,13 +151,13 @@ def get_scripts_directory() -> Path:
                     if scripts_dir.exists():
                         return scripts_dir
             current_path = current_path.parent
-    
+
     # Fallback: try to use pip to locate
     try:
-        result = subprocess.run([
-            sys.executable, "-m", "pip", "show", "-f", "rediacc"
-        ], capture_output=True, text=True, timeout=10)
-        
+        result = subprocess.run(
+            [sys.executable, "-m", "pip", "show", "-f", "rediacc"], capture_output=True, text=True, timeout=10
+        )
+
         if result.returncode == 0:
             for line in result.stdout.splitlines():
                 if line.strip().startswith("Location:"):
@@ -138,34 +168,32 @@ def get_scripts_directory() -> Path:
                         return scripts_dir
     except (subprocess.TimeoutExpired, FileNotFoundError, Exception):
         pass
-    
+
     return None
+
 
 def check_passwordless_sudo() -> bool:
     """Check if sudo is available without password prompt.
-    
+
     Returns:
         bool: True if passwordless sudo is available, False otherwise
     """
     try:
         # Use sudo -n (non-interactive) to test if sudo works without password
-        result = subprocess.run(
-            ["sudo", "-n", "true"],
-            capture_output=True,
-            timeout=5
-        )
+        result = subprocess.run(["sudo", "-n", "true"], capture_output=True, timeout=5)
         return result.returncode == 0
     except (subprocess.CalledProcessError, FileNotFoundError, subprocess.TimeoutExpired):
         return False
+
 
 def is_directory_in_path(directory: Path) -> bool:
     """Check if a directory is in the current PATH"""
     if not directory or not directory.exists():
         return False
-    
+
     path_env = os.environ.get("PATH", "")
     path_dirs = [Path(p) for p in path_env.split(os.pathsep) if p.strip()]
-    
+
     try:
         # Resolve to handle symlinks and relative paths
         resolved_dir = directory.resolve()
@@ -183,8 +211,9 @@ def is_directory_in_path(directory: Path) -> bool:
         for path_dir in path_dirs:
             if str(path_dir).lower() == directory_str:
                 return True
-    
+
     return False
+
 
 def add_to_user_path_windows(directory: Path) -> bool:
     """
@@ -193,14 +222,13 @@ def add_to_user_path_windows(directory: Path) -> bool:
     """
     if not directory.exists():
         return False
-    
+
     try:
         # Query current user PATH
-        result = subprocess.run([
-            "reg", "query", "HKEY_CURRENT_USER\\Environment",
-            "/v", "PATH"
-        ], capture_output=True, text=True, timeout=10)
-        
+        result = subprocess.run(
+            ["reg", "query", "HKEY_CURRENT_USER\\Environment", "/v", "PATH"], capture_output=True, text=True, timeout=10
+        )
+
         current_path = ""
         if result.returncode == 0:
             # Parse the output to extract current PATH
@@ -214,37 +242,36 @@ def add_to_user_path_windows(directory: Path) -> bool:
                         if len(parts) > 1:
                             current_path = parts[1].strip()
                     break
-        
+
         # Check if directory is already in PATH
         if current_path:
             path_parts = [p.strip() for p in current_path.split(";") if p.strip()]
             directory_str = str(directory)
             if any(p.lower() == directory_str.lower() for p in path_parts):
                 return True  # Already in PATH
-        
+
         # Add to PATH
         new_path = f"{current_path};{directory}" if current_path else str(directory)
-        
+
         # Update user PATH in registry
-        result = subprocess.run([
-            "reg", "add", "HKEY_CURRENT_USER\\Environment",
-            "/v", "PATH",
-            "/t", "REG_EXPAND_SZ",
-            "/d", new_path,
-            "/f"
-        ], capture_output=True, text=True, timeout=30)
-        
+        result = subprocess.run(
+            ["reg", "add", "HKEY_CURRENT_USER\\Environment", "/v", "PATH", "/t", "REG_EXPAND_SZ", "/d", new_path, "/f"],
+            capture_output=True,
+            text=True,
+            timeout=30,
+        )
+
         if result.returncode == 0:
             # Notify system of environment change
             try:
                 import ctypes
                 from ctypes import wintypes
-                
+
                 # Broadcast WM_SETTINGCHANGE to notify system
                 HWND_BROADCAST = 0xFFFF
                 WM_SETTINGCHANGE = 0x1A
                 SMTO_ABORTIFHUNG = 0x0002
-                
+
                 result = ctypes.windll.user32.SendMessageTimeoutW(
                     HWND_BROADCAST,
                     WM_SETTINGCHANGE,
@@ -252,9 +279,9 @@ def add_to_user_path_windows(directory: Path) -> bool:
                     "Environment",
                     SMTO_ABORTIFHUNG,
                     5000,  # 5 second timeout
-                    ctypes.byref(wintypes.DWORD())
+                    ctypes.byref(wintypes.DWORD()),
                 )
-                
+
                 print(f"Successfully added {directory} to user PATH")
                 print("Note: You may need to restart your terminal or applications to see the PATH changes")
                 return True
@@ -266,10 +293,11 @@ def add_to_user_path_windows(directory: Path) -> bool:
         else:
             print(f"Failed to add directory to PATH: {result.stderr}")
             return False
-            
+
     except (subprocess.TimeoutExpired, FileNotFoundError) as e:
         print(f"Failed to modify PATH: {e}")
         return False
+
 
 def ensure_scripts_in_path():
     """
@@ -278,31 +306,31 @@ def ensure_scripts_in_path():
     """
     if platform.system().lower() != "windows":
         return  # Not Windows, PATH management not needed
-    
+
     scripts_dir = get_scripts_directory()
     if not scripts_dir:
         print("WARNING: Could not locate Python Scripts directory")
         return
-    
+
     # Check if rediacc.exe exists in scripts directory
     rediacc_exe = scripts_dir / "rediacc.exe"
     if not rediacc_exe.exists():
         print("WARNING: rediacc.exe not found in Scripts directory")
         return
-    
+
     # Check if already in PATH
     if is_directory_in_path(scripts_dir):
         print(f"Scripts directory is already in PATH: {scripts_dir}")
         return
-    
+
     # Check if rediacc is accessible via PATH (maybe through a different directory)
     rediacc_in_path = shutil.which("rediacc")
     if rediacc_in_path:
         print(f"rediacc is already accessible via PATH: {rediacc_in_path}")
         return
-    
+
     print(f"Adding Scripts directory to PATH: {scripts_dir}")
-    
+
     # Try to add to user PATH
     if add_to_user_path_windows(scripts_dir):
         print("Successfully configured PATH for rediacc access")
@@ -310,7 +338,8 @@ def ensure_scripts_in_path():
         print("Failed to automatically add Scripts directory to PATH")
         print(f"You can manually add this directory to your PATH: {scripts_dir}")
         print("Or run rediacc using the full path:")
-        print(f"  \"{rediacc_exe}\" --help")
+        print(f'  "{rediacc_exe}" --help')
+
 
 def get_executable_directory_unix() -> Path:
     """
@@ -319,51 +348,57 @@ def get_executable_directory_unix() -> Path:
     """
     python_exe = Path(sys.executable)
     python_dir = python_exe.parent
-    
+
     # Try to find rediacc executable using similar logic to protocol handlers
     try:
         import shutil
+
         rediacc_path = shutil.which("rediacc")
         if rediacc_path:
             return Path(rediacc_path).parent
     except Exception:
         pass
-    
+
     # Common Unix installation patterns
     possible_locations = [
         python_dir,  # Same directory as python
         python_dir.parent / "bin",  # Standard Unix layout
         Path.home() / ".local" / "bin",  # User installation
     ]
-    
+
     # Add system locations
     if platform.system().lower() == "darwin":  # macOS
-        possible_locations.extend([
-            Path("/usr/local/bin"),  # Homebrew installation
-            Path("/opt/homebrew/bin"),  # Homebrew on Apple Silicon
-        ])
+        possible_locations.extend(
+            [
+                Path("/usr/local/bin"),  # Homebrew installation
+                Path("/opt/homebrew/bin"),  # Homebrew on Apple Silicon
+            ]
+        )
     else:  # Linux
-        possible_locations.extend([
-            Path("/usr/local/bin"),  # System-wide installation
-            Path("/usr/bin"),  # System installation
-        ])
-    
+        possible_locations.extend(
+            [
+                Path("/usr/local/bin"),  # System-wide installation
+                Path("/usr/bin"),  # System installation
+            ]
+        )
+
     # Check for rediacc executable in these locations
     for location in possible_locations:
         rediacc_exe = location / "rediacc"
         if rediacc_exe.exists() and rediacc_exe.is_file():
             return location
-    
+
     return None
+
 
 def is_directory_in_path_unix(directory: Path) -> bool:
     """Check if a directory is in the current PATH on Unix systems"""
     if not directory or not directory.exists():
         return False
-    
+
     path_env = os.environ.get("PATH", "")
     path_dirs = [Path(p) for p in path_env.split(os.pathsep) if p.strip()]
-    
+
     try:
         # Resolve to handle symlinks and relative paths
         resolved_dir = directory.resolve()
@@ -381,8 +416,9 @@ def is_directory_in_path_unix(directory: Path) -> bool:
         for path_dir in path_dirs:
             if str(path_dir) == directory_str:
                 return True
-    
+
     return False
+
 
 def add_to_shell_profile_unix(directory: Path) -> bool:
     """
@@ -391,35 +427,35 @@ def add_to_shell_profile_unix(directory: Path) -> bool:
     """
     if not directory.exists():
         return False
-    
+
     try:
         # Determine which shell profiles to update
         shell_profiles = []
         home = Path.home()
-        
+
         # Common shell profile files
         possible_profiles = [
             home / ".bashrc",
-            home / ".bash_profile", 
+            home / ".bash_profile",
             home / ".zshrc",
             home / ".profile",
         ]
-        
+
         # Find existing profiles or create default ones
         for profile in possible_profiles:
             if profile.exists():
                 shell_profiles.append(profile)
-        
+
         # If no profiles exist, create .bashrc and .zshrc for broad compatibility
         if not shell_profiles:
             shell_profiles = [home / ".bashrc", home / ".zshrc"]
-        
+
         success = False
         for profile in shell_profiles:
             try:
                 # Check if PATH export already exists in the file
                 path_line = f'export PATH="{directory}:$PATH"'
-                
+
                 if profile.exists():
                     content = profile.read_text()
                     # Check if this directory is already in PATH in this file
@@ -427,30 +463,34 @@ def add_to_shell_profile_unix(directory: Path) -> bool:
                         continue  # Already added
                 else:
                     content = ""
-                
+
                 # Add the PATH export
                 if content and not content.endswith("\n"):
                     content += "\n"
                 content += f"\n# Added by rediacc installation\n{path_line}\n"
-                
+
                 # Write the updated content
                 profile.write_text(content)
                 print(f"Added {directory} to PATH in {profile}")
                 success = True
-                
+
             except Exception as e:
                 print(f"Failed to update {profile}: {e}")
                 continue
-        
+
         if success:
-            print("Note: You may need to restart your terminal or run 'source ~/.bashrc' (or ~/.zshrc) to see the PATH changes")
+            print(
+                "Note: You may need to restart your terminal or run 'source ~/.bashrc' "
+                "(or ~/.zshrc) to see the PATH changes"
+            )
             return True
         else:
             return False
-            
+
     except Exception as e:
         print(f"Failed to modify shell profiles: {e}")
         return False
+
 
 def ensure_executable_in_path_unix():
     """
@@ -460,35 +500,36 @@ def ensure_executable_in_path_unix():
     system = platform.system().lower()
     if system not in ["linux", "darwin"]:
         return  # Not Unix, PATH management not needed
-    
+
     exec_dir = get_executable_directory_unix()
     if not exec_dir:
         print("WARNING: Could not locate rediacc executable directory")
         return
-    
+
     # Check if rediacc.exe exists in executable directory
     rediacc_exe = exec_dir / "rediacc"
     if not rediacc_exe.exists():
         print("WARNING: rediacc executable not found")
         return
-    
+
     # Check if already in PATH
     if is_directory_in_path_unix(exec_dir):
         print(f"Executable directory is already in PATH: {exec_dir}")
         return
-    
+
     # Check if rediacc is accessible via PATH (maybe through a different directory)
     try:
         import shutil
+
         rediacc_in_path = shutil.which("rediacc")
         if rediacc_in_path:
             print(f"rediacc is already accessible via PATH: {rediacc_in_path}")
             return
     except Exception:
         pass
-    
+
     print(f"Adding executable directory to PATH: {exec_dir}")
-    
+
     # Try to add to shell profiles
     if add_to_shell_profile_unix(exec_dir):
         print("Successfully configured PATH for rediacc access")
@@ -500,24 +541,26 @@ def ensure_executable_in_path_unix():
         print("Or run rediacc using the full path:")
         print(f"  {rediacc_exe} --help")
 
+
 def ensure_dependencies_installed():
     """Ensure required dependencies are available for protocol registration"""
     system = platform.system().lower()
-    
+
     if system == "linux":
         # Check for xdg-utils and offer to install if missing
         try:
             import subprocess
+
             result = subprocess.run(["which", "xdg-mime"], capture_output=True, timeout=5)
             if result.returncode != 0:
                 print("INFO: xdg-utils not found")
-                
+
                 # Check if we can install automatically (has passwordless sudo access)
                 can_install = check_passwordless_sudo()
-                
+
                 if can_install:
                     print("Attempting automatic installation of xdg-utils...")
-                    
+
                     # Try different package managers
                     package_managers = [
                         (["sudo", "apt", "update"], ["sudo", "apt", "install", "-y", "xdg-utils"]),  # Debian/Ubuntu
@@ -526,7 +569,7 @@ def ensure_dependencies_installed():
                         (["sudo", "pacman", "-S", "--noconfirm", "xdg-utils"],),  # Arch
                         (["sudo", "zypper", "install", "-y", "xdg-utils"],),  # openSUSE
                     ]
-                    
+
                     for commands in package_managers:
                         try:
                             if len(commands) == 2:  # Has update command
@@ -538,11 +581,11 @@ def ensure_dependencies_installed():
                             return True
                         except (subprocess.CalledProcessError, FileNotFoundError, subprocess.TimeoutExpired):
                             continue
-                    
+
                     print("Could not automatically install xdg-utils.")
                 else:
                     print("No sudo access for automatic installation.")
-                
+
                 print("Please install xdg-utils manually:")
                 print("  Ubuntu/Debian: sudo apt install xdg-utils")
                 print("  Fedora/RHEL: sudo dnf install xdg-utils")
@@ -552,11 +595,12 @@ def ensure_dependencies_installed():
                 return False
         except Exception:
             pass
-    
+
     elif system == "darwin":
         # Check for duti and offer installation guidance
         try:
             import subprocess
+
             result = subprocess.run(["which", "duti"], capture_output=True, timeout=5)
             if result.returncode != 0:
                 print("INFO: duti not found. For enhanced protocol support, install it:")
@@ -564,17 +608,14 @@ def ensure_dependencies_installed():
                 print("\nProtocol registration will proceed using Launch Services...")
         except Exception:
             pass
-    
+
     return True
+
 
 def attempt_protocol_registration_with_fallbacks(system: str) -> bool:
     """Attempt protocol registration with various fallback strategies"""
     try:
-        from cli.core.protocol_handler import (
-            get_platform_handler,
-            is_protocol_supported,
-            ProtocolHandlerError
-        )
+        from cli.core.protocol_handler import get_platform_handler, is_protocol_supported
 
         if not is_protocol_supported():
             print(f"Protocol registration is not supported on {system}")
@@ -599,7 +640,7 @@ def attempt_protocol_registration_with_fallbacks(system: str) -> bool:
             print(f"User-level registration failed: {e}")
 
         # For Windows, try system-wide registration if user has admin privileges
-        if system == 'windows':
+        if system == "windows":
             try:
                 if handler.check_admin_privileges():
                     print("Attempting system-wide protocol registration...")
@@ -625,14 +666,16 @@ def attempt_protocol_registration_with_fallbacks(system: str) -> bool:
         print(f"Protocol registration error: {e}")
         return False
 
+
 def print_browser_restart_note(system: str):
     """Print platform-specific browser restart instructions"""
-    if system == 'linux':
+    if system == "linux":
         print("Note: You may need to restart your browser to enable rediacc:// URL support")
-    elif system == 'darwin':
+    elif system == "darwin":
         print("Note: You may need to restart your browser to enable rediacc:// URL support")
-    elif system == 'windows':
+    elif system == "windows":
         print("Note: Restart your browser to enable rediacc:// URL support")
+
 
 def run_post_install_hook(force: bool = False) -> bool:
     """
@@ -640,147 +683,150 @@ def run_post_install_hook(force: bool = False) -> bool:
     Fully idempotent and handles updates/changes gracefully.
     """
     system = platform.system().lower()
-    
+
     # Skip virtual environments unless forced
-    is_venv = hasattr(sys, 'real_prefix') or (hasattr(sys, 'base_prefix') and sys.base_prefix != sys.prefix)
+    is_venv = hasattr(sys, "real_prefix") or (hasattr(sys, "base_prefix") and sys.base_prefix != sys.prefix)
     if is_venv and not force:
         logger.info("Detected virtual environment - skipping automatic setup")
-        logger.info("To setup manually, run: python -c \"from cli.setup_hooks import run_post_install_hook; run_post_install_hook(force=True)\"")
+        logger.info(
+            'To setup manually, run: python -c "from cli.setup_hooks import run_post_install_hook; '
+            'run_post_install_hook(force=True)"'
+        )
         return True
-    
+
     logger.info(f"Setting up rediacc for {system.capitalize()}...")
-    
+
     # Load current state
     state = load_setup_state()
     current_hash = get_current_setup_hash()
-    
+
     # Check if we need to run setup
     needs_setup = (
-        force or
-        not state.get('last_setup') or
-        state.get('setup_hash') != current_hash or
-        state.get('failures')  # Retry if there were previous failures
+        force
+        or not state.get("last_setup")
+        or state.get("setup_hash") != current_hash
+        or state.get("failures")  # Retry if there were previous failures
     )
-    
-    if not needs_setup and state.get('path_configured') and state.get('protocol_registered'):
+
+    if not needs_setup and state.get("path_configured") and state.get("protocol_registered"):
         logger.info("Setup is current, no changes needed")
         return True
-    
+
     # Clear previous failures for this run
-    state['failures'] = []
-    state['setup_hash'] = current_hash
-    
+    state["failures"] = []
+    state["setup_hash"] = current_hash
+
     # Run setup tasks with enhanced logic
     results = {
-        'path_setup': _ensure_path_setup_enhanced(state, system),
-        'dependencies': _check_dependencies_enhanced(state, system),
-        'protocol': _ensure_protocol_registration_enhanced(state, system),
+        "path_setup": _ensure_path_setup_enhanced(state, system),
+        "dependencies": _check_dependencies_enhanced(state, system),
+        "protocol": _ensure_protocol_registration_enhanced(state, system),
     }
-    
+
     # Save state
     save_setup_state(state)
-    
+
     # Print summary
-    print("\n" + "="*50)
+    print("\n" + "=" * 50)
     print("REDIACC SETUP SUMMARY")
-    print("="*50)
-    
+    print("=" * 50)
+
     for task, success in results.items():
         status = "✅ Success" if success else "❌ Failed"
         print(f"{task.replace('_', ' ').title()}: {status}")
-    
-    if state.get('failures'):
+
+    if state.get("failures"):
         print("\nFailures:")
-        for failure in state['failures']:
+        for failure in state["failures"]:
             print(f"  - {failure}")
-    
+
     # Check final status
-    rediacc_accessible = shutil.which('rediacc')
+    rediacc_accessible = shutil.which("rediacc")
     if rediacc_accessible:
-        print(f"\n🎉 rediacc is ready to use!")
+        print("\n🎉 rediacc is ready to use!")
         print(f"Executable: {rediacc_accessible}")
         print("Try: rediacc --help")
     else:
-        print(f"\n⚠️  Setup completed with issues")
+        print("\n⚠️  Setup completed with issues")
         print("You may need to restart your terminal or run:")
-        print(f"  python -m cli.commands.cli_main --help")
-    
+        print("  python -m cli.commands.cli_main --help")
+
     return all(results.values())
+
 
 def _ensure_path_setup_enhanced(state: Dict[str, Any], system: str) -> bool:
     """Enhanced PATH setup with state tracking"""
     current_hash = get_current_setup_hash()
-    needs_update = (
-        not state.get('path_configured') or
-        state.get('setup_hash') != current_hash
-    )
-    
+    needs_update = not state.get("path_configured") or state.get("setup_hash") != current_hash
+
     if system == "windows":
         scripts_dir = get_scripts_directory()
         if not scripts_dir:
-            state['failures'].append("Could not locate Scripts directory")
+            state["failures"].append("Could not locate Scripts directory")
             return False
-        
-        state['scripts_directory'] = str(scripts_dir)
-        
+
+        state["scripts_directory"] = str(scripts_dir)
+
         # Check if rediacc.exe exists
         rediacc_exe = scripts_dir / "rediacc.exe"
         if not rediacc_exe.exists():
-            state['failures'].append("rediacc.exe not found in Scripts directory")
+            state["failures"].append("rediacc.exe not found in Scripts directory")
             return False
-        
+
         # Check if already accessible
         if shutil.which("rediacc") and not needs_update:
-            state['path_configured'] = True
-            state['executable_path'] = shutil.which("rediacc")
+            state["path_configured"] = True
+            state["executable_path"] = shutil.which("rediacc")
             return True
-        
+
         # Add to PATH if needed
         if needs_update or not is_directory_in_path(scripts_dir):
             success = add_to_user_path_windows(scripts_dir)
-            state['path_configured'] = success
+            state["path_configured"] = success
             if not success:
-                state['failures'].append("Failed to add Scripts directory to PATH")
+                state["failures"].append("Failed to add Scripts directory to PATH")
             return success
+        return True
     else:
         # Unix systems - use existing logic with state tracking
         try:
             ensure_executable_in_path_unix()
-            state['path_configured'] = bool(shutil.which("rediacc"))
-            if state['path_configured']:
-                state['executable_path'] = shutil.which("rediacc")
-            return state['path_configured']
+            state["path_configured"] = bool(shutil.which("rediacc"))
+            if state["path_configured"]:
+                state["executable_path"] = shutil.which("rediacc")
+            return bool(state["path_configured"])
         except Exception as e:
-            state['failures'].append(f"Unix PATH setup failed: {e}")
+            state["failures"].append(f"Unix PATH setup failed: {e}")
             return False
+
 
 def _check_dependencies_enhanced(state: Dict[str, Any], system: str) -> bool:
     """Enhanced dependency checking with state tracking"""
     current_hash = get_current_setup_hash()
-    if state.get('dependencies_checked') and state.get('setup_hash') == current_hash:
+    if state.get("dependencies_checked") and state.get("setup_hash") == current_hash:
         return True
-    
+
     try:
         dependencies_ok = ensure_dependencies_installed()
-        state['dependencies_checked'] = dependencies_ok
-        return dependencies_ok
+        state["dependencies_checked"] = dependencies_ok
+        return bool(dependencies_ok)
     except Exception as e:
-        state['failures'].append(f"Dependency check failed: {e}")
+        state["failures"].append(f"Dependency check failed: {e}")
         return False
+
 
 def _ensure_protocol_registration_enhanced(state: Dict[str, Any], system: str) -> bool:
     """Enhanced protocol registration with state tracking"""
-    current_hash = get_current_setup_hash()
-    
     try:
         protocol_success = attempt_protocol_registration_with_fallbacks(system)
-        state['protocol_registered'] = protocol_success
+        state["protocol_registered"] = protocol_success
         if not protocol_success:
-            state['failures'].append("Protocol registration failed")
+            state["failures"].append("Protocol registration failed")
         return protocol_success
     except Exception as e:
-        state['failures'].append(f"Protocol registration error: {e}")
+        state["failures"].append(f"Protocol registration error: {e}")
         return False
+
 
 # Legacy function for compatibility
 def post_install():
@@ -791,29 +837,25 @@ def post_install():
 def post_update():
     """Post-update hook - re-register protocol with updated executable paths"""
     system = platform.system().lower()
-    
+
     print(f"Updating rediacc configuration for {system.capitalize()}...")
-    
+
     # Skip if we're in a virtual environment
-    if hasattr(sys, 'real_prefix') or (hasattr(sys, 'base_prefix') and sys.base_prefix != sys.prefix):
+    if hasattr(sys, "real_prefix") or (hasattr(sys, "base_prefix") and sys.base_prefix != sys.prefix):
         print("Detected virtual environment - skipping automatic protocol update")
         print("To update protocol manually, run: rediacc protocol register --force")
         return
-    
+
     # Re-register protocol with force flag to update executable paths
     try:
-        from cli.core.protocol_handler import (
-            get_platform_handler,
-            is_protocol_supported,
-            ProtocolHandlerError
-        )
+        from cli.core.protocol_handler import get_platform_handler, is_protocol_supported, ProtocolHandlerError
 
         if not is_protocol_supported():
             print(f"Protocol registration is not supported on {system}")
             return
 
         handler = get_platform_handler()
-        
+
         # Force re-registration to update executable paths
         print("Updating rediacc:// protocol registration...")
         success = handler.register_protocol(force=True, system_wide=False)
@@ -833,6 +875,7 @@ def post_update():
         print(f"Unexpected error during protocol update: {e}")
         print("You can update it manually by running: rediacc protocol register --force")
 
+
 def pre_uninstall():
     """Pre-uninstall hook - attempt to unregister protocol on all platforms"""
     system = platform.system().lower()
@@ -841,11 +884,7 @@ def pre_uninstall():
 
     try:
         # Import the cross-platform protocol handler
-        from cli.core.protocol_handler import (
-            get_platform_handler,
-            is_protocol_supported,
-            ProtocolHandlerError
-        )
+        from cli.core.protocol_handler import get_platform_handler, is_protocol_supported, ProtocolHandlerError
 
         if not is_protocol_supported():
             print(f"Protocol registration not supported on {system} - skipping cleanup")
@@ -859,23 +898,23 @@ def pre_uninstall():
             return  # Nothing to unregister
 
         print("Found rediacc:// protocol registration - cleaning up...")
-        
+
         # Attempt unregistration (try both user and system level)
         user_success = False
         system_success = False
-        
+
         try:
             user_success = handler.unregister_protocol(system_wide=False)
         except Exception as e:
             print(f"User-level unregistration failed: {e}")
-        
+
         # Try system-wide unregistration if we have admin privileges
-        if system == 'windows' and handler.check_admin_privileges():
+        if system == "windows" and handler.check_admin_privileges():
             try:
                 system_success = handler.unregister_protocol(system_wide=True)
             except Exception as e:
                 print(f"System-wide unregistration failed: {e}")
-        
+
         if user_success or system_success:
             print("Successfully unregistered rediacc:// protocol")
         else:
@@ -887,14 +926,15 @@ def pre_uninstall():
         pass
     except ProtocolHandlerError as e:
         print(f"Protocol unregistration failed: {e}")
-    except Exception as e:
+    except Exception:
         # Don't fail uninstall due to protocol cleanup issues
         pass
+
 
 if __name__ == "__main__":
     if len(sys.argv) > 1:
         hook = sys.argv[1]
-        force_flag = '--force' in sys.argv
+        force_flag = "--force" in sys.argv
         if hook == "post_install":
             success = run_post_install_hook(force=force_flag)
             sys.exit(0 if success else 1)
@@ -912,9 +952,9 @@ if __name__ == "__main__":
             print(f"  Protocol registered: {state.get('protocol_registered', False)}")
             print(f"  Dependencies checked: {state.get('dependencies_checked', False)}")
             print(f"  Executable accessible: {bool(shutil.which('rediacc'))}")
-            if state.get('failures'):
+            if state.get("failures"):
                 print(f"  Previous failures: {len(state['failures'])}")
-                for failure in state['failures']:
+                for failure in state["failures"]:
                     print(f"    - {failure}")
             sys.exit(0)
         else:
