@@ -41,11 +41,26 @@ jobs:
         run: |
           python -m pip install -e ".[dev]"
 
+      - name: Provide mypy CI config
+        run: |
+          python - <<'PY'
+          import pathlib
+          cfg = pathlib.Path('.github')
+          cfg.mkdir(parents=True, exist_ok=True)
+          (cfg / 'mypy-ci.ini').write_text('''[mypy]
+          python_version = 3.9
+          ignore_missing_imports = True
+          no_strict_optional = True
+          follow_imports = skip
+          warn_unused_configs = False
+          ''', encoding='utf-8')
+          print('Wrote .github/mypy-ci.ini')
+          PY
+
       - name: Type check (targeted)
         run: |
-          # Limit scope and skip following imports to avoid repo-wide failures
-          python -m mypy src/cli/setup_hooks.py src/cli/__init__.py src/cli/_setup_cmds.py \
-            --ignore-missing-imports --no-strict-optional --follow-imports=skip --python-version=3.9
+          python -m mypy --config-file .github/mypy-ci.ini \
+            src/cli/setup_hooks.py src/cli/__init__.py src/cli/_setup_cmds.py
 
       - name: Lint (targeted)
         run: |
@@ -55,10 +70,23 @@ jobs:
       - name: Build sdist and wheel
         run: |
           python -m build
-          ls -la dist || dir dist
+          python - <<'PY'
+          from pathlib import Path
+          d=Path('dist')
+          print('dist contents:')
+          for p in sorted(d.glob('*')):
+              print(' -', p)
+          PY
 
       - name: Install built wheel (overwrite editable) and smoke test CLI
         run: |
-          python -m pip install --force-reinstall --no-deps dist/*.whl
-          # Run via module to avoid PATH-specific differences across OS shells
-          python -m cli.commands.cli_main --help
+          python - <<'PY'
+          import glob, subprocess, sys
+          files = glob.glob('dist/*.whl')
+          if not files:
+              raise SystemExit('No wheel found in dist/')
+          wheel = files[0]
+          print('Installing wheel:', wheel)
+          subprocess.check_call([sys.executable, '-m', 'pip', 'install', '--force-reinstall', '--no-deps', wheel])
+          subprocess.check_call([sys.executable, '-m', 'cli.commands.cli_main', '--help'])
+          PY
