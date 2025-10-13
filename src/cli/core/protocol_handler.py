@@ -131,9 +131,27 @@ class WindowsProtocolHandler:
     def get_rediacc_executable_path(self) -> Optional[str]:
         """
         Get the path to the rediacc.exe executable.
-        Works for both traditional Python installs and Windows Store Python.
+        Prioritizes local development source over pip-installed package for testing.
         """
         try:
+            # Method 0: Check if we're in a development environment first
+            # Go up from src/cli/core to get to the CLI root directory
+            cli_root = Path(__file__).parent.parent.parent.parent
+            
+            # Check for local development wrapper scripts
+            local_wrappers = [
+                cli_root / "rediacc.bat",
+                cli_root / "rediacc.py",
+                cli_root / "rediacc"  # Unix wrapper
+            ]
+            
+            for wrapper in local_wrappers:
+                if wrapper.exists():
+                    logger.debug(f"Found local development wrapper: {wrapper}")
+                    # For dev environments, we'll use Python + script method in get_protocol_command
+                    # Return None here to trigger the fallback path
+                    return None
+            
             # Method 1: Try to find rediacc.exe in Scripts directory relative to current Python
             python_exe = sys.executable
             python_dir = Path(python_exe).parent
@@ -246,39 +264,54 @@ class WindowsProtocolHandler:
         return str(current_dir / "commands" / "cli_main.py")
     
     def get_protocol_command(self) -> str:
-        """Get the command string for protocol handling"""
-        # Try to get the rediacc.exe path first (preferred method)
-        rediacc_exe = self.get_rediacc_executable_path()
+        """Get the command string for protocol handling
         
+        Prioritizes local development scripts for testing, then falls back to installed package.
+        """
+        python_exe = self.get_python_executable()
+        
+        # Method 1: Check for local development environment first
+        cli_root = Path(__file__).parent.parent.parent.parent
+        
+        # Priority order for local development
+        local_options = [
+            # Batch wrapper (Windows dev)
+            (cli_root / "rediacc.bat", lambda p: f'"{p}" protocol-handler "%1"'),
+            # Python wrapper (cross-platform dev)
+            (cli_root / "rediacc.py", lambda p: f'"{python_exe}" "{p}" protocol-handler "%1"'),
+            # Unix wrapper (WSL/Linux dev)
+            (cli_root / "rediacc", lambda p: f'"{p}" protocol-handler "%1"'),
+            # Direct CLI script (fallback for dev)
+            (cli_root / "src" / "cli" / "commands" / "cli_main.py", 
+             lambda p: f'"{python_exe}" "{p}" protocol-handler "%1"')
+        ]
+        
+        for script_path, command_builder in local_options:
+            if script_path.exists():
+                logger.info(f"Using local development script for protocol: {script_path}")
+                return command_builder(script_path)
+        
+        # Method 2: Try to get the installed rediacc.exe (pip package)
+        rediacc_exe = self.get_rediacc_executable_path()
         if rediacc_exe:
-            # Use the rediacc.exe directly for protocol handling
+            logger.info(f"Using installed rediacc.exe for protocol: {rediacc_exe}")
             return f'"{rediacc_exe}" protocol-handler "%1"'
-        else:
-            # Fallback to Python + script method (original behavior)
-            logger.warning("Could not locate rediacc.exe, falling back to Python script method")
-            python_exe = self.get_python_executable()
-            
-            # Find the wrapper script (rediacc.py)
-            # Go up from src/cli/core to get to the CLI root directory
-            cli_dir = Path(__file__).parent.parent.parent.parent
-            wrapper_script = cli_dir / "rediacc.py"
+        
+        # Method 3: Try installed package wrapper scripts
+        try:
+            import cli
+            cli_package_dir = Path(cli.__file__).parent.parent
+            wrapper_script = cli_package_dir / "rediacc.py"
             
             if wrapper_script.exists():
-                # Always use the wrapper script for consistency
+                logger.info(f"Using installed wrapper script for protocol: {wrapper_script}")
                 return f'"{python_exe}" "{wrapper_script}" protocol-handler "%1"'
-            else:
-                # If wrapper doesn't exist, try to find it relative to the installed package
-                # This handles cases where the package is installed via pip
-                import cli
-                cli_package_dir = Path(cli.__file__).parent.parent
-                wrapper_script = cli_package_dir / "rediacc.py"
-                
-                if wrapper_script.exists():
-                    return f'"{python_exe}" "{wrapper_script}" protocol-handler "%1"'
-                else:
-                    # Last resort: assume rediacc.py is in the current working directory
-                    # or accessible via PATH
-                    return f'"{python_exe}" rediacc.py protocol-handler "%1"'
+        except ImportError:
+            pass
+        
+        # Method 4: Last resort - module invocation
+        logger.warning("Using module invocation as last resort for protocol handler")
+        return f'"{python_exe}" -m cli.commands.cli_main protocol-handler "%1"'
     
     def check_admin_privileges(self) -> bool:
         """Check if running with administrator privileges"""
