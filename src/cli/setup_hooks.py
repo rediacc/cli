@@ -406,6 +406,144 @@ def ensure_executable_in_path_unix():
         print("Or run rediacc using the full path:")
         print(f"  {rediacc_exe} --help")
 
+def ensure_dependencies_installed():
+    """Ensure required dependencies are available for protocol registration"""
+    system = platform.system().lower()
+    
+    if system == "linux":
+        # Check for xdg-utils and offer to install if missing
+        try:
+            import subprocess
+            result = subprocess.run(["which", "xdg-mime"], capture_output=True, timeout=5)
+            if result.returncode != 0:
+                print("INFO: xdg-utils not found")
+                
+                # Check if we can install automatically (has sudo/root access)
+                try:
+                    can_install = subprocess.run(["sudo", "-n", "true"], 
+                                                capture_output=True, timeout=5).returncode == 0
+                except (subprocess.CalledProcessError, FileNotFoundError, subprocess.TimeoutExpired):
+                    can_install = False
+                
+                if can_install:
+                    print("Attempting automatic installation of xdg-utils...")
+                    
+                    # Try different package managers
+                    package_managers = [
+                        (["sudo", "apt", "update"], ["sudo", "apt", "install", "-y", "xdg-utils"]),  # Debian/Ubuntu
+                        (["sudo", "dnf", "install", "-y", "xdg-utils"],),  # Fedora/RHEL
+                        (["sudo", "yum", "install", "-y", "xdg-utils"],),  # Older RHEL/CentOS
+                        (["sudo", "pacman", "-S", "--noconfirm", "xdg-utils"],),  # Arch
+                        (["sudo", "zypper", "install", "-y", "xdg-utils"],),  # openSUSE
+                    ]
+                    
+                    for commands in package_managers:
+                        try:
+                            if len(commands) == 2:  # Has update command
+                                subprocess.run(commands[0], check=True, timeout=60, capture_output=True)
+                                subprocess.run(commands[1], check=True, timeout=60, capture_output=True)
+                            else:
+                                subprocess.run(commands[0], check=True, timeout=60, capture_output=True)
+                            print("Successfully installed xdg-utils")
+                            return True
+                        except (subprocess.CalledProcessError, FileNotFoundError, subprocess.TimeoutExpired):
+                            continue
+                    
+                    print("Could not automatically install xdg-utils.")
+                else:
+                    print("No sudo access for automatic installation.")
+                
+                print("Please install xdg-utils manually:")
+                print("  Ubuntu/Debian: sudo apt install xdg-utils")
+                print("  Fedora/RHEL: sudo dnf install xdg-utils")
+                print("  Arch: sudo pacman -S xdg-utils")
+                print("  openSUSE: sudo zypper install xdg-utils")
+                print("\nAfter installation, run: rediacc protocol register")
+                return False
+        except Exception:
+            pass
+    
+    elif system == "darwin":
+        # Check for duti and offer installation guidance
+        try:
+            import subprocess
+            result = subprocess.run(["which", "duti"], capture_output=True, timeout=5)
+            if result.returncode != 0:
+                print("INFO: duti not found. For enhanced protocol support, install it:")
+                print("  brew install duti")
+                print("\nProtocol registration will proceed using Launch Services...")
+        except Exception:
+            pass
+    
+    return True
+
+def attempt_protocol_registration_with_fallbacks(system: str) -> bool:
+    """Attempt protocol registration with various fallback strategies"""
+    try:
+        from cli.core.protocol_handler import (
+            get_platform_handler,
+            is_protocol_supported,
+            ProtocolHandlerError
+        )
+
+        if not is_protocol_supported():
+            print(f"Protocol registration is not supported on {system}")
+            return False
+
+        handler = get_platform_handler()
+
+        # Check if already registered
+        if handler.is_protocol_registered():
+            print("rediacc:// protocol is already registered")
+            return True
+
+        # Try user-level registration first (works without admin privileges)
+        try:
+            print("Attempting user-level protocol registration...")
+            success = handler.register_protocol(force=False, system_wide=False)
+            if success:
+                print("Successfully registered rediacc:// protocol (user-level)")
+                print_browser_restart_note(system)
+                return True
+        except Exception as e:
+            print(f"User-level registration failed: {e}")
+
+        # For Windows, try system-wide registration if user has admin privileges
+        if system == 'windows':
+            try:
+                if handler.check_admin_privileges():
+                    print("Attempting system-wide protocol registration...")
+                    success = handler.register_protocol(force=False, system_wide=True)
+                    if success:
+                        print("Successfully registered rediacc:// protocol (system-wide)")
+                        print_browser_restart_note(system)
+                        return True
+                else:
+                    print("User-level registration failed and no admin privileges for system-wide registration")
+                    print("To register manually with admin privileges, run:")
+                    print("  rediacc protocol register")
+                    return False
+            except Exception as e:
+                print(f"System-wide registration failed: {e}")
+
+        return False
+
+    except ImportError as e:
+        print(f"Protocol handler not available: {e}")
+        return False
+    except Exception as e:
+        print(f"Protocol registration error: {e}")
+        return False
+
+def print_browser_restart_note(system: str):
+    """Print platform-specific browser restart instructions"""
+    if system == 'linux':
+        print("Note: You may need to restart your browser to enable rediacc:// URL support")
+    elif system == 'darwin':
+        print("Note: You may need to restart your browser to enable rediacc:// URL support")
+    elif system == 'windows':
+        print("Note: Restart your browser to enable rediacc:// URL support")
+
 def post_install():
     """Post-install hook - attempt to register protocol on all platforms"""
     system = platform.system().lower()
@@ -416,17 +554,72 @@ def post_install():
         print("To register protocol manually, run: rediacc protocol register")
         return
 
-    # Ensure executable is in PATH for all platforms
+    print(f"Setting up rediacc for {system.capitalize()}...")
+
+    # Step 1: Ensure executable is in PATH for all platforms
+    path_setup_success = False
     try:
         if system == "windows":
             ensure_scripts_in_path()
         else:
             ensure_executable_in_path_unix()
+        path_setup_success = True
     except Exception as e:
         print(f"Warning: Failed to setup PATH: {e}")
 
+    # Step 2: Ensure dependencies are available
+    dependencies_ok = ensure_dependencies_installed()
+
+    # Step 3: Attempt protocol registration with enhanced logic
+    if dependencies_ok:
+        protocol_success = attempt_protocol_registration_with_fallbacks(system)
+        
+        if not protocol_success:
+            print("\nAutomatic protocol registration failed, but you can register manually:")
+            print("  rediacc protocol register")
+    else:
+        print("\nSkipping automatic protocol registration due to missing dependencies.")
+        print("After installing dependencies, register manually:")
+        print("  rediacc protocol register")
+
+    # Step 4: Summary
+    print("\n" + "="*50)
+    print("INSTALLATION SUMMARY")
+    print("="*50)
+    print(f"✅ PATH setup: {'Success' if path_setup_success else 'Failed (manual setup required)'}")
+    print(f"✅ Dependencies: {'Available' if dependencies_ok else 'Missing (install required)'}")
+    
+    # Check final protocol status
     try:
-        # Import the cross-platform protocol handler
+        from cli.core.protocol_handler import get_platform_handler, is_protocol_supported
+        if is_protocol_supported():
+            handler = get_platform_handler()
+            is_registered = handler.is_protocol_registered()
+            print(f"✅ Protocol registration: {'Active' if is_registered else 'Manual setup required'}")
+    except Exception:
+        print("✅ Protocol registration: Status unknown")
+    
+    print("\nrediacc is ready to use!")
+    if path_setup_success:
+        print("Try: rediacc --help")
+    else:
+        print("Try: python -m cli.commands.cli_main --help")
+
+
+def post_update():
+    """Post-update hook - re-register protocol with updated executable paths"""
+    system = platform.system().lower()
+    
+    print(f"Updating rediacc configuration for {system.capitalize()}...")
+    
+    # Skip if we're in a virtual environment
+    if hasattr(sys, 'real_prefix') or (hasattr(sys, 'base_prefix') and sys.base_prefix != sys.prefix):
+        print("Detected virtual environment - skipping automatic protocol update")
+        print("To update protocol manually, run: rediacc protocol register --force")
+        return
+    
+    # Re-register protocol with force flag to update executable paths
+    try:
         from cli.core.protocol_handler import (
             get_platform_handler,
             is_protocol_supported,
@@ -438,59 +631,25 @@ def post_install():
             return
 
         handler = get_platform_handler()
-
-        # Platform-specific privilege checks
-        if system == 'windows':
-            if not handler.check_admin_privileges():
-                print("WARNING: Administrator privileges required for automatic protocol registration")
-                print("To register protocol manually with admin privileges, run:")
-                print("  rediacc protocol register")
-                return
-        elif system == 'linux':
-            # Check for xdg-utils on Linux
-            if not handler.check_xdg_utils_available():
-                print("WARNING: xdg-utils package required for protocol registration")
-                print("Install it with:")
-                print("  Ubuntu/Debian: sudo apt install xdg-utils")
-                print("  Fedora/RHEL: sudo dnf install xdg-utils")
-                print("  Arch: sudo pacman -S xdg-utils")
-                print("\nThen register manually: rediacc protocol register")
-                return
-        elif system == 'darwin':  # macOS
-            # macOS registration can work without duti, but better with it
-            if not handler.check_duti_available():
-                print("INFO: For enhanced protocol support, install duti:")
-                print("  brew install duti")
-                print("\nProtocol registration will proceed using Launch Services...")
-
-        # Check if already registered
-        if handler.is_protocol_registered():
-            print("rediacc:// protocol is already registered")
-            return
-
-        # Attempt registration (user-level)
-        success = handler.register_protocol(force=False, system_wide=False)
+        
+        # Force re-registration to update executable paths
+        print("Updating rediacc:// protocol registration...")
+        success = handler.register_protocol(force=True, system_wide=False)
         if success:
-            print("Successfully registered rediacc:// protocol for browser integration")
-            if system == 'linux':
-                print("Note: You may need to restart your browser to enable rediacc:// URL support")
-            elif system == 'darwin':
-                print("Note: You may need to restart your browser to enable rediacc:// URL support")
-            elif system == 'windows':
-                print("Note: Restart your browser to enable rediacc:// URL support")
+            print("Successfully updated rediacc:// protocol registration")
+            print_browser_restart_note(system)
         else:
-            print("Failed to register rediacc:// protocol")
-            print("You can register it manually by running: rediacc protocol register")
+            print("Failed to update rediacc:// protocol registration")
+            print("You can update it manually by running: rediacc protocol register --force")
 
     except ImportError as e:
         print(f"Protocol handler not available: {e}")
-        print("This is normal for development installs")
     except ProtocolHandlerError as e:
-        print(f"Protocol registration failed: {e}")
-        print("You can register it manually by running: rediacc protocol register")
+        print(f"Protocol update failed: {e}")
+        print("You can update it manually by running: rediacc protocol register --force")
     except Exception as e:
-        print(f"Unexpected error during protocol registration: {e}")
-        print("You can register it manually by running: rediacc protocol register")
+        print(f"Unexpected error during protocol update: {e}")
+        print("You can update it manually by running: rediacc protocol register --force")
 
 def pre_uninstall():
     """Pre-uninstall hook - attempt to unregister protocol on all platforms"""
@@ -513,21 +672,29 @@ def pre_uninstall():
         if not handler.is_protocol_registered():
             return  # Nothing to unregister
 
-        # Platform-specific privilege checks
-        if system == 'windows':
-            if not handler.check_admin_privileges():
-                print("WARNING: Administrator privileges required for automatic protocol unregistration")
-                print("To unregister protocol manually with admin privileges, run:")
-                print("  rediacc protocol unregister")
-                return
-
-        # Attempt unregistration (user-level)
-        success = handler.unregister_protocol(system_wide=False)
-        if success:
+        print("Cleaning up rediacc:// protocol registration...")
+        
+        # Attempt unregistration (try both user and system level)
+        user_success = False
+        system_success = False
+        
+        try:
+            user_success = handler.unregister_protocol(system_wide=False)
+        except Exception as e:
+            print(f"User-level unregistration failed: {e}")
+        
+        # Try system-wide unregistration if we have admin privileges
+        if system == 'windows' and handler.check_admin_privileges():
+            try:
+                system_success = handler.unregister_protocol(system_wide=True)
+            except Exception as e:
+                print(f"System-wide unregistration failed: {e}")
+        
+        if user_success or system_success:
             print("Successfully unregistered rediacc:// protocol")
         else:
-            print("Failed to unregister rediacc:// protocol")
-            print("You may need to unregister it manually: rediacc protocol unregister")
+            print("Protocol unregistration may have failed")
+            print("You may need to unregister manually: rediacc protocol unregister")
 
     except ImportError:
         # This is expected during uninstall as modules may not be available
@@ -540,13 +707,21 @@ def pre_uninstall():
 
 if __name__ == "__main__":
     if len(sys.argv) > 1:
-        if sys.argv[1] == "post_install":
+        hook = sys.argv[1]
+        if hook == "post_install":
             post_install()
-        elif sys.argv[1] == "pre_uninstall":
+        elif hook == "post_update":
+            post_update()
+        elif hook == "pre_uninstall":
             pre_uninstall()
         else:
-            print(f"Unknown hook: {sys.argv[1]}")
+            print(f"Unknown hook: {hook}")
+            print("Available hooks: post_install, post_update, pre_uninstall")
             sys.exit(1)
     else:
-        print("Usage: setup_hooks.py [post_install|pre_uninstall]")
+        print("Usage: setup_hooks.py [post_install|post_update|pre_uninstall]")
+        print("\nHooks:")
+        print("  post_install  - Run after initial package installation")
+        print("  post_update   - Run after package updates to refresh protocol registration")
+        print("  pre_uninstall - Run before package uninstallation to clean up")
         sys.exit(1)
