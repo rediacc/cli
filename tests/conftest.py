@@ -45,23 +45,33 @@ def pytest_collection_modifyitems(config, items):
     skip_gui = pytest.mark.skip(reason="No display available (running in headless environment)")
     skip_playwright = pytest.mark.skip(reason="Playwright browsers not installed. Run: playwright install")
 
-    # Optional targeted skip: Linux + Python >= 3.12 + CI env flag
+    # Optional targeted skip: Linux + Python >= 3.12 + CI env flag(s)
     SKIP_GUI_PY312 = (
         IN_CI
         and sys.version_info >= (3, 12)
         and platform.system().lower() == "linux"
         and os.environ.get("SKIP_GUI_FOR_PY312", "").lower() in ("1", "true", "yes")
     )
+    SKIP_GUI_PY313 = (
+        IN_CI
+        and sys.version_info >= (3, 13)
+        and platform.system().lower() == "linux"
+        and os.environ.get("SKIP_GUI_FOR_PY313", "").lower() in ("1", "true", "yes")
+    )
     skip_gui_py312 = pytest.mark.skip(reason="Skipping GUI tests on Python 3.12 Linux in CI (temporary workaround)")
+    skip_gui_py313 = pytest.mark.skip(reason="Skipping GUI tests on Python 3.13 Linux in CI (temporary workaround)")
 
     for item in items:
         # Skip GUI tests when no display is available
         if "gui" in item.keywords and not DISPLAY_AVAILABLE:
             item.add_marker(skip_gui)
 
-        # Targeted skip for known hang on Linux + Python 3.12 (enabled via env var)
-        if "gui" in item.keywords and SKIP_GUI_PY312:
-            item.add_marker(skip_gui_py312)
+        # Targeted skip for known hang on Linux + Python 3.12/3.13 (enabled via env vars)
+        if "gui" in item.keywords and (SKIP_GUI_PY312 or SKIP_GUI_PY313):
+            if SKIP_GUI_PY312:
+                item.add_marker(skip_gui_py312)
+            if SKIP_GUI_PY313:
+                item.add_marker(skip_gui_py313)
 
         # Skip GUI tests that are in gui directory
         if "/gui/" in str(item.fspath) and not DISPLAY_AVAILABLE:

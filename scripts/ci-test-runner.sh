@@ -95,8 +95,8 @@ mkdir -p "$OUTPUT_DIR"
   )
 
   if [ "$PLATFORM_NAME" = "ubuntu-latest" ]; then
-    # Linux: split 3.12 into non-GUI and GUI phases to isolate hangs
-    if [ "$PYTHON_VERSION" = "3.12" ]; then
+    # Linux: split problematic Python versions into non-GUI and GUI phases to isolate hangs
+    if [ "$PYTHON_VERSION" = "3.12" ] || [ "$PYTHON_VERSION" = "3.13" ]; then
       echo "[Phase 1] Non-GUI tests (excluding 'gui' marked)"
       if [ -n "$TIMEOUT_CMD" ]; then $TIMEOUT_CMD 600s "$PY_BIN" -m pytest tests/ "${PYTEST_ARGS[@]}" -k "not gui" \
         --junitxml="test-results-${PYTHON_VERSION}/junit-nongui.xml"; else "$PY_BIN" -m pytest tests/ "${PYTEST_ARGS[@]}" -k "not gui" \
