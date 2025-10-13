@@ -82,12 +82,20 @@ jobs:
       - name: Install built wheel (overwrite editable) and smoke test CLI
         run: |
           python - <<'PY'
-          import glob, subprocess, sys
+          import glob, subprocess, sys, os, importlib, pkgutil
           files = glob.glob('dist/*.whl')
           if not files:
               raise SystemExit('No wheel found in dist/')
+          files.sort(key=os.path.getmtime, reverse=True)
           wheel = files[0]
           print('Installing wheel:', wheel)
           subprocess.check_call([sys.executable, '-m', 'pip', 'install', '--force-reinstall', '--no-deps', wheel])
+          print('Verifying import...')
+          print('cli loader:', bool(pkgutil.find_loader('cli')))
+          import cli  # noqa: F401
+          import importlib
+          importlib.import_module('cli.commands.cli_main')
+          print('cli.commands.cli_main import OK')
+          print('Running CLI --help...')
           subprocess.check_call([sys.executable, '-m', 'cli.commands.cli_main', '--help'])
           PY
