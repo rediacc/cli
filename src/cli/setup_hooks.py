@@ -286,20 +286,20 @@ def add_to_user_path_windows(directory: Path) -> bool:
                     ctypes.byref(wintypes.DWORD()),
                 )
 
-                print(f"Successfully added {directory} to user PATH")
-                print("Note: Open a new terminal to use the 'rediacc' command.")
+                print(f"Successfully added {directory} to user PATH", file=sys.stderr)
+                print("Note: Open a new terminal to use the 'rediacc' command.", file=sys.stderr)
                 return True
             except Exception as e:
-                print(f"Added to PATH but failed to broadcast change: {e}")
-                print(f"Successfully added {directory} to user PATH")
-                print("Note: Open a new terminal to use the 'rediacc' command.")
+                print(f"Added to PATH but failed to broadcast change: {e}", file=sys.stderr)
+                print(f"Successfully added {directory} to user PATH", file=sys.stderr)
+                print("Note: Open a new terminal to use the 'rediacc' command.", file=sys.stderr)
                 return True
         else:
-            print(f"Failed to add directory to PATH: {result.stderr}")
+            print(f"Failed to add directory to PATH: {result.stderr}", file=sys.stderr)
             return False
 
     except (subprocess.TimeoutExpired, FileNotFoundError) as e:
-        print(f"Failed to modify PATH: {e}")
+        print(f"Failed to modify PATH: {e}", file=sys.stderr)
         return False
 
 
@@ -313,36 +313,36 @@ def ensure_scripts_in_path():
 
     scripts_dir = get_scripts_directory()
     if not scripts_dir:
-        print("WARNING: Could not locate Python Scripts directory")
+        print("WARNING: Could not locate Python Scripts directory", file=sys.stderr)
         return
 
     # Check if rediacc.exe exists in scripts directory
     rediacc_exe = scripts_dir / "rediacc.exe"
     if not rediacc_exe.exists():
-        print("WARNING: rediacc.exe not found in Scripts directory")
+        print("WARNING: rediacc.exe not found in Scripts directory", file=sys.stderr)
         return
 
     # Check if already in PATH
     if is_directory_in_path(scripts_dir):
-        print(f"Scripts directory is already in PATH: {scripts_dir}")
+        print(f"Scripts directory is already in PATH: {scripts_dir}", file=sys.stderr)
         return
 
     # Check if rediacc is accessible via PATH (maybe through a different directory)
     rediacc_in_path = shutil.which("rediacc")
     if rediacc_in_path:
-        print(f"rediacc is already accessible via PATH: {rediacc_in_path}")
+        print(f"rediacc is already accessible via PATH: {rediacc_in_path}", file=sys.stderr)
         return
 
-    print(f"Adding Scripts directory to PATH: {scripts_dir}")
+    print(f"Adding Scripts directory to PATH: {scripts_dir}", file=sys.stderr)
 
     # Try to add to user PATH
     if add_to_user_path_windows(scripts_dir):
-        print("Successfully configured PATH for rediacc access")
+        print("Successfully configured PATH for rediacc access", file=sys.stderr)
     else:
-        print("Failed to automatically add Scripts directory to PATH")
-        print(f"You can manually add this directory to your PATH: {scripts_dir}")
-        print("Or run rediacc using the full path:")
-        print(f'  "{rediacc_exe}" --help')
+        print("Failed to automatically add Scripts directory to PATH", file=sys.stderr)
+        print(f"You can manually add this directory to your PATH: {scripts_dir}", file=sys.stderr)
+        print("Or run rediacc using the full path:", file=sys.stderr)
+        print(f'  "{rediacc_exe}" --help', file=sys.stderr)
 
 
 def get_executable_directory_unix() -> Path:
@@ -475,24 +475,25 @@ def add_to_shell_profile_unix(directory: Path) -> bool:
 
                 # Write the updated content
                 profile.write_text(content)
-                print(f"Added {directory} to PATH in {profile}")
+                print(f"Added {directory} to PATH in {profile}", file=sys.stderr)
                 success = True
 
             except Exception as e:
-                print(f"Failed to update {profile}: {e}")
+                print(f"Failed to update {profile}: {e}", file=sys.stderr)
                 continue
 
         if success:
             print(
                 "Note: You may need to restart your terminal or run 'source ~/.bashrc' "
-                "(or ~/.zshrc) to see the PATH changes"
+                "(or ~/.zshrc) to see the PATH changes",
+                file=sys.stderr
             )
             return True
         else:
             return False
 
     except Exception as e:
-        print(f"Failed to modify shell profiles: {e}")
+        print(f"Failed to modify shell profiles: {e}", file=sys.stderr)
         return False
 
 
@@ -507,18 +508,18 @@ def ensure_executable_in_path_unix():
 
     exec_dir = get_executable_directory_unix()
     if not exec_dir:
-        print("WARNING: Could not locate rediacc executable directory")
+        print("WARNING: Could not locate rediacc executable directory", file=sys.stderr)
         return
 
     # Check if rediacc.exe exists in executable directory
     rediacc_exe = exec_dir / "rediacc"
     if not rediacc_exe.exists():
-        print("WARNING: rediacc executable not found")
+        print("WARNING: rediacc executable not found", file=sys.stderr)
         return
 
     # Check if already in PATH
     if is_directory_in_path_unix(exec_dir):
-        print(f"Executable directory is already in PATH: {exec_dir}")
+        print(f"Executable directory is already in PATH: {exec_dir}", file=sys.stderr)
         return
 
     # Check if rediacc is accessible via PATH (maybe through a different directory)
@@ -527,23 +528,23 @@ def ensure_executable_in_path_unix():
 
         rediacc_in_path = shutil.which("rediacc")
         if rediacc_in_path:
-            print(f"rediacc is already accessible via PATH: {rediacc_in_path}")
+            print(f"rediacc is already accessible via PATH: {rediacc_in_path}", file=sys.stderr)
             return
     except Exception:
         pass
 
-    print(f"Adding executable directory to PATH: {exec_dir}")
+    print(f"Adding executable directory to PATH: {exec_dir}", file=sys.stderr)
 
     # Try to add to shell profiles
     if add_to_shell_profile_unix(exec_dir):
-        print("Successfully configured PATH for rediacc access")
+        print("Successfully configured PATH for rediacc access", file=sys.stderr)
     else:
-        print("Failed to automatically add executable directory to PATH")
-        print(f"You can manually add this directory to your PATH: {exec_dir}")
-        print("Add this line to your ~/.bashrc or ~/.zshrc:")
-        print(f'export PATH="{exec_dir}:$PATH"')
-        print("Or run rediacc using the full path:")
-        print(f"  {rediacc_exe} --help")
+        print("Failed to automatically add executable directory to PATH", file=sys.stderr)
+        print(f"You can manually add this directory to your PATH: {exec_dir}", file=sys.stderr)
+        print("Add this line to your ~/.bashrc or ~/.zshrc:", file=sys.stderr)
+        print(f'export PATH="{exec_dir}:$PATH"', file=sys.stderr)
+        print("Or run rediacc using the full path:", file=sys.stderr)
+        print(f"  {rediacc_exe} --help", file=sys.stderr)
 
 
 def ensure_dependencies_installed():
@@ -557,13 +558,13 @@ def ensure_dependencies_installed():
 
             result = subprocess.run(["which", "xdg-mime"], capture_output=True, timeout=5)
             if result.returncode != 0:
-                print("INFO: xdg-utils not found")
+                print("INFO: xdg-utils not found", file=sys.stderr)
 
                 # Check if we can install automatically (has passwordless sudo access)
                 can_install = check_passwordless_sudo()
 
                 if can_install:
-                    print("Attempting automatic installation of xdg-utils...")
+                    print("Attempting automatic installation of xdg-utils...", file=sys.stderr)
 
                     # Try different package managers
                     package_managers = [
@@ -581,21 +582,21 @@ def ensure_dependencies_installed():
                                 subprocess.run(commands[1], check=True, timeout=60, capture_output=True)
                             else:
                                 subprocess.run(commands[0], check=True, timeout=60, capture_output=True)
-                            print("Successfully installed xdg-utils")
+                            print("Successfully installed xdg-utils", file=sys.stderr)
                             return True
                         except (subprocess.CalledProcessError, FileNotFoundError, subprocess.TimeoutExpired):
                             continue
 
-                    print("Could not automatically install xdg-utils.")
+                    print("Could not automatically install xdg-utils.", file=sys.stderr)
                 else:
-                    print("No sudo access for automatic installation.")
+                    print("No sudo access for automatic installation.", file=sys.stderr)
 
-                print("Please install xdg-utils manually:")
-                print("  Ubuntu/Debian: sudo apt install xdg-utils")
-                print("  Fedora/RHEL: sudo dnf install xdg-utils")
-                print("  Arch: sudo pacman -S xdg-utils")
-                print("  openSUSE: sudo zypper install xdg-utils")
-                print("\nAfter installation, run: rediacc protocol register")
+                print("Please install xdg-utils manually:", file=sys.stderr)
+                print("  Ubuntu/Debian: sudo apt install xdg-utils", file=sys.stderr)
+                print("  Fedora/RHEL: sudo dnf install xdg-utils", file=sys.stderr)
+                print("  Arch: sudo pacman -S xdg-utils", file=sys.stderr)
+                print("  openSUSE: sudo zypper install xdg-utils", file=sys.stderr)
+                print("\nAfter installation, run: rediacc protocol register", file=sys.stderr)
                 return False
         except Exception:
             pass
@@ -607,9 +608,9 @@ def ensure_dependencies_installed():
 
             result = subprocess.run(["which", "duti"], capture_output=True, timeout=5)
             if result.returncode != 0:
-                print("INFO: duti not found. For enhanced protocol support, install it:")
-                print("  brew install duti")
-                print("\nProtocol registration will proceed using Launch Services...")
+                print("INFO: duti not found. For enhanced protocol support, install it:", file=sys.stderr)
+                print("  brew install duti", file=sys.stderr)
+                print("\nProtocol registration will proceed using Launch Services...", file=sys.stderr)
         except Exception:
             pass
 
@@ -622,63 +623,63 @@ def attempt_protocol_registration_with_fallbacks(system: str) -> bool:
         from cli.core.protocol_handler import get_platform_handler, is_protocol_supported
 
         if not is_protocol_supported():
-            print(f"Protocol registration is not supported on {system}")
+            print(f"Protocol registration is not supported on {system}", file=sys.stderr)
             return False
 
         handler = get_platform_handler()
 
         # Check if already registered
         if handler.is_protocol_registered():
-            print("rediacc:// protocol is already registered")
+            print("rediacc:// protocol is already registered", file=sys.stderr)
             return True
 
         # Try user-level registration first (works without admin privileges)
         try:
-            print("Attempting user-level protocol registration...")
+            print("Attempting user-level protocol registration...", file=sys.stderr)
             success = handler.register_protocol(force=False, system_wide=False)
             if success:
-                print("Successfully registered rediacc:// protocol (user-level)")
+                print("Successfully registered rediacc:// protocol (user-level)", file=sys.stderr)
                 print_browser_restart_note(system)
                 return True
         except Exception as e:
-            print(f"User-level registration failed: {e}")
+            print(f"User-level registration failed: {e}", file=sys.stderr)
 
         # For Windows, try system-wide registration if user has admin privileges
         if system == "windows":
             try:
                 if handler.check_admin_privileges():
-                    print("Attempting system-wide protocol registration...")
+                    print("Attempting system-wide protocol registration...", file=sys.stderr)
                     success = handler.register_protocol(force=False, system_wide=True)
                     if success:
-                        print("Successfully registered rediacc:// protocol (system-wide)")
+                        print("Successfully registered rediacc:// protocol (system-wide)", file=sys.stderr)
                         print_browser_restart_note(system)
                         return True
                 else:
-                    print("User-level registration failed and no admin privileges for system-wide registration")
-                    print("To register manually with admin privileges, run:")
-                    print("  rediacc protocol register")
+                    print("User-level registration failed and no admin privileges for system-wide registration", file=sys.stderr)
+                    print("To register manually with admin privileges, run:", file=sys.stderr)
+                    print("  rediacc protocol register", file=sys.stderr)
                     return False
             except Exception as e:
-                print(f"System-wide registration failed: {e}")
+                print(f"System-wide registration failed: {e}", file=sys.stderr)
 
         return False
 
     except ImportError as e:
-        print(f"Protocol handler not available: {e}")
+        print(f"Protocol handler not available: {e}", file=sys.stderr)
         return False
     except Exception as e:
-        print(f"Protocol registration error: {e}")
+        print(f"Protocol registration error: {e}", file=sys.stderr)
         return False
 
 
 def print_browser_restart_note(system: str):
     """Print platform-specific browser restart instructions"""
     if system == "linux":
-        print("Note: You may need to restart your browser to enable rediacc:// URL support")
+        print("Note: You may need to restart your browser to enable rediacc:// URL support", file=sys.stderr)
     elif system == "darwin":
-        print("Note: You may need to restart your browser to enable rediacc:// URL support")
+        print("Note: You may need to restart your browser to enable rediacc:// URL support", file=sys.stderr)
     elif system == "windows":
-        print("Note: Restart your browser to enable rediacc:// URL support")
+        print("Note: Restart your browser to enable rediacc:// URL support", file=sys.stderr)
 
 
 def run_post_install_hook(force: bool = False) -> bool:
@@ -841,12 +842,12 @@ def post_update():
     """Post-update hook - re-register protocol with updated executable paths"""
     system = platform.system().lower()
 
-    print(f"Updating rediacc configuration for {system.capitalize()}...")
+    print(f"Updating rediacc configuration for {system.capitalize()}...", file=sys.stderr)
 
     # Skip if we're in a virtual environment
     if hasattr(sys, "real_prefix") or (hasattr(sys, "base_prefix") and sys.base_prefix != sys.prefix):
-        print("Detected virtual environment - skipping automatic protocol update")
-        print("To update protocol manually, run: rediacc protocol register --force")
+        print("Detected virtual environment - skipping automatic protocol update", file=sys.stderr)
+        print("To update protocol manually, run: rediacc protocol register --force", file=sys.stderr)
         return
 
     # Re-register protocol with force flag to update executable paths
@@ -854,53 +855,53 @@ def post_update():
         from cli.core.protocol_handler import get_platform_handler, is_protocol_supported, ProtocolHandlerError
 
         if not is_protocol_supported():
-            print(f"Protocol registration is not supported on {system}")
+            print(f"Protocol registration is not supported on {system}", file=sys.stderr)
             return
 
         handler = get_platform_handler()
 
         # Force re-registration to update executable paths
-        print("Updating rediacc:// protocol registration...")
+        print("Updating rediacc:// protocol registration...", file=sys.stderr)
         success = handler.register_protocol(force=True, system_wide=False)
         if success:
-            print("Successfully updated rediacc:// protocol registration")
+            print("Successfully updated rediacc:// protocol registration", file=sys.stderr)
             print_browser_restart_note(system)
         else:
-            print("Failed to update rediacc:// protocol registration")
-            print("You can update it manually by running: rediacc protocol register --force")
+            print("Failed to update rediacc:// protocol registration", file=sys.stderr)
+            print("You can update it manually by running: rediacc protocol register --force", file=sys.stderr)
 
     except ImportError as e:
-        print(f"Protocol handler not available: {e}")
+        print(f"Protocol handler not available: {e}", file=sys.stderr)
     except ProtocolHandlerError as e:
-        print(f"Protocol update failed: {e}")
-        print("You can update it manually by running: rediacc protocol register --force")
+        print(f"Protocol update failed: {e}", file=sys.stderr)
+        print("You can update it manually by running: rediacc protocol register --force", file=sys.stderr)
     except Exception as e:
-        print(f"Unexpected error during protocol update: {e}")
-        print("You can update it manually by running: rediacc protocol register --force")
+        print(f"Unexpected error during protocol update: {e}", file=sys.stderr)
+        print("You can update it manually by running: rediacc protocol register --force", file=sys.stderr)
 
 
 def pre_uninstall():
     """Pre-uninstall hook - attempt to unregister protocol on all platforms"""
     system = platform.system().lower()
 
-    print(f"Starting rediacc uninstall cleanup on {system.capitalize()}...")
+    print(f"Starting rediacc uninstall cleanup on {system.capitalize()}...", file=sys.stderr)
 
     try:
         # Import the cross-platform protocol handler
         from cli.core.protocol_handler import get_platform_handler, is_protocol_supported, ProtocolHandlerError
 
         if not is_protocol_supported():
-            print(f"Protocol registration not supported on {system} - skipping cleanup")
+            print(f"Protocol registration not supported on {system} - skipping cleanup", file=sys.stderr)
             return  # Platform not supported, nothing to do
 
         handler = get_platform_handler()
 
         # Check if protocol is registered
         if not handler.is_protocol_registered():
-            print("No rediacc:// protocol registration found - nothing to clean up")
+            print("No rediacc:// protocol registration found - nothing to clean up", file=sys.stderr)
             return  # Nothing to unregister
 
-        print("Found rediacc:// protocol registration - cleaning up...")
+        print("Found rediacc:// protocol registration - cleaning up...", file=sys.stderr)
 
         # Attempt unregistration (try both user and system level)
         user_success = False
@@ -909,26 +910,26 @@ def pre_uninstall():
         try:
             user_success = handler.unregister_protocol(system_wide=False)
         except Exception as e:
-            print(f"User-level unregistration failed: {e}")
+            print(f"User-level unregistration failed: {e}", file=sys.stderr)
 
         # Try system-wide unregistration if we have admin privileges
         if system == "windows" and handler.check_admin_privileges():
             try:
                 system_success = handler.unregister_protocol(system_wide=True)
             except Exception as e:
-                print(f"System-wide unregistration failed: {e}")
+                print(f"System-wide unregistration failed: {e}", file=sys.stderr)
 
         if user_success or system_success:
-            print("Successfully unregistered rediacc:// protocol")
+            print("Successfully unregistered rediacc:// protocol", file=sys.stderr)
         else:
-            print("Protocol unregistration may have failed")
-            print("You may need to unregister manually: rediacc protocol unregister")
+            print("Protocol unregistration may have failed", file=sys.stderr)
+            print("You may need to unregister manually: rediacc protocol unregister", file=sys.stderr)
 
     except ImportError:
         # This is expected during uninstall as modules may not be available
         pass
     except ProtocolHandlerError as e:
-        print(f"Protocol unregistration failed: {e}")
+        print(f"Protocol unregistration failed: {e}", file=sys.stderr)
     except Exception:
         # Don't fail uninstall due to protocol cleanup issues
         pass
@@ -949,28 +950,28 @@ if __name__ == "__main__":
             sys.exit(0)
         elif hook == "status":
             state = load_setup_state()
-            print("Rediacc Setup Status:")
-            print(f"  Last setup: {time.ctime(state['last_setup']) if state['last_setup'] else 'Never'}")
-            print(f"  PATH configured: {state.get('path_configured', False)}")
-            print(f"  Protocol registered: {state.get('protocol_registered', False)}")
-            print(f"  Dependencies checked: {state.get('dependencies_checked', False)}")
-            print(f"  Executable accessible: {bool(shutil.which('rediacc'))}")
+            print("Rediacc Setup Status:", file=sys.stderr)
+            print(f"  Last setup: {time.ctime(state['last_setup']) if state['last_setup'] else 'Never'}", file=sys.stderr)
+            print(f"  PATH configured: {state.get('path_configured', False)}", file=sys.stderr)
+            print(f"  Protocol registered: {state.get('protocol_registered', False)}", file=sys.stderr)
+            print(f"  Dependencies checked: {state.get('dependencies_checked', False)}", file=sys.stderr)
+            print(f"  Executable accessible: {bool(shutil.which('rediacc'))}", file=sys.stderr)
             if state.get("failures"):
-                print(f"  Previous failures: {len(state['failures'])}")
+                print(f"  Previous failures: {len(state['failures'])}", file=sys.stderr)
                 for failure in state["failures"]:
-                    print(f"    - {failure}")
+                    print(f"    - {failure}", file=sys.stderr)
             sys.exit(0)
         else:
-            print(f"Unknown hook: {hook}")
-            print("Available hooks: post_install, post_update, pre_uninstall, status")
+            print(f"Unknown hook: {hook}", file=sys.stderr)
+            print("Available hooks: post_install, post_update, pre_uninstall, status", file=sys.stderr)
             sys.exit(1)
     else:
-        print("Usage: setup_hooks.py [post_install|post_update|pre_uninstall|status] [--force]")
-        print("\nHooks:")
-        print("  post_install  - Run after initial package installation")
-        print("  post_update   - Run after package updates to refresh protocol registration")
-        print("  pre_uninstall - Run before package uninstallation to clean up")
-        print("  status        - Show current setup status and state")
-        print("\nOptions:")
-        print("  --force       - Force setup even in virtual environments")
+        print("Usage: setup_hooks.py [post_install|post_update|pre_uninstall|status] [--force]", file=sys.stderr)
+        print("\nHooks:", file=sys.stderr)
+        print("  post_install  - Run after initial package installation", file=sys.stderr)
+        print("  post_update   - Run after package updates to refresh protocol registration", file=sys.stderr)
+        print("  pre_uninstall - Run before package uninstallation to clean up", file=sys.stderr)
+        print("  status        - Show current setup status and state", file=sys.stderr)
+        print("\nOptions:", file=sys.stderr)
+        print("  --force       - Force setup even in virtual environments", file=sys.stderr)
         sys.exit(1)
