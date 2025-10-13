@@ -1884,55 +1884,74 @@ class TerminalDetector:
     
     # Launch functions for each method
     def _launch_windows_terminal_openssh(self, cli_dir: str, command: str, description: str):
-        """Launch using Windows Terminal with Windows OpenSSH for proper SSH handling"""
-        import subprocess
+        """Launch using Windows Terminal with Windows OpenSSH for proper SSH handling
         
-        # Use cmd.exe with && operator - this is the most reliable approach
-        # It handles complex commands with quotes without escaping issues
+        This implementation prefers the installed rediacc.exe (from pip entry points),
+        and falls back to local development scripts if available, without relying on
+        a repo-local rediacc.bat which may not exist in installed environments.
+        """
+        import subprocess
+        import sys as _sys
+        
+        # Determine the most reliable invocation on native Windows
+        launcher_cmd = None
+        try:
+            # 1) Prefer the installed console executable (works with Windows Store Python too)
+            try:
+                from .protocol_handler import WindowsProtocolHandler  # Lazy import to avoid cycles
+                rediacc_exe = WindowsProtocolHandler().get_rediacc_executable_path()
+            except Exception:
+                rediacc_exe = None
+        
+            if rediacc_exe and os.path.exists(rediacc_exe):
+                # Use the installed executable directly
+                launcher_cmd = f'"{rediacc_exe}" {command}'
+            else:
+                # 2) Fallback to local dev scripts if present
+                rediacc_bat = os.path.join(cli_dir, 'rediacc.bat')
+                cli_main_py = os.path.join(cli_dir, 'src', 'cli', 'commands', 'cli_main.py')
+                if os.path.exists(rediacc_bat):
+                    launcher_cmd = f'"{rediacc_bat}" {command}'
+                elif os.path.exists(cli_main_py):
+                    # Invoke via the current Python interpreter against the repo sources
+                    launcher_cmd = f'"{_sys.executable}" "{cli_main_py}" {command}'
+                else:
+                    # 3) Last resort: module invocation (works for pip-installed package)
+                    launcher_cmd = f'"{_sys.executable}" -m cli.commands.cli_main {command}'
+        except Exception:
+            # As a safety net, use module invocation
+            launcher_cmd = f'"{_sys.executable}" -m cli.commands.cli_main {command}'
+        
+        # Build Windows Terminal command — keep it simple and robust (no fragile cd chaining)
         wt_args = [
             'wt.exe',
             '--maximized',
             '--title', f'Rediacc: {description}',
             'cmd.exe', '/k',  # /k keeps the window open after command completes
-            f'cd /d "{cli_dir}" && rediacc.bat {command}'
+            launcher_cmd
         ]
         
         try:
-            # Set environment to ensure Windows OpenSSH is used
+            # Set environment to ensure Windows OpenSSH is prioritized (matches prior behavior)
             env = os.environ.copy()
-            
-            # Prioritize Windows OpenSSH in PATH
             windows_ssh_paths = [
                 'C:\\Windows\\System32\\OpenSSH',
                 'C:\\Program Files\\OpenSSH'
             ]
-            
             current_path = env.get('PATH', '')
-            new_path_parts = []
-            
-            # Add Windows SSH paths first
-            for ssh_path in windows_ssh_paths:
-                if os.path.exists(ssh_path):
-                    new_path_parts.append(ssh_path)
-            
-            # Add rest of PATH
-            new_path_parts.extend(current_path.split(os.pathsep))
-            
+            new_path_parts = [p for p in windows_ssh_paths if os.path.exists(p)] + current_path.split(os.pathsep)
             # Remove duplicates while preserving order
-            seen = set()
-            final_path = []
-            for path in new_path_parts:
-                path_lower = path.lower()
-                if path_lower not in seen:
-                    seen.add(path_lower)
-                    final_path.append(path)
-            
+            seen, final_path = set(), []
+            for p in new_path_parts:
+                low = p.lower()
+                if low not in seen:
+                    seen.add(low)
+                    final_path.append(p)
             env['PATH'] = os.pathsep.join(final_path)
             
-            # Launch with modified environment
-            subprocess.Popen(wt_args, env=env, cwd=cli_dir)
+            # Launch (no cwd requirement since we now use absolute exe/module)
+            subprocess.Popen(wt_args, env=env)
             self.logger.info(f"Launched Windows Terminal for: {description}")
-            
         except Exception as e:
             self.logger.error(f"Failed to launch Windows Terminal: {e}")
             # Fall back to PowerShell directly
