@@ -1296,10 +1296,21 @@ class DualPaneFileBrowser:
 
             # Set up SSH using sync_main functionality
             ssh_opts, ssh_key_file, known_hosts_file = self.ssh_connection.setup_ssh()
+            
+            # Debug logging for SSH setup
+            self.logger.info(f"[GUI SSH DEBUG] Raw SSH options: {ssh_opts}")
+            print(f"[GUI SSH DEBUG] Raw SSH options: {ssh_opts}")
+            
             ssh_cmd = get_rsync_ssh_command(ssh_opts)
+            
+            self.logger.info(f"[GUI SSH DEBUG] Processed SSH command: {ssh_cmd}")
+            print(f"[GUI SSH DEBUG] Processed SSH command: {ssh_cmd}")
 
             # Get universal user if available
             universal_user = self.ssh_connection.connection_info.get('universal_user')
+            
+            self.logger.info(f"[GUI SSH DEBUG] Universal user: {universal_user}")
+            print(f"[GUI SSH DEBUG] Universal user: {universal_user}")
 
             success_count = 0
             error_messages = []
@@ -1369,15 +1380,31 @@ class DualPaneFileBrowser:
                     # Run rsync using direct subprocess.Popen for streaming output
                     # Note: We need streaming output for progress updates, so we can't use run_platform_command here
                     if is_windows():
+                        # Debug the full command before processing
+                        self.logger.info(f"[GUI BASH DEBUG] Full rsync command before bash wrapping: {cmd}")
+                        print(f"[GUI BASH DEBUG] Full rsync command: {cmd}")
+                        
                         # On Windows, wrap in MSYS2 bash like run_platform_command does
                         # Convert the rsync command to use just 'rsync' since we set PATH
                         cmd_for_bash = cmd.copy()
                         cmd_for_bash[0] = 'rsync'  # Replace full path with just 'rsync'
+                        
+                        self.logger.info(f"[GUI BASH DEBUG] Command for bash: {cmd_for_bash}")
+                        print(f"[GUI BASH DEBUG] Command for bash: {cmd_for_bash}")
 
                         # Properly quote command parts for bash
                         cmd_parts = [f'"{part}"' if ' ' in part or '\\' in part else part for part in cmd_for_bash]
+                        
+                        self.logger.info(f"[GUI BASH DEBUG] Command parts: {cmd_parts}")
+                        print(f"[GUI BASH DEBUG] Command parts: {cmd_parts}")
+                        
                         bash_command = f'export PATH=/usr/bin:$PATH && {" ".join(cmd_parts)}'
                         bash_cmd = ['C:\\msys64\\usr\\bin\\bash.exe', '-c', bash_command]
+                        
+                        self.logger.info(f"[GUI BASH DEBUG] Final bash command: {bash_command}")
+                        print(f"[GUI BASH DEBUG] Final bash command: {bash_command}")
+                        print(f"[GUI BASH DEBUG] Bash execution array: {bash_cmd}")
+                        
                         process = subprocess.Popen(bash_cmd, stdout=subprocess.PIPE, stderr=subprocess.PIPE,
                                                  text=True, bufsize=1)
                     else:
@@ -1474,7 +1501,15 @@ class DualPaneFileBrowser:
             
             # Get SSH options
             ssh_opts, ssh_key_file, known_hosts_file = self.ssh_connection.setup_ssh()
+            
+            # Debug logging for folder sync
+            self.logger.info(f"[FOLDER SYNC DEBUG] Raw SSH options: {ssh_opts}")
+            print(f"[FOLDER SYNC DEBUG] Raw SSH options: {ssh_opts}")
+            
             ssh_cmd = get_rsync_ssh_command(ssh_opts)
+            
+            self.logger.info(f"[FOLDER SYNC DEBUG] Processed SSH command: {ssh_cmd}")
+            print(f"[FOLDER SYNC DEBUG] Processed SSH command: {ssh_cmd}")
             
             # Get universal user if available
             universal_user = self.ssh_connection.connection_info.get('universal_user')
@@ -1533,6 +1568,10 @@ class DualPaneFileBrowser:
             
             rsync_cmd.extend([source, dest])
             
+            # Debug the final command
+            self.logger.info(f"[FOLDER SYNC DEBUG] Final rsync command: {rsync_cmd}")
+            print(f"[FOLDER SYNC DEBUG] Final rsync command: {rsync_cmd}")
+            
             # Run rsync using direct subprocess.Popen for streaming output
             if is_windows():
                 # On Windows, wrap in MSYS2 bash like run_platform_command does
@@ -1544,6 +1583,9 @@ class DualPaneFileBrowser:
                 cmd_parts = [f'"{part}"' if ' ' in part or '\\' in part else part for part in cmd_for_bash]
                 bash_command = f'export PATH=/usr/bin:$PATH && {" ".join(cmd_parts)}'
                 bash_cmd = ['C:\\msys64\\usr\\bin\\bash.exe', '-c', bash_command]
+                
+                self.logger.info(f"[FOLDER SYNC DEBUG] Bash command: {bash_command}")
+                print(f"[FOLDER SYNC DEBUG] Bash command: {bash_command}")
                 process = subprocess.Popen(bash_cmd, stdout=subprocess.PIPE, stderr=subprocess.PIPE,
                                          text=True, bufsize=1)
             else:
