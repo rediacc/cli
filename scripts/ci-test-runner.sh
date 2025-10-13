@@ -88,10 +88,22 @@ mkdir -p "$OUTPUT_DIR"
   )
 
   if [ "$PLATFORM_NAME" = "ubuntu-latest" ]; then
-    # Linux: Use xvfb for GUI testing
-    timeout 900s xvfb-run -a -s "-screen 0 1920x1080x24" \
-      "$PY_BIN" -m pytest tests/ "${PYTEST_ARGS[@]}" \
-      --junitxml="test-results-${PYTHON_VERSION}/junit.xml"
+    # Linux: split 3.12 into non-GUI and GUI phases to isolate hangs
+    if [ "$PYTHON_VERSION" = "3.12" ]; then
+      echo "[Phase 1] Non-GUI tests (excluding 'gui' marked)"
+      timeout 600s "$PY_BIN" -m pytest tests/ "${PYTEST_ARGS[@]}" -k "not gui" \
+        --junitxml="test-results-${PYTHON_VERSION}/junit-nongui.xml"
+
+      echo "[Phase 2] GUI tests only under Xvfb"
+      timeout 600s xvfb-run -a -s "-screen 0 1920x1080x24" \
+        "$PY_BIN" -m pytest tests/ "${PYTEST_ARGS[@]}" -k "gui" \
+        --junitxml="test-results-${PYTHON_VERSION}/junit-gui.xml"
+    else
+      # Other versions: run all under Xvfb
+      timeout 900s xvfb-run -a -s "-screen 0 1920x1080x24" \
+        "$PY_BIN" -m pytest tests/ "${PYTEST_ARGS[@]}" \
+        --junitxml="test-results-${PYTHON_VERSION}/junit.xml"
+    fi
   else
     # Windows/macOS: Direct pytest
     timeout 900s "$PY_BIN" -m pytest tests/ "${PYTEST_ARGS[@]}"
