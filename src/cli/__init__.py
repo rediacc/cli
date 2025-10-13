@@ -12,7 +12,7 @@ import time
 import atexit
 
 # Package metadata
-__version__ = "0.1.66"  # This will be overridden by _version.py
+__version__ = "0.1.67"  # This will be overridden by _version.py
 __author__ = "Rediacc Team"
 __email__ = "info@rediacc.com"
 __license__ = "MIT"

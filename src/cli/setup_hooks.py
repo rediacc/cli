@@ -17,8 +17,12 @@ import logging
 from pathlib import Path
 from typing import Dict, Any
 
-# Setup logging for debugging
-logging.basicConfig(level=logging.INFO, format="%(asctime)s - %(levelname)s - %(message)s")
+# Setup logging for debugging - output to stderr to avoid polluting stdout JSON
+logging.basicConfig(
+    level=logging.INFO,
+    format="%(asctime)s - %(levelname)s - %(message)s",
+    stream=sys.stderr
+)
 logger = logging.getLogger(__name__)
 
 
@@ -726,29 +730,29 @@ def run_post_install_hook(force: bool = False) -> bool:
     # Save state
     save_setup_state(state)
 
-    # Print summary
-    print("\n" + "=" * 50)
-    print("REDIACC SETUP SUMMARY")
-    print("=" * 50)
+    # Print summary to stderr to avoid polluting stdout
+    print("\n" + "=" * 50, file=sys.stderr)
+    print("REDIACC SETUP SUMMARY", file=sys.stderr)
+    print("=" * 50, file=sys.stderr)
 
     for task, success in results.items():
         status = "✅ Success" if success else "❌ Failed"
-        print(f"{task.replace('_', ' ').title()}: {status}")
+        print(f"{task.replace('_', ' ').title()}: {status}", file=sys.stderr)
 
     if state.get("failures"):
-        print("\nFailures:")
+        print("\nFailures:", file=sys.stderr)
         for failure in state["failures"]:
-            print(f"  - {failure}")
+            print(f"  - {failure}", file=sys.stderr)
 
     # Check final status
     rediacc_accessible = shutil.which("rediacc")
     if rediacc_accessible:
-        print("\n🎉 rediacc is ready to use!")
-        print(f"Executable: {rediacc_accessible}")
-        print("Try: rediacc --help")
+        print("\n🎉 rediacc is ready to use!", file=sys.stderr)
+        print(f"Executable: {rediacc_accessible}", file=sys.stderr)
+        print("Try: rediacc --help", file=sys.stderr)
     else:
-        print("\n⚠️  Setup completed with issues")
-        print("Open a new terminal to start using the 'rediacc' command.")
+        print("\n⚠️  Setup completed with issues", file=sys.stderr)
+        print("Open a new terminal to start using the 'rediacc' command.", file=sys.stderr)
 
     return all(results.values())
 
