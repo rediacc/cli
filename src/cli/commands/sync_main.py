@@ -42,8 +42,15 @@ def find_msys2_executable(exe_name: str) -> Optional[str]:
 
 def convert_ssh_opts_for_msys2(ssh_opts: str) -> str:
     """Convert Windows paths in SSH options to MSYS2 format"""
+    logger = get_logger(__name__)
+    
     if not is_windows() or not ssh_opts:
+        logger.debug(f"[SSH DEBUG] No conversion needed (Windows: {is_windows()}, opts: {bool(ssh_opts)})")
         return ssh_opts
+    
+    logger.info(f"[SSH DEBUG] Converting SSH options for MSYS2:")
+    logger.info(f"[SSH DEBUG] Original options: {ssh_opts}")
+    print(f"[SSH DEBUG] Original SSH options: {ssh_opts}")
     
     import re
     
@@ -76,7 +83,13 @@ def convert_ssh_opts_for_msys2(ssh_opts: str) -> str:
     
     converted_opts = ssh_opts
     for pattern in patterns:
+        before = converted_opts
         converted_opts = re.sub(pattern, convert_path_match, converted_opts)
+        if before != converted_opts:
+            logger.info(f"[SSH DEBUG] Pattern {pattern} matched and converted")
+    
+    logger.info(f"[SSH DEBUG] Final converted options: {converted_opts}")
+    print(f"[SSH DEBUG] Final SSH options: {converted_opts}")
     
     return converted_opts
 
@@ -187,8 +200,34 @@ def prepare_rsync_paths(source: str, dest: str) -> Tuple[str, str]:
 def run_platform_command(cmd: List[str], **kwargs) -> subprocess.CompletedProcess:
     logger = get_logger(__name__)
     if is_windows() and cmd[0] == 'rsync':
-        try: cmd[0] = get_rsync_command(); logger.debug(f"Windows rsync path: {cmd[0]}"); logger.debug(f"Full command: {cmd}")
-        except RuntimeError as e: logger.error(f"Failed to find rsync: {e}"); raise
+        try: 
+            cmd[0] = get_rsync_command()
+            logger.debug(f"Windows rsync path: {cmd[0]}")
+        except RuntimeError as e: 
+            logger.error(f"Failed to find rsync: {e}")
+            raise
+    
+    # Comprehensive debug logging
+    logger.info(f"[RSYNC DEBUG] Executing command:")
+    logger.info(f"[RSYNC DEBUG] Full command array: {cmd}")
+    logger.info(f"[RSYNC DEBUG] Command as string: {' '.join(cmd)}")
+    logger.info(f"[RSYNC DEBUG] Working directory: {os.getcwd()}")
+    logger.info(f"[RSYNC DEBUG] Environment PATH: {os.environ.get('PATH', 'NOT SET')[:200]}...")
+    
+    # Print to console as well for immediate visibility
+    print(f"[RSYNC DEBUG] Executing: {' '.join(cmd)}")
+    
+    # Extract and log SSH command details if present
+    if '-e' in cmd:
+        try:
+            ssh_index = cmd.index('-e') + 1
+            if ssh_index < len(cmd):
+                ssh_cmd = cmd[ssh_index]
+                logger.info(f"[RSYNC DEBUG] SSH command: {ssh_cmd}")
+                print(f"[RSYNC DEBUG] SSH command: {ssh_cmd}")
+        except (ValueError, IndexError):
+            pass
+    
     return subprocess.run(cmd, **kwargs)
 
 
@@ -257,7 +296,27 @@ def display_changes_and_confirm(changes: Dict[str, list], operation: str) -> boo
         elif response in ('n', ''): print(colorize("Operation cancelled by user.", 'YELLOW')); return False
 
 def perform_rsync(source: str, dest: str, ssh_cmd: str, options: Dict[str, Any], universal_user: str = None):
+    logger = get_logger(__name__)
+    
+    logger.info(f"[PERFORM_RSYNC DEBUG] Input parameters:")
+    logger.info(f"[PERFORM_RSYNC DEBUG] Raw source: {source}")
+    logger.info(f"[PERFORM_RSYNC DEBUG] Raw dest: {dest}")
+    logger.info(f"[PERFORM_RSYNC DEBUG] SSH command: {ssh_cmd}")
+    logger.info(f"[PERFORM_RSYNC DEBUG] Options: {options}")
+    logger.info(f"[PERFORM_RSYNC DEBUG] Universal user: {universal_user}")
+    
+    print(f"[PERFORM_RSYNC DEBUG] Raw source: {source}")
+    print(f"[PERFORM_RSYNC DEBUG] Raw dest: {dest}")
+    print(f"[PERFORM_RSYNC DEBUG] SSH command: {ssh_cmd}")
+    
     source, dest = prepare_rsync_paths(source, dest)
+    
+    logger.info(f"[PERFORM_RSYNC DEBUG] After path preparation:")
+    logger.info(f"[PERFORM_RSYNC DEBUG] Prepared source: {source}")
+    logger.info(f"[PERFORM_RSYNC DEBUG] Prepared dest: {dest}")
+    
+    print(f"[PERFORM_RSYNC DEBUG] Prepared source: {source}")
+    print(f"[PERFORM_RSYNC DEBUG] Prepared dest: {dest}")
     
     if options.get('confirm'):
         print(colorize("Analyzing changes...", 'BLUE'))
@@ -283,13 +342,62 @@ def perform_rsync(source: str, dest: str, ssh_cmd: str, options: Dict[str, Any],
     # Add SSH command
     rsync_cmd.extend(['-e', ssh_cmd])
     
+    # Test SSH connection first (if this is a remote operation)
+    if '@' in source or '@' in dest:
+        logger.info(f"[SSH TEST] Testing SSH connection before rsync...")
+        print(f"[SSH TEST] Testing SSH connection...")
+        
+        # Extract remote host from source or dest
+        remote_spec = source if '@' in source else dest
+        if ':' in remote_spec:
+            remote_host = remote_spec.split(':')[0]
+            
+            # Build SSH test command
+            ssh_parts = ssh_cmd.split()
+            ssh_exe = ssh_parts[0]
+            ssh_opts = ' '.join(ssh_parts[1:])
+            
+            test_cmd = f'{ssh_exe} {ssh_opts} {remote_host} "echo SSH_CONNECTION_TEST_OK"'
+            logger.info(f"[SSH TEST] Test command: {test_cmd}")
+            print(f"[SSH TEST] Test command: {test_cmd}")
+            
+            try:
+                import shlex
+                test_result = subprocess.run(shlex.split(test_cmd), capture_output=True, text=True, timeout=30)
+                logger.info(f"[SSH TEST] Return code: {test_result.returncode}")
+                logger.info(f"[SSH TEST] STDOUT: {test_result.stdout}")
+                logger.info(f"[SSH TEST] STDERR: {test_result.stderr}")
+                
+                print(f"[SSH TEST] Return code: {test_result.returncode}")
+                print(f"[SSH TEST] STDOUT: {test_result.stdout.strip()}")
+                if test_result.stderr:
+                    print(f"[SSH TEST] STDERR: {test_result.stderr.strip()}")
+                
+                if test_result.returncode != 0:
+                    print(f"[SSH TEST] ⚠ SSH test failed, but proceeding with rsync...")
+                else:
+                    print(f"[SSH TEST] ✓ SSH connection successful")
+                    
+            except Exception as e:
+                logger.error(f"[SSH TEST] Exception during SSH test: {e}")
+                print(f"[SSH TEST] Exception: {e}")
+    
     if universal_user and ('@' in source or '@' in dest): rsync_cmd.extend(['--rsync-path', f'sudo -u {universal_user} rsync'])
     if options.get('mirror'): rsync_cmd.extend(['--delete', '--exclude', '*.sock'])
     rsync_cmd.extend(['--checksum', '--ignore-times'] if options.get('verify') else ['--partial', '--append-verify'])
     
     rsync_cmd.extend([source, dest])
     
-    print(colorize(f"Executing: {' '.join(rsync_cmd)}", 'BLUE'))
+    # Print comprehensive debug summary
+    print("\n" + "=" * 80)
+    print("[RSYNC EXECUTION SUMMARY]")
+    print(f"Source: {source}")
+    print(f"Destination: {dest}")
+    print(f"SSH Command: {ssh_cmd}")
+    print(f"Full rsync command: {' '.join(rsync_cmd)}")
+    print("=" * 80 + "\n")
+    
+    logger.info(f"[RSYNC SUMMARY] About to execute: {' '.join(rsync_cmd)}")
     
     result = run_platform_command(rsync_cmd, capture_output=True, text=True)
     
