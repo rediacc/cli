@@ -162,10 +162,6 @@ def run_platform_command(cmd: List[str], **kwargs) -> subprocess.CompletedProces
             logger.error(f"Failed to find rsync: {e}")
             raise
     
-    # Add timeout to prevent hanging in CI
-    if 'timeout' not in kwargs:
-        kwargs['timeout'] = 300  # 5 minutes max for any single rsync operation
-    
     return subprocess.run(cmd, **kwargs)
 
 

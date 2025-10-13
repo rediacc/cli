@@ -131,7 +131,7 @@ filterwarnings = [
     "error",  # Treat warnings as errors
     "ignore::DeprecationWarning",  # Ignore deprecation warnings
     "ignore::PendingDeprecationWarning",
-    "ignore:.*couldnt-parse.*:coverage.exceptions.CoverageWarning",  # Ignore coverage parsing warnings
+
 ]
 
 [tool.coverage.run]
@@ -141,7 +141,6 @@ omit = [
     "*/test_*.py",
     "*/__pycache__/*",
     "*/site-packages/*",
-    "src/cli/commands/sync_main.py",  # Skip problematic file until parsing issue resolved
 ]
 branch = true
 
