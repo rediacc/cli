@@ -12,7 +12,7 @@ import sys
 import threading
 import time
 import atexit
-from typing import Optional
+from typing import Optional, Any, Dict
 
 from setuptools.command.install import install
 from setuptools.command.develop import develop
@@ -20,7 +20,7 @@ from setuptools.command.egg_info import egg_info
 
 
 # Minimal shared state for idempotent hook execution
-_hook_state = {"executed": False, "lock": threading.Lock(), "execution_attempts": 0}
+_hook_state: Dict[str, Any] = {"executed": False, "lock": threading.Lock(), "execution_attempts": 0}
 
 
 class HookRunner:

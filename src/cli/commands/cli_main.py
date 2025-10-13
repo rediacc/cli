@@ -2421,6 +2421,9 @@ def main():
     
     if not args.command:
         parser.print_help()
+        # Return 0 if user explicitly asked for help, 1 if they just omitted the command
+        if any(arg in ['-h', '--help'] for arg in sys.argv):
+            return 0
         return 1
     
     output_format = args.output
