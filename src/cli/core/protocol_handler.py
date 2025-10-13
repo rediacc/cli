@@ -12,6 +12,7 @@ import subprocess
 import urllib.parse
 import platform
 import time
+import shutil
 from typing import Dict, Any, Optional, List, Tuple
 from pathlib import Path
 
@@ -127,6 +128,103 @@ class WindowsProtocolHandler:
         """Get the current Python executable path"""
         return sys.executable
     
+    def get_rediacc_executable_path(self) -> Optional[str]:
+        """
+        Get the path to the rediacc.exe executable.
+        Works for both traditional Python installs and Windows Store Python.
+        """
+        try:
+            # Method 1: Try to find rediacc.exe in Scripts directory relative to current Python
+            python_exe = sys.executable
+            python_dir = Path(python_exe).parent
+            
+            # For traditional Python installations
+            scripts_dir = python_dir / "Scripts"
+            rediacc_exe = scripts_dir / "rediacc.exe"
+            
+            if rediacc_exe.exists():
+                return str(rediacc_exe)
+            
+            # For Windows Store Python installations
+            # Path structure: ...\PythonSoftwareFoundation.Python.X.Y_...\LocalCache\local-packages\PythonXYZ\Scripts
+            if "Microsoft\\WindowsApps" in str(python_dir) or "Packages\\PythonSoftwareFoundation" in str(python_dir):
+                # This is likely Windows Store Python
+                # Try to find the LocalCache\local-packages\PythonXYZ\Scripts directory
+                current_path = python_dir
+                while current_path.parent != current_path:  # Stop at root
+                    local_cache = current_path / "LocalCache" / "local-packages"
+                    if local_cache.exists():
+                        # Find PythonXYZ directory
+                        for python_ver_dir in local_cache.glob("Python*"):
+                            scripts_dir = python_ver_dir / "Scripts"
+                            rediacc_exe = scripts_dir / "rediacc.exe"
+                            if rediacc_exe.exists():
+                                return str(rediacc_exe)
+                    current_path = current_path.parent
+            
+            # Method 2: Try using shutil.which to find rediacc.exe in PATH
+            rediacc_in_path = shutil.which("rediacc")
+            if rediacc_in_path and rediacc_in_path.endswith(".exe"):
+                return rediacc_in_path
+            
+            # Method 3: Try to use pip to locate the installed scripts
+            try:
+                import subprocess
+                result = subprocess.run([
+                    python_exe, "-m", "pip", "show", "-f", "rediacc"
+                ], capture_output=True, text=True, timeout=10)
+                
+                if result.returncode == 0:
+                    # Parse the output to find the Scripts directory
+                    for line in result.stdout.splitlines():
+                        if line.strip().startswith("Location:"):
+                            location = line.split(":", 1)[1].strip()
+                            # The Scripts directory should be at the same level as site-packages
+                            site_packages = Path(location)
+                            scripts_dir = site_packages.parent / "Scripts"
+                            rediacc_exe = scripts_dir / "rediacc.exe"
+                            if rediacc_exe.exists():
+                                return str(rediacc_exe)
+                            
+                            # For Windows Store Python, try the alternate path
+                            if "local-packages" in str(site_packages):
+                                scripts_dir = site_packages.parent / "Scripts"
+                                rediacc_exe = scripts_dir / "rediacc.exe"
+                                if rediacc_exe.exists():
+                                    return str(rediacc_exe)
+            except (subprocess.TimeoutExpired, FileNotFoundError, Exception) as e:
+                logger.debug(f"Failed to use pip show to locate rediacc.exe: {e}")
+            
+            # Method 4: Try to find based on this module's location
+            try:
+                # Get the site-packages directory containing this module
+                this_file = Path(__file__)
+                site_packages = None
+                
+                # Walk up to find site-packages
+                current = this_file.parent
+                while current.parent != current:
+                    if current.name == "site-packages":
+                        site_packages = current
+                        break
+                    current = current.parent
+                
+                if site_packages:
+                    # Try Scripts directory at same level as site-packages
+                    scripts_dir = site_packages.parent / "Scripts"
+                    rediacc_exe = scripts_dir / "rediacc.exe"
+                    if rediacc_exe.exists():
+                        return str(rediacc_exe)
+            except Exception as e:
+                logger.debug(f"Failed to locate rediacc.exe via module path: {e}")
+            
+            logger.warning("Could not locate rediacc.exe executable")
+            return None
+            
+        except Exception as e:
+            logger.error(f"Error finding rediacc executable: {e}")
+            return None
+    
     def get_cli_script_path(self) -> str:
         """Get the path to the CLI main script"""
         # Try to find the CLI script in the package
@@ -149,29 +247,38 @@ class WindowsProtocolHandler:
     
     def get_protocol_command(self) -> str:
         """Get the command string for protocol handling"""
-        python_exe = self.get_python_executable()
+        # Try to get the rediacc.exe path first (preferred method)
+        rediacc_exe = self.get_rediacc_executable_path()
         
-        # Find the wrapper script (rediacc.py)
-        # Go up from src/cli/core to get to the CLI root directory
-        cli_dir = Path(__file__).parent.parent.parent.parent
-        wrapper_script = cli_dir / "rediacc.py"
-        
-        if wrapper_script.exists():
-            # Always use the wrapper script for consistency
-            return f'"{python_exe}" "{wrapper_script}" protocol-handler "%1"'
+        if rediacc_exe:
+            # Use the rediacc.exe directly for protocol handling
+            return f'"{rediacc_exe}" protocol-handler "%1"'
         else:
-            # If wrapper doesn't exist, try to find it relative to the installed package
-            # This handles cases where the package is installed via pip
-            import cli
-            cli_package_dir = Path(cli.__file__).parent.parent
-            wrapper_script = cli_package_dir / "rediacc.py"
+            # Fallback to Python + script method (original behavior)
+            logger.warning("Could not locate rediacc.exe, falling back to Python script method")
+            python_exe = self.get_python_executable()
+            
+            # Find the wrapper script (rediacc.py)
+            # Go up from src/cli/core to get to the CLI root directory
+            cli_dir = Path(__file__).parent.parent.parent.parent
+            wrapper_script = cli_dir / "rediacc.py"
             
             if wrapper_script.exists():
+                # Always use the wrapper script for consistency
                 return f'"{python_exe}" "{wrapper_script}" protocol-handler "%1"'
             else:
-                # Last resort: assume rediacc.py is in the current working directory
-                # or accessible via PATH
-                return f'"{python_exe}" rediacc.py protocol-handler "%1"'
+                # If wrapper doesn't exist, try to find it relative to the installed package
+                # This handles cases where the package is installed via pip
+                import cli
+                cli_package_dir = Path(cli.__file__).parent.parent
+                wrapper_script = cli_package_dir / "rediacc.py"
+                
+                if wrapper_script.exists():
+                    return f'"{python_exe}" "{wrapper_script}" protocol-handler "%1"'
+                else:
+                    # Last resort: assume rediacc.py is in the current working directory
+                    # or accessible via PATH
+                    return f'"{python_exe}" rediacc.py protocol-handler "%1"'
     
     def check_admin_privileges(self) -> bool:
         """Check if running with administrator privileges"""
@@ -301,12 +408,14 @@ class WindowsProtocolHandler:
     def get_protocol_status(self, system_wide: bool = False) -> Dict[str, Any]:
         """Get detailed status of protocol registration"""
         is_registered = self.is_protocol_registered(system_wide)
+        rediacc_exe_path = self.get_rediacc_executable_path()
 
         status = {
             "registered": is_registered,
             "admin_privileges": self.check_admin_privileges(),
             "command": None,
             "python_executable": self.get_python_executable(),
+            "rediacc_executable": rediacc_exe_path,
             "cli_script": self.get_cli_script_path(),
             "expected_command": self.get_protocol_command(),
             "registry_location": "system-wide" if system_wide else "user-level"

@@ -36,6 +36,99 @@ class MacOSProtocolHandler:
         """Get the current Python executable path"""
         return sys.executable
     
+    def get_rediacc_executable_path(self) -> Optional[str]:
+        """
+        Get the path to the rediacc executable.
+        Works for various macOS Python installations (system, Homebrew, pyenv, conda, etc.).
+        """
+        try:
+            # Method 1: Try using shutil.which to find rediacc in PATH
+            rediacc_in_path = shutil.which("rediacc")
+            if rediacc_in_path:
+                return rediacc_in_path
+            
+            # Method 2: Try common macOS installation locations
+            python_exe = sys.executable
+            python_dir = Path(python_exe).parent
+            
+            # Common macOS Python installation patterns
+            possible_locations = [
+                python_dir / "rediacc",  # Same directory as python
+                python_dir.parent / "bin" / "rediacc",  # Standard Unix layout
+                Path.home() / ".local" / "bin" / "rediacc",  # User installation
+                Path("/usr/local/bin/rediacc"),  # Homebrew installation
+                Path("/opt/homebrew/bin/rediacc"),  # Homebrew on Apple Silicon
+                Path("/usr/bin/rediacc"),  # System installation
+                Path("Frameworks/Python.framework/Versions/Current/bin/rediacc").resolve(),  # Python.org installer
+            ]
+            
+            # Add pyenv locations if pyenv is detected
+            pyenv_root = os.environ.get("PYENV_ROOT", Path.home() / ".pyenv")
+            if Path(pyenv_root).exists():
+                pyenv_shims = Path(pyenv_root) / "shims" / "rediacc"
+                possible_locations.insert(1, pyenv_shims)
+            
+            # Add conda locations if conda is detected
+            conda_prefix = os.environ.get("CONDA_PREFIX")
+            if conda_prefix:
+                conda_bin = Path(conda_prefix) / "bin" / "rediacc"
+                possible_locations.insert(1, conda_bin)
+            
+            for location in possible_locations:
+                if location.exists() and location.is_file():
+                    return str(location)
+            
+            # Method 3: Try to use pip to locate the installed scripts
+            try:
+                import subprocess
+                result = subprocess.run([
+                    python_exe, "-m", "pip", "show", "-f", "rediacc"
+                ], capture_output=True, text=True, timeout=10)
+                
+                if result.returncode == 0:
+                    # Parse the output to find the installation location
+                    for line in result.stdout.splitlines():
+                        if line.strip().startswith("Location:"):
+                            location = line.split(":", 1)[1].strip()
+                            site_packages = Path(location)
+                            
+                            # Try different possible bin locations
+                            bin_locations = [
+                                site_packages.parent / "bin" / "rediacc",
+                                site_packages.parent.parent / "bin" / "rediacc",
+                                site_packages.parent / "Scripts" / "rediacc",  # Windows-style naming
+                            ]
+                            
+                            for bin_loc in bin_locations:
+                                if bin_loc.exists() and bin_loc.is_file():
+                                    return str(bin_loc)
+            except (subprocess.TimeoutExpired, FileNotFoundError, Exception) as e:
+                logger.debug(f"Failed to use pip show to locate rediacc: {e}")
+            
+            # Method 4: Try to find based on this module's location
+            try:
+                this_file = Path(__file__)
+                # Navigate up to find potential bin directories
+                current = this_file.parent
+                for _ in range(5):  # Search up to 5 levels
+                    for bin_name in ["bin", "Scripts"]:
+                        bin_dir = current / bin_name
+                        rediacc_exe = bin_dir / "rediacc"
+                        if rediacc_exe.exists() and rediacc_exe.is_file():
+                            return str(rediacc_exe)
+                    current = current.parent
+                    if current.parent == current:  # Reached root
+                        break
+            except Exception as e:
+                logger.debug(f"Failed to locate rediacc via module path: {e}")
+            
+            logger.warning("Could not locate rediacc executable")
+            return None
+            
+        except Exception as e:
+            logger.error(f"Error finding rediacc executable: {e}")
+            return None
+    
     def get_cli_script_path(self) -> str:
         """Get the path to the CLI main script"""
         # Try to find the CLI script in the package
@@ -103,16 +196,22 @@ class MacOSProtocolHandler:
     
     def create_launch_agent_plist(self, system_wide: bool = False) -> str:
         """Create a LaunchAgent plist for the protocol handler"""
-        python_exe = self.get_python_executable()
-        cli_script = self.get_cli_script_path()
+        # Try to get the rediacc executable path first (preferred method)
+        rediacc_exe = self.get_rediacc_executable_path()
+        
+        if rediacc_exe:
+            # Use the rediacc executable directly
+            program_arguments = [rediacc_exe, "protocol-handler"]
+        else:
+            # Fallback to Python + script method (original behavior)
+            logger.warning("Could not locate rediacc executable, falling back to Python script method")
+            python_exe = self.get_python_executable()
+            cli_script = self.get_cli_script_path()
+            program_arguments = [python_exe, cli_script, "protocol-handler"]
         
         plist_data = {
             "Label": self.BUNDLE_ID,
-            "ProgramArguments": [
-                python_exe,
-                cli_script,
-                "protocol-handler"
-            ],
+            "ProgramArguments": program_arguments,
             "CFBundleIdentifier": self.BUNDLE_ID,
             "CFBundleURLTypes": [
                 {
@@ -203,9 +302,19 @@ class MacOSProtocolHandler:
                 
                 # Create executable script
                 executable = macos_dir / "RediaccProtocol"
-                executable_content = f"""#!/bin/bash
+                
+                # Try to use rediacc executable first
+                rediacc_exe = self.get_rediacc_executable_path()
+                if rediacc_exe:
+                    executable_content = f"""#!/bin/bash
+{rediacc_exe} protocol-handler "$@"
+"""
+                else:
+                    # Fallback to Python + script method
+                    executable_content = f"""#!/bin/bash
 {self.get_python_executable()} "{self.get_cli_script_path()}" protocol-handler "$@"
 """
+                
                 executable.write_text(executable_content)
                 executable.chmod(0o755)
                 
@@ -293,12 +402,14 @@ class MacOSProtocolHandler:
     def get_protocol_status(self, system_wide: bool = False) -> Dict[str, Any]:
         """Get detailed status of protocol registration"""
         deps = self.check_dependencies()
+        rediacc_exe_path = self.get_rediacc_executable_path()
         
         status = {
             "registered": self.is_protocol_registered(),
             "system_wide": system_wide,
             "dependencies": deps,
             "python_executable": self.get_python_executable(),
+            "rediacc_executable": rediacc_exe_path,
             "cli_script": self.get_cli_script_path(),
             "bundle_id": self.BUNDLE_ID,
             "protocol_scheme": self.PROTOCOL_SCHEME,
