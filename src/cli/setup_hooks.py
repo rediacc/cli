@@ -283,12 +283,12 @@ def add_to_user_path_windows(directory: Path) -> bool:
                 )
 
                 print(f"Successfully added {directory} to user PATH")
-                print("Note: You may need to restart your terminal or applications to see the PATH changes")
+                print("Note: Open a new terminal to use the 'rediacc' command.")
                 return True
             except Exception as e:
                 print(f"Added to PATH but failed to broadcast change: {e}")
                 print(f"Successfully added {directory} to user PATH")
-                print("Note: Please restart your terminal to see the PATH changes")
+                print("Note: Open a new terminal to use the 'rediacc' command.")
                 return True
         else:
             print(f"Failed to add directory to PATH: {result.stderr}")
@@ -748,8 +748,7 @@ def run_post_install_hook(force: bool = False) -> bool:
         print("Try: rediacc --help")
     else:
         print("\n⚠️  Setup completed with issues")
-        print("You may need to restart your terminal or run:")
-        print("  python -m cli.commands.cli_main --help")
+        print("Open a new terminal to start using the 'rediacc' command.")
 
     return all(results.values())
 
