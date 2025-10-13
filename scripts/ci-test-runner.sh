@@ -41,6 +41,13 @@ else
   PY_BIN="$(command -v python)"
 fi
 
+# Determine timeout command availability (not present on macOS by default)
+if command -v timeout >/dev/null 2>&1; then
+  TIMEOUT_CMD="timeout"
+else
+  TIMEOUT_CMD=""
+fi
+
 # Version without dot for directory names
 PYTHON_VERSION_NODOT=$(echo "$PYTHON_VERSION" | tr -d '.')
 OUTPUT_DIR="ci-outputs/${PLATFORM_NAME}-py${PYTHON_VERSION}"
@@ -69,9 +76,9 @@ mkdir -p "$OUTPUT_DIR"
 (
   echo "Installing dependencies..."
   echo "Upgrading pip/setuptools/wheel..."
-  timeout 600s "$PY_BIN" -m pip install --upgrade pip setuptools wheel
+  if [ -n "$TIMEOUT_CMD" ]; then $TIMEOUT_CMD 600s "$PY_BIN" -m pip install --upgrade pip setuptools wheel; else "$PY_BIN" -m pip install --upgrade pip setuptools wheel; fi
   echo "Installing project (editable) with extras [test,dev]..."
-  timeout 600s "$PY_BIN" -m pip install --progress-bar off -e ".[test,dev]"
+  if [ -n "$TIMEOUT_CMD" ]; then $TIMEOUT_CMD 600s "$PY_BIN" -m pip install --progress-bar off -e ".[test,dev]"; else "$PY_BIN" -m pip install --progress-bar off -e ".[test,dev]"; fi
   echo "pip freeze after install:" && "$PY_BIN" -m pip freeze | sort | sed -e 's/.*/  &/'
 ) 2>&1 | tee "$OUTPUT_DIR/01-install-deps.txt"
 
@@ -91,22 +98,27 @@ mkdir -p "$OUTPUT_DIR"
     # Linux: split 3.12 into non-GUI and GUI phases to isolate hangs
     if [ "$PYTHON_VERSION" = "3.12" ]; then
       echo "[Phase 1] Non-GUI tests (excluding 'gui' marked)"
-      timeout 600s "$PY_BIN" -m pytest tests/ "${PYTEST_ARGS[@]}" -k "not gui" \
-        --junitxml="test-results-${PYTHON_VERSION}/junit-nongui.xml"
+      if [ -n "$TIMEOUT_CMD" ]; then $TIMEOUT_CMD 600s "$PY_BIN" -m pytest tests/ "${PYTEST_ARGS[@]}" -k "not gui" \
+        --junitxml="test-results-${PYTHON_VERSION}/junit-nongui.xml"; else "$PY_BIN" -m pytest tests/ "${PYTEST_ARGS[@]}" -k "not gui" \
+        --junitxml="test-results-${PYTHON_VERSION}/junit-nongui.xml"; fi
 
       echo "[Phase 2] GUI tests only under Xvfb"
-      timeout 600s xvfb-run -a -s "-screen 0 1920x1080x24" \
+      if [ -n "$TIMEOUT_CMD" ]; then $TIMEOUT_CMD 600s xvfb-run -a -s "-screen 0 1920x1080x24" \
         "$PY_BIN" -m pytest tests/ "${PYTEST_ARGS[@]}" -k "gui" \
-        --junitxml="test-results-${PYTHON_VERSION}/junit-gui.xml"
+        --junitxml="test-results-${PYTHON_VERSION}/junit-gui.xml"; else xvfb-run -a -s "-screen 0 1920x1080x24" \
+        "$PY_BIN" -m pytest tests/ "${PYTEST_ARGS[@]}" -k "gui" \
+        --junitxml="test-results-${PYTHON_VERSION}/junit-gui.xml"; fi
     else
       # Other versions: run all under Xvfb
-      timeout 900s xvfb-run -a -s "-screen 0 1920x1080x24" \
+      if [ -n "$TIMEOUT_CMD" ]; then $TIMEOUT_CMD 900s xvfb-run -a -s "-screen 0 1920x1080x24" \
         "$PY_BIN" -m pytest tests/ "${PYTEST_ARGS[@]}" \
-        --junitxml="test-results-${PYTHON_VERSION}/junit.xml"
+        --junitxml="test-results-${PYTHON_VERSION}/junit.xml"; else xvfb-run -a -s "-screen 0 1920x1080x24" \
+        "$PY_BIN" -m pytest tests/ "${PYTEST_ARGS[@]}" \
+        --junitxml="test-results-${PYTHON_VERSION}/junit.xml"; fi
     fi
   else
     # Windows/macOS: Direct pytest
-    timeout 900s "$PY_BIN" -m pytest tests/ "${PYTEST_ARGS[@]}"
+    if [ -n "$TIMEOUT_CMD" ]; then $TIMEOUT_CMD 900s "$PY_BIN" -m pytest tests/ "${PYTEST_ARGS[@]}"; else "$PY_BIN" -m pytest tests/ "${PYTEST_ARGS[@]}"; fi
   fi
 ) 2>&1 | tee "$OUTPUT_DIR/02-run-tests.txt"
 
@@ -115,7 +127,7 @@ if [ "$RUN_INTEGRATION" = "true" ] && [ "$PLATFORM_NAME" = "ubuntu-latest" ] && 
   (
     echo "Running integration tests..."
     cd tests
-    timeout 1200s ./run_integration_ci.sh
+    if [ -n "$TIMEOUT_CMD" ]; then $TIMEOUT_CMD 1200s ./run_integration_ci.sh; else ./run_integration_ci.sh; fi
   ) 2>&1 | tee "$OUTPUT_DIR/03-integration-tests.txt"
 fi
 
