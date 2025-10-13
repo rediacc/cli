@@ -22,6 +22,10 @@ import platform
 from setuptools import setup
 from setuptools.command.install import install
 from setuptools.command.develop import develop
+try:
+    from wheel.bdist_wheel import bdist_wheel
+except ImportError:
+    bdist_wheel = None
 
 class PostInstallCommand(install):
     """Custom install command with post-install hook for protocol registration"""
@@ -98,6 +102,52 @@ class PostDevelopCommand(develop):
             except Exception as e:
                 print(f"Development post-install hook failed: {e}")
                 print("You can register the protocol manually by running: rediacc --register-protocol")
+
+class PreUninstallCommand:
+    """Custom uninstall preparation - clean up protocol registration
+    
+    Note: This cannot be automatically called by pip uninstall, but provides
+    a manual way to clean up before uninstalling.
+    """
+    
+    @staticmethod
+    def run():
+        """Execute pre-uninstall cleanup"""
+        try:
+            # Import and execute the pre-uninstall hook
+            import subprocess
+            python_exe = sys.executable
+            
+            # Find the setup_hooks.py file
+            setup_hooks_path = None
+            
+            # Try to find it in the installed package
+            try:
+                import cli.setup_hooks
+                setup_hooks_path = cli.setup_hooks.__file__
+            except ImportError:
+                # Fallback to relative path for development installs
+                current_dir = os.path.dirname(os.path.abspath(__file__))
+                potential_path = os.path.join(current_dir, 'src', 'cli', 'setup_hooks.py')
+                if os.path.exists(potential_path):
+                    setup_hooks_path = potential_path
+            
+            if setup_hooks_path:
+                print("Running pre-uninstall cleanup...")
+                result = subprocess.run([python_exe, setup_hooks_path, 'pre_uninstall'], 
+                                      capture_output=True, text=True, timeout=30)
+                if result.stdout:
+                    print(result.stdout.strip())
+                if result.stderr:
+                    print(result.stderr.strip(), file=sys.stderr)
+                print("Pre-uninstall cleanup completed.")
+            else:
+                print("Setup hooks not found - unable to run pre-uninstall cleanup")
+                print("You may need to manually unregister protocols: rediacc protocol unregister")
+        
+        except Exception as e:
+            print(f"Pre-uninstall cleanup failed: {e}")
+            print("You may need to manually unregister protocols: rediacc protocol unregister")
 
 # Custom command classes
 cmdclass = {

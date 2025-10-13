@@ -64,6 +64,23 @@ def get_scripts_directory() -> Path:
     
     return None
 
+def check_passwordless_sudo() -> bool:
+    """Check if sudo is available without password prompt.
+    
+    Returns:
+        bool: True if passwordless sudo is available, False otherwise
+    """
+    try:
+        # Use sudo -n (non-interactive) to test if sudo works without password
+        result = subprocess.run(
+            ["sudo", "-n", "true"],
+            capture_output=True,
+            timeout=5
+        )
+        return result.returncode == 0
+    except (subprocess.CalledProcessError, FileNotFoundError, subprocess.TimeoutExpired):
+        return False
+
 def is_directory_in_path(directory: Path) -> bool:
     """Check if a directory is in the current PATH"""
     if not directory or not directory.exists():
@@ -418,12 +435,8 @@ def ensure_dependencies_installed():
             if result.returncode != 0:
                 print("INFO: xdg-utils not found")
                 
-                # Check if we can install automatically (has sudo/root access)
-                try:
-                    can_install = subprocess.run(["sudo", "-n", "true"], 
-                                                capture_output=True, timeout=5).returncode == 0
-                except (subprocess.CalledProcessError, FileNotFoundError, subprocess.TimeoutExpired):
-                    can_install = False
+                # Check if we can install automatically (has passwordless sudo access)
+                can_install = check_passwordless_sudo()
                 
                 if can_install:
                     print("Attempting automatic installation of xdg-utils...")
@@ -655,6 +668,8 @@ def pre_uninstall():
     """Pre-uninstall hook - attempt to unregister protocol on all platforms"""
     system = platform.system().lower()
 
+    print(f"Starting rediacc uninstall cleanup on {system.capitalize()}...")
+
     try:
         # Import the cross-platform protocol handler
         from cli.core.protocol_handler import (
@@ -664,15 +679,17 @@ def pre_uninstall():
         )
 
         if not is_protocol_supported():
+            print(f"Protocol registration not supported on {system} - skipping cleanup")
             return  # Platform not supported, nothing to do
 
         handler = get_platform_handler()
 
         # Check if protocol is registered
         if not handler.is_protocol_registered():
+            print("No rediacc:// protocol registration found - nothing to clean up")
             return  # Nothing to unregister
 
-        print("Cleaning up rediacc:// protocol registration...")
+        print("Found rediacc:// protocol registration - cleaning up...")
         
         # Attempt unregistration (try both user and system level)
         user_success = False
