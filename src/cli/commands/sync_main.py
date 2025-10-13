@@ -40,6 +40,46 @@ def find_msys2_executable(exe_name: str) -> Optional[str]:
                 if os.path.exists(exe_path): return exe_path
     return None
 
+def convert_ssh_opts_for_msys2(ssh_opts: str) -> str:
+    """Convert Windows paths in SSH options to MSYS2 format"""
+    if not is_windows() or not ssh_opts:
+        return ssh_opts
+    
+    import re
+    
+    def convert_path_match(match):
+        """Convert a Windows path to MSYS2 format"""
+        path = match.group(2)  # The path is in the second group
+        
+        # Skip if it's already a Unix-style path or doesn't look like a Windows path
+        if not re.match(r'^[A-Za-z]:', path):
+            return match.group(0)
+        
+        # Convert C:\\path\\to\\file to /c/path/to/file
+        drive_letter = path[0].lower()
+        rest_of_path = path[2:] if len(path) > 2 else ''
+        rest_of_path = rest_of_path.replace('\\', '/').replace('\\\\', '/')
+        
+        if rest_of_path and not rest_of_path.startswith('/'):
+            rest_of_path = '/' + rest_of_path
+        
+        converted = f'/{drive_letter}{rest_of_path}'
+        return match.group(1) + converted  # prefix + converted path
+    
+    # Pattern to match file paths in SSH options (after -i, -o UserKnownHostsFile=, etc.)
+    # This handles both -i path and -o UserKnownHostsFile=path formats
+    patterns = [
+        r'(-i\s+)([A-Za-z]:[^\s]+)',  # -i /path/to/key
+        r'(UserKnownHostsFile=)([A-Za-z]:[^\s]+)',  # UserKnownHostsFile=/path/to/known_hosts
+        r'(IdentityFile=)([A-Za-z]:[^\s]+)',  # IdentityFile=/path/to/key
+    ]
+    
+    converted_opts = ssh_opts
+    for pattern in patterns:
+        converted_opts = re.sub(pattern, convert_path_match, converted_opts)
+    
+    return converted_opts
+
 def get_rsync_command() -> str:
     if is_windows():
         msys2_rsync = find_msys2_executable('rsync')
@@ -49,10 +89,30 @@ def get_rsync_command() -> str:
     raise RuntimeError("rsync not found. Please install rsync.")
 
 def get_rsync_ssh_command(ssh_opts: str) -> str:
-    if not is_windows(): return f'ssh {ssh_opts}'
+    logger = get_logger(__name__)
+    
+    if not is_windows(): 
+        result = f'ssh {ssh_opts}'
+        logger.debug(f"[DEBUG] Non-Windows SSH command: {result}")
+        return result
+    
     msys2_ssh = find_msys2_executable('ssh')
-    if msys2_ssh: return f'{msys2_ssh.replace("\\", "/")} {ssh_opts}'
-    if shutil.which('ssh'): return f'ssh {ssh_opts}'
+    if msys2_ssh: 
+        # Convert paths in SSH options to MSYS2 format for compatibility
+        logger.debug(f"[DEBUG] Original SSH options: {ssh_opts}")
+        converted_opts = convert_ssh_opts_for_msys2(ssh_opts)
+        logger.debug(f"[DEBUG] Converted SSH options: {converted_opts}")
+        
+        ssh_exe = msys2_ssh.replace("\\", "/")
+        result = f'{ssh_exe} {converted_opts}'
+        logger.debug(f"[DEBUG] MSYS2 SSH command: {result}")
+        return result
+    
+    if shutil.which('ssh'): 
+        result = f'ssh {ssh_opts}'
+        logger.debug(f"[DEBUG] System SSH command: {result}")
+        return result
+    
     raise RuntimeError("SSH not found for rsync")
 
 def prepare_rsync_paths(source: str, dest: str) -> Tuple[str, str]:
@@ -205,7 +265,23 @@ def perform_rsync(source: str, dest: str, ssh_cmd: str, options: Dict[str, Any],
         if not dry_run_output: print(colorize("Failed to analyze changes", 'RED')); return False
         if not display_changes_and_confirm(parse_rsync_changes(dry_run_output), "Upload" if '@' in dest else "Download"): return False
     
-    rsync_cmd = [get_rsync_command(), '-av', '--verbose', '--inplace', '--no-whole-file', '-e', ssh_cmd, '--progress']
+    # Enhanced rsync command with compatibility options for mixed version environments
+    rsync_cmd = [get_rsync_command(), '-av', '--verbose', '--progress']
+    
+    # Add compatibility options for different rsync versions and network issues
+    if is_windows():
+        # Windows-specific compatibility options
+        rsync_cmd.extend([
+            '--inplace',  # Reduce network traffic and handle temporary disconnections
+            '--no-whole-file',  # Use delta-transfer algorithm
+            '--timeout=300',  # 5 minute timeout for operations
+            '--contimeout=60'  # 1 minute connection timeout
+        ])
+    else:
+        rsync_cmd.extend(['--inplace', '--no-whole-file'])
+    
+    # Add SSH command
+    rsync_cmd.extend(['-e', ssh_cmd])
     
     if universal_user and ('@' in source or '@' in dest): rsync_cmd.extend(['--rsync-path', f'sudo -u {universal_user} rsync'])
     if options.get('mirror'): rsync_cmd.extend(['--delete', '--exclude', '*.sock'])
