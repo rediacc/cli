@@ -25,7 +25,7 @@ class MSYS2Installer:
     """Automatic MSYS2 installer with rsync support"""
     
     # MSYS2 installer configuration
-    INSTALLER_URL = "https://github.com/msys2/msys2-installer/releases/download/2025-06-22/msys2-x86_64-20250622.exe"
+    INSTALLER_URL = "https://github.com/msys2/msys2-installer/releases/download/nightly-x86_64/msys2-x86_64-latest.exe"
     DEFAULT_INSTALL_DIR = "C:/msys64"
     INSTALLER_TIMEOUT = 600  # 10 minutes for installation
     PACKAGE_TIMEOUT = 300    # 5 minutes for package installation
@@ -68,7 +68,7 @@ class MSYS2Installer:
     
     def download_installer(self, temp_dir: Path) -> Path:
         """Download the MSYS2 installer"""
-        installer_path = temp_dir / "msys2-installer.exe"
+        installer_path = temp_dir / "msys2-x86_64-latest.exe"
         
         logger.info(f"Downloading MSYS2 installer...")
         logger.debug(f"URL: {self.INSTALLER_URL}")
