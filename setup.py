@@ -31,6 +31,15 @@ try:
 except ImportError:
     bdist_wheel = None
 
+# Ensure version is available even when metadata falls back to setup.py
+from pathlib import Path
+import sys
+sys.path.insert(0, str(Path(__file__).parent / "src"))
+try:
+    from cli._version import __version__
+except Exception:
+    __version__ = "0.0.0"
+
 # Global hook execution state
 _hook_state = {"executed": False, "lock": threading.Lock(), "execution_attempts": 0}
 
@@ -301,4 +310,9 @@ cmdclass = {
 
 # All configuration is in pyproject.toml
 # This adds enhanced custom install commands with multiple hook triggers
-setup(cmdclass=cmdclass)
+setup(
+    cmdclass=cmdclass,
+    # Provide minimal metadata to avoid UNKNOWN when setup.py is consulted
+    name="rediacc",
+    version=__version__,
+)
