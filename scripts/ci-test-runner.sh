@@ -145,6 +145,16 @@ PY
         else
           echo "Skipping GUI tests due to failing Tk smoke-check or explicit SKIP_GUI_PHASE"
         fi
+      else
+        # Other versions: run all under Xvfb
+        if [ -n "$TIMEOUT_CMD" ]; then $TIMEOUT_CMD 900s xvfb-run -a -s "-screen 0 1920x1080x24" \
+          "$PY_BIN" -m pytest tests/ "${PYTEST_ARGS[@]}" \
+          --junitxml="test-results-${PYTHON_VERSION}/junit.xml"; else xvfb-run -a -s "-screen 0 1920x1080x24" \
+          "$PY_BIN" -m pytest tests/ "${PYTEST_ARGS[@]}" \
+          --junitxml="test-results-${PYTHON_VERSION}/junit.xml"; fi
+      fi
+    fi
+  else
     # Windows/macOS: Direct pytest
     if [ -n "$KEY_EXPR" ]; then
       if [ -n "$TIMEOUT_CMD" ]; then $TIMEOUT_CMD 900s "$PY_BIN" -m pytest tests/ "${PYTEST_ARGS[@]}" -k "$KEY_EXPR"; else "$PY_BIN" -m pytest tests/ "${PYTEST_ARGS[@]}" -k "$KEY_EXPR"; fi
