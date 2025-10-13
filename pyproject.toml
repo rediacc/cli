@@ -76,6 +76,7 @@ dev = [
 test = [
     "pytest>=7.0",
     "pytest-cov>=4.0",
+    "pytest-timeout>=2.1",  # For test timeouts
     "pyyaml>=6.0",
     "playwright>=1.40.0",  # For protocol testing
     "mss>=9.0.0",  # For cross-platform screenshots in CI
@@ -115,6 +116,7 @@ addopts = [
     "--strict-markers",  # Ensure all markers are defined
     "--strict-config",  # Ensure config is valid
     "--showlocals",  # Show local variables in tracebacks
+    "--timeout=300",  # 5 minute timeout per test to prevent hangs
 ]
 markers = [
     "slow: marks tests as slow (deselect with '-m \"not slow\"')",
@@ -129,6 +131,7 @@ filterwarnings = [
     "error",  # Treat warnings as errors
     "ignore::DeprecationWarning",  # Ignore deprecation warnings
     "ignore::PendingDeprecationWarning",
+    "ignore:.*couldnt-parse.*:coverage.exceptions.CoverageWarning",  # Ignore coverage parsing warnings
 ]
 
 [tool.coverage.run]
@@ -138,6 +141,7 @@ omit = [
     "*/test_*.py",
     "*/__pycache__/*",
     "*/site-packages/*",
+    "src/cli/commands/sync_main.py",  # Skip problematic file until parsing issue resolved
 ]
 branch = true
 

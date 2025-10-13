@@ -403,7 +403,6 @@ jobs:
         uses: pyvista/setup-headless-display-action@v3
         with:
           mesa3d-release: 24.3.0
-          install-mesa3d-offscreen: true
           pyvista: false
 
       - name: Install system dependencies

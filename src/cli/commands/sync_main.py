@@ -32,27 +32,52 @@ import platform
 from typing import List, Tuple
 
 def find_msys2_executable(exe_name: str) -> Optional[str]:
-    if not is_windows(): return None
-    for msys2_path in filter(None, [os.environ.get('MSYS2_ROOT'), 'C:\\msys64', 'C:\\msys2', os.path.expanduser('~\\msys64'), os.path.expanduser('~\\msys2')]):
+    """Find MSYS2 executables on Windows."""
+    if not is_windows():
+        return None
+    
+    msys2_paths = [
+        os.environ.get('MSYS2_ROOT'),
+        'C:\\msys64',
+        'C:\\msys2',
+        os.path.expanduser('~\\msys64'),
+        os.path.expanduser('~\\msys2')
+    ]
+    
+    for msys2_path in filter(None, msys2_paths):
         if os.path.exists(msys2_path):
             for subdir in ['usr\\bin', 'mingw64\\bin', 'mingw32\\bin']:
                 exe_path = os.path.join(msys2_path, subdir, f'{exe_name}.exe')
-                if os.path.exists(exe_path): return exe_path
+                if os.path.exists(exe_path):
+                    return exe_path
     return None
 
 def get_rsync_command() -> str:
+    """Get rsync command path, platform-aware."""
     if is_windows():
         msys2_rsync = find_msys2_executable('rsync')
-        if msys2_rsync: return msys2_rsync
+        if msys2_rsync:
+            return msys2_rsync
         raise RuntimeError("rsync not found. Please install MSYS2 with rsync package.")
-    if shutil.which('rsync'): return 'rsync'
+    
+    rsync_path = shutil.which('rsync')
+    if rsync_path:
+        return 'rsync'
+    
     raise RuntimeError("rsync not found. Please install rsync.")
 
 def get_rsync_ssh_command(ssh_opts: str) -> str:
-    if not is_windows(): return f'ssh {ssh_opts}'
+    """Get SSH command for rsync, platform-aware."""
+    if not is_windows():
+        return f'ssh {ssh_opts}'
+    
     msys2_ssh = find_msys2_executable('ssh')
-    if msys2_ssh: return f'{msys2_ssh.replace("\\", "/")} {ssh_opts}'
-    if shutil.which('ssh'): return f'ssh {ssh_opts}'
+    if msys2_ssh:
+        return f'{msys2_ssh.replace("\\", "/")} {ssh_opts}'
+    
+    if shutil.which('ssh'):
+        return f'ssh {ssh_opts}'
+    
     raise RuntimeError("SSH not found for rsync")
 
 def prepare_rsync_paths(source: str, dest: str) -> Tuple[str, str]:
@@ -125,10 +150,22 @@ def prepare_rsync_paths(source: str, dest: str) -> Tuple[str, str]:
     return (converted_source, converted_dest)
 
 def run_platform_command(cmd: List[str], **kwargs) -> subprocess.CompletedProcess:
+    """Run platform-specific command with proper error handling."""
     logger = get_logger(__name__)
+    
     if is_windows() and cmd[0] == 'rsync':
-        try: cmd[0] = get_rsync_command(); logger.debug(f"Windows rsync path: {cmd[0]}"); logger.debug(f"Full command: {cmd}")
-        except RuntimeError as e: logger.error(f"Failed to find rsync: {e}"); raise
+        try:
+            cmd[0] = get_rsync_command()
+            logger.debug(f"Windows rsync path: {cmd[0]}")
+            logger.debug(f"Full command: {cmd}")
+        except RuntimeError as e:
+            logger.error(f"Failed to find rsync: {e}")
+            raise
+    
+    # Add timeout to prevent hanging in CI
+    if 'timeout' not in kwargs:
+        kwargs['timeout'] = 300  # 5 minutes max for any single rsync operation
+    
     return subprocess.run(cmd, **kwargs)
 
 
