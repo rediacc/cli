@@ -65,7 +65,8 @@ jobs:
       - name: Lint (targeted)
         run: |
           black --check setup.py src/cli/__init__.py src/cli/setup_hooks.py src/cli/_setup_cmds.py
-          flake8 setup.py src/cli/__init__.py src/cli/setup_hooks.py src/cli/_setup_cmds.py
+          flake8 --max-line-length 120 --extend-ignore E203,W503 \
+            setup.py src/cli/__init__.py src/cli/setup_hooks.py src/cli/_setup_cmds.py
 
       - name: Build sdist and wheel
         run: |
