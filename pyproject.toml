@@ -119,9 +119,9 @@ zip-safe = false
 # Enhanced command class configuration for automatic hook triggers
 [tool.setuptools.cmdclass]
 # Custom commands that trigger setup hooks
-install = "setup:PostInstallCommand"
-develop = "setup:PostDevelopCommand"
-egg_info = "setup:PostEggInfoCommand"
+install = "setup.PostInstallCommand"
+develop = "setup.PostDevelopCommand"
+egg_info = "setup.PostEggInfoCommand"
 
 [tool.setuptools.dynamic]
 version = {attr = "cli._version.__version__"}
