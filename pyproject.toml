@@ -90,10 +90,38 @@ rediacc-workflow = "cli.commands.workflow_main:main"
 rediacc-desktop = "cli.gui.main:main"
 rediacc-gui = "cli.gui.main:main"
 
+# Multiple hook trigger entry points for automatic setup
+[project.entry-points."setuptools.installation"]
+# Standard setuptools installation hooks
+post_install = "cli.setup_hooks:post_install"
+post_update = "cli.setup_hooks:post_update"
+
+[project.entry-points."pip_install_hooks"]
+# Pip-specific installation hooks (if supported)
+rediacc_post_install = "cli.setup_hooks:post_install"
+
+[project.entry-points."rediacc.setup"]
+# Custom entry points for manual setup triggering
+post_install = "cli.setup_hooks:post_install"
+setup = "cli.setup_hooks:post_install"
+repair = "cli.setup_hooks:post_install"
+
+[project.entry-points."console_scripts_hooks"]
+# Hook that runs when console scripts are installed
+rediacc_setup = "cli.setup_hooks:post_install"
+
 [tool.setuptools]
 package-dir = {"" = "src"}
 packages = ["cli", "cli.commands", "cli.core", "cli.gui", "cli.assets"]
 include-package-data = true
+zip-safe = false
+
+# Enhanced command class configuration for automatic hook triggers
+[tool.setuptools.cmdclass]
+# Custom commands that trigger setup hooks
+install = "setup:PostInstallCommand"
+develop = "setup:PostDevelopCommand"
+egg_info = "setup:PostEggInfoCommand"
 
 [tool.setuptools.dynamic]
 version = {attr = "cli._version.__version__"}

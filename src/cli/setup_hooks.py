@@ -10,7 +10,84 @@ import sys
 import platform
 import subprocess
 import shutil
+import json
+import hashlib
+import time
+import logging
 from pathlib import Path
+from typing import Dict, Any, Optional
+
+# Setup logging for debugging
+logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(levelname)s - %(message)s')
+logger = logging.getLogger(__name__)
+
+def get_setup_state_file() -> Path:
+    """Get the path to the setup state file"""
+    if platform.system().lower() == "windows":
+        # Windows: use AppData/Local
+        state_dir = Path(os.environ.get('LOCALAPPDATA', Path.home() / 'AppData' / 'Local')) / 'rediacc'
+    else:
+        # Unix: use XDG_CONFIG_HOME or ~/.config
+        config_home = os.environ.get('XDG_CONFIG_HOME', Path.home() / '.config')
+        state_dir = Path(config_home) / 'rediacc'
+    
+    state_dir.mkdir(parents=True, exist_ok=True)
+    return state_dir / 'setup_state.json'
+
+def load_setup_state() -> Dict[str, Any]:
+    """Load the current setup state"""
+    state_file = get_setup_state_file()
+    if not state_file.exists():
+        return {
+            'version': '1.0',
+            'last_setup': None,
+            'path_configured': False,
+            'protocol_registered': False,
+            'dependencies_checked': False,
+            'setup_hash': None,
+            'executable_path': None,
+            'scripts_directory': None,
+            'failures': []
+        }
+    
+    try:
+        with open(state_file, 'r', encoding='utf-8') as f:
+            return json.load(f)
+    except (json.JSONDecodeError, IOError):
+        logger.warning("Invalid setup state file, resetting...")
+        return load_setup_state()  # Return default state
+
+def save_setup_state(state: Dict[str, Any]):
+    """Save the current setup state"""
+    state['last_setup'] = time.time()
+    state_file = get_setup_state_file()
+    try:
+        with open(state_file, 'w', encoding='utf-8') as f:
+            json.dump(state, f, indent=2)
+    except IOError as e:
+        logger.error(f"Failed to save setup state: {e}")
+
+def get_current_setup_hash() -> str:
+    """Generate a hash of current installation state for change detection"""
+    python_exe = sys.executable
+    package_location = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+    
+    # Include key installation details
+    data = {
+        'python_executable': python_exe,
+        'package_location': package_location,
+        'platform': platform.platform(),
+        'python_version': sys.version,
+    }
+    
+    # Add Scripts directory for Windows
+    if platform.system().lower() == "windows":
+        scripts_dir = get_scripts_directory()
+        if scripts_dir:
+            data['scripts_directory'] = str(scripts_dir)
+    
+    hash_str = json.dumps(data, sort_keys=True)
+    return hashlib.sha256(hash_str.encode()).hexdigest()
 
 def detect_windows_store_python() -> bool:
     """Detect if this is Windows Store Python installation"""
@@ -557,66 +634,158 @@ def print_browser_restart_note(system: str):
     elif system == 'windows':
         print("Note: Restart your browser to enable rediacc:// URL support")
 
-def post_install():
-    """Post-install hook - attempt to register protocol on all platforms"""
+def run_post_install_hook(force: bool = False) -> bool:
+    """
+    Enhanced post-install hook that coordinates all setup tasks.
+    Fully idempotent and handles updates/changes gracefully.
+    """
     system = platform.system().lower()
-
-    # Skip if we're in a virtual environment
-    if hasattr(sys, 'real_prefix') or (hasattr(sys, 'base_prefix') and sys.base_prefix != sys.prefix):
-        print("Detected virtual environment - skipping automatic protocol registration and PATH setup")
-        print("To register protocol manually, run: rediacc protocol register")
-        return
-
-    print(f"Setting up rediacc for {system.capitalize()}...")
-
-    # Step 1: Ensure executable is in PATH for all platforms
-    path_setup_success = False
-    try:
-        if system == "windows":
-            ensure_scripts_in_path()
-        else:
-            ensure_executable_in_path_unix()
-        path_setup_success = True
-    except Exception as e:
-        print(f"Warning: Failed to setup PATH: {e}")
-
-    # Step 2: Ensure dependencies are available
-    dependencies_ok = ensure_dependencies_installed()
-
-    # Step 3: Attempt protocol registration with enhanced logic
-    if dependencies_ok:
-        protocol_success = attempt_protocol_registration_with_fallbacks(system)
-        
-        if not protocol_success:
-            print("\nAutomatic protocol registration failed, but you can register manually:")
-            print("  rediacc protocol register")
-    else:
-        print("\nSkipping automatic protocol registration due to missing dependencies.")
-        print("After installing dependencies, register manually:")
-        print("  rediacc protocol register")
-
-    # Step 4: Summary
+    
+    # Skip virtual environments unless forced
+    is_venv = hasattr(sys, 'real_prefix') or (hasattr(sys, 'base_prefix') and sys.base_prefix != sys.prefix)
+    if is_venv and not force:
+        logger.info("Detected virtual environment - skipping automatic setup")
+        logger.info("To setup manually, run: python -c \"from cli.setup_hooks import run_post_install_hook; run_post_install_hook(force=True)\"")
+        return True
+    
+    logger.info(f"Setting up rediacc for {system.capitalize()}...")
+    
+    # Load current state
+    state = load_setup_state()
+    current_hash = get_current_setup_hash()
+    
+    # Check if we need to run setup
+    needs_setup = (
+        force or
+        not state.get('last_setup') or
+        state.get('setup_hash') != current_hash or
+        state.get('failures')  # Retry if there were previous failures
+    )
+    
+    if not needs_setup and state.get('path_configured') and state.get('protocol_registered'):
+        logger.info("Setup is current, no changes needed")
+        return True
+    
+    # Clear previous failures for this run
+    state['failures'] = []
+    state['setup_hash'] = current_hash
+    
+    # Run setup tasks with enhanced logic
+    results = {
+        'path_setup': _ensure_path_setup_enhanced(state, system),
+        'dependencies': _check_dependencies_enhanced(state, system),
+        'protocol': _ensure_protocol_registration_enhanced(state, system),
+    }
+    
+    # Save state
+    save_setup_state(state)
+    
+    # Print summary
     print("\n" + "="*50)
-    print("INSTALLATION SUMMARY")
+    print("REDIACC SETUP SUMMARY")
     print("="*50)
-    print(f"✅ PATH setup: {'Success' if path_setup_success else 'Failed (manual setup required)'}")
-    print(f"✅ Dependencies: {'Available' if dependencies_ok else 'Missing (install required)'}")
     
-    # Check final protocol status
-    try:
-        from cli.core.protocol_handler import get_platform_handler, is_protocol_supported
-        if is_protocol_supported():
-            handler = get_platform_handler()
-            is_registered = handler.is_protocol_registered()
-            print(f"✅ Protocol registration: {'Active' if is_registered else 'Manual setup required'}")
-    except Exception:
-        print("✅ Protocol registration: Status unknown")
+    for task, success in results.items():
+        status = "✅ Success" if success else "❌ Failed"
+        print(f"{task.replace('_', ' ').title()}: {status}")
     
-    print("\nrediacc is ready to use!")
-    if path_setup_success:
+    if state.get('failures'):
+        print("\nFailures:")
+        for failure in state['failures']:
+            print(f"  - {failure}")
+    
+    # Check final status
+    rediacc_accessible = shutil.which('rediacc')
+    if rediacc_accessible:
+        print(f"\n🎉 rediacc is ready to use!")
+        print(f"Executable: {rediacc_accessible}")
         print("Try: rediacc --help")
     else:
-        print("Try: python -m cli.commands.cli_main --help")
+        print(f"\n⚠️  Setup completed with issues")
+        print("You may need to restart your terminal or run:")
+        print(f"  python -m cli.commands.cli_main --help")
+    
+    return all(results.values())
+
+def _ensure_path_setup_enhanced(state: Dict[str, Any], system: str) -> bool:
+    """Enhanced PATH setup with state tracking"""
+    current_hash = get_current_setup_hash()
+    needs_update = (
+        not state.get('path_configured') or
+        state.get('setup_hash') != current_hash
+    )
+    
+    if system == "windows":
+        scripts_dir = get_scripts_directory()
+        if not scripts_dir:
+            state['failures'].append("Could not locate Scripts directory")
+            return False
+        
+        state['scripts_directory'] = str(scripts_dir)
+        
+        # Check if rediacc.exe exists
+        rediacc_exe = scripts_dir / "rediacc.exe"
+        if not rediacc_exe.exists():
+            state['failures'].append("rediacc.exe not found in Scripts directory")
+            return False
+        
+        # Check if already accessible
+        if shutil.which("rediacc") and not needs_update:
+            state['path_configured'] = True
+            state['executable_path'] = shutil.which("rediacc")
+            return True
+        
+        # Add to PATH if needed
+        if needs_update or not is_directory_in_path(scripts_dir):
+            success = add_to_user_path_windows(scripts_dir)
+            state['path_configured'] = success
+            if not success:
+                state['failures'].append("Failed to add Scripts directory to PATH")
+            return success
+    else:
+        # Unix systems - use existing logic with state tracking
+        try:
+            ensure_executable_in_path_unix()
+            state['path_configured'] = bool(shutil.which("rediacc"))
+            if state['path_configured']:
+                state['executable_path'] = shutil.which("rediacc")
+            return state['path_configured']
+        except Exception as e:
+            state['failures'].append(f"Unix PATH setup failed: {e}")
+            return False
+
+def _check_dependencies_enhanced(state: Dict[str, Any], system: str) -> bool:
+    """Enhanced dependency checking with state tracking"""
+    current_hash = get_current_setup_hash()
+    if state.get('dependencies_checked') and state.get('setup_hash') == current_hash:
+        return True
+    
+    try:
+        dependencies_ok = ensure_dependencies_installed()
+        state['dependencies_checked'] = dependencies_ok
+        return dependencies_ok
+    except Exception as e:
+        state['failures'].append(f"Dependency check failed: {e}")
+        return False
+
+def _ensure_protocol_registration_enhanced(state: Dict[str, Any], system: str) -> bool:
+    """Enhanced protocol registration with state tracking"""
+    current_hash = get_current_setup_hash()
+    
+    try:
+        protocol_success = attempt_protocol_registration_with_fallbacks(system)
+        state['protocol_registered'] = protocol_success
+        if not protocol_success:
+            state['failures'].append("Protocol registration failed")
+        return protocol_success
+    except Exception as e:
+        state['failures'].append(f"Protocol registration error: {e}")
+        return False
+
+# Legacy function for compatibility
+def post_install():
+    """Legacy function for compatibility"""
+    return run_post_install_hook()
 
 
 def post_update():
@@ -725,20 +894,40 @@ def pre_uninstall():
 if __name__ == "__main__":
     if len(sys.argv) > 1:
         hook = sys.argv[1]
+        force_flag = '--force' in sys.argv
         if hook == "post_install":
-            post_install()
+            success = run_post_install_hook(force=force_flag)
+            sys.exit(0 if success else 1)
         elif hook == "post_update":
-            post_update()
+            success = run_post_install_hook(force=True)  # Updates always forced
+            sys.exit(0 if success else 1)
         elif hook == "pre_uninstall":
             pre_uninstall()
+            sys.exit(0)
+        elif hook == "status":
+            state = load_setup_state()
+            print("Rediacc Setup Status:")
+            print(f"  Last setup: {time.ctime(state['last_setup']) if state['last_setup'] else 'Never'}")
+            print(f"  PATH configured: {state.get('path_configured', False)}")
+            print(f"  Protocol registered: {state.get('protocol_registered', False)}")
+            print(f"  Dependencies checked: {state.get('dependencies_checked', False)}")
+            print(f"  Executable accessible: {bool(shutil.which('rediacc'))}")
+            if state.get('failures'):
+                print(f"  Previous failures: {len(state['failures'])}")
+                for failure in state['failures']:
+                    print(f"    - {failure}")
+            sys.exit(0)
         else:
             print(f"Unknown hook: {hook}")
-            print("Available hooks: post_install, post_update, pre_uninstall")
+            print("Available hooks: post_install, post_update, pre_uninstall, status")
             sys.exit(1)
     else:
-        print("Usage: setup_hooks.py [post_install|post_update|pre_uninstall]")
+        print("Usage: setup_hooks.py [post_install|post_update|pre_uninstall|status] [--force]")
         print("\nHooks:")
         print("  post_install  - Run after initial package installation")
         print("  post_update   - Run after package updates to refresh protocol registration")
         print("  pre_uninstall - Run before package uninstallation to clean up")
+        print("  status        - Show current setup status and state")
+        print("\nOptions:")
+        print("  --force       - Force setup even in virtual environments")
         sys.exit(1)
