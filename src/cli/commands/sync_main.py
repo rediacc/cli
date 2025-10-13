@@ -51,7 +51,10 @@ def get_rsync_command() -> str:
 def get_rsync_ssh_command(ssh_opts: str) -> str:
     if not is_windows(): return f'ssh {ssh_opts}'
     msys2_ssh = find_msys2_executable('ssh')
-    if msys2_ssh: return f'{msys2_ssh.replace("\\", "/")} {ssh_opts}'
+    if msys2_ssh:
+        # Can't use backslashes in f-strings, so use a variable
+        ssh_path = msys2_ssh.replace("\\", "/")
+        return f'{ssh_path} {ssh_opts}'
     if shutil.which('ssh'): return f'ssh {ssh_opts}'
     raise RuntimeError("SSH not found for rsync")
 
