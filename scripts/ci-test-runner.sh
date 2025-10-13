@@ -52,6 +52,9 @@ fi
 PYTHON_VERSION_NODOT=$(echo "$PYTHON_VERSION" | tr -d '.')
 OUTPUT_DIR="ci-outputs/${PLATFORM_NAME}-py${PYTHON_VERSION}"
 
+# Optional key expression to filter tests
+KEY_EXPR="${PYTEST_KEYEXPR:-}"
+
 # Environment hardening for pip/test stability
 export PIP_DISABLE_PIP_VERSION_CHECK=1
 export PIP_NO_INPUT=1
@@ -95,16 +98,25 @@ mkdir -p "$OUTPUT_DIR"
   )
 
   if [ "$PLATFORM_NAME" = "ubuntu-latest" ]; then
-    # Linux: split problematic Python versions into non-GUI and GUI phases to isolate hangs
-    if [ "$PYTHON_VERSION" = "3.12" ] || [ "$PYTHON_VERSION" = "3.13" ]; then
-      echo "[Phase 1] Non-GUI tests (excluding 'gui' marked)"
-      if [ -n "$TIMEOUT_CMD" ]; then $TIMEOUT_CMD 600s "$PY_BIN" -m pytest tests/ "${PYTEST_ARGS[@]}" -k "not gui" \
-        --junitxml="test-results-${PYTHON_VERSION}/junit-nongui.xml"; else "$PY_BIN" -m pytest tests/ "${PYTEST_ARGS[@]}" -k "not gui" \
-        --junitxml="test-results-${PYTHON_VERSION}/junit-nongui.xml"; fi
+    # If a key expression is specified, run a single phase with that filter (no extra GUI phase)
+    if [ -n "$KEY_EXPR" ]; then
+      echo "[Single Phase] Running tests with key expression: $KEY_EXPR"
+      if [ -n "$TIMEOUT_CMD" ]; then $TIMEOUT_CMD 900s xvfb-run -a -s "-screen 0 1920x1080x24" \
+        "$PY_BIN" -m pytest tests/ "${PYTEST_ARGS[@]}" -k "$KEY_EXPR" \
+        --junitxml="test-results-${PYTHON_VERSION}/junit.xml"; else xvfb-run -a -s "-screen 0 1920x1080x24" \
+        "$PY_BIN" -m pytest tests/ "${PYTEST_ARGS[@]}" -k "$KEY_EXPR" \
+        --junitxml="test-results-${PYTHON_VERSION}/junit.xml"; fi
+    else
+      # Linux: split problematic Python versions into non-GUI and GUI phases to isolate hangs
+      if [ "$PYTHON_VERSION" = "3.12" ] || [ "$PYTHON_VERSION" = "3.13" ]; then
+        echo "[Phase 1] Non-GUI tests (excluding 'gui' marked)"
+        if [ -n "$TIMEOUT_CMD" ]; then $TIMEOUT_CMD 600s "$PY_BIN" -m pytest tests/ "${PYTEST_ARGS[@]}" -k "not gui" \
+          --junitxml="test-results-${PYTHON_VERSION}/junit-nongui.xml"; else "$PY_BIN" -m pytest tests/ "${PYTEST_ARGS[@]}" -k "not gui" \
+          --junitxml="test-results-${PYTHON_VERSION}/junit-nongui.xml"; fi
 
-      echo "[Smoke] Tkinter availability under Xvfb"
-      SMOKE_OK=1
-      if xvfb-run -a -s "-screen 0 1920x1080x24" "$PY_BIN" - <<'PY'
+        echo "[Smoke] Tkinter availability under Xvfb"
+        SMOKE_OK=1
+        if xvfb-run -a -s "-screen 0 1920x1080x24" "$PY_BIN" - <<'PY'
 import sys
 try:
     import tkinter as tk
@@ -112,35 +124,33 @@ try:
 except Exception as e:
     sys.exit(2)
 PY
-      then
-        SMOKE_OK=0
-        echo "Tk smoke-check: OK"
-      else
-        echo "Tk smoke-check: FAILED (will skip GUI tests for Python $PYTHON_VERSION)"
-      fi
+        then
+          SMOKE_OK=0
+          echo "Tk smoke-check: OK"
+        else
+          echo "Tk smoke-check: FAILED (will skip GUI tests for Python $PYTHON_VERSION)"
+        fi
 
-      if [ "$SMOKE_OK" -eq 0 ]; then
-        echo "[Phase 2] GUI tests only under Xvfb"
-        if [ -n "$TIMEOUT_CMD" ]; then $TIMEOUT_CMD 600s xvfb-run -a -s "-screen 0 1920x1080x24" \
-          "$PY_BIN" -m pytest tests/ "${PYTEST_ARGS[@]}" -k "gui" \
-          --junitxml="test-results-${PYTHON_VERSION}/junit-gui.xml"; else xvfb-run -a -s "-screen 0 1920x1080x24" \
-          "$PY_BIN" -m pytest tests/ "${PYTEST_ARGS[@]}" -k "gui" \
-          --junitxml="test-results-${PYTHON_VERSION}/junit-gui.xml"; fi
-      else
-        echo "Skipping GUI tests due to failing Tk smoke-check"
-      fi
-      
-    else
-      # Other versions: run all under Xvfb
-      if [ -n "$TIMEOUT_CMD" ]; then $TIMEOUT_CMD 900s xvfb-run -a -s "-screen 0 1920x1080x24" \
-        "$PY_BIN" -m pytest tests/ "${PYTEST_ARGS[@]}" \
-        --junitxml="test-results-${PYTHON_VERSION}/junit.xml"; else xvfb-run -a -s "-screen 0 1920x1080x24" \
-        "$PY_BIN" -m pytest tests/ "${PYTEST_ARGS[@]}" \
-        --junitxml="test-results-${PYTHON_VERSION}/junit.xml"; fi
-    fi
-  else
+        if [ "$SMOKE_OK" -eq 0 ] && [ "${SKIP_GUI_PHASE:-0}" != "1" ]; then
+          echo "[Phase 2] GUI tests only under Xvfb"
+          if [ -n "$TIMEOUT_CMD" ]; then
+            $TIMEOUT_CMD 600s xvfb-run -a -s "-screen 0 1920x1080x24" \
+              "$PY_BIN" -m pytest tests/ "${PYTEST_ARGS[@]}" -k "gui" \
+              --junitxml="test-results-${PYTHON_VERSION}/junit-gui.xml"
+          else
+            xvfb-run -a -s "-screen 0 1920x1080x24" \
+              "$PY_BIN" -m pytest tests/ "${PYTEST_ARGS[@]}" -k "gui" \
+              --junitxml="test-results-${PYTHON_VERSION}/junit-gui.xml"
+          fi
+        else
+          echo "Skipping GUI tests due to failing Tk smoke-check or explicit SKIP_GUI_PHASE"
+        fi
     # Windows/macOS: Direct pytest
-    if [ -n "$TIMEOUT_CMD" ]; then $TIMEOUT_CMD 900s "$PY_BIN" -m pytest tests/ "${PYTEST_ARGS[@]}"; else "$PY_BIN" -m pytest tests/ "${PYTEST_ARGS[@]}"; fi
+    if [ -n "$KEY_EXPR" ]; then
+      if [ -n "$TIMEOUT_CMD" ]; then $TIMEOUT_CMD 900s "$PY_BIN" -m pytest tests/ "${PYTEST_ARGS[@]}" -k "$KEY_EXPR"; else "$PY_BIN" -m pytest tests/ "${PYTEST_ARGS[@]}" -k "$KEY_EXPR"; fi
+    else
+      if [ -n "$TIMEOUT_CMD" ]; then $TIMEOUT_CMD 900s "$PY_BIN" -m pytest tests/ "${PYTEST_ARGS[@]}"; else "$PY_BIN" -m pytest tests/ "${PYTEST_ARGS[@]}"; fi
+    fi
   fi
 ) 2>&1 | tee "$OUTPUT_DIR/02-run-tests.txt"
 
