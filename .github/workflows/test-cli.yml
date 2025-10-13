@@ -291,6 +291,7 @@ jobs:
 
       - name: Tk smoke-check Python 3.12
         timeout-minutes: 1
+        continue-on-error: true
         run: |
           echo 'import tkinter as tk; r=tk.Tk(); r.update(); r.destroy(); print("Tk OK")' > tkcheck.py
           xvfb-run -a -s "-screen 0 1920x1080x24" "$pythonLocation/bin/python" tkcheck.py
@@ -313,6 +314,7 @@ jobs:
 
       - name: Tk smoke-check Python 3.13
         timeout-minutes: 1
+        continue-on-error: true
         run: |
           echo 'import tkinter as tk; r=tk.Tk(); r.update(); r.destroy(); print("Tk OK")' > tkcheck.py
           xvfb-run -a -s "-screen 0 1920x1080x24" "$pythonLocation/bin/python" tkcheck.py

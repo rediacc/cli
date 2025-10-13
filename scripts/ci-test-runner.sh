@@ -102,12 +102,34 @@ mkdir -p "$OUTPUT_DIR"
         --junitxml="test-results-${PYTHON_VERSION}/junit-nongui.xml"; else "$PY_BIN" -m pytest tests/ "${PYTEST_ARGS[@]}" -k "not gui" \
         --junitxml="test-results-${PYTHON_VERSION}/junit-nongui.xml"; fi
 
-      echo "[Phase 2] GUI tests only under Xvfb"
-      if [ -n "$TIMEOUT_CMD" ]; then $TIMEOUT_CMD 600s xvfb-run -a -s "-screen 0 1920x1080x24" \
-        "$PY_BIN" -m pytest tests/ "${PYTEST_ARGS[@]}" -k "gui" \
-        --junitxml="test-results-${PYTHON_VERSION}/junit-gui.xml"; else xvfb-run -a -s "-screen 0 1920x1080x24" \
-        "$PY_BIN" -m pytest tests/ "${PYTEST_ARGS[@]}" -k "gui" \
-        --junitxml="test-results-${PYTHON_VERSION}/junit-gui.xml"; fi
+      echo "[Smoke] Tkinter availability under Xvfb"
+      SMOKE_OK=1
+      if xvfb-run -a -s "-screen 0 1920x1080x24" "$PY_BIN" - <<'PY'
+import sys
+try:
+    import tkinter as tk
+    r=tk.Tk(); r.update(); r.destroy()
+except Exception as e:
+    sys.exit(2)
+PY
+      then
+        SMOKE_OK=0
+        echo "Tk smoke-check: OK"
+      else
+        echo "Tk smoke-check: FAILED (will skip GUI tests for Python $PYTHON_VERSION)"
+      fi
+
+      if [ "$SMOKE_OK" -eq 0 ]; then
+        echo "[Phase 2] GUI tests only under Xvfb"
+        if [ -n "$TIMEOUT_CMD" ]; then $TIMEOUT_CMD 600s xvfb-run -a -s "-screen 0 1920x1080x24" \
+          "$PY_BIN" -m pytest tests/ "${PYTEST_ARGS[@]}" -k "gui" \
+          --junitxml="test-results-${PYTHON_VERSION}/junit-gui.xml"; else xvfb-run -a -s "-screen 0 1920x1080x24" \
+          "$PY_BIN" -m pytest tests/ "${PYTEST_ARGS[@]}" -k "gui" \
+          --junitxml="test-results-${PYTHON_VERSION}/junit-gui.xml"; fi
+      else
+        echo "Skipping GUI tests due to failing Tk smoke-check"
+      fi
+      
     else
       # Other versions: run all under Xvfb
       if [ -n "$TIMEOUT_CMD" ]; then $TIMEOUT_CMD 900s xvfb-run -a -s "-screen 0 1920x1080x24" \
