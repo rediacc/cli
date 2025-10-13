@@ -749,6 +749,32 @@ class RediaccCLI:
         # Run command
         self.run_command([python_cmd, str(script)] + cmd_args)
     
+    def cmd_doctor(self, args: List[str]):
+        """Run diagnostics and setup checks"""
+        # Ensure we can import setup hooks from source
+        try:
+            sys.path.insert(0, str(self.cli_root / 'src'))
+        except Exception:
+            pass
+        try:
+            from cli.setup_hooks import run_post_install_hook
+        except Exception as e:
+            print(f"{Colors.RED}Error: setup hooks not available: {e}{Colors.NC}", file=sys.stderr)
+            sys.exit(1)
+        # Force full diagnostic output
+        success = False
+        try:
+            success = bool(run_post_install_hook(force=True))
+        except Exception as e:
+            print(f"{Colors.RED}Diagnostics failed: {e}{Colors.NC}", file=sys.stderr)
+            sys.exit(1)
+        # Exit non-zero if issues detected
+        if not success:
+            print(f"{Colors.YELLOW}Diagnostics completed with issues. See summary above.{Colors.NC}", file=sys.stderr)
+            sys.exit(1)
+        else:
+            print(f"{Colors.GREEN}Diagnostics completed successfully. See summary above.{Colors.NC}")
+    
     def print_help(self):
         """Print help message"""
         help_text = f"""{Colors.CYAN}Rediacc CLI and Desktop for Linux/macOS/Windows{Colors.NC}
@@ -791,6 +817,8 @@ COMMANDS:
 
   Setup:
     setup       Install dependencies and set up environment
+    doctor      Run diagnostics and setup checks
+    troubleshoot Alias of 'doctor'
     help        Show this help message
 
 EXAMPLES:
@@ -846,6 +874,8 @@ For detailed documentation, see docs/README.md"""
             # Command routing
             if command == 'setup':
                 self.cmd_setup(args)
+            elif command in ['doctor', 'troubleshoot']:
+                self.cmd_doctor(args)
             elif command == 'test':
                 self.cmd_test(args)
             elif command == 'release':

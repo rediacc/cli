@@ -169,16 +169,8 @@ def _initialize_package():
         except ImportError:
             pass
 
-        # Register atexit hook immediately
-        _register_atexit_hook()
-
-        # If this is likely a fresh installation, trigger setup hooks
-        if _should_run_setup_hook():
-            # Run asynchronously to avoid blocking import
-            _run_setup_hook_async(delay=1.0)
-
-        # Also register a slightly delayed backup hook
-        _run_setup_hook_async(delay=3.0)
+        # Auto-setup on import has been disabled to avoid side effects during normal CLI usage.
+        # Setup hooks will run during installation/update and can be invoked manually via 'rediacc doctor'.
 
     except Exception:
         # Don't let hook failures break package import

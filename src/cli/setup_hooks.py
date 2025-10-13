@@ -132,19 +132,39 @@ def detect_windows_store_python() -> bool:
 def get_scripts_directory() -> Path:
     """
     Get the Scripts directory for the current Python installation.
-    Works for both traditional and Windows Store Python.
+    Prefers user install locations (site.USER_BASE\Scripts) on Windows.
+    Works for traditional and Windows Store Python.
     """
     python_exe = Path(sys.executable)
     python_dir = python_exe.parent
 
-    # For traditional Python installations
+    # 1) Prefer user base Scripts (pip --user installs)
+    try:
+        import site  # Local import to avoid impacting non-Windows platforms
+        # site.getuserbase() returns e.g. C:\Users\<user>\AppData\Roaming\Python\Python313
+        user_base = Path(site.getuserbase()) if hasattr(site, 'getuserbase') else None
+        candidates = []
+        if user_base:
+            candidates.append(user_base / "Scripts")
+        # Also honor PYTHONUSERBASE if set
+        user_base_env = os.environ.get("PYTHONUSERBASE")
+        if user_base_env:
+            candidates.append(Path(user_base_env) / "Scripts")
+        # Check candidates
+        for cand in candidates:
+            if cand.exists():
+                return cand
+    except Exception:
+        pass
+
+    # 2) Traditional Python installation Scripts next to python.exe
     scripts_dir = python_dir / "Scripts"
     if scripts_dir.exists():
         return scripts_dir
 
-    # For Windows Store Python installations
+    # 3) Windows Store Python installations
     if detect_windows_store_python():
-        # Path structure: ...\PythonSoftwareFoundation.Python.X.Y_...\LocalCache\local-packages\PythonXYZ\Scripts
+        # Path structure: ...\\PythonSoftwareFoundation.Python.X.Y_...\\LocalCache\\local-packages\\PythonXYZ\\Scripts
         current_path = python_dir
         while current_path.parent != current_path:  # Stop at root
             local_cache = current_path / "LocalCache" / "local-packages"
@@ -156,7 +176,7 @@ def get_scripts_directory() -> Path:
                         return scripts_dir
             current_path = current_path.parent
 
-    # Fallback: try to use pip to locate
+    # 4) Fallback: use pip show to locate site-packages, then infer Scripts
     try:
         result = subprocess.run(
             [sys.executable, "-m", "pip", "show", "-f", "rediacc"], capture_output=True, text=True, timeout=10
@@ -241,17 +261,16 @@ def add_to_user_path_windows(directory: Path, verbose: bool = True) -> bool:
 
         current_path = ""
         if result.returncode == 0:
-            # Parse the output to extract current PATH
+            # Parse the output to extract current PATH (handle REG_EXPAND_SZ and REG_SZ, case-insensitive)
             for line in result.stdout.splitlines():
-                if "PATH" in line and "REG_" in line:
-                    parts = line.split("REG_SZ", 1)
-                    if len(parts) > 1:
-                        current_path = parts[1].strip()
-                    elif "REG_EXPAND_SZ" in line:
-                        parts = line.split("REG_EXPAND_SZ", 1)
-                        if len(parts) > 1:
-                            current_path = parts[1].strip()
-                    break
+                upper_line = line.upper()
+                if "PATH" in upper_line and "REG_" in upper_line:
+                    if "REG_EXPAND_SZ" in upper_line:
+                        current_path = line.split("REG_EXPAND_SZ", 1)[1].strip()
+                        break
+                    elif "REG_SZ" in upper_line:
+                        current_path = line.split("REG_SZ", 1)[1].strip()
+                        break
 
         # Check if directory is already in PATH
         if current_path:
@@ -848,9 +867,28 @@ def _ensure_path_setup_enhanced(state: Dict[str, Any], system: str, verbose: boo
 
         state["scripts_directory"] = str(scripts_dir)
 
-        # Check if rediacc.exe exists
+        # Check if rediacc.exe exists (allow dev-mode skip)
         rediacc_exe = scripts_dir / "rediacc.exe"
         if not rediacc_exe.exists():
+            # Detect development checkout to avoid noisy failures in source trees
+            is_dev = False
+            try:
+                current = Path(__file__).resolve()
+                # setup_hooks.py -> cli -> src -> repo_root
+                repo_root = current.parent.parent.parent
+                if (repo_root / "rediacc.py").exists() or (repo_root / "pyproject.toml").exists() or os.environ.get("REDIACC_DEV"):
+                    is_dev = True
+            except Exception:
+                pass
+
+            if is_dev:
+                if verbose:
+                    print("INFO: Development checkout detected - skipping Scripts\\rediacc.exe check", file=sys.stderr)
+                    print("      Use repository launchers (rediacc.py / rediacc.bat) during development.", file=sys.stderr)
+                # Don't record a failure for dev checkouts
+                state["path_configured"] = bool(shutil.which("rediacc"))
+                return True
+
             state["failures"].append("rediacc.exe not found in Scripts directory")
             return False
 

@@ -194,6 +194,15 @@ rediacc protocol unregister
    - This is normal for the first `rediacc://` URL click
    - Choose the Rediacc CLI application and check "Always use this app"
 
+### Troubleshooting
+
+```bash
+# Run diagnostics and setup checks
+rediacc doctor
+# Alias
+rediacc troubleshoot
+```
+
 ### Other Commands
 
 ```bash
