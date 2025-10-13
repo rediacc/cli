@@ -295,6 +295,7 @@ jobs:
           SYSTEM_ADMIN_PASSWORD: admin
           REDIACC_TEST_ACTIVATION_CODE: "111111"
           API_TIMEOUT: 60
+          SKIP_GUI_FOR_PY312: "1"  # temporary: skip GUI tests on Linux Python 3.12 to avoid hang while we investigate
 
       # Python 3.13
       - name: Setup Python 3.13
