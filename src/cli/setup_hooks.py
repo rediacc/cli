@@ -467,8 +467,14 @@ def add_to_shell_profile_unix(directory: Path, verbose: bool = True) -> bool:
         success = False
         for profile in shell_profiles:
             try:
-                # Check if PATH export already exists in the file
-                path_line = f'export PATH="{directory}:$PATH"'
+                # Use conditional PATH export format for better compatibility
+                path_lines = [
+                    f"# Added by rediacc installation - Add {directory} to PATH for user-installed packages",
+                    f'if [ -d "{directory}" ] ; then',
+                    f'    PATH="{directory}:$PATH"',
+                    "fi"
+                ]
+                path_block = "\n".join(path_lines)
 
                 if profile.exists():
                     content = profile.read_text()
@@ -481,7 +487,7 @@ def add_to_shell_profile_unix(directory: Path, verbose: bool = True) -> bool:
                 # Add the PATH export
                 if content and not content.endswith("\n"):
                     content += "\n"
-                content += f"\n# Added by rediacc installation\n{path_line}\n"
+                content += f"\n{path_block}\n"
 
                 # Write the updated content
                 profile.write_text(content)
@@ -578,64 +584,104 @@ def ensure_dependencies_installed(verbose: bool = True):
     system = platform.system().lower()
 
     if system == "linux":
-        # Check for xdg-utils and offer to install if missing
+        # On Linux we need xdg-utils (xdg-mime) and desktop-file-utils (update-desktop-database).
+        # update-mime-database (shared-mime-info) is optional but recommended.
         try:
             import subprocess
+            import shutil as _shutil
 
-            result = subprocess.run(["which", "xdg-mime"], capture_output=True, timeout=5)
-            if result.returncode != 0:
-                if verbose:
-                    print("INFO: xdg-utils not found", file=sys.stderr)
+            def _has(cmd: str) -> bool:
+                return _shutil.which(cmd) is not None
 
-                # Check if we can install automatically (has passwordless sudo access)
+            missing_core = []
+            if not _has("xdg-mime"):
+                missing_core.append("xdg-utils")  # provides xdg-mime
+            if not _has("update-desktop-database"):
+                missing_core.append("desktop-file-utils")  # provides update-desktop-database
+
+            missing_optional = []
+            if not _has("update-mime-database"):
+                # provided by shared-mime-info
+                missing_optional.append("shared-mime-info")
+
+            if missing_core:
+                print("INFO: Missing required packages for protocol registration on Linux:")
+                print(f"  - {' '.join(sorted(set(missing_core)))}")
+
                 can_install = check_passwordless_sudo()
-
                 if can_install:
-                    if verbose:
-                        print("Attempting automatic installation of xdg-utils...", file=sys.stderr)
+                    print("Attempting automatic installation of required packages...")
 
-                    # Try different package managers
-                    package_managers = [
-                        (["sudo", "apt", "update"], ["sudo", "apt", "install", "-y", "xdg-utils"]),  # Debian/Ubuntu
-                        (["sudo", "dnf", "install", "-y", "xdg-utils"],),  # Fedora/RHEL
-                        (["sudo", "yum", "install", "-y", "xdg-utils"],),  # Older RHEL/CentOS
-                        (["sudo", "pacman", "-S", "--noconfirm", "xdg-utils"],),  # Arch
-                        (["sudo", "zypper", "install", "-y", "xdg-utils"],),  # openSUSE
-                    ]
-
-                    for commands in package_managers:
+                    # Determine available package manager and install
+                    installed = False
+                    pkg_mgr = None
+                    if _shutil.which("apt"):
+                        pkg_mgr = "apt"
                         try:
-                            if len(commands) == 2:  # Has update command
-                                subprocess.run(commands[0], check=True, timeout=60, capture_output=True)
-                                subprocess.run(commands[1], check=True, timeout=60, capture_output=True)
-                            else:
-                                subprocess.run(commands[0], check=True, timeout=60, capture_output=True)
-                            if verbose:
-                                print("Successfully installed xdg-utils", file=sys.stderr)
-                            return True
+                            subprocess.run(["sudo", "-n", "apt", "update"], check=True, timeout=120, capture_output=True)
+                            cmd = ["sudo", "-n", "apt", "install", "-y"] + sorted(set(missing_core + missing_optional))
+                            subprocess.run(cmd, check=True, timeout=600)
+                            installed = True
                         except (subprocess.CalledProcessError, FileNotFoundError, subprocess.TimeoutExpired):
-                            continue
+                            installed = False
+                    elif _shutil.which("dnf"):
+                        pkg_mgr = "dnf"
+                        try:
+                            cmd = ["sudo", "-n", "dnf", "install", "-y"] + sorted(set(missing_core + missing_optional))
+                            subprocess.run(cmd, check=True, timeout=600)
+                            installed = True
+                        except (subprocess.CalledProcessError, FileNotFoundError, subprocess.TimeoutExpired):
+                            installed = False
+                    elif _shutil.which("yum"):
+                        pkg_mgr = "yum"
+                        try:
+                            cmd = ["sudo", "-n", "yum", "install", "-y"] + sorted(set(missing_core + missing_optional))
+                            subprocess.run(cmd, check=True, timeout=600)
+                            installed = True
+                        except (subprocess.CalledProcessError, FileNotFoundError, subprocess.TimeoutExpired):
+                            installed = False
+                    elif _shutil.which("pacman"):
+                        pkg_mgr = "pacman"
+                        try:
+                            cmd = ["sudo", "-n", "pacman", "-S", "--noconfirm"] + sorted(set(missing_core + missing_optional))
+                            subprocess.run(cmd, check=True, timeout=600)
+                            installed = True
+                        except (subprocess.CalledProcessError, FileNotFoundError, subprocess.TimeoutExpired):
+                            installed = False
+                    elif _shutil.which("zypper"):
+                        pkg_mgr = "zypper"
+                        try:
+                            cmd = ["sudo", "-n", "zypper", "install", "-y"] + sorted(set(missing_core + missing_optional))
+                            subprocess.run(cmd, check=True, timeout=600)
+                            installed = True
+                        except (subprocess.CalledProcessError, FileNotFoundError, subprocess.TimeoutExpired):
+                            installed = False
 
-                    if verbose:
-                        print("Could not automatically install xdg-utils.", file=sys.stderr)
+                    if installed:
+                        # Re-check presence
+                        if _has("xdg-mime") and _has("update-desktop-database"):
+                            print("Successfully installed Linux protocol registration dependencies")
+                            return True
+                        else:
+                            print("Automatic installation completed but required commands are still missing.")
+                    else:
+                        print("Could not automatically install required packages.")
+                        if pkg_mgr is None:
+                            print("No supported package manager found (apt/dnf/yum/pacman/zypper)")
                 else:
-                    if verbose:
-                        print("No sudo access for automatic installation.", file=sys.stderr)
+                    print("No passwordless sudo access for automatic installation.")
 
-                if verbose:
-                    print("Please install xdg-utils manually:", file=sys.stderr)
-                if verbose:
-                    print("  Ubuntu/Debian: sudo apt install xdg-utils", file=sys.stderr)
-                if verbose:
-                    print("  Fedora/RHEL: sudo dnf install xdg-utils", file=sys.stderr)
-                if verbose:
-                    print("  Arch: sudo pacman -S xdg-utils", file=sys.stderr)
-                if verbose:
-                    print("  openSUSE: sudo zypper install xdg-utils", file=sys.stderr)
-                if verbose:
-                    print("\nAfter installation, run: rediacc protocol register", file=sys.stderr)
+                # Print manual instructions
+                print("Please install the following packages manually:")
+                print("  Ubuntu/Debian: sudo apt install xdg-utils desktop-file-utils shared-mime-info")
+                print("  Fedora/RHEL:   sudo dnf install xdg-utils desktop-file-utils shared-mime-info")
+                print("  Arch:          sudo pacman -S xdg-utils desktop-file-utils shared-mime-info")
+                print("  openSUSE:      sudo zypper install xdg-utils desktop-file-utils shared-mime-info")
+                print("\nAfter installation, reopen your terminal and the protocol setup will complete automatically, or run:")
+                print("  rediacc protocol register")
                 return False
         except Exception:
+            # If detection fails, don't block setup; protocol step will report precise errors
             pass
 
     elif system == "darwin":

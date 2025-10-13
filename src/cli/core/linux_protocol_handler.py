@@ -196,6 +196,7 @@ Categories=Network;
             "xdg-mime": shutil.which("xdg-mime") is not None,
             "update-desktop-database": shutil.which("update-desktop-database") is not None,
             "desktop-file-validate": shutil.which("desktop-file-validate") is not None,
+            "update-mime-database": shutil.which("update-mime-database") is not None,  # provided by shared-mime-info
         }
         return deps
     
@@ -283,10 +284,14 @@ Categories=Network;
                     "update-desktop-database", str(applications_dir)
                 ], check=True, timeout=30)
             
-            # Update MIME database (if needed)
+            # Update MIME database (if available)
             try:
+                # Ensure packages directory exists to avoid noisy warnings
+                packages_dir = mime_dir / "packages"
+                packages_dir.mkdir(parents=True, exist_ok=True)
+                # Update the MIME database for the whole tree
                 subprocess.run([
-                    "update-mime-database", str(mime_dir / "packages")
+                    "update-mime-database", str(mime_dir)
                 ], check=True, timeout=30)
             except (subprocess.CalledProcessError, FileNotFoundError):
                 # Not critical if this fails
@@ -398,11 +403,20 @@ Categories=Network;
         
         if not deps["xdg-mime"] or not deps["update-desktop-database"]:
             instructions.extend([
-                "Install xdg-utils package:",
-                "  Ubuntu/Debian: sudo apt install xdg-utils",
-                "  Fedora/RHEL: sudo dnf install xdg-utils", 
-                "  Arch Linux: sudo pacman -S xdg-utils",
-                "  openSUSE: sudo zypper install xdg-utils"
+                "Install required desktop integration packages:",
+                "  Ubuntu/Debian: sudo apt install xdg-utils desktop-file-utils",
+                "  Fedora/RHEL:   sudo dnf install xdg-utils desktop-file-utils", 
+                "  Arch Linux:    sudo pacman -S xdg-utils desktop-file-utils",
+                "  openSUSE:      sudo zypper install xdg-utils desktop-file-utils"
+            ])
+        if not deps.get("update-mime-database", True):
+            instructions.extend([
+                "",
+                "Optional but recommended (MIME DB updates):",
+                "  Ubuntu/Debian: sudo apt install shared-mime-info",
+                "  Fedora/RHEL:   sudo dnf install shared-mime-info",
+                "  Arch Linux:    sudo pacman -S shared-mime-info",
+                "  openSUSE:      sudo zypper install shared-mime-info",
             ])
         
         if not self.is_protocol_registered():
