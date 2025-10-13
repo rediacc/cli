@@ -247,13 +247,54 @@ class RediaccCLI:
             print("Please install Python 3.7 or later")
             sys.exit(1)
         
-        # Check rsync
-        if not shutil.which('rsync'):
-            print(f"{Colors.YELLOW}Warning: rsync not found{Colors.NC}")
-            print("Install rsync for file synchronization support:")
-            print("  Ubuntu/Debian: sudo apt-get install rsync")
-            print("  macOS: brew install rsync")
-        else:
+        # Check rsync with Windows MSYS2 auto-install
+        rsync_found = shutil.which('rsync')
+        if not rsync_found:
+            # Check for Windows-specific handling
+            if sys.platform == 'win32':
+                print(f"{Colors.YELLOW}rsync not found - attempting MSYS2 installation...{Colors.NC}")
+                try:
+                    # Add src directory to path
+                    src_dir = str(self.cli_root / 'src')
+                    if src_dir not in sys.path:
+                        sys.path.insert(0, src_dir)
+                    
+                    # Try MSYS2 installation
+                    from cli.core.msys2_installer import install_msys2_if_needed
+                    success, message = install_msys2_if_needed(verbose=self.verbose)
+                    
+                    if success:
+                        print(f"{Colors.GREEN}✓ {message}{Colors.NC}")
+                        # Update PATH for current session to include MSYS2
+                        from cli.core.msys2_installer import MSYS2Installer
+                        installer = MSYS2Installer()
+                        if installer.add_to_path():
+                            # Re-check for rsync after PATH update
+                            rsync_found = shutil.which('rsync')
+                            if rsync_found:
+                                print(f"{Colors.GREEN}✓ rsync now available at: {rsync_found}{Colors.NC}")
+                    else:
+                        print(f"{Colors.RED}Failed to install MSYS2: {message}{Colors.NC}")
+                        print("Manual installation required:")
+                        print("  1. Download and install MSYS2 from https://www.msys2.org/")
+                        print("  2. Run: pacman -S rsync")
+                        print("  3. Add C:\\msys64\\usr\\bin to your system PATH")
+                except ImportError:
+                    print(f"{Colors.RED}MSYS2 installer module not available{Colors.NC}")
+                except Exception as e:
+                    print(f"{Colors.RED}MSYS2 installation error: {e}{Colors.NC}")
+                    if self.verbose:
+                        import traceback
+                        traceback.print_exc()
+            else:
+                print(f"{Colors.YELLOW}Warning: rsync not found{Colors.NC}")
+                print("Install rsync for file synchronization support:")
+                print("  Ubuntu/Debian: sudo apt-get install rsync")
+                print("  macOS: brew install rsync")
+        
+        if not rsync_found and not shutil.which('rsync'):
+            print(f"{Colors.YELLOW}⚠ rsync still not available - sync operations may not work{Colors.NC}")
+        elif shutil.which('rsync'):
             print(f"{Colors.GREEN}✓ rsync found{Colors.NC}")
         
         # Check SSH
