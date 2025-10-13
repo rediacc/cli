@@ -218,6 +218,194 @@ def ensure_scripts_in_path():
         print("Or run rediacc using the full path:")
         print(f"  \"{rediacc_exe}\" --help")
 
+def get_executable_directory_unix() -> Path:
+    """
+    Get the executable directory for the current Python installation on Unix systems.
+    Works for various Python installations (system, user, homebrew, pyenv, conda, etc.).
+    """
+    python_exe = Path(sys.executable)
+    python_dir = python_exe.parent
+    
+    # Try to find rediacc executable using similar logic to protocol handlers
+    try:
+        import shutil
+        rediacc_path = shutil.which("rediacc")
+        if rediacc_path:
+            return Path(rediacc_path).parent
+    except Exception:
+        pass
+    
+    # Common Unix installation patterns
+    possible_locations = [
+        python_dir,  # Same directory as python
+        python_dir.parent / "bin",  # Standard Unix layout
+        Path.home() / ".local" / "bin",  # User installation
+    ]
+    
+    # Add system locations
+    if platform.system().lower() == "darwin":  # macOS
+        possible_locations.extend([
+            Path("/usr/local/bin"),  # Homebrew installation
+            Path("/opt/homebrew/bin"),  # Homebrew on Apple Silicon
+        ])
+    else:  # Linux
+        possible_locations.extend([
+            Path("/usr/local/bin"),  # System-wide installation
+            Path("/usr/bin"),  # System installation
+        ])
+    
+    # Check for rediacc executable in these locations
+    for location in possible_locations:
+        rediacc_exe = location / "rediacc"
+        if rediacc_exe.exists() and rediacc_exe.is_file():
+            return location
+    
+    return None
+
+def is_directory_in_path_unix(directory: Path) -> bool:
+    """Check if a directory is in the current PATH on Unix systems"""
+    if not directory or not directory.exists():
+        return False
+    
+    path_env = os.environ.get("PATH", "")
+    path_dirs = [Path(p) for p in path_env.split(os.pathsep) if p.strip()]
+    
+    try:
+        # Resolve to handle symlinks and relative paths
+        resolved_dir = directory.resolve()
+        for path_dir in path_dirs:
+            try:
+                if path_dir.resolve() == resolved_dir:
+                    return True
+            except (OSError, RuntimeError):
+                # Handle cases where path resolution fails
+                if str(path_dir).lower() == str(directory).lower():
+                    return True
+    except (OSError, RuntimeError):
+        # Fallback to string comparison if resolve() fails
+        directory_str = str(directory)
+        for path_dir in path_dirs:
+            if str(path_dir) == directory_str:
+                return True
+    
+    return False
+
+def add_to_shell_profile_unix(directory: Path) -> bool:
+    """
+    Add directory to PATH in shell profile files on Unix systems.
+    Returns True if successful, False otherwise.
+    """
+    if not directory.exists():
+        return False
+    
+    try:
+        # Determine which shell profiles to update
+        shell_profiles = []
+        home = Path.home()
+        
+        # Common shell profile files
+        possible_profiles = [
+            home / ".bashrc",
+            home / ".bash_profile", 
+            home / ".zshrc",
+            home / ".profile",
+        ]
+        
+        # Find existing profiles or create default ones
+        for profile in possible_profiles:
+            if profile.exists():
+                shell_profiles.append(profile)
+        
+        # If no profiles exist, create .bashrc and .zshrc for broad compatibility
+        if not shell_profiles:
+            shell_profiles = [home / ".bashrc", home / ".zshrc"]
+        
+        success = False
+        for profile in shell_profiles:
+            try:
+                # Check if PATH export already exists in the file
+                path_line = f'export PATH="{directory}:$PATH"'
+                
+                if profile.exists():
+                    content = profile.read_text()
+                    # Check if this directory is already in PATH in this file
+                    if str(directory) in content and "PATH" in content:
+                        continue  # Already added
+                else:
+                    content = ""
+                
+                # Add the PATH export
+                if content and not content.endswith("\n"):
+                    content += "\n"
+                content += f"\n# Added by rediacc installation\n{path_line}\n"
+                
+                # Write the updated content
+                profile.write_text(content)
+                print(f"Added {directory} to PATH in {profile}")
+                success = True
+                
+            except Exception as e:
+                print(f"Failed to update {profile}: {e}")
+                continue
+        
+        if success:
+            print("Note: You may need to restart your terminal or run 'source ~/.bashrc' (or ~/.zshrc) to see the PATH changes")
+            return True
+        else:
+            return False
+            
+    except Exception as e:
+        print(f"Failed to modify shell profiles: {e}")
+        return False
+
+def ensure_executable_in_path_unix():
+    """
+    Ensure that the rediacc executable is accessible via PATH on Unix systems.
+    Only runs on Linux and macOS, and only if not already in PATH.
+    """
+    system = platform.system().lower()
+    if system not in ["linux", "darwin"]:
+        return  # Not Unix, PATH management not needed
+    
+    exec_dir = get_executable_directory_unix()
+    if not exec_dir:
+        print("WARNING: Could not locate rediacc executable directory")
+        return
+    
+    # Check if rediacc.exe exists in executable directory
+    rediacc_exe = exec_dir / "rediacc"
+    if not rediacc_exe.exists():
+        print("WARNING: rediacc executable not found")
+        return
+    
+    # Check if already in PATH
+    if is_directory_in_path_unix(exec_dir):
+        print(f"Executable directory is already in PATH: {exec_dir}")
+        return
+    
+    # Check if rediacc is accessible via PATH (maybe through a different directory)
+    try:
+        import shutil
+        rediacc_in_path = shutil.which("rediacc")
+        if rediacc_in_path:
+            print(f"rediacc is already accessible via PATH: {rediacc_in_path}")
+            return
+    except Exception:
+        pass
+    
+    print(f"Adding executable directory to PATH: {exec_dir}")
+    
+    # Try to add to shell profiles
+    if add_to_shell_profile_unix(exec_dir):
+        print("Successfully configured PATH for rediacc access")
+    else:
+        print("Failed to automatically add executable directory to PATH")
+        print(f"You can manually add this directory to your PATH: {exec_dir}")
+        print("Add this line to your ~/.bashrc or ~/.zshrc:")
+        print(f'export PATH="{exec_dir}:$PATH"')
+        print("Or run rediacc using the full path:")
+        print(f"  {rediacc_exe} --help")
+
 def post_install():
     """Post-install hook - attempt to register protocol on all platforms"""
     system = platform.system().lower()
@@ -228,9 +416,12 @@ def post_install():
         print("To register protocol manually, run: rediacc protocol register")
         return
 
-    # Ensure Scripts directory is in PATH (Windows only)
+    # Ensure executable is in PATH for all platforms
     try:
-        ensure_scripts_in_path()
+        if system == "windows":
+            ensure_scripts_in_path()
+        else:
+            ensure_executable_in_path_unix()
     except Exception as e:
         print(f"Warning: Failed to setup PATH: {e}")
 
