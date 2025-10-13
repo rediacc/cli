@@ -41,7 +41,8 @@ from cli.commands.sync_main import (
     get_rsync_command,
     get_rsync_ssh_command,
     prepare_rsync_paths,
-    run_platform_command
+    run_platform_command,
+    convert_ssh_opts_for_msys2
 )
 
 # Import GUI components
@@ -1302,6 +1303,16 @@ class DualPaneFileBrowser:
             print(f"[GUI SSH DEBUG] Raw SSH options: {ssh_opts}")
             
             ssh_cmd = get_rsync_ssh_command(ssh_opts)
+            
+            # Force MSYS2 ssh if available but not selected
+            if is_windows() and ssh_cmd.startswith('ssh '):
+                msys2_root = os.environ.get('MSYS2_ROOT') or 'C:/msys64'
+                forced_ssh = os.path.join(msys2_root, 'usr', 'bin', 'ssh.exe')
+                if os.path.exists(forced_ssh):
+                    forced_ssh_posix = forced_ssh.replace('\\', '/')
+                    ssh_cmd = f"{forced_ssh_posix} {convert_ssh_opts_for_msys2(ssh_opts)}"
+                    self.logger.info(f"[GUI SSH DEBUG] Forcing MSYS2 ssh: {ssh_cmd}")
+                    print(f"[GUI SSH DEBUG] Forcing MSYS2 ssh: {ssh_cmd}")
             
             self.logger.info(f"[GUI SSH DEBUG] Processed SSH command: {ssh_cmd}")
             print(f"[GUI SSH DEBUG] Processed SSH command: {ssh_cmd}")

@@ -46,6 +46,7 @@ class MSYS2Installer:
         self.install_path = Path(self.install_dir)
         self.bash_path = self.install_path / "usr" / "bin" / "bash.exe"
         self.rsync_path = self.install_path / "usr" / "bin" / "rsync.exe"
+        self.ssh_path = self.install_path / "usr" / "bin" / "ssh.exe"
         
         if self.verbose:
             logger.setLevel(10)  # DEBUG level
@@ -59,6 +60,12 @@ class MSYS2Installer:
         if not self.is_msys2_installed():
             return False
         return self.rsync_path.exists()
+    
+    def is_ssh_available(self) -> bool:
+        """Check if OpenSSH client is available in MSYS2"""
+        if not self.is_msys2_installed():
+            return False
+        return self.ssh_path.exists()
     
     def get_rsync_path(self) -> Optional[str]:
         """Get the full path to rsync.exe if available"""
@@ -148,7 +155,7 @@ class MSYS2Installer:
             return False
     
     def update_packages_and_install_rsync(self) -> bool:
-        """Update MSYS2 packages and install rsync"""
+        """Update MSYS2 packages and install rsync (and OpenSSH)"""
         if not self.bash_path.exists():
             logger.error(f"MSYS2 bash not found at {self.bash_path}")
             return False
@@ -168,25 +175,33 @@ class MSYS2Installer:
             if self.verbose and result.stdout:
                 logger.debug(f"Update output: {result.stdout[-500:]}")
             
-            # Step 2: Install rsync
-            logger.info("Installing rsync package...")
+            # Step 2: Install rsync and OpenSSH
+            logger.info("Installing rsync and OpenSSH packages...")
             install_cmd = [
                 str(self.bash_path), "-lc",
-                "pacman -S --noconfirm rsync"
+                "pacman -S --noconfirm rsync openssh"
             ]
             
             result = subprocess.run(install_cmd, capture_output=True, text=True, timeout=self.PACKAGE_TIMEOUT)
-            logger.debug(f"Rsync install exit code: {result.returncode}")
+            logger.debug(f"Package install exit code: {result.returncode}")
             if self.verbose and result.stdout:
                 logger.debug(f"Install output: {result.stdout[-500:]}")
             
             # Step 3: Verify installation
+            ok = True
             if self.rsync_path.exists():
                 logger.info("✓ rsync installed successfully")
-                return True
             else:
                 logger.error(f"rsync not found after installation at {self.rsync_path}")
-                return False
+                ok = False
+            
+            if self.ssh_path.exists():
+                logger.info("✓ OpenSSH client installed successfully")
+            else:
+                logger.error(f"OpenSSH client not found after installation at {self.ssh_path}")
+                ok = False
+            
+            return ok
                 
         except subprocess.TimeoutExpired:
             logger.error("Package installation timed out")
@@ -300,6 +315,16 @@ class MSYS2Installer:
                 # Step 4: Test functionality
                 if not self.test_rsync_functionality():
                     return False, "rsync installation verification failed"
+                
+                # Step 4b: Test SSH availability/version
+                try:
+                    result = subprocess.run([str(self.bash_path), '-lc', 'ssh -V'], capture_output=True, text=True, timeout=30)
+                    if result.returncode == 0:
+                        logger.info(f"✓ OpenSSH client version: {result.stderr.strip() or result.stdout.strip()}")
+                    else:
+                        logger.warning(f"OpenSSH client test failed: {result.stderr.strip() or result.stdout.strip()}")
+                except Exception as e:
+                    logger.warning(f"OpenSSH client test error: {e}")
                 
                 # Step 5: Add to PATH if requested
                 if add_to_path:
