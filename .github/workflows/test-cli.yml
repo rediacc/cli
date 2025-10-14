@@ -169,6 +169,50 @@ jobs:
           docker ps -a --filter "name=rediacc-" --format "{{.Names}}" | xargs -r docker rm || true
           echo "✓ Cleanup complete"
 
+  syntax-check-legacy:
+    name: Python Syntax Check (3.7/3.8)
+    runs-on: ubuntu-latest
+    strategy:
+      matrix:
+        python-version: ['3.7', '3.8']
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v5
+
+      - name: Set up Python ${{ matrix.python-version }}
+        uses: actions/setup-python@v6
+        with:
+          python-version: ${{ matrix.python-version }}
+
+      - name: Syntax check with py_compile
+        run: |
+          set -e
+          python - <<'PY'
+          import os, sys, py_compile, glob
+          roots = ['src', 'tests', 'scripts', '.']
+          files = set()
+          for root in roots:
+              if os.path.isdir(root):
+                  for path in glob.glob(os.path.join(root, '**', '*.py'), recursive=True):
+                      parts = path.split(os.sep)
+                      if any(p.startswith('.') for p in parts):
+                          continue
+                      if any(seg in parts for seg in ('venv', '.venv', 'build', 'dist', 'node_modules', '__pycache__')):
+                          continue
+                      files.add(path)
+          failed = []
+          for f in sorted(files):
+              try:
+                  py_compile.compile(f, doraise=True)
+              except Exception as e:
+                  failed.append((f, e))
+          if failed:
+              for f, e in failed:
+                  print(f"Syntax error: {f}: {e}")
+              sys.exit(1)
+          print(f"✓ Compiled {len(files)} files with no syntax errors for Python {sys.version.split()[0]}")
+          PY
+
   # Linux tests - all Python versions sequentially
   test-linux:
     name: Linux Tests
