@@ -88,7 +88,7 @@ class MSYS2Installer:
                 urllib.request.urlretrieve(self.INSTALLER_URL, installer_path)
             
             size_mb = installer_path.stat().st_size / (1024 * 1024)
-            logger.info(f"✓ Downloaded installer ({size_mb:.1f} MB)")
+            logger.info(f"Downloaded installer ({size_mb:.1f} MB)")
             return installer_path
             
         except urllib.error.URLError as e:
@@ -129,7 +129,7 @@ class MSYS2Installer:
             # Check if installation succeeded
             if result.returncode == 0:
                 if self.install_path.exists():
-                    logger.info("✓ MSYS2 installed successfully")
+                    logger.info("MSYS2 installed successfully")
                     return True
                 else:
                     logger.error(f"Installation reported success but directory {self.install_path} not found")
@@ -182,7 +182,7 @@ class MSYS2Installer:
             
             # Step 3: Verify installation
             if self.rsync_path.exists():
-                logger.info("✓ rsync installed successfully")
+                logger.info("rsync installed successfully")
                 return True
             else:
                 logger.error(f"rsync not found after installation at {self.rsync_path}")
@@ -212,7 +212,7 @@ class MSYS2Installer:
             
             if result.returncode == 0:
                 version_line = result.stdout.split('\n')[0]
-                logger.info(f"✓ rsync is working: {version_line}")
+                logger.info(f"rsync is working: {version_line}")
                 return True
             else:
                 logger.error(f"rsync test failed: {result.stderr}")
@@ -265,7 +265,7 @@ class MSYS2Installer:
             # Check if already installed and working
             if self.is_rsync_available():
                 if self.test_rsync_functionality():
-                    logger.info("✓ MSYS2 with rsync already installed and working")
+                    logger.info("MSYS2 with rsync already installed and working")
                     if add_to_path:
                         self.add_to_path()
                     return True, "MSYS2 with rsync is already installed and working"

@@ -11,7 +11,7 @@ import platform
 import shutil
 import tempfile
 from pathlib import Path
-from typing import List, Dict, Any, Tuple
+from typing import List, Dict, Any, Tuple, Optional
 
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__)))))
 
@@ -193,10 +193,18 @@ class DoctorSession:
         
         if not ssh_dir.exists():
             check.message = "SSH directory (~/.ssh) does not exist"
-            check.fix_command = f"mkdir -p {ssh_dir} && chmod 700 {ssh_dir}"
+            if self.platform == 'windows':
+                check.fix_command = f'powershell -Command "New-Item -ItemType Directory -Path \'{ssh_dir}\' -Force"'
+            else:
+                check.fix_command = f"mkdir -p {ssh_dir} && chmod 700 {ssh_dir}"
         elif not ssh_dir.is_dir():
             check.message = "~/.ssh exists but is not a directory"
         else:
+            if self.platform == 'windows':
+                check.passed = True
+                check.message = "SSH directory exists (Windows ACLs manage permissions)"
+                check.details.append("Permission check skipped on Windows; ensure directory is restricted to your account via Properties > Security.")
+                return
             # Check permissions
             permissions = oct(ssh_dir.stat().st_mode)[-3:]
             if permissions != '700':
@@ -334,6 +342,24 @@ class DoctorSession:
         else:
             return "Install rsync for your operating system"
 
+    def _find_msys2_executable(self, exe_name: str) -> Optional[str]:
+        """Locate an executable inside common MSYS2 installation paths"""
+        msys2_roots = [
+            os.environ.get('MSYS2_ROOT'),
+            'C:\\msys64',
+            'C:\\msys2',
+            os.path.expanduser('~\\msys64'),
+            os.path.expanduser('~\\msys2'),
+        ]
+        for root in filter(None, msys2_roots):
+            if not os.path.exists(root):
+                continue
+            for subdir in ('usr\\bin', 'mingw64\\bin', 'mingw32\\bin'):
+                candidate = os.path.join(root, subdir, f'{exe_name}.exe')
+                if os.path.exists(candidate):
+                    return candidate
+        return None
+
     def _get_tkinter_install_command(self) -> str:
         """Get the appropriate Tkinter installation command for the platform"""
         if self.platform == 'linux':
@@ -365,6 +391,13 @@ class DoctorSession:
             check.passed = True
             check.message = f"rsync available: {rsync_path}"
             return
+        if self.platform == 'windows':
+            msys2_rsync = self._find_msys2_executable('rsync')
+            if msys2_rsync:
+                check.passed = True
+                check.message = f"rsync available via MSYS2: {msys2_rsync}"
+                check.details.append("MSYS2 rsync detected (not on PATH)")
+                return
         
         # Not found
         if self.platform == 'windows':
