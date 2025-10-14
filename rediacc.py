@@ -225,112 +225,12 @@ class RediaccCLI:
             return False
     
     def cmd_setup(self, args: List[str]):
-        """Setup command - install dependencies and check environment"""
-        print(f"{Colors.CYAN}=== Rediacc CLI Setup ==={Colors.NC}")
-        print()
-        
-        # Check Python
-        python_cmd = self.find_python()
-        if python_cmd:
-            result = subprocess.run(
-                [python_cmd, '-c', 'import sys; print(".".join(map(str, sys.version_info[:2])))'],
-                capture_output=True,
-                text=True
-            )
-            python_version = result.stdout.strip()
-            print(f"{Colors.GREEN}✓ Python {python_version} found ({python_cmd}){Colors.NC}")
-            
-            # Install Python packages
-            self.install_python_packages(python_cmd)
-        else:
-            print(f"{Colors.RED}Error: Python is not installed{Colors.NC}")
-            print("Please install Python 3.7 or later")
-            sys.exit(1)
-        
-        # Check rsync with Windows MSYS2 auto-install
-        rsync_found = shutil.which('rsync')
-        if not rsync_found:
-            # Check for Windows-specific handling
-            if sys.platform == 'win32':
-                print(f"{Colors.YELLOW}rsync not found - attempting MSYS2 installation...{Colors.NC}")
-                try:
-                    # Add src directory to path
-                    src_dir = str(self.cli_root / 'src')
-                    if src_dir not in sys.path:
-                        sys.path.insert(0, src_dir)
-                    
-                    # Try MSYS2 installation
-                    from cli.core.msys2_installer import install_msys2_if_needed
-                    success, message = install_msys2_if_needed(verbose=self.verbose)
-                    
-                    if success:
-                        print(f"{Colors.GREEN}✓ {message}{Colors.NC}")
-                        # Update PATH for current session to include MSYS2
-                        from cli.core.msys2_installer import MSYS2Installer
-                        installer = MSYS2Installer()
-                        if installer.add_to_path():
-                            # Re-check for rsync after PATH update
-                            rsync_found = shutil.which('rsync')
-                            if rsync_found:
-                                print(f"{Colors.GREEN}✓ rsync now available at: {rsync_found}{Colors.NC}")
-                    else:
-                        print(f"{Colors.RED}Failed to install MSYS2: {message}{Colors.NC}")
-                        print("Manual installation required:")
-                        print("  1. Download and install MSYS2 from https://www.msys2.org/")
-                        print("  2. Run: pacman -S rsync")
-                        print("  3. Add C:\\msys64\\usr\\bin to your system PATH")
-                except ImportError:
-                    print(f"{Colors.RED}MSYS2 installer module not available{Colors.NC}")
-                except Exception as e:
-                    print(f"{Colors.RED}MSYS2 installation error: {e}{Colors.NC}")
-                    if self.verbose:
-                        import traceback
-                        traceback.print_exc()
-            else:
-                print(f"{Colors.YELLOW}Warning: rsync not found{Colors.NC}")
-                print("Install rsync for file synchronization support:")
-                print("  Ubuntu/Debian: sudo apt-get install rsync")
-                print("  macOS: brew install rsync")
-        
-        if not rsync_found and not shutil.which('rsync'):
-            print(f"{Colors.YELLOW}⚠ rsync still not available - sync operations may not work{Colors.NC}")
-        elif shutil.which('rsync'):
-            print(f"{Colors.GREEN}✓ rsync found{Colors.NC}")
-        
-        # Check SSH
-        if not shutil.which('ssh'):
-            print(f"{Colors.YELLOW}Warning: SSH not found{Colors.NC}")
-            print("SSH is required for terminal access")
-        else:
-            print(f"{Colors.GREEN}✓ SSH found{Colors.NC}")
-        
-        # Check tkinter for desktop application
-        try:
-            result = subprocess.run(
-                [python_cmd, '-c', 'import tkinter'],
-                capture_output=True,
-                check=False
-            )
-            if result.returncode == 0:
-                print(f"{Colors.GREEN}✓ tkinter found (desktop app support available){Colors.NC}")
-            else:
-                raise ImportError()
-        except:
-            print(f"{Colors.YELLOW}Warning: tkinter not found{Colors.NC}")
-            print("Install python3-tk for Rediacc Desktop application support:")
-            print("  Ubuntu/Debian: sudo apt-get install python3-tk")
-            print("  macOS: tkinter should be included with Python")
-        
-        # Check configuration
-        if (self.cli_root / '.env').exists():
-            print(f"{Colors.GREEN}✓ Configuration file found{Colors.NC}")
-        else:
-            print(f"{Colors.YELLOW}Warning: No .env file found{Colors.NC}")
-            print("Copy .env.example to .env and configure:")
-            print("  cp .env.example .env")
-        
-        print()
-        print(f"{Colors.GREEN}Setup check complete!{Colors.NC}")
+        """Setup command - route to doctor with installers"""
+        print(f"{Colors.CYAN}=== Rediacc CLI Setup (doctor) ==={Colors.NC}")
+        # Reuse enhanced doctor to handle setup comprehensively
+        # Default behavior: install missing and auto-fix safe issues
+        self.cmd_cli_command('doctor', ['--install-missing', '--auto-fix'] + args)
+        print(f"{Colors.GREEN}Setup completed via doctor.{Colors.NC}")
     
     def cmd_test(self, args: List[str]):
         """Run tests"""
@@ -751,29 +651,8 @@ class RediaccCLI:
     
     def cmd_doctor(self, args: List[str]):
         """Run diagnostics and setup checks"""
-        # Ensure we can import setup hooks from source
-        try:
-            sys.path.insert(0, str(self.cli_root / 'src'))
-        except Exception:
-            pass
-        try:
-            from cli.setup_hooks import run_post_install_hook
-        except Exception as e:
-            print(f"{Colors.RED}Error: setup hooks not available: {e}{Colors.NC}", file=sys.stderr)
-            sys.exit(1)
-        # Force full diagnostic output
-        success = False
-        try:
-            success = bool(run_post_install_hook(force=True))
-        except Exception as e:
-            print(f"{Colors.RED}Diagnostics failed: {e}{Colors.NC}", file=sys.stderr)
-            sys.exit(1)
-        # Exit non-zero if issues detected
-        if not success:
-            print(f"{Colors.YELLOW}Diagnostics completed with issues. See summary above.{Colors.NC}", file=sys.stderr)
-            sys.exit(1)
-        else:
-            print(f"{Colors.GREEN}Diagnostics completed successfully. See summary above.{Colors.NC}")
+        # Route to the enhanced doctor command implementation
+        self.cmd_cli_command('doctor', args)
     
     def print_help(self):
         """Print help message"""

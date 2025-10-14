@@ -419,6 +419,99 @@ class DoctorSession:
             check.message = f"Tkinter is not available: {e}"
             check.fix_command = self._get_tkinter_install_command()
 
+    def _get_python_install_command(self) -> str:
+        """Suggest a Python installation command for the platform"""
+        if self.platform == 'linux':
+            if shutil.which('apt-get'):
+                return "sudo apt-get update && sudo apt-get install -y python3 python3-pip"
+            elif shutil.which('dnf'):
+                return "sudo dnf install -y python3 python3-pip"
+            elif shutil.which('yum'):
+                return "sudo yum install -y python3 python3-pip"
+            elif shutil.which('pacman'):
+                return "sudo pacman -S --noconfirm python python-pip"
+            elif shutil.which('zypper'):
+                return "sudo zypper install -y python3 python3-pip"
+            elif shutil.which('apk'):
+                return "sudo apk add --no-cache python3 py3-pip"
+            else:
+                return "Install Python 3 using your system's package manager"
+        elif self.platform == 'darwin':
+            return "brew install python"
+        elif self.platform == 'windows':
+            return "winget install Python.Python.3  # Or download from python.org"
+        else:
+            return "Install Python 3 for your operating system"
+
+    def _check_python_runtime(self, check: SystemCheck):
+        """Check Python interpreter availability and version"""
+        try:
+            py = sys.executable or shutil.which('python3') or shutil.which('python')
+            if not py:
+                check.passed = False
+                check.message = "Python interpreter not found"
+                check.fix_command = self._get_python_install_command()
+                return
+            out = subprocess.run([py, '-c', 'import sys; print(".".join(map(str, sys.version_info[:3])))'], capture_output=True, text=True)
+            ver = out.stdout.strip() or platform.python_version()
+            check.details.append(f"Interpreter: {py}")
+            check.details.append(f"Version: {ver}")
+            major_minor = tuple(int(x) for x in ver.split('.')[:2])
+            if major_minor >= (3, 7):
+                check.passed = True
+                check.message = f"Python {ver} available"
+            else:
+                check.passed = False
+                check.message = f"Python {ver} is too old; need >= 3.7"
+                check.fix_command = self._get_python_install_command()
+        except Exception as e:
+            check.passed = False
+            check.message = f"Python runtime check failed: {e}"
+            check.fix_command = self._get_python_install_command()
+
+    def _check_python_packages(self, check: SystemCheck):
+        """Check and optionally install Python packages from requirements.txt"""
+        req = self.project_root / 'requirements.txt'
+        if not req.exists():
+            check.passed = True
+            check.message = "requirements.txt not found (skipping)"
+            return
+        check.details.append(f"Found requirements file: {req}")
+        if self.install_missing:
+            try:
+                subprocess.run([sys.executable, '-m', 'pip', 'install', '--upgrade', 'pip'], check=False)
+                result = subprocess.run([sys.executable, '-m', 'pip', 'install', '-r', str(req)], text=True)
+                if result.returncode == 0:
+                    check.passed = True
+                    check.message = "Python packages installed"
+                else:
+                    check.passed = False
+                    check.message = "Some packages failed to install"
+                    check.fix_command = f"{sys.executable} -m pip install -r {req}"
+            except Exception as e:
+                check.passed = False
+                check.message = f"Package install error: {e}"
+                check.fix_command = f"{sys.executable} -m pip install -r {req}"
+        else:
+            check.passed = True
+            check.message = "Python packages not installed (dry-run)"
+            check.fix_command = f"{sys.executable} -m pip install -r {req}"
+
+    def _check_config_env(self, check: SystemCheck):
+        """Check for .env configuration file in project root"""
+        env_path = self.project_root / '.env'
+        if env_path.exists():
+            check.passed = True
+            check.message = ".env file present"
+        else:
+            check.passed = False
+            check.message = ".env file not found"
+            example = self.project_root / '.env.example'
+            if example.exists():
+                check.fix_command = f"cp {example} {env_path}"
+            else:
+                check.fix_command = "Create a .env file with required settings"
+
     def _ask_to_fix(self, check: SystemCheck) -> bool:
         """Ask user if they want to apply a fix"""
         if not check.fix_command:
