@@ -759,16 +759,24 @@ class DualPaneFileBrowser:
                 # Create repository connection
                 conn = RepositoryConnection(team, machine, repo)
                 conn.connect()
-                
+
                 # Assign to self only after successful connection
                 self.ssh_connection = conn
-                
+
                 # Get repository mount path
                 if self.ssh_connection and hasattr(self.ssh_connection, 'repo_paths') and self.ssh_connection.repo_paths:
                     self.remote_current_path = self.ssh_connection.repo_paths['mount_path']
+
+                    # DEBUG: Log the final assigned path
+                    self.logger.debug(f"[FileBrowser.connect_remote] Connection established:")
+                    self.logger.debug(f"  - Team: {team}")
+                    self.logger.debug(f"  - Machine: {machine}")
+                    self.logger.debug(f"  - Repository: {repo}")
+                    self.logger.debug(f"  - Assigned mount_path: {self.remote_current_path}")
+                    self.logger.debug(f"  - repo_guid: {self.ssh_connection.repo_guid}")
                 else:
                     raise Exception("Failed to get repository paths")
-                
+
                 # Update UI
                 self.parent.after(0, self.on_remote_connected)
                 

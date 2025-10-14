@@ -1047,6 +1047,18 @@ class CommandHandler:
                             print(f"  {instruction}")
 
                 return 0
+
+            elif args.protocol_action == 'run':
+                # Handle protocol URL from command line (not browser)
+                from cli.core.protocol_handler import handle_protocol_url
+
+                if not hasattr(args, 'url') or not args.url:
+                    print(colorize("No URL provided. Usage: rediacc protocol run <rediacc://...>", 'RED'))
+                    return 1
+
+                print(f"Handling protocol URL: {args.url}")
+                return handle_protocol_url(args.url, is_protocol_call=False)
+
             else:
                 print(colorize(f"Unknown protocol action: {args.protocol_action}", 'RED'))
                 return 1
@@ -2210,6 +2222,10 @@ def setup_parser():
     status_parser = protocol_subparsers.add_parser('status', help='Show rediacc:// protocol registration status')
     status_parser.add_argument('--system-wide', action='store_true',
                               help='Check system-wide protocol registration status')
+
+    # Run subcommand
+    run_parser = protocol_subparsers.add_parser('run', help='Handle rediacc:// protocol URL from command line')
+    run_parser.add_argument('url', help='The rediacc:// URL to handle')
 
     return parser
 

@@ -179,110 +179,96 @@ def _create_api_client():
     return client
 
 def _get_universal_user_info() -> Tuple[Optional[str], Optional[str], Optional[str]]:
-    """Get universal user info and company ID from config or environment.
+    """Get universal user info and company ID from API (always fresh) or environment fallback.
     Returns: (universal_user_name, universal_user_id, company_id)
+
+    Note: This function ALWAYS fetches fresh data from the API to avoid stale cache issues.
+    Company ID is never cached to disk as it can change and must always be current.
     """
-    # First try to get from config file
-    config_path = get_main_config_file()
-    if config_path.exists():
+    from .config import get_logger
+    logger = get_logger(__name__)
+
+    universal_user_name = None
+    universal_user_id = None
+    company_id = None
+
+    # Always fetch fresh from API if authenticated
+    if TokenManager.get_token():
+        logger.debug(f"[_get_universal_user_info] Fetching fresh data from GetCompanyVault API...")
         try:
-            config = json.load(open(config_path, 'r'))
-            
-            # Try to get vault_company from config, or initialize it
-            vault_company = config.get('vault_company')
-            
-            if vault_company:
-                # Handle encrypted vault_company
-                if not is_encrypted(vault_company):
-                    try:
-                        vault_data = json.loads(vault_company)
-                        company_id = vault_data.get('COMPANY_ID')
-                        universal_user_name = vault_data.get('UNIVERSAL_USER_NAME')
-                        universal_user_id = vault_data.get('UNIVERSAL_USER_ID')
-                    except json.JSONDecodeError:
-                        vault_data = {}
-                        company_id = None
-                        universal_user_name = None
-                        universal_user_id = None
-                else:
-                    # If encrypted, we can't use it
-                    vault_data = {}
-                    company_id = None
-                    universal_user_name = None
-                    universal_user_id = None
+            client = _create_api_client()
+            current_token = TokenManager.get_token()
+            response = client.token_request("GetCompanyVault", {})
+            new_token = TokenManager.get_token()
+
+            # Save updated token if it changed
+            if new_token != current_token:
+                config_path = get_main_config_file()
+                if config_path.exists():
+                    config = json.load(open(config_path, 'r'))
+                    config['token'] = new_token
+                    with open(config_path, 'w') as f:
+                        json.dump(config, f, indent=2)
+                    logger.debug(f"[_get_universal_user_info] Token rotated and saved")
+
+            if not response.get('error'):
+                for table in response.get('resultSets', []):
+                    data = table.get('data', [])
+                    if data:
+                        for row in data:
+                            # Get company_id from companyCredential field
+                            if 'companyCredential' in row or 'CompanyCredential' in row:
+                                company_id = row.get('companyCredential') or row.get('CompanyCredential')
+                                logger.debug(f"[_get_universal_user_info] From API (companyCredential): {company_id}")
+
+                            # Get user info from vault content
+                            vault_content = row.get('vaultContent')
+                            if vault_content:
+                                try:
+                                    vault_data = json.loads(vault_content)
+                                    if not universal_user_name:
+                                        universal_user_name = vault_data.get('UNIVERSAL_USER_NAME')
+                                    if not universal_user_id:
+                                        universal_user_id = vault_data.get('UNIVERSAL_USER_ID')
+                                    logger.debug(f"[_get_universal_user_info] From API vault content:")
+                                    logger.debug(f"  - UNIVERSAL_USER_NAME: {universal_user_name}")
+                                    logger.debug(f"  - UNIVERSAL_USER_ID: {universal_user_id}")
+                                except json.JSONDecodeError as e:
+                                    logger.debug(f"[_get_universal_user_info] Failed to parse vault content: {e}")
+
+                            if company_id:
+                                break
             else:
-                # No vault_company in config, initialize empty
-                vault_data = {}
-                company_id = None
-                universal_user_name = None
-                universal_user_id = None
-            
-            # If we don't have company_id, try to fetch it from API
-            if not company_id and TokenManager.get_token():
-                try:
-                    from .config import TokenManager as TM
-                    client = _create_api_client()
-                    current_token = TokenManager.get_token()
-                    response = client.token_request("GetCompanyVault", {})
-                    new_token = TokenManager.get_token()
-                    
-                    # Force save the token to ensure subprocess gets the updated token
-                    if new_token != current_token:
-                        # Get current config to preserve other fields
-                        config_path = get_main_config_file()
-                        if config_path.exists():
-                            config = json.load(open(config_path, 'r'))
-                            # Ensure token is saved
-                            config['token'] = new_token
-                            with open(config_path, 'w') as f:
-                                json.dump(config, f, indent=2)
-                    
-                    if not response.get('error'):
-                        for table in response.get('resultSets', []):
-                            data = table.get('data', [])
-                            if data:
-                                for row in data:
-                                    if 'companyCredential' in row or 'CompanyCredential' in row:
-                                        company_id = row.get('companyCredential') or row.get('CompanyCredential')
-                                        
-                                        # Also parse vault content if available
-                                        vault_content = row.get('vaultContent')
-                                        if vault_content:
-                                            try:
-                                                vault_from_api = json.loads(vault_content)
-                                                if not universal_user_name:
-                                                    universal_user_name = vault_from_api.get('UNIVERSAL_USER_NAME')
-                                                if not universal_user_id:
-                                                    universal_user_id = vault_from_api.get('UNIVERSAL_USER_ID')
-                                                # Merge API vault data with local
-                                                vault_data.update(vault_from_api)
-                                            except json.JSONDecodeError:
-                                                pass
-                                        
-                                        if company_id:
-                                            # Update vault_company with COMPANY_ID and merged data
-                                            vault_data['COMPANY_ID'] = company_id
-                                            config['vault_company'] = json.dumps(vault_data)
-                                            with open(config_path, 'w') as f:
-                                                json.dump(config, f, indent=2)
-                                            break
-                except Exception:
-                    pass  # Silently fail if COMPANY_ID cannot be fetched
-            
-            # If we still don't have the values, get from environment
-            if not universal_user_name or not universal_user_id:
-                from .env_config import EnvironmentConfig
-                universal_user_name, universal_user_id, env_company_id = EnvironmentConfig.get_universal_user_info()
-                if not company_id:
-                    company_id = env_company_id
-            
-            return (universal_user_name, universal_user_id, company_id)
-        except Exception:
-            pass  # Fall through to environment fallback
-    
-    # Fall back to environment configuration
-    from .env_config import EnvironmentConfig
-    return EnvironmentConfig.get_universal_user_info()
+                logger.debug(f"[_get_universal_user_info] API error: {response.get('error')}")
+        except Exception as e:
+            logger.debug(f"[_get_universal_user_info] API fetch failed: {e}")
+
+    # Fallback to environment if API didn't provide values
+    if not universal_user_name or not universal_user_id or not company_id:
+        logger.debug(f"[_get_universal_user_info] Missing values from API, checking environment...")
+        from .env_config import EnvironmentConfig
+        env_user_name, env_user_id, env_company_id = EnvironmentConfig.get_universal_user_info()
+
+        # Use environment values as fallback
+        if not universal_user_name:
+            universal_user_name = env_user_name
+        if not universal_user_id:
+            universal_user_id = env_user_id
+        if not company_id:
+            company_id = env_company_id
+
+        logger.debug(f"[_get_universal_user_info] Environment fallback values:")
+        logger.debug(f"  - universal_user_name: {env_user_name}")
+        logger.debug(f"  - universal_user_id: {env_user_id}")
+        logger.debug(f"  - company_id: {env_company_id}")
+
+    logger.debug(f"[_get_universal_user_info] Final result (always fresh):")
+    logger.debug(f"  - universal_user_name: {universal_user_name}")
+    logger.debug(f"  - universal_user_id: {universal_user_id}")
+    logger.debug(f"  - company_id: {company_id}")
+    logger.debug(f"  - Source: API (fresh data)")
+
+    return (universal_user_name, universal_user_id, company_id)
 
 class _SuppressSysExit:
     def __init__(self): self.exit_called = False; self.original_exit = None
@@ -332,35 +318,44 @@ def get_machine_info_with_team(team_name: str, machine_name: str) -> Dict[str, A
 
 
 def get_repository_info(team_name: str, repo_name: str) -> Dict[str, Any]:
-    if not TokenManager.get_token(): 
+    from .config import get_logger
+    logger = get_logger(__name__)
+
+    if not TokenManager.get_token():
         error_exit("No authentication token available")
-    
+
     def try_inspect(quiet: bool = False):
         with _SuppressSysExit() as ctx:
             cmd = get_cli_command() + ['--output', 'json', 'inspect', 'repository', team_name, repo_name]
             output = run_command(cmd, quiet=quiet)
             return output, ctx.exit_called
-    
+
     # Single attempt only, no retry
     inspect_output, exit_called = try_inspect(quiet=False)
     if not inspect_output or exit_called:
         error_exit(f"Failed to inspect repository {repo_name}")
-    
+
     try:
         inspect_data = json.loads(inspect_output)
         if not inspect_data.get('success'):
             error_exit(f"inspecting repository: {inspect_data.get('error', 'Unknown error')}")
-        
+
         data_list = inspect_data.get('data', [])
         if not data_list:
             error_exit(f"No repository data found for '{repo_name}' in team '{team_name}'")
         repo_info = data_list[0]
-        
+
+        # DEBUG: Log the repository info to track GUID fields
+        logger.debug(f"[get_repository_info] Repository '{repo_name}' API response:")
+        logger.debug(f"  - repoGuid: {repo_info.get('repoGuid', 'NOT_FOUND')}")
+        logger.debug(f"  - grandGuid: {repo_info.get('grandGuid', 'NOT_FOUND')}")
+        logger.debug(f"  - All keys in response: {list(repo_info.keys())}")
+
         vault_content = repo_info.get('vaultContent')
         if vault_content:
             try: repo_info['vault'] = json.loads(vault_content) if isinstance(vault_content, str) else vault_content
             except json.JSONDecodeError: pass
-        
+
         return repo_info
     except json.JSONDecodeError as e:
         error_exit(f"Failed to parse JSON response: {e}")
@@ -721,9 +716,12 @@ class SSHTunnelConnection(SSHConnection):
             cleanup_ssh_key(self.ssh_key_file, self.known_hosts_file)
 
 def get_machine_connection_info(machine_info: Dict[str, Any]) -> Dict[str, Any]:
+    from .config import get_logger
+    logger = get_logger(__name__)
+
     machine_name = machine_info.get('machineName')
     vault = machine_info.get('vault', {})
-    
+
     if not vault:
         vault_content = machine_info.get('vaultContent')
         if vault_content:
@@ -732,31 +730,37 @@ def get_machine_connection_info(machine_info: Dict[str, Any]) -> Dict[str, Any]:
                     vault = machine_info['vault'] = json.loads(vault_content)
                 except json.JSONDecodeError as e:
                     print(colorize(f"Failed to parse vaultContent: {e}", 'RED'))
-    
+
     ip = vault.get('ip') or vault.get('IP')
     ssh_user = vault.get('user') or vault.get('USER')
     datastore = vault.get('datastore') or vault.get('DATASTORE')
     host_entry = vault.get('hostEntry') or vault.get('HOST_ENTRY')
-    
+
+    # DEBUG: Log machine vault info
+    logger.debug(f"[get_machine_connection_info] Machine '{machine_name}' vault:")
+    logger.debug(f"  - ip: {ip}")
+    logger.debug(f"  - user: {ssh_user}")
+    logger.debug(f"  - datastore: {datastore}")
+
     # Validate required fields
     if not datastore:
         error_exit(f"Machine vault for '{machine_name}' is missing required 'datastore' field")
-    
+
     universal_user, universal_user_id, _ = _get_universal_user_info()
-    
+
     # Use defaults if values are None
     if not universal_user:
         universal_user = 'rediacc'
         print(colorize("Warning: Using default universal user 'rediacc'", 'YELLOW'))
-    
+
     if not universal_user_id:
         universal_user_id = '7111'
         print(colorize("Warning: Using default universal user ID '7111'", 'YELLOW'))
-    
+
     if not ssh_user:
         print(colorize(f"ERROR: SSH user not found in machine vault. Vault contents: {vault}", 'RED'))
         raise ValueError(f"SSH user not found in machine vault for {machine_name}. The machine vault should contain 'user' field.")
-    
+
     if not ip:
         print(colorize(f"\n✗ Machine configuration error", 'RED'))
         print(colorize(f"  Machine '{machine_name}' does not have an IP address configured", 'RED'))
@@ -766,7 +770,7 @@ def get_machine_connection_info(machine_info: Dict[str, Any]) -> Dict[str, Any]:
         print(colorize("  • 'datastore' or 'DATASTORE': Datastore path (optional)", 'YELLOW'))
         print(colorize("\nPlease update the machine configuration in the Rediacc console.", 'YELLOW'))
         raise ValueError(f"Machine IP not found in vault for {machine_name}")
-    
+
     return {
         'ip': ip,
         'user': ssh_user,
@@ -780,12 +784,24 @@ def get_machine_connection_info(machine_info: Dict[str, Any]) -> Dict[str, Any]:
 
 def get_repository_paths(repo_guid: str, datastore: str, universal_user_id: str, company_id: str) -> Dict[str, str]:
     """Calculate repository paths. Both universal_user_id and company_id are required."""
+    from .config import get_logger
+    logger = get_logger(__name__)
+
     if not universal_user_id or not company_id:
         raise ValueError("Both universal_user_id and company_id are required for repository paths")
-    
+
+    # DEBUG: Log path construction inputs
+    logger.debug(f"[get_repository_paths] Constructing paths:")
+    logger.debug(f"  - repo_guid: {repo_guid}")
+    logger.debug(f"  - datastore: {datastore}")
+    logger.debug(f"  - universal_user_id: {universal_user_id}")
+    logger.debug(f"  - company_id: {company_id}")
+
     # Use original GUIDs for paths
     base_path = f"{datastore}/{universal_user_id}/{company_id}"
     docker_base = f"{base_path}/{INTERIM_FOLDER_NAME}/{repo_guid}/docker"
+
+    logger.debug(f"  - base_path: {base_path}")
 
     # Calculate runtime paths - use shortened company_id to avoid socket path length issues
     # Only shorten if company_id looks like a GUID (contains dashes), otherwise use as-is
@@ -797,7 +813,7 @@ def get_repository_paths(repo_guid: str, datastore: str, universal_user_id: str,
         'plugin_socket_dir': f"{runtime_base}/plugins",
         'docker_exec': f"{runtime_base}/exec",
     }
-    
+
     paths = {
         'mount_path': f"{base_path}/{MOUNTS_FOLDER_NAME}/{repo_guid}",
         'image_path': f"{base_path}/{REPOS_FOLDER_NAME}/{repo_guid}",
@@ -808,7 +824,13 @@ def get_repository_paths(repo_guid: str, datastore: str, universal_user_id: str,
         'plugin_socket_dir': runtime_paths['plugin_socket_dir'],
         **runtime_paths  # Include all runtime paths
     }
-    
+
+    # DEBUG: Log the final constructed paths
+    logger.debug(f"[get_repository_paths] Final paths:")
+    logger.debug(f"  - mount_path: {paths['mount_path']}")
+    logger.debug(f"  - image_path: {paths['image_path']}")
+    logger.debug(f"  - docker_folder: {paths['docker_folder']}")
+
     return paths
 
 def initialize_cli_command(args, parser, requires_cli_tool=True):
@@ -1006,35 +1028,53 @@ class RepositoryConnection:
         self._ssh_key_file = None
     
     def connect(self):
+        from .config import get_logger
+        logger = get_logger(__name__)
+
         print("Fetching machine information...")
-        
+
         self._machine_info = get_machine_info_with_team(self.team_name, self.machine_name)
         self._connection_info = get_machine_connection_info(self._machine_info)
-        
+
         if not all([self._connection_info.get('ip'), self._connection_info.get('user')]):
             error_exit("Machine IP or user not found in vault")
-        
+
         print(f"Fetching repository information for '{self.repo_name}'...")
         self._repo_info = get_repository_info(self._connection_info['team'], self.repo_name)
-        
-        repo_guid = self._repo_info.get('repoGuid') or self._repo_info.get('grandGuid')
+
+        # DEBUG: Log GUID selection logic
+        repo_guid_field = self._repo_info.get('repoGuid')
+        grand_guid_field = self._repo_info.get('grandGuid')
+        logger.debug(f"[RepositoryConnection.connect] GUID selection for '{self.repo_name}':")
+        logger.debug(f"  - repoGuid field: {repo_guid_field}")
+        logger.debug(f"  - grandGuid field: {grand_guid_field}")
+
+        repo_guid = repo_guid_field or grand_guid_field
         if not repo_guid:
             print(colorize(f"Repository info: {json.dumps(self._repo_info, indent=2)}", 'YELLOW'))
             error_exit(f"Repository GUID not found for '{self.repo_name}'")
-        
+
+        logger.debug(f"  - Selected GUID: {repo_guid} (from {'repoGuid' if repo_guid_field else 'grandGuid'})")
+
         _, universal_user_id, company_id = _get_universal_user_info()
-        
+
+        # DEBUG: Log universal user and company info
+        logger.debug(f"[RepositoryConnection.connect] Path components:")
+        logger.debug(f"  - universal_user_id: {universal_user_id}")
+        logger.debug(f"  - company_id: {company_id}")
+        logger.debug(f"  - datastore: {self._connection_info['datastore']}")
+
         if not company_id:
             error_exit("COMPANY_ID not found. Please re-login or check your company configuration.")
-        
+
         if not universal_user_id:
             error_exit("Universal user ID not found. Please re-login or check your company configuration.")
-        
+
         self._repo_paths = get_repository_paths(repo_guid, self._connection_info['datastore'], universal_user_id, company_id)
-        
+
         if not self._repo_paths:
             error_exit("Failed to calculate repository paths")
-        
+
         print("Retrieving SSH key...")
         team_name = self._connection_info.get('team', self.team_name)
         self._ssh_key = get_ssh_key_from_vault(team_name)

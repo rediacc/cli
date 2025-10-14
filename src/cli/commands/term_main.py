@@ -105,25 +105,35 @@ def connect_to_machine(args):
 
 def connect_to_terminal(args):
     print_message('connecting_repository', 'HEADER', repo=args.repo, machine=args.machine)
-    
+
     from cli.core.shared import validate_machine_accessibility, handle_ssh_exit_code
-    
+    from cli.core.config import get_logger
+    logger = get_logger(__name__)
+
     conn = RepositoryConnection(args.team, args.machine, args.repo); conn.connect()
     validate_machine_accessibility(args.machine, args.team, conn.connection_info['ip'], args.repo)
-    
+
+    # DEBUG: Log terminal connection details
+    logger.debug(f"[connect_to_terminal] Terminal connection details:")
+    logger.debug(f"  - Team: {args.team}")
+    logger.debug(f"  - Machine: {args.machine}")
+    logger.debug(f"  - Repository: {args.repo}")
+    logger.debug(f"  - repo_guid: {conn.repo_guid}")
+    logger.debug(f"  - mount_path: {conn.repo_paths['mount_path']}")
+
     original_host_entry = conn.connection_info.get('host_entry') if args.dev else None
     if args.dev: conn.connection_info['host_entry'] = None
     ssh_key = get_ssh_key_from_vault(args.team)
-    if not ssh_key: 
+    if not ssh_key:
         error_exit(MESSAGES.get('ssh_key_not_found', 'SSH key not found').format(team=args.team))
-    
+
     host_entry = None if args.dev else conn.connection_info.get('host_entry')
-    
+
     with SSHConnection(ssh_key, host_entry) as ssh_conn:
         if ssh_conn.is_using_agent:
             print_message('ssh_agent_setup', pid=ssh_conn.agent_pid)
-        
-        if args.dev and original_host_entry is not None: 
+
+        if args.dev and original_host_entry is not None:
             conn.connection_info['host_entry'] = original_host_entry
         repo_paths = conn.repo_paths
         docker_socket = repo_paths['docker_socket']
