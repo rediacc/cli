@@ -35,9 +35,10 @@ class SystemCheck:
 class DoctorSession:
     """Manages a complete doctor/troubleshooting session"""
     
-    def __init__(self, auto_fix: bool = False, verbose: bool = False):
+    def __init__(self, auto_fix: bool = False, verbose: bool = False, install_missing: bool = False):
         self.auto_fix = auto_fix
         self.verbose = verbose
+        self.install_missing = install_missing
         self.checks = []
         self.fixes_applied = []
         self.platform = platform.system().lower()
@@ -104,6 +105,10 @@ class DoctorSession:
             self._check_network_connectivity(check)
         elif check.name == "ssh_config":
             self._check_ssh_config(check)
+        elif check.name == "python_tkinter":
+            self._check_python_tkinter(check)
+        elif check.name == "rsync":
+            self._check_rsync(check)
         elif check.name == "system_packages":
             self._check_system_packages(check)
         else:
@@ -257,13 +262,6 @@ class DoctorSession:
     def _check_system_packages(self, check: SystemCheck):
         """Check system packages that might be needed"""
         if self.platform == 'linux':
-            # Check for rsync (used by sync command)
-            rsync_path = shutil.which('rsync')
-            if rsync_path:
-                check.details.append(f"rsync: {rsync_path}")
-            else:
-                check.details.append("rsync: NOT FOUND (needed for file sync)")
-            
             # Check for curl/wget (might be used for downloads)
             for tool in ['curl', 'wget']:
                 tool_path = shutil.which(tool)
@@ -282,19 +280,96 @@ class DoctorSession:
             # Try to detect the package manager
             if shutil.which('apt-get'):
                 return "sudo apt-get update && sudo apt-get install -y openssh-client"
-            elif shutil.which('yum'):
-                return "sudo yum install -y openssh-clients"
             elif shutil.which('dnf'):
                 return "sudo dnf install -y openssh-clients"
+            elif shutil.which('yum'):
+                return "sudo yum install -y openssh-clients"
             elif shutil.which('pacman'):
-                return "sudo pacman -S openssh"
+                return "sudo pacman -S --noconfirm openssh"
+            elif shutil.which('zypper'):
+                return "sudo zypper install -y openssh"
+            elif shutil.which('apk'):
+                return "sudo apk add --no-cache openssh"
             else:
                 return "Install openssh-client using your system's package manager"
         elif self.platform == 'darwin':
-            return "SSH should be pre-installed on macOS. If missing, install Xcode Command Line Tools: xcode-select --install"
+            return "SSH is preinstalled on macOS. If missing, run: xcode-select --install or brew install openssh"
+        elif self.platform == 'windows':
+            return "Install OpenSSH Client via Windows features or: choco install openssh or winget install Microsoft.OpenSSH.Beta"
         else:
             return "Install OpenSSH client for your operating system"
-    
+
+    def _get_rsync_install_command(self) -> str:
+        """Get the appropriate rsync installation command for the platform"""
+        if self.platform == 'linux':
+            if shutil.which('apt-get'):
+                return "sudo apt-get update && sudo apt-get install -y rsync"
+            elif shutil.which('dnf'):
+                return "sudo dnf install -y rsync"
+            elif shutil.which('yum'):
+                return "sudo yum install -y rsync"
+            elif shutil.which('pacman'):
+                return "sudo pacman -S --noconfirm rsync"
+            elif shutil.which('zypper'):
+                return "sudo zypper install -y rsync"
+            elif shutil.which('apk'):
+                return "sudo apk add --no-cache rsync"
+            else:
+                return "Install rsync using your system's package manager"
+        elif self.platform == 'darwin':
+            return "brew install rsync"
+        elif self.platform == 'windows':
+            return "choco install rsync"
+        else:
+            return "Install rsync for your operating system"
+
+    def _get_tkinter_install_command(self) -> str:
+        """Get the appropriate Tkinter installation command for the platform"""
+        if self.platform == 'linux':
+            if shutil.which('apt-get'):
+                return "sudo apt-get update && sudo apt-get install -y python3-tk"
+            elif shutil.which('dnf'):
+                return "sudo dnf install -y python3-tkinter"
+            elif shutil.which('yum'):
+                return "sudo yum install -y python3-tkinter"
+            elif shutil.which('pacman'):
+                return "sudo pacman -S --noconfirm tk"
+            elif shutil.which('zypper'):
+                return "sudo zypper install -y python3-tk"
+            elif shutil.which('apk'):
+                return "sudo apk add --no-cache python3-tkinter || sudo apk add --no-cache tk tcl"
+            else:
+                return "Install Tkinter (python3-tk) using your system's package manager"
+        elif self.platform == 'darwin':
+            return "brew install tcl-tk  # Then ensure Python is built/linked against this Tk"
+        elif self.platform == 'windows':
+            return "Install Python from python.org (includes Tcl/Tk), or via winget: winget install Python.Python.3"
+        else:
+            return "Install Python Tkinter for your operating system"
+
+    def _check_rsync(self, check: SystemCheck):
+        """Check for rsync availability"""
+        rsync_path = shutil.which('rsync')
+        if rsync_path:
+            check.passed = True
+            check.message = f"rsync available: {rsync_path}"
+        else:
+            check.passed = False
+            check.message = "rsync not found (required for file sync)"
+            check.fix_command = self._get_rsync_install_command()
+
+    def _check_python_tkinter(self, check: SystemCheck):
+        """Check whether Tkinter can be imported"""
+        try:
+            import importlib
+            importlib.import_module('tkinter')
+            check.passed = True
+            check.message = "Tkinter is available"
+        except Exception as e:
+            check.passed = False
+            check.message = f"Tkinter is not available: {e}"
+            check.fix_command = self._get_tkinter_install_command()
+
     def _ask_to_fix(self, check: SystemCheck) -> bool:
         """Ask user if they want to apply a fix"""
         if not check.fix_command:
@@ -323,9 +398,19 @@ class DoctorSession:
                 else:
                     print(f"   {colorize('❌ Fix failed:', 'RED')} {result.stderr}")
             else:
-                # For package installations and other complex fixes, just show the command
-                print(f"   {colorize('ℹ️ Manual fix required:', 'CYAN')} Run this command:")
-                print(f"   {colorize(check.fix_command, 'YELLOW')}")
+                # Package installations and other fixes
+                if self.install_missing:
+                    result = subprocess.run(check.fix_command, shell=True, text=True)
+                    if result.returncode == 0:
+                        print(f"   {colorize('✅ Installation completed', 'GREEN')}")
+                        self.fixes_applied.append(check.name)
+                        self._run_single_check(check)
+                    else:
+                        print(f"   {colorize('❌ Installation failed', 'RED')} (exit code {result.returncode})")
+                        print(f"   {colorize('ℹ️ Manual fix command:', 'CYAN')} {check.fix_command}")
+                else:
+                    print(f"   {colorize('ℹ️ Manual fix required:', 'CYAN')} Run this command:")
+                    print(f"   {colorize(check.fix_command, 'YELLOW')}")
                 
         except Exception as e:
             print(f"   {colorize('❌ Fix failed:', 'RED')} {e}")
@@ -359,6 +444,8 @@ def create_standard_checks() -> List[SystemCheck]:
         SystemCheck("temp_directory", "Temporary Directory Access"),
         SystemCheck("network_connectivity", "Network Connectivity"),
         SystemCheck("ssh_config", "SSH Configuration"),
+        SystemCheck("python_tkinter", "Python Tkinter (GUI) Support"),
+        SystemCheck("rsync", "Rsync (file synchronization)"),
         SystemCheck("system_packages", "System Packages"),
     ]
 
@@ -373,6 +460,7 @@ def main():
 Examples:
   ./rediacc doctor                    # Run all diagnostic checks
   ./rediacc doctor --auto-fix         # Automatically apply safe fixes
+  ./rediacc doctor --install-missing  # Attempt to install missing packages (uses sudo)
   ./rediacc doctor --verbose          # Show detailed information
   ./rediacc troubleshoot              # Alias for doctor command
 
@@ -381,7 +469,7 @@ might prevent Rediacc CLI from working properly, including:
   • SSH client and agent setup
   • File permissions
   • Network connectivity
-  • Required system packages
+  • Required system packages (rsync, tkinter, SSH)
         """
     )
     
@@ -392,6 +480,8 @@ might prevent Rediacc CLI from working properly, including:
     
     parser.add_argument('--auto-fix', action='store_true',
                        help='Automatically apply safe fixes without prompting')
+    parser.add_argument('--install-missing', action='store_true',
+                       help='Attempt to install missing packages using your OS package manager (may prompt for sudo)')
     
     args = parser.parse_args()
     
@@ -405,7 +495,7 @@ might prevent Rediacc CLI from working properly, including:
     try:
         # Create and run all checks
         checks = create_standard_checks()
-        doctor = DoctorSession(auto_fix=args.auto_fix, verbose=args.verbose)
+        doctor = DoctorSession(auto_fix=args.auto_fix, verbose=args.verbose, install_missing=getattr(args, 'install_missing', False))
         
         for check in checks:
             doctor.add_check(check)
