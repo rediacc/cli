@@ -1994,6 +1994,8 @@ class MainWindow(BaseWindow):
 
                     # Use direct SSH connection like terminal does
                     host_entry = connection_info.get('host_entry')
+                    if not host_entry:
+                        raise Exception("Missing SSH host key (HOST_ENTRY) in machine vault. Please set HOST_ENTRY to enforce secure SSH.")
                     ssh_context = SSHConnection(ssh_key, host_entry, prefer_agent=True)
                     ssh_host = connection_info['ip']
                     ssh_user = connection_info['user']

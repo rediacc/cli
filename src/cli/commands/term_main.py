@@ -76,7 +76,19 @@ def connect_to_machine(args):
     if not ssh_key: 
         error_exit(MESSAGES.get('ssh_key_not_found', 'SSH key not found').format(team=args.team))
     
-    host_entry = None if args.dev else connection_info.get('host_entry')
+    host_entry = connection_info.get('host_entry')
+    if not host_entry:
+        # Provide detailed diagnostics to help identify vault field naming issues
+        vault = getattr(conn, 'machine_info', {}) .get('vault', {}) if 'conn' in locals() else {}
+        possible_keys = ['host_entry', 'hostEntry', 'HOST_ENTRY']
+        found_keys = [k for k in possible_keys if isinstance(vault, dict) and k in vault and vault.get(k)]
+        debug_keys = list(vault.keys()) if isinstance(vault, dict) else []
+        print(colorize("\nSSH host key not found in machine vault.", 'RED'))
+        print(colorize("  Looked for keys: host_entry, hostEntry, HOST_ENTRY", 'YELLOW'))
+        print(colorize(f"  Vault keys present: {debug_keys}", 'YELLOW'))
+        if found_keys:
+            print(colorize(f"  Found candidate keys with values: {found_keys}", 'YELLOW'))
+        error_exit("Missing SSH host key (HOST_ENTRY) in machine vault. Please set HOST_ENTRY to enforce secure SSH.")
     
     with SSHConnection(ssh_key, host_entry) as ssh_conn:
         if ssh_conn.is_using_agent:
@@ -121,20 +133,27 @@ def connect_to_terminal(args):
     logger.debug(f"  - repo_guid: {conn.repo_guid}")
     logger.debug(f"  - mount_path: {conn.repo_paths['mount_path']}")
 
-    original_host_entry = conn.connection_info.get('host_entry') if args.dev else None
-    if args.dev: conn.connection_info['host_entry'] = None
     ssh_key = get_ssh_key_from_vault(args.team)
     if not ssh_key:
         error_exit(MESSAGES.get('ssh_key_not_found', 'SSH key not found').format(team=args.team))
 
-    host_entry = None if args.dev else conn.connection_info.get('host_entry')
+    host_entry = conn.connection_info.get('host_entry')
+    if not host_entry:
+        # Provide detailed diagnostics to help identify vault field naming issues
+        vault = getattr(conn, 'machine_info', {}).get('vault', {})
+        possible_keys = ['host_entry', 'hostEntry', 'HOST_ENTRY']
+        found_keys = [k for k in possible_keys if isinstance(vault, dict) and k in vault and vault.get(k)]
+        debug_keys = list(vault.keys()) if isinstance(vault, dict) else []
+        print(colorize("\nSSH host key not found in machine vault.", 'RED'))
+        print(colorize("  Looked for keys: host_entry, hostEntry, HOST_ENTRY", 'YELLOW'))
+        print(colorize(f"  Vault keys present: {debug_keys}", 'YELLOW'))
+        if found_keys:
+            print(colorize(f"  Found candidate keys with values: {found_keys}", 'YELLOW'))
+        error_exit("Missing SSH host key (HOST_ENTRY) in machine vault. Please set HOST_ENTRY to enforce secure SSH.")
 
     with SSHConnection(ssh_key, host_entry) as ssh_conn:
         if ssh_conn.is_using_agent:
             print_message('ssh_agent_setup', pid=ssh_conn.agent_pid)
-
-        if args.dev and original_host_entry is not None:
-            conn.connection_info['host_entry'] = original_host_entry
         repo_paths = conn.repo_paths
         docker_socket = repo_paths['docker_socket']
         docker_host = f"unix://{docker_socket}"
@@ -196,20 +215,27 @@ def connect_to_container(args):
     conn = RepositoryConnection(args.team, args.machine, args.repo); conn.connect()
     validate_machine_accessibility(args.machine, args.team, conn.connection_info['ip'], args.repo)
 
-    original_host_entry = conn.connection_info.get('host_entry') if args.dev else None
-    if args.dev: conn.connection_info['host_entry'] = None
     ssh_key = get_ssh_key_from_vault(args.team)
     if not ssh_key:
         error_exit(MESSAGES.get('ssh_key_not_found', 'SSH key not found').format(team=args.team))
 
-    host_entry = None if args.dev else conn.connection_info.get('host_entry')
+    host_entry = conn.connection_info.get('host_entry')
+    if not host_entry:
+        # Provide detailed diagnostics to help identify vault field naming issues
+        vault = getattr(conn, 'machine_info', {}).get('vault', {})
+        possible_keys = ['host_entry', 'hostEntry', 'HOST_ENTRY']
+        found_keys = [k for k in possible_keys if isinstance(vault, dict) and k in vault and vault.get(k)]
+        debug_keys = list(vault.keys()) if isinstance(vault, dict) else []
+        print(colorize("\nSSH host key not found in machine vault.", 'RED'))
+        print(colorize("  Looked for keys: host_entry, hostEntry, HOST_ENTRY", 'YELLOW'))
+        print(colorize(f"  Vault keys present: {debug_keys}", 'YELLOW'))
+        if found_keys:
+            print(colorize(f"  Found candidate keys with values: {found_keys}", 'YELLOW'))
+        error_exit("Missing SSH host key (HOST_ENTRY) in machine vault. Please set HOST_ENTRY to enforce secure SSH.")
 
     with SSHConnection(ssh_key, host_entry) as ssh_conn:
         if ssh_conn.is_using_agent:
             print_message('ssh_agent_setup', pid=ssh_conn.agent_pid)
-
-        if args.dev and original_host_entry is not None:
-            conn.connection_info['host_entry'] = original_host_entry
         repo_paths = conn.repo_paths
         docker_socket = repo_paths['docker_socket']
         docker_host = f"unix://{docker_socket}"
@@ -280,7 +306,6 @@ def main():
     parser.add_argument('--repo', help='Target repository name (optional - if not specified, connects to machine only)')
     parser.add_argument('--container', help='Container name to connect to directly (requires --repo)')
     parser.add_argument('--command', help='Command to execute (interactive shell if not specified)')
-    parser.add_argument('--dev', action='store_true', help='Development mode - relaxes SSH host key checking')
     
     args = parser.parse_args()
     

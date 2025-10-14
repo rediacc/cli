@@ -180,22 +180,18 @@ def connect_plugin(args):
     
     conn = RepositoryConnection(args.team, args.machine, args.repo); conn.connect()
     
-    original_host_entry = conn.connection_info.get('host_entry') if args.dev else None
-    if args.dev: conn.connection_info['host_entry'] = None
-    
     # Get SSH key for tunnel connection
     ssh_key = get_ssh_key_from_vault(args.team)
     if not ssh_key:
         error_exit(f"SSH key not found for team '{args.team}'")
     
     # Use SSHTunnelConnection for persistent tunnels
-    host_entry = None if args.dev else conn.connection_info.get('host_entry')
+    host_entry = conn.connection_info.get('host_entry')
+    if not host_entry:
+        error_exit("Missing SSH host key (HOST_ENTRY) in machine vault. Please set HOST_ENTRY to enforce secure SSH.")
     ssh_tunnel_conn = SSHTunnelConnection(ssh_key, host_entry)
     ssh_tunnel_conn.__enter__()  # Setup connection
     ssh_tunnel_conn.disable_auto_cleanup()  # Prevent auto cleanup for persistent tunnel
-    
-    if args.dev and original_host_entry is not None: 
-        conn.connection_info['host_entry'] = original_host_entry
     
     try:
         # Verify plugin socket exists
@@ -439,7 +435,6 @@ Plugin Access:
     # List command
     list_parser = subparsers.add_parser('list', help='List available plugins in a repository')
     add_common_arguments(list_parser, include_args=['token', 'team', 'machine', 'repo'])
-    list_parser.add_argument('--dev', action='store_true', help='Development mode - relaxes SSH host key checking')
     list_parser.set_defaults(func=list_plugins)
     
     # Connect command
@@ -447,7 +442,6 @@ Plugin Access:
     add_common_arguments(connect_parser, include_args=['token', 'team', 'machine', 'repo'])
     connect_parser.add_argument('--plugin', required=True, help='Plugin name (e.g., browser, terminal)')
     connect_parser.add_argument('--port', type=int, help='Local port to use (auto-assigned if not specified)')
-    connect_parser.add_argument('--dev', action='store_true', help='Development mode - relaxes SSH host key checking')
     connect_parser.set_defaults(func=connect_plugin)
     
     # Disconnect command

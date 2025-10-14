@@ -477,14 +477,10 @@ def _setup_ssh_options(host_entry: str, known_hosts_path: str, key_path: str = N
         base_opts = f"-o StrictHostKeyChecking=yes -o UserKnownHostsFile={known_hosts_path}"
         _track_ssh_operation("host_key_verification", "known_host", True)
     else:
-        # No host entry - this is a first-time connection
-        # For security, we still want to save the host key for future verification
-        # but we need to accept it initially to establish the connection
-
-        # Use a temporary known_hosts file to capture the host key
-        # Always use the provided known_hosts path (never null device)
-        base_opts = f"-o StrictHostKeyChecking=accept-new -o UserKnownHostsFile={known_hosts_path}"
-        _track_ssh_operation("host_key_verification", "new_host", True)
+        # No host entry - policy: fail closed (do not trust first-time connections)
+        # The caller should have validated presence of host_entry and raised a helpful error.
+        base_opts = f"-o StrictHostKeyChecking=yes -o UserKnownHostsFile={known_hosts_path}"
+        _track_ssh_operation("host_key_verification", "missing_host_entry", False)
 
     # Add additional security options
     security_opts = "-o PasswordAuthentication=no -o PubkeyAuthentication=yes -o PreferredAuthentications=publickey"
@@ -525,13 +521,16 @@ def setup_ssh_agent_connection(ssh_key: str, host_entry: str = None) -> Tuple[st
     except Exception as e:
         raise RuntimeError(f"SSH agent setup failed: {e}")
     
-    # Always create a temporary known_hosts file so StrictHostKeyChecking=accept-new
-    # has a valid place to write the first-time host key
+    # Always create a temporary known_hosts file
     known_hosts_file_path = create_temp_file(suffix='_known_hosts', prefix='known_hosts_')
     if host_entry:
         # Seed the known_hosts file with the provided entry
         with open(known_hosts_file_path, 'w') as f:
             f.write(host_entry + '\n')
+    else:
+        # Enforce policy: host entry required for secure connection
+        raise RuntimeError("Missing SSH host key (HOST_ENTRY) in machine vault.\n"
+                           "For security, first-time trust is disabled. Please set HOST_ENTRY in the machine vault.")
     
     ssh_opts = _setup_ssh_options(host_entry, known_hosts_file_path)
     
@@ -579,14 +578,16 @@ def setup_ssh_for_connection(ssh_key: str, host_entry: str = None, ssh_executabl
                 pass
         raise RuntimeError(f"Failed to create SSH key file: {e}")
     
-    # Always create a known_hosts file, even for first-time connections
-    # This allows SSH to save the host key for future verification
+    # Always create a known_hosts file and require host_entry to seed it
     known_hosts_file_path = create_temp_file(suffix='_known_hosts', prefix='known_hosts_')
     if host_entry:
         # Write the existing host entry from the vault
         with open(known_hosts_file_path, 'w') as f: 
             f.write(host_entry + '\n')
-    # If no host_entry, the file is empty but will be used to store the new host key
+    else:
+        # Enforce policy: host entry required for secure connection
+        raise RuntimeError("Missing SSH host key (HOST_ENTRY) in machine vault.\n"
+                           "For security, first-time trust is disabled. Please set HOST_ENTRY in the machine vault.")
     
     ssh_opts = _setup_ssh_options(host_entry, known_hosts_file_path, ssh_key_file_path, ssh_executable)
     
@@ -737,7 +738,15 @@ def get_machine_connection_info(machine_info: Dict[str, Any]) -> Dict[str, Any]:
     ip = vault.get('ip') or vault.get('IP')
     ssh_user = vault.get('user') or vault.get('USER')
     datastore = vault.get('datastore') or vault.get('DATASTORE')
-    host_entry = vault.get('hostEntry') or vault.get('HOST_ENTRY')
+    # Host key may be stored under different key styles; support all common variants
+    host_entry = (
+        vault.get('host_entry') or
+        vault.get('hostEntry') or
+        vault.get('HOST_ENTRY')
+    )
+    # DEBUG: Log available keys and detected host_entry
+    logger.debug(f"  - vault keys: {list(vault.keys()) if isinstance(vault, dict) else 'N/A'}")
+    logger.debug(f"  - host_entry detected: {'present' if bool(host_entry) else 'MISSING'}")
 
     # DEBUG: Log machine vault info
     logger.debug(f"[get_machine_connection_info] Machine '{machine_name}' vault:")

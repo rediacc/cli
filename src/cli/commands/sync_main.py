@@ -230,13 +230,9 @@ def upload(args):
         error_exit(f"Local path '{args.local}' does not exist")
     
     conn = RepositoryConnection(args.team, args.machine, args.repo); conn.connect()
-    original_host_entry = conn.connection_info.get('host_entry') if args.dev else None
-    if args.dev: conn.connection_info['host_entry'] = None
     
     with conn.ssh_context() as ssh_conn:
         ssh_cmd = get_rsync_ssh_command(ssh_conn.ssh_opts)
-        if args.dev and original_host_entry is not None: 
-            conn.connection_info['host_entry'] = original_host_entry
         
         dest_path = f"{conn.ssh_destination}:{conn.repo_paths['mount_path']}/"
         source = str(source_path) + ('/' if source_path.is_dir() and not str(source_path).endswith('/') else '')
@@ -254,13 +250,9 @@ def download(args):
     dest_path.mkdir(parents=True, exist_ok=True)
     
     conn = RepositoryConnection(args.team, args.machine, args.repo); conn.connect()
-    original_host_entry = conn.connection_info.get('host_entry') if args.dev else None
-    if args.dev: conn.connection_info['host_entry'] = None
     
     with conn.ssh_context() as ssh_conn:
         ssh_cmd = get_rsync_ssh_command(ssh_conn.ssh_opts)
-        if args.dev and original_host_entry is not None: 
-            conn.connection_info['host_entry'] = original_host_entry
         
         source_path = f"{conn.ssh_destination}:{conn.repo_paths['mount_path']}/"
         dest = str(dest_path) + ('/' if not str(dest_path).endswith('/') else '')
@@ -323,7 +315,6 @@ Examples:
         parser_cmd.add_argument('--mirror', action='store_true', help='Delete files not present in source')
         parser_cmd.add_argument('--verify', action='store_true', help='Verify all transfers with checksums')
         parser_cmd.add_argument('--confirm', action='store_true', help='Preview changes and ask for confirmation')
-        parser_cmd.add_argument('--dev', action='store_true', help='Development mode - relaxes SSH host key checking')
         
         parser_cmd.set_defaults(func=cmd_func)
     
