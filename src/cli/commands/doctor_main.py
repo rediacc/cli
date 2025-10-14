@@ -120,6 +120,8 @@ class DoctorSession:
             self._check_rsync(check)
         elif check.name == "config_env":
             self._check_config_env(check)
+        elif check.name == "protocol_handler":
+            self._check_protocol_handler(check)
         elif check.name == "system_packages":
             self._check_system_packages(check)
         else:
@@ -440,6 +442,66 @@ class DoctorSession:
         check.message = "rsync not found (required for file sync)"
         check.fix_command = self._get_rsync_install_command()
 
+    def _get_protocol_fix_command(self) -> str:
+        """Suggest command to register the protocol handler"""
+        if self.platform == 'windows':
+            bat_path = self.project_root / 'rediacc.bat'
+            if bat_path.exists():
+                return f"\"{bat_path}\" protocol register"
+            return "rediacc.bat protocol register"
+        else:
+            script_path = self.project_root / 'rediacc'
+            if script_path.exists():
+                return f"{script_path} protocol register"
+            return "./rediacc protocol register"
+
+    def _check_protocol_handler(self, check: SystemCheck):
+        """Verify rediacc:// protocol handler registration"""
+        try:
+            from cli.core.protocol_handler import (
+                is_protocol_supported,
+                get_protocol_status,
+                get_install_instructions,
+            )
+        except Exception as exc:
+            check.passed = False
+            check.message = f"Protocol handler module unavailable: {exc}"
+            return
+
+        if not is_protocol_supported():
+            check.passed = True
+            check.message = "Protocol handler not supported on this platform"
+            return
+
+        status = get_protocol_status(system_wide=False)
+        if status.get("error"):
+            check.passed = False
+            check.message = f"Could not determine protocol status: {status['error']}"
+            instructions = get_install_instructions()
+            for line in instructions:
+                check.details.append(line)
+            check.fix_command = self._get_protocol_fix_command()
+            return
+
+        user_registered = status.get("user_registered", False)
+        system_registered = status.get("system_registered", False)
+        registered = status.get("registered", user_registered or system_registered)
+
+        check.details.append(f"User registration: {'yes' if user_registered else 'no'}")
+        check.details.append(f"System-wide registration: {'yes' if system_registered else 'no'}")
+
+        if registered:
+            check.passed = True
+            scope = "system-wide" if system_registered else "user"
+            check.message = f"Protocol handler registered ({scope} scope)"
+        else:
+            check.passed = False
+            check.message = "Protocol handler not registered"
+            instructions = get_install_instructions()
+            for line in instructions:
+                check.details.append(line)
+            check.fix_command = self._get_protocol_fix_command()
+
     def _check_python_tkinter(self, check: SystemCheck):
         """Check whether Tkinter can be imported"""
         try:
@@ -624,6 +686,7 @@ def create_standard_checks() -> List[SystemCheck]:
         SystemCheck("python_tkinter", "Python Tkinter (GUI) Support"),
         SystemCheck("rsync", "Rsync (file synchronization)"),
         SystemCheck("config_env", ".env Configuration File"),
+        SystemCheck("protocol_handler", "Protocol Handler Registration"),
         SystemCheck("system_packages", "System Packages"),
     ]
 
