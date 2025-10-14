@@ -54,7 +54,7 @@ class DoctorSession:
     
     def run_all_checks(self) -> bool:
         """Run all system checks and return True if all passed"""
-        print(colorize("🔍 REDIACC SYSTEM DOCTOR", 'HEADER'))
+        print(colorize("REDIACC SYSTEM DOCTOR", 'HEADER'))
         print(colorize("=" * 50, 'BLUE'))
         print(f"Platform: {platform.system()} {platform.release()}")
         print(f"Python: {sys.version.split()[0]}")
@@ -69,9 +69,9 @@ class DoctorSession:
                 self._run_single_check(check)
                 
                 if check.passed:
-                    print(f"   {colorize('✅ PASS', 'GREEN')}: {check.message}")
+                    print(f"   {colorize('PASS', 'GREEN')}: {check.message}")
                 else:
-                    print(f"   {colorize('❌ FAIL', 'RED')}: {check.message}")
+                    print(f"   {colorize('FAIL', 'RED')}: {check.message}")
                     all_passed = False
                     
                     if check.fix_command and (self.auto_fix or self._ask_to_fix(check)):
@@ -79,12 +79,12 @@ class DoctorSession:
                 
                 if self.verbose and check.details:
                     for detail in check.details:
-                        print(f"      {colorize('ℹ️', 'CYAN')} {detail}")
+                        print(f"      {colorize('-', 'CYAN')} {detail}")
                         
             except Exception as e:
                 check.passed = False
                 check.message = f"Check failed with error: {e}"
-                print(f"   {colorize('⚠️ ERROR', 'YELLOW')}: {check.message}")
+                print(f"   {colorize('ERROR', 'YELLOW')}: {check.message}")
                 all_passed = False
                 
                 if self.verbose:
@@ -517,7 +517,7 @@ class DoctorSession:
         if not check.fix_command:
             return False
             
-        print(f"   {colorize('🔧 Suggested fix:', 'YELLOW')} {check.fix_command}")
+        print(f"   {colorize('Suggested fix:', 'YELLOW')} {check.fix_command}")
         response = input(f"   Apply this fix? [y/N]: ").strip().lower()
         return response in ['y', 'yes']
     
@@ -526,53 +526,53 @@ class DoctorSession:
         if not check.fix_command:
             return
             
-        print(f"   {colorize('🔧 Applying fix...', 'CYAN')}")
+        print(f"   {colorize('Applying fix...', 'CYAN')}")
         
         try:
             if check.fix_command.startswith('mkdir') or check.fix_command.startswith('chmod'):
                 # Safe filesystem operations
                 result = subprocess.run(check.fix_command, shell=True, capture_output=True, text=True, timeout=30)
                 if result.returncode == 0:
-                    print(f"   {colorize('✅ Fix applied successfully', 'GREEN')}")
+                    print(f"   {colorize('Fix applied successfully', 'GREEN')}")
                     self.fixes_applied.append(check.name)
                     # Re-run the check
                     self._run_single_check(check)
                 else:
-                    print(f"   {colorize('❌ Fix failed:', 'RED')} {result.stderr}")
+                    print(f"   {colorize('Fix failed:', 'RED')} {result.stderr}")
             else:
                 # Package installations and other fixes
                 if self.install_missing:
                     result = subprocess.run(check.fix_command, shell=True, text=True)
                     if result.returncode == 0:
-                        print(f"   {colorize('✅ Installation completed', 'GREEN')}")
+                        print(f"   {colorize('Installation completed', 'GREEN')}")
                         self.fixes_applied.append(check.name)
                         self._run_single_check(check)
                     else:
-                        print(f"   {colorize('❌ Installation failed', 'RED')} (exit code {result.returncode})")
-                        print(f"   {colorize('ℹ️ Manual fix command:', 'CYAN')} {check.fix_command}")
+                        print(f"   {colorize('Installation failed', 'RED')} (exit code {result.returncode})")
+                        print(f"   {colorize('Manual fix command:', 'CYAN')} {check.fix_command}")
                 else:
-                    print(f"   {colorize('ℹ️ Manual fix required:', 'CYAN')} Run this command:")
+                    print(f"   {colorize('Manual fix required:', 'CYAN')} Run this command:")
                     print(f"   {colorize(check.fix_command, 'YELLOW')}")
                 
         except Exception as e:
-            print(f"   {colorize('❌ Fix failed:', 'RED')} {e}")
+            print(f"   {colorize('Fix failed:', 'RED')} {e}")
     
     def _print_summary(self, all_passed: bool):
         """Print final summary"""
         print(colorize("=" * 50, 'BLUE'))
         
         if all_passed:
-            print(colorize("🎉 ALL CHECKS PASSED!", 'GREEN'))
+            print(colorize("ALL CHECKS PASSED!", 'GREEN'))
             print("Your system appears to be properly configured for Rediacc CLI.")
         else:
             failed_checks = [check for check in self.checks if not check.passed]
-            print(colorize(f"⚠️  {len(failed_checks)} CHECKS FAILED", 'YELLOW'))
+            print(colorize(f"{len(failed_checks)} CHECKS FAILED", 'YELLOW'))
             print("Some issues were found that may affect Rediacc CLI functionality.")
             
         if self.fixes_applied:
-            print(f"\n{colorize('🔧 Fixes applied:', 'CYAN')} {', '.join(self.fixes_applied)}")
+            print(f"\n{colorize('Fixes applied:', 'CYAN')} {', '.join(self.fixes_applied)}")
             
-        print(f"\n{colorize('📋 Summary:', 'BLUE')}")
+        print(f"\n{colorize('Summary:', 'BLUE')}")
         print(f"   Total checks: {len(self.checks)}")
         print(f"   Passed: {colorize(str(sum(1 for c in self.checks if c.passed)), 'GREEN')}")
         print(f"   Failed: {colorize(str(sum(1 for c in self.checks if not c.passed)), 'RED' if not all_passed else 'GREEN')}")
@@ -611,11 +611,11 @@ Examples:
 
 This command helps diagnose and resolve common system issues that
 might prevent Rediacc CLI from working properly, including:
-  • Python runtime and packages
-  • SSH client and agent setup
-  • File permissions
-  • Network connectivity
-  • Required system packages (rsync, tkinter, SSH)
+  - Python runtime and packages
+  - SSH client and agent setup
+  - File permissions
+  - Network connectivity
+  - Required system packages (rsync, tkinter, SSH)
         """
     )
     
@@ -651,14 +651,14 @@ might prevent Rediacc CLI from working properly, including:
         return 0 if success else 1
         
     except KeyboardInterrupt:
-        print(f"\n{colorize('🛑 Interrupted by user', 'YELLOW')}")
+        print(f"\n{colorize('Interrupted by user', 'YELLOW')}")
         return 1
     except Exception as e:
         logger.error(f"Doctor command failed: {e}")
         if args.verbose:
             import traceback
             traceback.print_exc()
-        print(f"{colorize('❌ Error:', 'RED')} {e}")
+        print(f"{colorize('Error:', 'RED')} {e}")
         return 1
     finally:
         shutdown_telemetry()
