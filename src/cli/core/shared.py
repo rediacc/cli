@@ -477,7 +477,7 @@ def _setup_ssh_options(host_entry: str, known_hosts_path: str, key_path: str = N
         base_opts = f"-o StrictHostKeyChecking=yes -o UserKnownHostsFile={known_hosts_path}"
         _track_ssh_operation("host_key_verification", "known_host", True)
     else:
-        # No host entry - this is a first-time connection or dev mode
+        # No host entry - this is a first-time connection
         # For security, we still want to save the host key for future verification
         # but we need to accept it initially to establish the connection
 
@@ -525,10 +525,13 @@ def setup_ssh_agent_connection(ssh_key: str, host_entry: str = None) -> Tuple[st
     except Exception as e:
         raise RuntimeError(f"SSH agent setup failed: {e}")
     
-    known_hosts_file_path = None
+    # Always create a temporary known_hosts file so StrictHostKeyChecking=accept-new
+    # has a valid place to write the first-time host key
+    known_hosts_file_path = create_temp_file(suffix='_known_hosts', prefix='known_hosts_')
     if host_entry:
-        known_hosts_file_path = create_temp_file(suffix='_known_hosts', prefix='known_hosts_')
-        with open(known_hosts_file_path, 'w') as f: f.write(host_entry + '\n')
+        # Seed the known_hosts file with the provided entry
+        with open(known_hosts_file_path, 'w') as f:
+            f.write(host_entry + '\n')
     
     ssh_opts = _setup_ssh_options(host_entry, known_hosts_file_path)
     
