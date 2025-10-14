@@ -49,10 +49,15 @@ def get_rsync_command() -> str:
     raise RuntimeError("rsync not found. Please install rsync.")
 
 def get_rsync_ssh_command(ssh_opts: str) -> str:
-    if not is_windows(): return f'ssh {ssh_opts}'
+    if not is_windows():
+        return 'ssh {}'.format(ssh_opts)
     msys2_ssh = find_msys2_executable('ssh')
-    if msys2_ssh: return f'{msys2_ssh.replace("\\", "/")} {ssh_opts}'
-    if shutil.which('ssh'): return f'ssh {ssh_opts}'
+    if msys2_ssh:
+        # Avoid backslashes inside f-string expressions for wider Python compatibility
+        ssh_path = msys2_ssh.replace('\\', '/')
+        return '{} {}'.format(ssh_path, ssh_opts)
+    if shutil.which('ssh'):
+        return 'ssh {}'.format(ssh_opts)
     raise RuntimeError("SSH not found for rsync")
 
 def prepare_rsync_paths(source: str, dest: str) -> Tuple[str, str]:
