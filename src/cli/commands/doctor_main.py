@@ -42,6 +42,11 @@ class DoctorSession:
         self.checks = []
         self.fixes_applied = []
         self.platform = platform.system().lower()
+        # Attempt to locate project root (repo checkout); if packaged, this may point to site-packages
+        try:
+            self.project_root = Path(__file__).resolve().parents[3]
+        except Exception:
+            self.project_root = Path.cwd()
     
     def add_check(self, check: SystemCheck):
         """Add a system check to the session"""
@@ -93,7 +98,11 @@ class DoctorSession:
     
     def _run_single_check(self, check: SystemCheck):
         """Run a single system check"""
-        if check.name == "ssh_client":
+        if check.name == "python_runtime":
+            self._check_python_runtime(check)
+        elif check.name == "python_packages":
+            self._check_python_packages(check)
+        elif check.name == "ssh_client":
             self._check_ssh_client(check)
         elif check.name == "ssh_agent":
             self._check_ssh_agent(check)
@@ -109,6 +118,8 @@ class DoctorSession:
             self._check_python_tkinter(check)
         elif check.name == "rsync":
             self._check_rsync(check)
+        elif check.name == "config_env":
+            self._check_config_env(check)
         elif check.name == "system_packages":
             self._check_system_packages(check)
         else:
@@ -353,10 +364,48 @@ class DoctorSession:
         if rsync_path:
             check.passed = True
             check.message = f"rsync available: {rsync_path}"
-        else:
-            check.passed = False
-            check.message = "rsync not found (required for file sync)"
-            check.fix_command = self._get_rsync_install_command()
+            return
+        
+        # Not found
+        if self.platform == 'windows':
+            # Prefer MSYS2-based installation flow
+            if self.install_missing:
+                try:
+                    from cli.core.msys2_installer import install_msys2_if_needed, MSYS2Installer
+                    ok, msg = install_msys2_if_needed(verbose=self.verbose)
+                    if ok:
+                        # Add MSYS2 to PATH for current session
+                        try:
+                            MSYS2Installer().add_to_path()
+                        except Exception:
+                            pass
+                        # Re-check
+                        rsync_path = shutil.which('rsync')
+                        if rsync_path:
+                            check.passed = True
+                            check.message = f"rsync installed via MSYS2: {rsync_path}"
+                            return
+                        else:
+                            check.passed = False
+                            check.message = "MSYS2 installed but rsync not found in PATH"
+                            return
+                    else:
+                        check.passed = False
+                        check.message = f"MSYS2 installation failed: {msg}"
+                        return
+                except Exception as e:
+                    check.passed = False
+                    check.message = f"Windows MSYS2 installation error: {e}"
+                    return
+            else:
+                check.passed = False
+                check.message = "rsync not found (Windows). Run doctor with --install-missing to install MSYS2 + rsync"
+                return
+        
+        # Non-Windows: suggest package install
+        check.passed = False
+        check.message = "rsync not found (required for file sync)"
+        check.fix_command = self._get_rsync_install_command()
 
     def _check_python_tkinter(self, check: SystemCheck):
         """Check whether Tkinter can be imported"""
@@ -438,6 +487,8 @@ class DoctorSession:
 def create_standard_checks() -> List[SystemCheck]:
     """Create the standard set of system checks"""
     return [
+        SystemCheck("python_runtime", "Python Runtime"),
+        SystemCheck("python_packages", "Python Packages (requirements.txt)"),
         SystemCheck("ssh_client", "SSH Client Installation"),
         SystemCheck("ssh_agent", "SSH Agent Functionality"),
         SystemCheck("known_hosts_dir", "SSH Directory Setup"),
@@ -446,6 +497,7 @@ def create_standard_checks() -> List[SystemCheck]:
         SystemCheck("ssh_config", "SSH Configuration"),
         SystemCheck("python_tkinter", "Python Tkinter (GUI) Support"),
         SystemCheck("rsync", "Rsync (file synchronization)"),
+        SystemCheck("config_env", ".env Configuration File"),
         SystemCheck("system_packages", "System Packages"),
     ]
 
@@ -466,6 +518,7 @@ Examples:
 
 This command helps diagnose and resolve common system issues that
 might prevent Rediacc CLI from working properly, including:
+  • Python runtime and packages
   • SSH client and agent setup
   • File permissions
   • Network connectivity
