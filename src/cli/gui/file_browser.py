@@ -975,13 +975,9 @@ class DualPaneFileBrowser:
         host_entry = self.ssh_connection.connection_info.get('host_entry')
 
         if not host_entry:
-            # First-time connection - this should normally work with accept-new
-            # If it's still failing, there might be a configuration issue
-            return False, ("First-time SSH connection failed. This might be due to:\n"
-                          "• Network connectivity issues\n"
-                          "• SSH server configuration problems\n"
-                          "• Firewall blocking SSH access\n"
-                          "\nTry using 'rediacc term --dev' for troubleshooting.")
+            # Policy: fail closed when host entry is missing
+            return False, ("Missing SSH host key (HOST_ENTRY) in machine vault.\n"
+                          "For security, first-time trust is disabled. Please set HOST_ENTRY in the machine vault.")
         else:
             # Host key exists but verification failed - potential security issue
             machine_info = f"{self.ssh_connection.connection_info.get('ip', 'unknown')}"

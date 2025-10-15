@@ -10,6 +10,7 @@ and file synchronization tools.
 import tkinter as tk
 from tkinter import ttk, scrolledtext, messagebox, filedialog
 import subprocess
+import shlex
 import threading
 import queue
 import json
@@ -26,6 +27,7 @@ import re
 import urllib.request
 import urllib.parse
 import urllib.error
+import posixpath
 
 # Add src directory to path for imports (go up 3 levels: gui -> cli -> src)
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__)))))
@@ -59,6 +61,7 @@ from cli.core.shared import (
     get_ssh_key_from_vault,
     SSHConnection
 )
+from cli.core.vscode_launcher import find_vscode_executable, launch_vscode_connection
 
 # Import GUI components
 from cli.gui.base import BaseWindow, create_tooltip
@@ -1752,7 +1755,43 @@ class MainWindow(BaseWindow):
         except Exception as e:
             self.logger.error(f"Failed to launch with {method}: {e}")
             messagebox.showerror(i18n.get('error'), i18n.get('could_not_launch'))
-    
+
+    def _build_terminal_protocol_url(
+        self,
+        team: str,
+        machine: str,
+        repo: Optional[str] = None,
+        extra_params: Optional[Dict[str, str]] = None
+    ) -> Optional[str]:
+        """Construct rediacc:// URL mirroring protocol-handler behavior."""
+        token = TokenManager.get_token()
+        if not token:
+            messagebox.showerror(i18n.get('error'), i18n.get('session_expired'))
+            return None
+
+        path_segments = [
+            urllib.parse.quote(token, safe=''),
+            urllib.parse.quote(team or '', safe=''),
+            urllib.parse.quote(machine or '', safe='')
+        ]
+
+        if repo:
+            path_segments.append(urllib.parse.quote(repo, safe=''))
+
+        path_segments.append("terminal")
+        url = f"rediacc://{'/'.join(path_segments)}"
+
+        params = dict(extra_params or {})
+
+        api_url = TokenManager.get_api_url() or os.environ.get('SYSTEM_API_URL')
+        if api_url and 'apiUrl' not in params:
+            params['apiUrl'] = api_url
+
+        if params:
+            url += '?' + urllib.parse.urlencode(params, doseq=True)
+
+        return url
+
     def open_repo_terminal(self):
         """Open interactive repository terminal in new window"""
         team, machine, repo = self.team_combo.get(), self.machine_combo.get(), self.repo_combo.get()
@@ -1761,7 +1800,24 @@ class MainWindow(BaseWindow):
             messagebox.showerror(i18n.get('error'), i18n.get('select_team_machine_repo'))
             return
 
-        command = f'term --team "{team}" --machine "{machine}" --repo "{repo}"'
+        if any([
+            self._is_placeholder_value(team, 'select_team'),
+            self._is_placeholder_value(machine, 'select_machine'),
+            self._is_placeholder_value(repo, 'select_repository')
+        ]):
+            messagebox.showerror(i18n.get('error'), i18n.get('select_team_machine_repo'))
+            return
+
+        protocol_url = self._build_terminal_protocol_url(
+            team=team,
+            machine=machine,
+            repo=repo
+        )
+
+        if not protocol_url:
+            return
+
+        command = f'protocol-handler "{protocol_url}"'
         self._launch_terminal(command, i18n.get('an_interactive_repo_terminal'))
 
     def open_container_terminal(self):
@@ -1784,161 +1840,26 @@ class MainWindow(BaseWindow):
         """Open interactive machine terminal in new window (without repository)"""
         team, machine = self.team_combo.get(), self.machine_combo.get()
         
-        if not (team and machine):
+        if not (team and machine) or self._is_placeholder_value(team, 'select_team') or self._is_placeholder_value(machine, 'select_machine'):
             messagebox.showerror(i18n.get('error'), i18n.get('select_team_machine'))
             return
-        
-        command = f'term --team "{team}" --machine "{machine}"'
+
+        protocol_url = self._build_terminal_protocol_url(
+            team=team,
+            machine=machine,
+            repo=None,
+            extra_params={'terminalType': 'machine'}
+        )
+
+        if not protocol_url:
+            return
+
+        command = f'protocol-handler "{protocol_url}"'
         self._launch_terminal(command, i18n.get('an_interactive_machine_terminal'))
 
-    def find_vscode_executable(self):
-        """Find VS Code executable on the system"""
-        import shutil
-        import platform
-
-        # Check for explicitly set VS Code path
-        vscode_path = os.environ.get('REDIACC_VSCODE_PATH')
-        if vscode_path and shutil.which(vscode_path):
-            return vscode_path
-
-        # Detect WSL environment
-        is_wsl = os.path.exists('/proc/version') and 'microsoft' in open('/proc/version').read().lower()
-
-        # Platform-specific candidates
-        system = platform.system().lower()
-        if system == 'linux':
-            if is_wsl:
-                # In WSL, prefer Windows VS Code for better integration
-                candidates = ['code.exe', 'code']
-            else:
-                # Native Linux
-                candidates = ['code']
-        elif system == 'darwin':  # macOS
-            candidates = ['code', '/Applications/Visual Studio Code.app/Contents/Resources/app/bin/code']
-        elif system == 'windows':
-            candidates = ['code.cmd', 'code.exe']
-        else:
-            candidates = ['code']
-
-        for candidate in candidates:
-            if shutil.which(candidate):
-                return candidate
-
-        return None
-
-    def _sanitize_hostname(self, name: str) -> str:
-        """Sanitize name for use as SSH hostname (VS Code compatible)"""
-        import re
-        # Replace spaces and other invalid characters with hyphens
-        # Keep only alphanumeric characters, hyphens, and dots
-        sanitized = re.sub(r'[^a-zA-Z0-9.-]', '-', name)
-        # Remove multiple consecutive hyphens
-        sanitized = re.sub(r'-+', '-', sanitized)
-        # Remove leading/trailing hyphens
-        sanitized = sanitized.strip('-')
-        # Ensure it's not empty
-        return sanitized if sanitized else 'default'
-
-    def _configure_vscode_platform(self, connection_name: str, universal_user_id: str = None):
-        """Configure VS Code to recognize the SSH host as Linux platform"""
-        try:
-            # Detect WSL environment
-            is_wsl = os.path.exists('/proc/version') and 'microsoft' in open('/proc/version').read().lower()
-
-            if is_wsl:
-                # In WSL, VS Code settings might be in Windows user profile
-                vscode_settings_paths = []
-
-                # Try Windows user profile first
-                userprofile = os.environ.get('USERPROFILE')
-                if userprofile:
-                    try:
-                        # Convert Windows path to WSL path
-                        import subprocess
-                        wsl_path = subprocess.check_output(['wslpath', userprofile], text=True).strip()
-                        vscode_settings_paths.append(os.path.join(wsl_path, 'AppData', 'Roaming', 'Code', 'User', 'settings.json'))
-                    except:
-                        pass
-
-                # Fallback to WSL paths
-                home_dir = os.path.expanduser('~')
-                vscode_settings_paths.extend([
-                    os.path.join(home_dir, '.vscode-server', 'data', 'Machine', 'settings.json'),  # VS Code Server (preferred)
-                    os.path.join(home_dir, '.config', 'Code', 'User', 'settings.json'),  # WSL Linux
-                ])
-            else:
-                # Non-WSL paths
-                home_dir = os.path.expanduser('~')
-                vscode_settings_paths = [
-                    os.path.join(home_dir, '.config', 'Code', 'User', 'settings.json'),  # Linux
-                    os.path.join(home_dir, 'Library', 'Application Support', 'Code', 'User', 'settings.json'),  # macOS
-                    os.path.join(home_dir, 'AppData', 'Roaming', 'Code', 'User', 'settings.json'),  # Windows
-                ]
-
-            vscode_settings_file = None
-            for path in vscode_settings_paths:
-                if os.path.exists(os.path.dirname(path)):
-                    vscode_settings_file = path
-                    self.logger.debug(f"Found VS Code settings directory: {os.path.dirname(path)}")
-                    break
-
-            if not vscode_settings_file:
-                # Create default path (first in list)
-                vscode_settings_file = vscode_settings_paths[0]
-                os.makedirs(os.path.dirname(vscode_settings_file), exist_ok=True)
-                self.logger.debug(f"Created VS Code settings directory: {os.path.dirname(vscode_settings_file)}")
-
-            # Read existing settings
-            settings = {}
-            if os.path.exists(vscode_settings_file):
-                try:
-                    with open(vscode_settings_file, 'r') as f:
-                        settings = json.load(f)
-                except (json.JSONDecodeError, FileNotFoundError):
-                    settings = {}
-
-            # Update platform settings
-            if 'remote.SSH.remotePlatform' not in settings:
-                settings['remote.SSH.remotePlatform'] = {}
-
-            settings['remote.SSH.remotePlatform'][connection_name] = 'linux'
-            
-            # CRITICAL: Enable RemoteCommand support (required for user switching)
-            settings['remote.SSH.useLocalServer'] = True
-            settings['remote.SSH.enableRemoteCommand'] = True
-            settings['remote.SSH.showLoginTerminal'] = True  # Show what's happening during connection
-            settings['remote.SSH.localServerDownload'] = 'always'  # Force local server download
-            
-            # Configure terminal to use universal user (if provided)
-            if universal_user_id:
-                if 'terminal.integrated.profiles.linux' not in settings:
-                    settings['terminal.integrated.profiles.linux'] = {}
-                
-                # Add a profile for this connection that switches to universal user
-                settings['terminal.integrated.profiles.linux'][f'{connection_name}-{universal_user_id}'] = {
-                    'path': '/bin/bash',
-                    'args': ['-c', f'sudo -u {universal_user_id} bash -l']
-                }
-            
-            # Set it as default for this connection
-            if 'terminal.integrated.defaultProfile.linux' not in settings:
-                settings['terminal.integrated.defaultProfile.linux'] = {}
-            
-            # This doesn't work per-host, so we'll document the workaround instead
-
-            # Write back settings
-            with open(vscode_settings_file, 'w') as f:
-                json.dump(settings, f, indent=2)
-
-            self.logger.debug(f"Updated VS Code settings: {connection_name} -> linux")
-
-        except Exception as e:
-            # Don't fail the connection if we can't configure the platform
-            self.logger.warning(f"Could not configure VS Code platform: {e}")
-
     def _launch_vscode(self, team: str, machine: str, repo: str = None):
-        """Launch VS Code with SSH remote connection"""
-        vscode_cmd = self.find_vscode_executable()
+        """Launch VS Code with SSH remote connection using shared launcher."""
+        vscode_cmd = find_vscode_executable()
         if not vscode_cmd:
             messagebox.showerror(
                 "VS Code Not Found",
@@ -1948,233 +1869,37 @@ class MainWindow(BaseWindow):
             )
             return
 
+        self.logger.debug(f"Using VS Code executable: {vscode_cmd}")
+
+        description = (
+            f"VS Code Repository: {repo} on {machine}" if repo else f"VS Code Machine: {machine}"
+        )
+
         self.activity_status_label.config(text="Connecting to VS Code...")
 
         def launch():
             try:
-                # Get universal user info for both repo and machine connections
-                from cli.core.shared import _get_universal_user_info
-                universal_user_name, universal_user_id, company_id = _get_universal_user_info()
-                
-                if repo:
-                    # Repository connection - use RepositoryConnection
-                    connection = RepositoryConnection(team, machine, repo)
-                    connection.connect()
+                result = launch_vscode_connection(team=team, machine=machine, repo=repo)
+            except Exception as exc:
+                self.logger.error(f"Exception while launching VS Code: {exc}")
+                result = {"success": False, "error": str(exc), "vscode_uri": "", "connection_name": ""}
 
-                    remote_path = connection.repo_paths['mount_path']
-                    connection_name = f"rediacc-{self._sanitize_hostname(team)}-{self._sanitize_hostname(machine)}-{self._sanitize_hostname(repo)}"
-                    description = f"VS Code Repository: {repo} on {machine}"
-
-                    # Use RepositoryConnection's SSH context
-                    ssh_context = connection.ssh_context(prefer_agent=True)
-                    ssh_host = connection.connection_info['ip']
-                    ssh_user = connection.connection_info['user']
-
+            def handle_result():
+                if result.get("success"):
+                    vscode_uri = result.get("vscode_uri", "")
+                    connection_name = result.get("connection_name", "")
+                    self.logger.debug(
+                        f"VS Code launched (URI: {vscode_uri}, connection: {connection_name})"
+                    )
+                    self.activity_status_label.config(text=f"VS Code opened: {description}")
                 else:
-                    # Machine-only connection - follow terminal's connect_to_machine pattern
-                    print("Fetching machine information...")
-                    machine_info = get_machine_info_with_team(team, machine)
-                    connection_info = get_machine_connection_info(machine_info)
+                    error_msg = result.get("error") or "Unknown error"
+                    self.logger.error(f"Failed to launch VS Code: {error_msg}")
+                    messagebox.showerror("VS Code Error", f"Failed to open VS Code:\n\n{error_msg}")
+                    self.activity_status_label.config(text="VS Code launch failed")
 
-                    print("Retrieving SSH key...")
-                    ssh_key = get_ssh_key_from_vault(team)
-                    if not ssh_key:
-                        raise Exception(f"SSH private key not found in vault for team '{team}'")
+            self.root.after(0, handle_result)
 
-                    # Universal user info already retrieved above for both repo and machine connections
-                    
-                    # Calculate datastore path like terminal does
-                    if universal_user_id:
-                        remote_path = f"{connection_info['datastore']}/{universal_user_id}"
-                    else:
-                        remote_path = connection_info['datastore']
-
-                    connection_name = f"rediacc-{self._sanitize_hostname(team)}-{self._sanitize_hostname(machine)}"
-                    description = f"VS Code Machine: {machine}"
-
-                    # Use direct SSH connection like terminal does
-                    host_entry = connection_info.get('host_entry')
-                    ssh_context = SSHConnection(ssh_key, host_entry, prefer_agent=True)
-                    ssh_host = connection_info['ip']
-                    ssh_user = connection_info['user']
-
-                # Create persistent SSH key file for VS Code
-                ssh_dir = os.path.expanduser('~/.ssh')
-                os.makedirs(ssh_dir, exist_ok=True)
-                os.chmod(ssh_dir, 0o700)
-                
-                # Create persistent key file with unique name for this connection
-                key_filename = f"rediacc_{self._sanitize_hostname(team)}_{self._sanitize_hostname(machine)}"
-                if repo:
-                    key_filename += f"_{self._sanitize_hostname(repo)}"
-                key_filename += "_key"
-                
-                persistent_key_path = os.path.join(ssh_dir, key_filename)
-                
-                # Write SSH key to persistent file
-                if repo:
-                    # For repo connection, get key from connection object
-                    ssh_key = connection._ssh_key
-                else:
-                    # ssh_key is already defined for machine-only connection
-                    pass
-                    
-                # Decode and write the SSH key
-                from cli.core.shared import _decode_ssh_key
-                decoded_key = _decode_ssh_key(ssh_key)
-                
-                # Write with proper permissions
-                with open(persistent_key_path, 'w', newline='\n', encoding='utf-8') as f:
-                    f.write(decoded_key)
-                    
-                # Set restrictive permissions on Windows
-                if is_windows():
-                    import stat
-                    os.chmod(persistent_key_path, stat.S_IREAD | stat.S_IWRITE)
-                else:
-                    os.chmod(persistent_key_path, 0o600)
-                
-                self.logger.debug(f"Created persistent SSH key at: {persistent_key_path}")
-                
-                # Create SSH config entry using persistent key
-                with ssh_context as ssh_conn:
-                    # Extract connection details
-
-                    if not ssh_host or not ssh_user:
-                        raise Exception("Missing SSH connection details")
-
-                    # Create SSH config entry with persistent key file
-                    ssh_opts_lines = []
-                    
-                    # Add the persistent identity file (convert Windows paths to forward slashes)
-                    key_path_for_config = persistent_key_path.replace('\\', '/')
-                    ssh_opts_lines.append(f"    IdentityFile {key_path_for_config}")
-                    ssh_opts_lines.append(f"    IdentitiesOnly yes")
-                    
-                    # Parse other SSH options from ssh_conn.ssh_opts
-                    if ssh_conn.ssh_opts:
-                        opts = ssh_conn.ssh_opts.split()
-                        i = 0
-                        while i < len(opts):
-                            if opts[i] == '-o' and i + 1 < len(opts):
-                                option = opts[i + 1]
-                                if '=' in option:
-                                    key, value = option.split('=', 1)
-                                    # Skip IdentityFile from options since we're using persistent one
-                                    # Also skip UserKnownHostsFile to use default ~/.ssh/known_hosts
-                                    if key not in ['IdentityFile', 'UserKnownHostsFile']:
-                                        ssh_opts_lines.append(f"    {key} {value}")
-                                i += 2
-                            elif opts[i] == '-i':
-                                # Skip -i keyfile since we're using persistent key
-                                i += 2
-                            else:
-                                i += 1
-
-                    # Build SSH config entry with RemoteCommand for universal user
-                    remote_command_line = ""
-                    if universal_user_id and universal_user_id != ssh_user:
-                        # Only add RemoteCommand if we need to switch users
-                        remote_command_line = f"    RemoteCommand sudo -H -u {universal_user_id} bash\n"
-                    
-                    ssh_config_entry = f"""Host {connection_name}
-    HostName {ssh_host}
-    User {ssh_user}
-{remote_command_line}{chr(10).join(ssh_opts_lines) if ssh_opts_lines else ''}
-    ServerAliveInterval 60
-    ServerAliveCountMax 3
-"""
-
-                    # Debug logging
-                    print(f"[DEBUG] SSH Config Generation:")
-                    print(f"[DEBUG] Connection name: {connection_name}")
-                    print(f"[DEBUG] SSH host: {ssh_host}")
-                    print(f"[DEBUG] SSH user: {ssh_user}")
-                    print(f"[DEBUG] Universal user: {universal_user_id}")
-                    print(f"[DEBUG] Remote path: {remote_path}")
-                    print(f"[DEBUG] SSH opts lines: {ssh_opts_lines}")
-                    print(f"[DEBUG] Generated SSH config entry:")
-                    print(ssh_config_entry)
-
-                    # Add SSH config to user's SSH config file
-                    ssh_config_path = os.path.expanduser('~/.ssh/config')
-
-                    # Ensure .ssh directory exists
-                    ssh_dir = os.path.dirname(ssh_config_path)
-                    os.makedirs(ssh_dir, exist_ok=True)
-                    os.chmod(ssh_dir, 0o700)
-
-                    # Check if this host already exists in SSH config
-                    host_exists = False
-                    existing_config = ""
-                    if os.path.exists(ssh_config_path):
-                        with open(ssh_config_path, 'r') as f:
-                            existing_config = f.read()
-                            if f"Host {connection_name}" in existing_config:
-                                host_exists = True
-
-                    # Add our SSH config entry if it doesn't exist
-                    if not host_exists:
-                        with open(ssh_config_path, 'a') as f:
-                            f.write(f"\n# Rediacc VS Code connection\n")
-                            f.write(ssh_config_entry)
-                            f.write("\n")
-
-                        self.logger.debug(f"Added SSH config entry for {connection_name}")
-                        ssh_config_added = True
-                    else:
-                        self.logger.debug(f"SSH config entry already exists for {connection_name}")
-                        ssh_config_added = False
-
-                    try:
-                        # Configure VS Code to recognize the host as Linux
-                        # We'll use a simple approach: add platform info to existing VS Code settings
-                        self._configure_vscode_platform(connection_name, universal_user_id)
-
-                        # Launch VS Code with SSH remote
-                        vscode_uri = f"vscode-remote://ssh-remote+{connection_name}{remote_path}"
-                        cmd = [
-                            vscode_cmd,
-                            '--folder-uri', vscode_uri
-                        ]
-
-                        self.logger.debug(f"Launching VS Code: {' '.join(cmd)}")
-                        self.logger.debug(f"Platform config: {connection_name} -> linux")
-
-                        # Use subprocess.Popen to avoid blocking the GUI
-                        process = subprocess.Popen(
-                            cmd,
-                            stdout=subprocess.PIPE,
-                            stderr=subprocess.PIPE,
-                            env=os.environ.copy()
-                        )
-
-                        # Check if VS Code started successfully
-                        time.sleep(2)  # Give VS Code time to start
-                        if process.poll() is None:
-                            # Process is still running, likely successful
-                            self.activity_status_label.config(text=f"VS Code opened: {description}")
-                        else:
-                            # Process exited quickly, check for errors
-                            stdout, stderr = process.communicate()
-                            if process.returncode != 0:
-                                error_msg = stderr.decode() if stderr else "Unknown error"
-                                raise Exception(f"VS Code failed to start: {error_msg}")
-                            else:
-                                self.activity_status_label.config(text=f"VS Code opened: {description}")
-
-                    finally:
-                        # Optionally clean up SSH config entry
-                        # For now, we'll leave it in place for reuse
-                        # In the future, we could add cleanup on app exit or provide a cleanup option
-                        pass
-
-            except Exception as e:
-                self.logger.error(f"Failed to launch VS Code: {e}")
-                self.root.after(0, lambda: messagebox.showerror("VS Code Error", f"Failed to open VS Code:\n\n{str(e)}"))
-                self.root.after(0, lambda: self.activity_status_label.config(text="VS Code launch failed"))
-
-        # Run in background thread to avoid blocking GUI
         threading.Thread(target=launch, daemon=True).start()
 
     def open_vscode_repo(self):

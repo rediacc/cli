@@ -124,6 +124,7 @@ print_help() {
     echo "    sync        File synchronization operations"
     echo "    term        Terminal access to repositories"
     echo "    plugin      Manage plugin connections (SSH tunnels)"
+    echo "    doctor      Diagnose and fix system issues"
     echo "    cli         Direct access to CLI (bypass wrapper)"
     echo "    desktop [mode]  Launch Rediacc Desktop application"
     echo "                    native: Run natively (default)"
@@ -555,6 +556,11 @@ case "$1" in
         shift
         # Don't inject token - let the term command manage its own token from config
         "$PYTHON_CMD" "$CLI_ROOT/src/cli/commands/term_main.py" "$@"
+        ;;
+        
+    doctor|troubleshoot)
+        shift
+        "$PYTHON_CMD" "$CLI_ROOT/src/cli/commands/doctor_main.py" "$@"
         ;;
         
     plugin)
