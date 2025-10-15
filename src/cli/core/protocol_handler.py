@@ -13,6 +13,7 @@ import urllib.parse
 import platform
 import time
 import shutil
+import shlex
 from typing import Dict, Any, Optional, List, Tuple
 from pathlib import Path
 
@@ -245,9 +246,98 @@ class WindowsProtocolHandler:
         current_dir = Path(__file__).parent.parent
         return str(current_dir / "commands" / "cli_main.py")
     
+    def _find_wrapper_script(self) -> Optional[Path]:
+        """Locate the rediacc.py wrapper script by walking parent directories."""
+        handler_path = Path(__file__).resolve()
+        for parent in handler_path.parents:
+            candidate = parent / "rediacc.py"
+            if candidate.exists():
+                return candidate
+        return None
+
+    def _should_use_wrapper_script(self, wrapper_script: Path) -> bool:
+        """Return True when the local wrapper script should handle protocol URLs."""
+        handler_path = Path(__file__).resolve()
+        lower_parts = {part.lower() for part in handler_path.parts}
+
+        if "site-packages" not in lower_parts and "dist-packages" not in lower_parts:
+            return True
+
+        if (wrapper_script.parent / ".git").exists():
+            return True
+
+        if os.environ.get("REDIACC_PREFER_LOCAL_WRAPPER"):
+            return True
+
+        return False
+
+    def _extract_command_parts(self, command: str) -> List[str]:
+        """Split a registry command string into components (Windows-aware)."""
+        if not command:
+            return []
+        try:
+            return shlex.split(command, posix=False)
+        except ValueError:
+            return []
+
+    def _extract_executable_from_command(self, command: str) -> Optional[str]:
+        """Return normalized executable path from a registry command string."""
+        parts = self._extract_command_parts(command)
+        if not parts:
+            return None
+        candidate = parts[0].strip('"')
+        if not candidate:
+            return None
+        try:
+            return os.path.abspath(candidate)
+        except Exception:
+            return None
+
+    def _commands_match(self, current_command: Optional[str], expected_command: str) -> bool:
+        """Determine whether existing and expected commands reference same executable & args."""
+        if not current_command:
+            return False
+
+        current_exec = self._extract_executable_from_command(current_command)
+        expected_exec = self._extract_executable_from_command(expected_command)
+
+        if current_exec and expected_exec:
+            if os.path.normcase(current_exec) != os.path.normcase(expected_exec):
+                return False
+
+        return current_command.strip().lower() == expected_command.strip().lower()
+
+    def _get_registered_command(self, system_wide: bool = False) -> Optional[str]:
+        """Read the currently registered command from Windows registry."""
+        try:
+            command_key = self.get_command_key(system_wide)
+            result = subprocess.run(
+                ["reg", "query", command_key, "/ve"],
+                capture_output=True,
+                text=True,
+                timeout=10
+            )
+            if result.returncode != 0:
+                return None
+
+            for line in result.stdout.splitlines():
+                if "(Default)" in line:
+                    parts = line.split("REG_SZ", 1)
+                    if len(parts) > 1:
+                        return parts[1].strip()
+            return None
+        except (subprocess.TimeoutExpired, FileNotFoundError):
+            return None
+
     def get_protocol_command(self) -> str:
         """Get the command string for protocol handling"""
-        # Try to get the rediacc.exe path first (preferred method)
+        python_exe = self.get_python_executable()
+        wrapper_script = self._find_wrapper_script()
+
+        if wrapper_script and self._should_use_wrapper_script(wrapper_script):
+            return f'"{python_exe}" "{wrapper_script}" protocol-handler "%1"'
+
+        # Try to get the rediacc.exe path first (preferred method for packaged installs)
         rediacc_exe = self.get_rediacc_executable_path()
         
         if rediacc_exe:
@@ -256,15 +346,8 @@ class WindowsProtocolHandler:
         else:
             # Fallback to Python + script method (original behavior)
             logger.warning("Could not locate rediacc.exe, falling back to Python script method")
-            python_exe = self.get_python_executable()
             
-            # Find the wrapper script (rediacc.py)
-            # Go up from src/cli/core to get to the CLI root directory
-            cli_dir = Path(__file__).parent.parent.parent.parent
-            wrapper_script = cli_dir / "rediacc.py"
-            
-            if wrapper_script.exists():
-                # Always use the wrapper script for consistency
+            if wrapper_script and wrapper_script.exists():
                 return f'"{python_exe}" "{wrapper_script}" protocol-handler "%1"'
             else:
                 # If wrapper doesn't exist, try to find it relative to the installed package
@@ -305,9 +388,16 @@ class WindowsProtocolHandler:
     
     def register_protocol(self, force: bool = False, system_wide: bool = False) -> bool:
         """Register the rediacc:// protocol in Windows registry"""
-        if not force and self.is_protocol_registered(system_wide):
-            logger.info(f"Protocol already registered ({'system-wide' if system_wide else 'user-level'})")
-            return True
+        expected_command = self.get_protocol_command()
+        already_registered = self.is_protocol_registered(system_wide)
+
+        if already_registered and not force:
+            current_command = self._get_registered_command(system_wide)
+            if self._commands_match(current_command, expected_command):
+                logger.info(f"Protocol already registered ({'system-wide' if system_wide else 'user-level'}) and up-to-date")
+                return True
+            else:
+                logger.info("Protocol already registered but command differs; updating registry entry")
         
         # Only check admin privileges for system-wide registration
         if system_wide and not self.check_admin_privileges():
@@ -347,10 +437,9 @@ class WindowsProtocolHandler:
             ], capture_output=True, text=True, timeout=30)
 
             # Create command key with protocol handler
-            command = self.get_protocol_command()
             result4 = subprocess.run([
                 "reg", "add", command_key,
-                "/ve", "/d", command,
+                "/ve", "/d", expected_command,
                 "/f"
             ], capture_output=True, text=True, timeout=30)
 
@@ -422,25 +511,7 @@ class WindowsProtocolHandler:
         }
 
         if is_registered:
-            # Try to get the current command
-            try:
-                command_key = self.get_command_key(system_wide)
-                result = subprocess.run([
-                    "reg", "query", command_key,
-                    "/ve"
-                ], capture_output=True, text=True, timeout=10)
-
-                if result.returncode == 0:
-                    # Parse the output to extract the command
-                    for line in result.stdout.splitlines():
-                        if "(Default)" in line:
-                            # Extract command after "REG_SZ"
-                            parts = line.split("REG_SZ", 1)
-                            if len(parts) > 1:
-                                status["command"] = parts[1].strip()
-                            break
-            except (subprocess.TimeoutExpired, FileNotFoundError):
-                pass
+            status["command"] = self._get_registered_command(system_wide)
 
         return status
 

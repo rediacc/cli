@@ -1752,7 +1752,43 @@ class MainWindow(BaseWindow):
         except Exception as e:
             self.logger.error(f"Failed to launch with {method}: {e}")
             messagebox.showerror(i18n.get('error'), i18n.get('could_not_launch'))
-    
+
+    def _build_terminal_protocol_url(
+        self,
+        team: str,
+        machine: str,
+        repo: Optional[str] = None,
+        extra_params: Optional[Dict[str, str]] = None
+    ) -> Optional[str]:
+        """Construct rediacc:// URL mirroring protocol-handler behavior."""
+        token = TokenManager.get_token()
+        if not token:
+            messagebox.showerror(i18n.get('error'), i18n.get('session_expired'))
+            return None
+
+        path_segments = [
+            urllib.parse.quote(token, safe=''),
+            urllib.parse.quote(team or '', safe=''),
+            urllib.parse.quote(machine or '', safe='')
+        ]
+
+        if repo:
+            path_segments.append(urllib.parse.quote(repo, safe=''))
+
+        path_segments.append("terminal")
+        url = f"rediacc://{'/'.join(path_segments)}"
+
+        params = dict(extra_params or {})
+
+        api_url = TokenManager.get_api_url() or os.environ.get('SYSTEM_API_URL')
+        if api_url and 'apiUrl' not in params:
+            params['apiUrl'] = api_url
+
+        if params:
+            url += '?' + urllib.parse.urlencode(params, doseq=True)
+
+        return url
+
     def open_repo_terminal(self):
         """Open interactive repository terminal in new window"""
         team, machine, repo = self.team_combo.get(), self.machine_combo.get(), self.repo_combo.get()
@@ -1761,7 +1797,24 @@ class MainWindow(BaseWindow):
             messagebox.showerror(i18n.get('error'), i18n.get('select_team_machine_repo'))
             return
 
-        command = f'term --team "{team}" --machine "{machine}" --repo "{repo}"'
+        if any([
+            self._is_placeholder_value(team, 'select_team'),
+            self._is_placeholder_value(machine, 'select_machine'),
+            self._is_placeholder_value(repo, 'select_repository')
+        ]):
+            messagebox.showerror(i18n.get('error'), i18n.get('select_team_machine_repo'))
+            return
+
+        protocol_url = self._build_terminal_protocol_url(
+            team=team,
+            machine=machine,
+            repo=repo
+        )
+
+        if not protocol_url:
+            return
+
+        command = f'protocol-handler "{protocol_url}"'
         self._launch_terminal(command, i18n.get('an_interactive_repo_terminal'))
 
     def open_container_terminal(self):
@@ -1784,11 +1837,21 @@ class MainWindow(BaseWindow):
         """Open interactive machine terminal in new window (without repository)"""
         team, machine = self.team_combo.get(), self.machine_combo.get()
         
-        if not (team and machine):
+        if not (team and machine) or self._is_placeholder_value(team, 'select_team') or self._is_placeholder_value(machine, 'select_machine'):
             messagebox.showerror(i18n.get('error'), i18n.get('select_team_machine'))
             return
-        
-        command = f'term --team "{team}" --machine "{machine}"'
+
+        protocol_url = self._build_terminal_protocol_url(
+            team=team,
+            machine=machine,
+            repo=None,
+            extra_params={'terminalType': 'machine'}
+        )
+
+        if not protocol_url:
+            return
+
+        command = f'protocol-handler "{protocol_url}"'
         self._launch_terminal(command, i18n.get('an_interactive_machine_terminal'))
 
     def find_vscode_executable(self):

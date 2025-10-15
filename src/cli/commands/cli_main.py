@@ -12,6 +12,7 @@ import json
 import os
 import sys
 import base64
+import shlex
 from typing import Dict, Any, Optional, List, Union
 from pathlib import Path
 
@@ -1037,6 +1038,60 @@ class CommandHandler:
 
                 if status.get('details'):
                     print(f"  Details: {status['details']}")
+
+                def extract_registered_path(command_value: str) -> Optional[str]:
+                    """Extract absolute executable path from registry command string."""
+                    if not command_value:
+                        return None
+
+                    posix_mode = os.name != 'nt'
+                    try:
+                        parts = shlex.split(command_value, posix=posix_mode)
+                    except ValueError:
+                        parts = []
+
+                    if parts:
+                        executable_candidate = parts[0].strip('"')
+
+                        if len(parts) >= 2:
+                            exe_lower = executable_candidate.lower()
+                            if exe_lower.endswith(("python.exe", "pythonw.exe", "py.exe", "python", "py")):
+                                script_candidate = parts[1].strip('"')
+                                if os.path.isabs(script_candidate):
+                                    return os.path.abspath(script_candidate)
+                        if os.path.isabs(executable_candidate):
+                            return os.path.abspath(executable_candidate)
+
+                    if command_value.startswith('"'):
+                        closing_quote = command_value.find('"', 1)
+                        if closing_quote > 1:
+                            candidate = command_value[1:closing_quote]
+                            if os.path.isabs(candidate):
+                                return os.path.abspath(candidate)
+
+                    return None
+
+                registered_command = status.get('command')
+                registered_path = extract_registered_path(registered_command) if registered_command else None
+
+                if not registered_path:
+                    fallback_paths = [
+                        status.get('rediacc_executable'),
+                        status.get('desktop_file_path'),
+                        status.get('launch_agent_path'),
+                    ]
+                    for candidate in fallback_paths:
+                        if candidate and os.path.isabs(candidate):
+                            registered_path = os.path.abspath(candidate)
+                            break
+
+                if status.get('user_registered') or status.get('system_registered') or status.get('registered'):
+                    if registered_path:
+                        print(f"  Registered Application: {registered_path}")
+                    elif registered_command:
+                        print(f"  Registered Command: {registered_command}")
+                elif registered_command:
+                    print(f"  Last Registered Command: {registered_command}")
 
                 # Show installation instructions if not registered
                 if not status.get('user_registered') and not status.get('system_registered'):

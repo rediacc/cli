@@ -1884,43 +1884,59 @@ class TerminalDetector:
     
     # Launch functions for each method
     def _launch_windows_terminal_openssh(self, cli_dir: str, command: str, description: str):
-        """Launch using Windows Terminal with Windows OpenSSH for proper SSH handling
-        
-        This implementation prefers the installed rediacc.exe (from pip entry points),
-        and falls back to local development scripts if available, without relying on
-        a repo-local rediacc.bat which may not exist in installed environments.
+        """Launch using Windows Terminal with Windows OpenSSH for proper SSH handling.
+
+        Preference order:
+          1. Local development wrapper (rediacc.py) when running from a repo checkout.
+          2. Installed rediacc.exe entry point (pip/packaged).
+          3. Repository helper scripts (rediacc.bat or cli_main.py).
+          4. Python module invocation as a last resort.
         """
         import subprocess
         import sys as _sys
         
-        # Determine the most reliable invocation on native Windows
         launcher_cmd = None
+        handler = None
+        wrapper_script = None
+
         try:
-            # 1) Prefer the installed console executable (works with Windows Store Python too)
+            from .protocol_handler import WindowsProtocolHandler  # Lazy import to avoid cycles
+            handler = WindowsProtocolHandler()
+            wrapper_script = handler._find_wrapper_script()
+
+            if wrapper_script and handler._should_use_wrapper_script(wrapper_script):
+                wrapper_str = str(wrapper_script)
+                launcher_cmd = f'"{_sys.executable}" "{wrapper_str}" {command}'
+        except Exception:
+            handler = None
+            wrapper_script = None
+
+        if not launcher_cmd:
+            rediacc_exe = None
             try:
-                from .protocol_handler import WindowsProtocolHandler  # Lazy import to avoid cycles
-                rediacc_exe = WindowsProtocolHandler().get_rediacc_executable_path()
+                if handler:
+                    rediacc_exe = handler.get_rediacc_executable_path()
+                else:
+                    from .protocol_handler import WindowsProtocolHandler as _FallbackHandler
+                    rediacc_exe = _FallbackHandler().get_rediacc_executable_path()
             except Exception:
                 rediacc_exe = None
-        
+
             if rediacc_exe and os.path.exists(rediacc_exe):
-                # Use the installed executable directly
                 launcher_cmd = f'"{rediacc_exe}" {command}'
+
+        if not launcher_cmd:
+            rediacc_bat = os.path.join(cli_dir, 'rediacc.bat')
+            cli_main_py = os.path.join(cli_dir, 'src', 'cli', 'commands', 'cli_main.py')
+
+            if wrapper_script and os.path.exists(wrapper_script):
+                launcher_cmd = f'"{_sys.executable}" "{wrapper_script}" {command}'
+            elif os.path.exists(rediacc_bat):
+                launcher_cmd = f'"{rediacc_bat}" {command}'
+            elif os.path.exists(cli_main_py):
+                launcher_cmd = f'"{_sys.executable}" "{cli_main_py}" {command}'
             else:
-                # 2) Fallback to local dev scripts if present
-                rediacc_bat = os.path.join(cli_dir, 'rediacc.bat')
-                cli_main_py = os.path.join(cli_dir, 'src', 'cli', 'commands', 'cli_main.py')
-                if os.path.exists(rediacc_bat):
-                    launcher_cmd = f'"{rediacc_bat}" {command}'
-                elif os.path.exists(cli_main_py):
-                    # Invoke via the current Python interpreter against the repo sources
-                    launcher_cmd = f'"{_sys.executable}" "{cli_main_py}" {command}'
-                else:
-                    # 3) Last resort: module invocation (works for pip-installed package)
-                    launcher_cmd = f'"{_sys.executable}" -m cli.commands.cli_main {command}'
-        except Exception:
-            # As a safety net, use module invocation
-            launcher_cmd = f'"{_sys.executable}" -m cli.commands.cli_main {command}'
+                launcher_cmd = f'"{_sys.executable}" -m cli.commands.cli_main {command}'
         
         # Build Windows Terminal command — keep it simple and robust (no fragile cd chaining)
         wt_args = [
