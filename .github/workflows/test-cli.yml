@@ -170,11 +170,11 @@ jobs:
           echo "✓ Cleanup complete"
 
   syntax-check-legacy:
-    name: Python Syntax Check (3.7/3.8)
+    name: Python Syntax Check (3.8)
     runs-on: ubuntu-latest
     strategy:
       matrix:
-        python-version: ['3.7', '3.8']
+        python-version: ['3.8']
     steps:
       - name: Checkout
         uses: actions/checkout@v5
