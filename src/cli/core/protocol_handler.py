@@ -19,6 +19,7 @@ from pathlib import Path
 
 from .shared import is_windows
 from .config import get_logger, get_config_file
+from .vscode_launcher import launch_vscode_connection
 
 logger = get_logger(__name__)
 
@@ -518,7 +519,7 @@ class WindowsProtocolHandler:
 class ProtocolUrlParser:
     """Parse and handle rediacc:// protocol URLs"""
     
-    VALID_ACTIONS = {"sync", "terminal", "plugin", "browser", "desktop"}
+    VALID_ACTIONS = {"sync", "terminal", "plugin", "browser", "desktop", "vscode"}
     PROTOCOL_SCHEME = "rediacc"
     
     def __init__(self):
@@ -710,6 +711,11 @@ class ProtocolUrlParser:
             if "containerName" in params:
                 cmd.extend(["--container-name", params["containerName"]])
 
+        elif action == "vscode":
+            cmd = ["vscode", "--token", token, "--team", team, "--machine", machine]
+            if repository and repository.strip():
+                cmd.extend(["--repo", repository])
+
         elif action == "browser":
             # File browser action - use desktop application
             cmd = ["desktop"]  # Use the desktop application for file browsing
@@ -886,6 +892,28 @@ def handle_protocol_url(url: str, is_protocol_call: bool = False) -> int:
                     exit_code = 1
                 except SystemExit as e:
                     exit_code = e.code if e.code is not None else 0
+
+            elif action == "vscode":
+                launch_result = launch_vscode_connection(
+                    team=parsed.get("team"),
+                    machine=parsed.get("machine"),
+                    repo=parsed.get("repository") or None,
+                    token=token,
+                    api_url=api_url,
+                )
+
+                if launch_result.get("success"):
+                    logger.info(
+                        "VS Code launched via protocol for %s/%s (repo=%s)",
+                        parsed.get("team"),
+                        parsed.get("machine"),
+                        parsed.get("repository"),
+                    )
+                    exit_code = 0
+                else:
+                    command_error = launch_result.get("error") or "VS Code launch failed"
+                    logger.error("VS Code launch failed: %s", command_error)
+                    exit_code = 1
 
             else:
                 raise ValueError(f"Unsupported action: {action}")
