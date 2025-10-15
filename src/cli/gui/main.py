@@ -10,6 +10,7 @@ and file synchronization tools.
 import tkinter as tk
 from tkinter import ttk, scrolledtext, messagebox, filedialog
 import subprocess
+import shlex
 import threading
 import queue
 import json
@@ -26,6 +27,7 @@ import re
 import urllib.request
 import urllib.parse
 import urllib.error
+import posixpath
 
 # Add src directory to path for imports (go up 3 levels: gui -> cli -> src)
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__)))))
@@ -1902,8 +1904,14 @@ class MainWindow(BaseWindow):
         # Ensure it's not empty
         return sanitized if sanitized else 'default'
 
-    def _configure_vscode_platform(self, connection_name: str, universal_user_id: str = None):
-        """Configure VS Code to recognize the SSH host as Linux platform"""
+    def _configure_vscode_platform(
+        self,
+        connection_name: str,
+        sudo_user: Optional[str] = None,
+        requires_remote_command: bool = False,
+        server_install_path: Optional[str] = None
+    ):
+        """Configure VS Code SSH settings for the generated host."""
         try:
             # Detect WSL environment
             is_wsl = os.path.exists('/proc/version') and 'microsoft' in open('/proc/version').read().lower()
@@ -1960,27 +1968,36 @@ class MainWindow(BaseWindow):
                 except (json.JSONDecodeError, FileNotFoundError):
                     settings = {}
 
-            # Update platform settings
-            if 'remote.SSH.remotePlatform' not in settings:
-                settings['remote.SSH.remotePlatform'] = {}
+            if server_install_path:
+                install_paths = settings.setdefault('remote.SSH.serverInstallPath', {})
+                install_paths[connection_name] = server_install_path
 
-            settings['remote.SSH.remotePlatform'][connection_name] = 'linux'
-            
-            # CRITICAL: Enable RemoteCommand support (required for user switching)
-            settings['remote.SSH.useLocalServer'] = True
-            settings['remote.SSH.enableRemoteCommand'] = True
-            settings['remote.SSH.showLoginTerminal'] = True  # Show what's happening during connection
-            settings['remote.SSH.localServerDownload'] = 'always'  # Force local server download
+            # Update platform settings
+            if requires_remote_command:
+                remote_platform = settings.setdefault('remote.SSH.remotePlatform', {})
+                # RemoteCommand conflicts with remotePlatform; ensure entry is removed.
+                remote_platform.pop(connection_name, None)
+                if not remote_platform:
+                    settings.pop('remote.SSH.remotePlatform', None)
+                settings['remote.SSH.useLocalServer'] = True
+                settings['remote.SSH.enableRemoteCommand'] = True
+                settings['remote.SSH.showLoginTerminal'] = True
+                settings['remote.SSH.localServerDownload'] = 'always'
+            else:
+                remote_platform = settings.setdefault('remote.SSH.remotePlatform', {})
+                remote_platform[connection_name] = 'linux'
             
             # Configure terminal to use universal user (if provided)
-            if universal_user_id:
+            if sudo_user:
                 if 'terminal.integrated.profiles.linux' not in settings:
                     settings['terminal.integrated.profiles.linux'] = {}
                 
                 # Add a profile for this connection that switches to universal user
-                settings['terminal.integrated.profiles.linux'][f'{connection_name}-{universal_user_id}'] = {
+                sudo_for_shell = f"\\#{sudo_user[1:]}" if sudo_user.startswith('#') else sudo_user
+                profile_key_suffix = sudo_user.replace('#', 'uid-') if sudo_user.startswith('#') else sudo_user
+                settings['terminal.integrated.profiles.linux'][f'{connection_name}-{profile_key_suffix}'] = {
                     'path': '/bin/bash',
-                    'args': ['-c', f'sudo -u {universal_user_id} bash -l']
+                    'args': ['-c', f'sudo -H -u {sudo_for_shell} bash -l']
                 }
             
             # Set it as default for this connection
@@ -2018,13 +2035,24 @@ class MainWindow(BaseWindow):
                 # Get universal user info for both repo and machine connections
                 from cli.core.shared import _get_universal_user_info
                 universal_user_name, universal_user_id, company_id = _get_universal_user_info()
-                
+
+                remote_sudo_user = None
+
+                def _update_remote_user(name: Optional[str], uid: Optional[str]):
+                    nonlocal remote_sudo_user
+                    if name:
+                        remote_sudo_user = name
+                    elif uid:
+                        remote_sudo_user = f"#{uid}"
+
+                _update_remote_user(universal_user_name, universal_user_id)
+
                 if repo:
                     # Repository connection - use RepositoryConnection
                     connection = RepositoryConnection(team, machine, repo)
                     connection.connect()
 
-                    remote_path = connection.repo_paths['mount_path']
+                    remote_path = connection.repo_paths['mount_path'].replace('\\', '/')
                     connection_name = f"rediacc-{self._sanitize_hostname(team)}-{self._sanitize_hostname(machine)}-{self._sanitize_hostname(repo)}"
                     description = f"VS Code Repository: {repo} on {machine}"
 
@@ -2032,6 +2060,13 @@ class MainWindow(BaseWindow):
                     ssh_context = connection.ssh_context(prefer_agent=True)
                     ssh_host = connection.connection_info['ip']
                     ssh_user = connection.connection_info['user']
+                    host_entry = connection.connection_info.get('host_entry')
+                    if not host_entry:
+                        raise Exception("Missing SSH host key (HOST_ENTRY) in machine vault. Please set HOST_ENTRY to enforce secure SSH.")
+                    _update_remote_user(
+                        connection.connection_info.get('universal_user'),
+                        connection.connection_info.get('universal_user_id')
+                    )
 
                 else:
                     # Machine-only connection - follow terminal's connect_to_machine pattern
@@ -2051,6 +2086,7 @@ class MainWindow(BaseWindow):
                         remote_path = f"{connection_info['datastore']}/{universal_user_id}"
                     else:
                         remote_path = connection_info['datastore']
+                    remote_path = remote_path.replace('\\', '/')
 
                     connection_name = f"rediacc-{self._sanitize_hostname(team)}-{self._sanitize_hostname(machine)}"
                     description = f"VS Code Machine: {machine}"
@@ -2062,6 +2098,47 @@ class MainWindow(BaseWindow):
                     ssh_context = SSHConnection(ssh_key, host_entry, prefer_agent=True)
                     ssh_host = connection_info['ip']
                     ssh_user = connection_info['user']
+                    _update_remote_user(
+                        connection_info.get('universal_user'),
+                        connection_info.get('universal_user_id')
+                    )
+
+                if not remote_sudo_user:
+                    if universal_user_name:
+                        remote_sudo_user = universal_user_name
+                    elif universal_user_id:
+                        remote_sudo_user = f"#{universal_user_id}"
+                    else:
+                        remote_sudo_user = 'rediacc'
+
+                normalized_remote_path = remote_path.rstrip('/') or '/'
+                server_install_path = posixpath.join(normalized_remote_path, '.vscode-server')
+
+                env_exports = []
+                if team:
+                    env_exports.append(f"export REDIACC_TEAM={shlex.quote(team)}")
+                if machine:
+                    env_exports.append(f"export REDIACC_MACHINE={shlex.quote(machine)}")
+                if repo:
+                    env_exports.append(f"export REDIACC_REPO={shlex.quote(repo)}")
+
+                ps1_segments = []
+                if team:
+                    ps1_segments.append(f"[{team}]")
+                if machine:
+                    ps1_segments.append(f"[{machine}]")
+                if repo:
+                    ps1_segments.append(f"[{repo}]")
+
+                ps1_prompt = "\\u@\\h"
+                if ps1_segments:
+                    ps1_prompt += ":" + "".join(ps1_segments)
+                else:
+                    ps1_prompt += ":[$PWD]"
+                ps1_prompt += "$ "
+                env_exports.append(f"export PS1={shlex.quote(ps1_prompt)}")
+
+                env_exports_str = ''.join(f"{cmd}; " for cmd in env_exports)
 
                 # Create persistent SSH key file for VS Code
                 ssh_dir = os.path.expanduser('~/.ssh')
@@ -2075,6 +2152,7 @@ class MainWindow(BaseWindow):
                 key_filename += "_key"
                 
                 persistent_key_path = os.path.join(ssh_dir, key_filename)
+                known_hosts_path = os.path.join(ssh_dir, 'known_hosts')
                 
                 # Write SSH key to persistent file
                 if repo:
@@ -2100,6 +2178,52 @@ class MainWindow(BaseWindow):
                     os.chmod(persistent_key_path, 0o600)
                 
                 self.logger.debug(f"Created persistent SSH key at: {persistent_key_path}")
+
+                def _ensure_known_hosts_entry(path: str, entry_value: str, aliases: List[str]) -> str:
+                    """Ensure the host key is written to a persistent known_hosts file."""
+                    if not entry_value:
+                        return path
+
+                    lines = [line.strip() for line in entry_value.splitlines() if line.strip()]
+
+                    if not lines:
+                        return path
+
+                    def augment_hostnames(raw_line: str) -> str:
+                        parts = raw_line.split()
+                        if len(parts) < 2:
+                            return raw_line
+                        hostnames = parts[0]
+                        remainder = ' '.join(parts[1:])
+                        existing_aliases = {h.strip() for h in hostnames.split(',') if h.strip()}
+                        for alias_entry in aliases or []:
+                            if alias_entry and alias_entry not in existing_aliases:
+                                hostnames = f"{alias_entry},{hostnames}"
+                                existing_aliases.add(alias_entry)
+                        return f"{hostnames} {remainder}"
+
+                    augmented_lines = [augment_hostnames(line) for line in lines]
+
+                    existing_entries = set()
+                    if os.path.exists(path):
+                        with open(path, 'r', encoding='utf-8') as existing_file:
+                            existing_entries = {line.strip() for line in existing_file if line.strip()}
+
+                    new_entries = [line for line in augmented_lines if line not in existing_entries]
+                    if new_entries:
+                        with open(path, 'a', newline='\n', encoding='utf-8') as output:
+                            if existing_entries:
+                                output.write('\n')
+                            output.write('\n'.join(new_entries))
+                            output.write('\n')
+
+                        if is_windows():
+                            import stat
+                            os.chmod(path, stat.S_IREAD | stat.S_IWRITE)
+                        else:
+                            os.chmod(path, 0o600)
+
+                    return path
                 
                 # Create SSH config entry using persistent key
                 with ssh_context as ssh_conn:
@@ -2138,24 +2262,61 @@ class MainWindow(BaseWindow):
 
                     # Build SSH config entry with RemoteCommand for universal user
                     remote_command_line = ""
-                    if universal_user_id and universal_user_id != ssh_user:
-                        # Only add RemoteCommand if we need to switch users
-                        remote_command_line = f"    RemoteCommand sudo -H -u {universal_user_id} bash\n"
+                    remote_command_needed = False
+
+                    if remote_sudo_user:
+                        comparison_user = remote_sudo_user.lstrip('#') if remote_sudo_user.startswith('#') else remote_sudo_user
+                        remote_command_needed = comparison_user != ssh_user
+
+                    if remote_command_needed and remote_sudo_user:
+                        sudo_target = f"\\#{remote_sudo_user[1:]}" if remote_sudo_user.startswith('#') else remote_sudo_user
+                        install_path_arg = shlex.quote(server_install_path)
+                        remote_command_script = (
+                            f"export VSCODE_AGENT_FOLDER={install_path_arg}; "
+                            f"mkdir -p {install_path_arg} >/dev/null 2>&1 || true; "
+                            "if [ -n \"$SSH_ORIGINAL_COMMAND\" ]; then "
+                            "exec bash -lc \"$SSH_ORIGINAL_COMMAND\"; "
+                            "else exec bash -l; "
+                            "fi"
+                        )
+                        remote_command_line = (
+                            f"    RemoteCommand sudo -n -H -u {sudo_target} "
+                            f"bash -lc {shlex.quote(env_exports_str + remote_command_script)}\n"
+                        )
+
+                    if host_entry:
+                        host_aliases = [connection_name, ssh_host]
+                        if ssh_host and ':' not in ssh_host and not ssh_host.startswith('['):
+                            host_aliases.append(f'[{ssh_host}]')
+
+                        _ensure_known_hosts_entry(
+                            known_hosts_path,
+                            host_entry,
+                            host_aliases
+                        )
+                        ssh_opts_lines.append(f"    HostKeyAlias {connection_name}")
+                        ssh_opts_lines.append("    StrictHostKeyChecking yes")
+                        ssh_opts_lines.append("    CheckHostIP no")
                     
-                    ssh_config_entry = f"""Host {connection_name}
-    HostName {ssh_host}
-    User {ssh_user}
-{remote_command_line}{chr(10).join(ssh_opts_lines) if ssh_opts_lines else ''}
-    ServerAliveInterval 60
-    ServerAliveCountMax 3
-"""
+                    options_block = '\n'.join(ssh_opts_lines)
+                    if options_block:
+                        options_block += '\n'
+
+                    ssh_config_entry = (
+                        f"Host {connection_name}\n"
+                        f"    HostName {ssh_host}\n"
+                        f"    User {ssh_user}\n"
+                        f"{remote_command_line}{options_block}"
+                        f"    ServerAliveInterval 60\n"
+                        f"    ServerAliveCountMax 3\n"
+                    )
 
                     # Debug logging
                     print(f"[DEBUG] SSH Config Generation:")
                     print(f"[DEBUG] Connection name: {connection_name}")
                     print(f"[DEBUG] SSH host: {ssh_host}")
                     print(f"[DEBUG] SSH user: {ssh_user}")
-                    print(f"[DEBUG] Universal user: {universal_user_id}")
+                    print(f"[DEBUG] Universal user target: {remote_sudo_user}")
                     print(f"[DEBUG] Remote path: {remote_path}")
                     print(f"[DEBUG] SSH opts lines: {ssh_opts_lines}")
                     print(f"[DEBUG] Generated SSH config entry:")
@@ -2178,23 +2339,93 @@ class MainWindow(BaseWindow):
                             if f"Host {connection_name}" in existing_config:
                                 host_exists = True
 
-                    # Add our SSH config entry if it doesn't exist
-                    if not host_exists:
-                        with open(ssh_config_path, 'a') as f:
-                            f.write(f"\n# Rediacc VS Code connection\n")
-                            f.write(ssh_config_entry)
-                            f.write("\n")
+                    # Add or update SSH config entry
+                    def _write_or_update_ssh_config(path: str, host: str, entry: str):
+                        entry_lines = ["# Rediacc VS Code connection\n"]
+                        entry_lines.extend(line if line.endswith("\n") else f"{line}\n" for line in entry.splitlines())
+                        entry_lines.append("\n")
 
-                        self.logger.debug(f"Added SSH config entry for {connection_name}")
-                        ssh_config_added = True
-                    else:
-                        self.logger.debug(f"SSH config entry already exists for {connection_name}")
-                        ssh_config_added = False
+                        existing_lines: List[str] = []
+                        if os.path.exists(path):
+                            with open(path, 'r', encoding='utf-8') as fp:
+                                existing_lines = fp.readlines()
+
+                        # Remove any legacy Rediacc blocks that contain backslash paths
+                        sanitized_lines: List[str] = []
+                        i = 0
+                        while i < len(existing_lines):
+                            line = existing_lines[i]
+                            if line.strip().startswith("# Rediacc VS Code connection"):
+                                block = [line]
+                                i += 1
+                                while i < len(existing_lines) and not existing_lines[i].strip().lower().startswith("host "):
+                                    block.append(existing_lines[i])
+                                    i += 1
+                                if i < len(existing_lines):
+                                    block.append(existing_lines[i])
+                                    i += 1
+                                    while i < len(existing_lines) and not existing_lines[i].strip().lower().startswith("host "):
+                                        block.append(existing_lines[i])
+                                        i += 1
+                                if any("\\.vscode-server" in blk_line for blk_line in block):
+                                    continue
+                                sanitized_lines.extend(block)
+                            else:
+                                sanitized_lines.append(line)
+                                i += 1
+
+                        existing_lines = sanitized_lines
+
+                        while True:
+                            start_idx = None
+                            end_idx = None
+                            for idx, line in enumerate(existing_lines):
+                                stripped = line.strip()
+                                if stripped.lower().startswith("host "):
+                                    current_host = stripped.split(None, 1)[1]
+                                    if current_host == host:
+                                        start_idx = idx
+                                        j = idx - 1
+                                        while j >= 0 and existing_lines[j].strip().startswith("# Rediacc VS Code connection"):
+                                            start_idx = j
+                                            j -= 1
+                                        end_idx = idx + 1
+                                        while end_idx < len(existing_lines):
+                                            next_line = existing_lines[end_idx].strip()
+                                            if next_line.lower().startswith("host "):
+                                                break
+                                            end_idx += 1
+                                        break
+
+                            if start_idx is not None and end_idx is not None:
+                                del existing_lines[start_idx:end_idx]
+                            else:
+                                break
+                        if existing_lines and existing_lines[-1].strip():
+                            existing_lines.append("\n")
+
+
+                        existing_lines.extend(entry_lines)
+
+                        with open(path, 'w', encoding='utf-8', newline='\n') as fp:
+                            fp.writelines(existing_lines)
+
+
+
+
+
+
+                    _write_or_update_ssh_config(ssh_config_path, connection_name, ssh_config_entry)
+                    ssh_config_added = True
 
                     try:
-                        # Configure VS Code to recognize the host as Linux
-                        # We'll use a simple approach: add platform info to existing VS Code settings
-                        self._configure_vscode_platform(connection_name, universal_user_id)
+                        # Configure VS Code platform / RemoteCommand settings
+                        self._configure_vscode_platform(
+                            connection_name,
+                            remote_sudo_user,
+                            requires_remote_command=remote_command_needed,
+                            server_install_path=server_install_path
+                        )
 
                         # Launch VS Code with SSH remote
                         vscode_uri = f"vscode-remote://ssh-remote+{connection_name}{remote_path}"
