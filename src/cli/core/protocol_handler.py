@@ -447,7 +447,7 @@ class WindowsProtocolHandler:
 class ProtocolUrlParser:
     """Parse and handle rediacc:// protocol URLs"""
     
-    VALID_ACTIONS = {"sync", "terminal", "plugin", "browser", "desktop"}
+    VALID_ACTIONS = {"sync", "terminal", "plugin", "browser", "desktop", "vscode"}
     PROTOCOL_SCHEME = "rediacc"
     
     def __init__(self):
@@ -647,6 +647,17 @@ class ProtocolUrlParser:
             if "path" in params:
                 cmd.extend(["--path", params["path"]])
 
+        elif action == "vscode":
+            # VSCode action - launches VSCode with SSH remote connection
+            cmd = ["vscode"]
+            cmd.extend(["--token", token, "--team", team, "--machine", machine])
+            # Only add repository if it's provided and not empty
+            if repository and repository.strip():
+                cmd.extend(["--repo", repository])
+            # Optional path parameter for specific directory
+            if "path" in params:
+                cmd.extend(["--path", params["path"]])
+
         else:
             raise ValueError(f"Unsupported action: {action}")
         
@@ -776,7 +787,7 @@ def handle_protocol_url(url: str, is_protocol_call: bool = False) -> int:
                 except SystemExit as e:
                     exit_code = e.code if e.code is not None else 1
 
-            elif action in ["plugin", "browser"]:
+            elif action in ["plugin", "browser", "vscode"]:
                 # Import and call cli_main directly
                 try:
                     try:
@@ -785,7 +796,7 @@ def handle_protocol_url(url: str, is_protocol_call: bool = False) -> int:
                         # Fallback for when relative imports don't work
                         sys.path.insert(0, os.path.join(os.path.dirname(__file__), '..', 'commands'))
                         import cli_main
-                    
+
                     sys.argv = ["rediacc"] + cmd_args
                     exit_code = cli_main.main()
                 except ImportError as e:
