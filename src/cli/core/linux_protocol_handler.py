@@ -162,13 +162,13 @@ class LinuxProtocolHandler:
         
         if rediacc_exe:
             # Use the rediacc executable directly
-            exec_command = f"{rediacc_exe} protocol-handler %u"
+            exec_command = f"{rediacc_exe} protocol run %u"
         else:
             # Fallback to Python + script method (original behavior)
             logger.warning("Could not locate rediacc executable, falling back to Python script method")
             python_exe = self.get_python_executable()
             cli_script = self.get_cli_script_path()
-            exec_command = f'{python_exe} "{cli_script}" protocol-handler %u'
+            exec_command = f'{python_exe} "{cli_script}" protocol run %u'
         
         return f"""[Desktop Entry]
 Name=Rediacc Protocol Handler

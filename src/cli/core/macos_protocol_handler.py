@@ -201,13 +201,13 @@ class MacOSProtocolHandler:
         
         if rediacc_exe:
             # Use the rediacc executable directly
-            program_arguments = [rediacc_exe, "protocol-handler"]
+            program_arguments = [rediacc_exe, "protocol", "run"]
         else:
             # Fallback to Python + script method (original behavior)
             logger.warning("Could not locate rediacc executable, falling back to Python script method")
             python_exe = self.get_python_executable()
             cli_script = self.get_cli_script_path()
-            program_arguments = [python_exe, cli_script, "protocol-handler"]
+            program_arguments = [python_exe, cli_script, "protocol", "run"]
         
         plist_data = {
             "Label": self.BUNDLE_ID,
@@ -307,12 +307,12 @@ class MacOSProtocolHandler:
                 rediacc_exe = self.get_rediacc_executable_path()
                 if rediacc_exe:
                     executable_content = f"""#!/bin/bash
-{rediacc_exe} protocol-handler "$@"
+{rediacc_exe} protocol run "$@"
 """
                 else:
                     # Fallback to Python + script method
                     executable_content = f"""#!/bin/bash
-{self.get_python_executable()} "{self.get_cli_script_path()}" protocol-handler "$@"
+{self.get_python_executable()} "{self.get_cli_script_path()}" protocol run "$@"
 """
                 
                 executable.write_text(executable_content)

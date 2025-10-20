@@ -135,17 +135,15 @@ def connect_to_terminal(args):
 
         if args.dev and original_host_entry is not None:
             conn.connection_info['host_entry'] = original_host_entry
-        repo_paths = conn.repo_paths
-        docker_socket = repo_paths['docker_socket']
-        docker_host = f"unix://{docker_socket}"
-        repo_mount_path = repo_paths['mount_path']
-        
-        env_template = CONFIG.get('environment_exports', {})
-        env_format_vars = {'repo_mount_path': repo_mount_path, 'docker_host': docker_host, 'docker_folder': repo_paths['docker_folder'], 'docker_socket': docker_socket, 'docker_data': repo_paths['docker_data'], 'docker_exec': repo_paths['docker_exec']}
-        env_exports = '\n'.join(f'export {key}=\'{value.format(**env_format_vars)}\'' for key, value in env_template.items()) + '\n'
-        env_exports += f'export REDIACC_REPO="{args.repo}"\n'
-        env_exports += f'export REDIACC_TEAM="{args.team}"\n'
-        env_exports += f'export REDIACC_MACHINE="{args.machine}"\n'
+        # Get environment variables using shared module (DRY principle)
+        from cli.core.repository_env import get_repository_environment, format_bash_exports
+
+        env_vars = get_repository_environment(args.team, args.machine, args.repo,
+                                              connection_info=conn.connection_info,
+                                              repo_paths=conn.repo_paths)
+
+        # Format as bash export statements
+        env_exports = format_bash_exports(env_vars) + '\n'
         
         cd_logic = get_config_value('cd_logic', 'basic')
         
@@ -210,13 +208,15 @@ def connect_to_container(args):
 
         if args.dev and original_host_entry is not None:
             conn.connection_info['host_entry'] = original_host_entry
-        repo_paths = conn.repo_paths
-        docker_socket = repo_paths['docker_socket']
-        docker_host = f"unix://{docker_socket}"
+        # Get environment variables using shared module (DRY principle)
+        from cli.core.repository_env import get_repository_environment, format_bash_exports
 
-        env_template = CONFIG.get('environment_exports', {})
-        env_format_vars = {'repo_mount_path': repo_paths['mount_path'], 'docker_host': docker_host, 'docker_folder': repo_paths['docker_folder'], 'docker_socket': docker_socket, 'docker_data': repo_paths['docker_data'], 'docker_exec': repo_paths['docker_exec']}
-        env_exports = '\n'.join(f'export {key}=\'{value.format(**env_format_vars)}\'' for key, value in env_template.items()) + '\n'
+        env_vars = get_repository_environment(args.team, args.machine, args.repo,
+                                              connection_info=conn.connection_info,
+                                              repo_paths=conn.repo_paths)
+
+        # Format as bash export statements
+        env_exports = format_bash_exports(env_vars) + '\n'
 
         universal_user = conn.connection_info.get('universal_user', 'rediacc')
         ssh_cmd = ['ssh', '-tt', *ssh_conn.ssh_opts.split(), conn.ssh_destination]
@@ -267,14 +267,14 @@ def main():
     epilog_text = '\n\n'.join(sections)
     
     parser = argparse.ArgumentParser(
+        prog='rediacc term',
         description=help_config.get('description', 'Rediacc CLI Terminal'),
         formatter_class=argparse.RawDescriptionHelpFormatter,
         epilog=epilog_text
     )
-    parser.add_argument('--version', action='version', 
-                       version=f'Rediacc CLI Term v{__version__}' if __version__ != 'dev' else 'Rediacc CLI Term Development')
-    # Add common arguments
-    add_common_arguments(parser, include_args=['verbose', 'token', 'team', 'machine'])
+    # Note: --version is only available at root level (rediacc --version)
+    # Add common arguments (standard order: token, team, machine, verbose)
+    add_common_arguments(parser, include_args=['token', 'team', 'machine', 'verbose'])
     
     # Add repo separately since it has different requirements
     parser.add_argument('--repo', help='Target repository name (optional - if not specified, connects to machine only)')

@@ -113,69 +113,20 @@ if [ -n "$REDIACC_DEBUG" ] || [ -n "$VERBOSE_MODE" ]; then
 fi
 
 print_help() {
-    echo -e "${CYAN}Rediacc CLI and Desktop for Linux/macOS${NC}"
-    echo
-    echo "USAGE:"
-    echo "    ./rediacc <command> [arguments]"
-    echo
-    echo "COMMANDS:"
-    echo "  Core:"
-    echo "    login       Authenticate with Rediacc API"
-    echo "    sync        File synchronization operations"
-    echo "    term        Terminal access to repositories"
-    echo "    plugin      Manage plugin connections (SSH tunnels)"
-    echo "    cli         Direct access to CLI (bypass wrapper)"
-    echo "    desktop [mode]  Launch Rediacc Desktop application"
-    echo "                    native: Run natively (default)"
-    echo "                    docker: Run in Docker (auto-builds)"
-    echo "                    docker-build: Force rebuild Docker image"
-    echo "    gui         Deprecated: Use 'desktop' command instead"
-    echo
-    echo "  License Management:"
-    echo "    license generate-id   Generate hardware ID for offline licensing"
-    echo "    license request       Request license using hardware ID"
-    echo "    license install       Install license file"
-    echo
-    echo "  Development:"
-    echo "    test        Test installation and run test suite"
-    echo "    release     Create a release build"
-    echo
-    echo "  Docker:"
-    echo "    docker-build          Build CLI Docker image"
-    echo "    docker-run            Run CLI in Docker container"
-    echo "    docker-shell          Interactive shell in Docker"
-    echo
-    echo "  Setup:"
-    echo "    setup       Install dependencies and set up environment"
-    echo "    help        Show this help message"
-    echo
-    echo "EXAMPLES:"
-    echo "    ./rediacc setup --auto       # Auto-install dependencies"
-    echo "    ./rediacc login             # Interactive login"
-    echo "    ./rediacc desktop           # Launch desktop app natively"
-    echo "    ./rediacc desktop docker    # Launch desktop app in Docker"
-    echo "    ./rediacc sync --help       # Sync help"
-    echo "    ./rediacc term --help       # Terminal help"
-    echo "    ./rediacc plugin --help     # Plugin help"
-    echo
-    echo "  License Management:"
-    echo "    ./rediacc license generate-id           # Generate hardware ID"
-    echo "    ./rediacc license request -i hw-id.txt  # Request license"
-    echo "    ./rediacc license install -f license.lic # Install license"
-    echo
-    echo "For detailed documentation, see docs/README.md"
+    # Use dynamic Python help system
+    "$PYTHON_CMD" "$CLI_ROOT/src/cli/core/format_help.py"
 }
 
 # Setup function
 setup() {
     echo -e "${CYAN}=== Rediacc CLI Setup ===${NC}"
     echo
-    
+
     # Check Python
     if python_cmd=$(find_python); then
         python_version=$("$python_cmd" -c 'import sys; print(".".join(map(str, sys.version_info[:2])))')
         echo -e "${GREEN}✓ Python $python_version found ($python_cmd)${NC}"
-        
+
         # Install Python packages
         install_python_packages "$python_cmd"
     else
@@ -183,7 +134,7 @@ setup() {
         echo "Please install Python 3.7 or later"
         exit 1
     fi
-    
+
     # Check rsync
     if ! command -v rsync &> /dev/null; then
         echo -e "${YELLOW}Warning: rsync not found${NC}"
@@ -193,7 +144,7 @@ setup() {
     else
         echo -e "${GREEN}✓ rsync found${NC}"
     fi
-    
+
     # Check SSH
     if ! command -v ssh &> /dev/null; then
         echo -e "${YELLOW}Warning: SSH not found${NC}"
@@ -201,7 +152,7 @@ setup() {
     else
         echo -e "${GREEN}✓ SSH found${NC}"
     fi
-    
+
     # Check tkinter for desktop application
     if "$python_cmd" -c "import tkinter" 2>/dev/null; then
         echo -e "${GREEN}✓ tkinter found (desktop app support available)${NC}"
@@ -211,7 +162,7 @@ setup() {
         echo "  Ubuntu/Debian: sudo apt-get install python3-tk"
         echo "  macOS: tkinter should be included with Python"
     fi
-    
+
     # Check configuration
     if [ -f "$CLI_ROOT/.env" ]; then
         echo -e "${GREEN}✓ Configuration file found${NC}"
@@ -220,9 +171,21 @@ setup() {
         echo "Copy .env.example to .env and configure:"
         echo "  cp .env.example .env"
     fi
-    
+
+    # Register protocol handler
     echo
-    echo -e "${GREEN}Setup check complete!${NC}"
+    echo -e "${CYAN}Registering rediacc:// protocol handler...${NC}"
+    if "$PYTHON_CMD" "$CLI_ROOT/src/cli/commands/cli_main.py" protocol register; then
+        echo -e "${GREEN}✓ Protocol handler registered successfully${NC}"
+        echo -e "${YELLOW}Note: You may need to restart your browser${NC}"
+    else
+        echo -e "${YELLOW}Warning: Protocol registration failed${NC}"
+        echo "You can register it manually later with: rediacc protocol register"
+    fi
+
+    echo
+    echo -e "${GREEN}Setup complete!${NC}"
+    echo "Try: rediacc --version"
 }
 
 # Test function
@@ -233,12 +196,6 @@ test_cli() {
     # Check for specific test type
     case "$1" in
         desktop)
-            echo -e "${GREEN}Running desktop application tests...${NC}"
-            shift
-            python3 -m pytest tests/gui/ -v "$@"
-            ;;
-        gui)
-            echo -e "${YELLOW}Note: 'gui' test type is deprecated, use 'desktop' instead${NC}"
             echo -e "${GREEN}Running desktop application tests...${NC}"
             shift
             python3 -m pytest tests/gui/ -v "$@"
@@ -541,6 +498,11 @@ case "$1" in
         release "$@"
         ;;
         
+    license)
+        shift
+        "$PYTHON_CMD" "$CLI_ROOT/src/cli/commands/license_main.py" "$@"
+        ;;
+
     login)
         shift
         "$PYTHON_CMD" "$CLI_ROOT/src/cli/commands/cli_main.py" login "$@"
@@ -562,8 +524,18 @@ case "$1" in
         # Don't inject token - let the plugin command manage its own token from config
         "$PYTHON_CMD" "$CLI_ROOT/src/cli/commands/plugin_main.py" "$@"
         ;;
-        
-    gui|desktop|--gui)
+
+    protocol)
+        shift
+        "$PYTHON_CMD" "$CLI_ROOT/src/cli/commands/protocol_main.py" "$@"
+        ;;
+
+    compose)
+        shift
+        "$PYTHON_CMD" "$CLI_ROOT/src/cli/commands/compose_main.py" "$@"
+        ;;
+
+    desktop|--gui)
         shift
         # Check if next argument is a mode
         if [ "$1" = "docker" ]; then
@@ -610,8 +582,8 @@ case "$1" in
         ;;
         
     version|--version)
-        # Show version of main CLI
-        "$PYTHON_CMD" "$CLI_ROOT/src/cli/commands/cli_main.py" --version
+        # Show version of main CLI (read from _version.py)
+        "$PYTHON_CMD" -c "import sys; sys.path.insert(0, '$CLI_ROOT/src'); from cli._version import __version__; print(f'Rediacc CLI v{__version__}')"
         ;;
         
     help|--help|-h)
@@ -619,8 +591,8 @@ case "$1" in
         ;;
         
     "")
-        # When no arguments provided, run the CLI directly (shows its own help)
-        "$PYTHON_CMD" "$CLI_ROOT/src/cli/commands/cli_main.py"
+        # When no arguments provided, show comprehensive help
+        print_help
         ;;
         
     *)

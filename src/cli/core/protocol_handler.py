@@ -252,7 +252,7 @@ class WindowsProtocolHandler:
         
         if rediacc_exe:
             # Use the rediacc.exe directly for protocol handling
-            return f'"{rediacc_exe}" protocol-handler "%1"'
+            return f'"{rediacc_exe}" protocol run "%1"'
         else:
             # Fallback to Python + script method (original behavior)
             logger.warning("Could not locate rediacc.exe, falling back to Python script method")
@@ -265,7 +265,7 @@ class WindowsProtocolHandler:
             
             if wrapper_script.exists():
                 # Always use the wrapper script for consistency
-                return f'"{python_exe}" "{wrapper_script}" protocol-handler "%1"'
+                return f'"{python_exe}" "{wrapper_script}" protocol run "%1"'
             else:
                 # If wrapper doesn't exist, try to find it relative to the installed package
                 # This handles cases where the package is installed via pip
@@ -274,11 +274,11 @@ class WindowsProtocolHandler:
                 wrapper_script = cli_package_dir / "rediacc.py"
                 
                 if wrapper_script.exists():
-                    return f'"{python_exe}" "{wrapper_script}" protocol-handler "%1"'
+                    return f'"{python_exe}" "{wrapper_script}" protocol run "%1"'
                 else:
                     # Last resort: assume rediacc.py is in the current working directory
                     # or accessible via PATH
-                    return f'"{python_exe}" rediacc.py protocol-handler "%1"'
+                    return f'"{python_exe}" rediacc.py protocol run "%1"'
     
     def check_admin_privileges(self) -> bool:
         """Check if running with administrator privileges"""
@@ -787,7 +787,26 @@ def handle_protocol_url(url: str, is_protocol_call: bool = False) -> int:
                 except SystemExit as e:
                     exit_code = e.code if e.code is not None else 1
 
-            elif action in ["plugin", "browser", "vscode"]:
+            elif action == "vscode":
+                # Import and call vscode_main directly
+                try:
+                    try:
+                        from ..commands import vscode_main
+                    except ImportError:
+                        # Fallback for when relative imports don't work
+                        sys.path.insert(0, os.path.join(os.path.dirname(__file__), '..', 'commands'))
+                        import vscode_main
+
+                    sys.argv = ["rediacc-vscode"] + cmd_args[1:]
+                    exit_code = vscode_main.main()
+                except ImportError as e:
+                    logger.error(f"Failed to import vscode module: {e}")
+                    command_error = f"Failed to import vscode module: {e}"
+                    exit_code = 1
+                except SystemExit as e:
+                    exit_code = e.code if e.code is not None else 1
+
+            elif action in ["plugin", "browser"]:
                 # Import and call cli_main directly
                 try:
                     try:

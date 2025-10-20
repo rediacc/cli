@@ -535,12 +535,6 @@ class TestRediaccCLI:
         self.cli.run(['sync', 'upload'])
         mock_cmd_cli.assert_called_once_with('sync', ['upload'])
 
-    @patch.object(RediaccCLI, 'cmd_desktop')
-    def test_run_deprecated_gui_command(self, mock_cmd_desktop):
-        """Test deprecated gui command routing"""
-        self.cli.run(['gui'])
-        mock_cmd_desktop.assert_called_once_with([])
-
     @patch.object(RediaccCLI, 'cmd_cli_command')
     def test_run_license_command_with_injection(self, mock_cmd_cli):
         """Test license command routing with token injection"""
