@@ -364,37 +364,6 @@ def build_queue_vault_data(function_name, args):
     
     return json.dumps(vault_data)
 
-def generate_hardware_id():
-    """Generate hardware ID using SuperClient"""
-    return client.get_hardware_id()
-
-def request_license_from_server(hardware_id, base_url=None):
-    """Request license from server using SuperClient"""
-    return client.request_license(hardware_id, base_url)
-
-def install_license_file(license_file, target_path=None):
-    if not os.path.exists(license_file):
-        raise FileNotFoundError(f"License file not found: {license_file}")
-    
-    if not target_path:
-        possible_paths = [
-            ".", "./bin", "../middleware",
-            "../middleware/bin/Debug/net8.0",
-            "../middleware/bin/Release/net8.0",
-        ]
-        
-        target_path = next(
-            (path for path in possible_paths if os.path.exists(path) and os.path.isdir(path)),
-            "."
-        )
-    
-    os.makedirs(target_path, exist_ok=True)
-    
-    target_file = os.path.join(target_path, "license.lic")
-    import shutil
-    shutil.copy2(license_file, target_file)
-    
-    return target_file
 
 class VaultBuilder:
     """Build queue vault data similar to console's queueDataService"""
@@ -863,209 +832,7 @@ class CommandHandler:
         print(format_output({}, self.output_format, "Successfully logged out"))
         return 0
     
-    def handle_license_command(self, args):
-        """Handle license-related commands"""
-        if args.license_command == 'generate-id':
-            try:
-                if self.output_format != 'json':
-                    print(colorize("Connecting to middleware to generate hardware ID...", 'BLUE'))
-                
-                hardware_id = generate_hardware_id()
-                output_file = args.output or 'hardware-id.txt'
-                
-                # Write to file
-                with open(output_file, 'w') as f:
-                    f.write(hardware_id)
-                
-                if self.output_format == 'json':
-                    result = {
-                        "success": True,
-                        "hardware_id": hardware_id,
-                        "output_file": output_file
-                    }
-                    print(json.dumps(result))
-                else:
-                    print(colorize("Hardware ID generated successfully!", 'GREEN'))
-                    print(colorize(f"Hardware ID: {hardware_id}", 'GREEN'))
-                    print(colorize(f"Saved to: {output_file}", 'GREEN'))
-                    print()
-                    print(colorize("Next steps:", 'BLUE'))
-                    print("1. Transfer this file to a machine with internet access")
-                    print("2. Run: ./rediacc license request --hardware-id " + output_file)
-                    print("3. Transfer the resulting license.lic back to this machine")
-                    print("4. Run: ./rediacc license install --file license.lic")
-                return 0
-            except Exception as e:
-                error_msg = str(e)
-                if self.output_format == 'json':
-                    print(json.dumps({"success": False, "error": error_msg}))
-                else:
-                    print(colorize("Failed to generate hardware ID", 'RED'))
-                    print(colorize(error_msg, 'RED'))
-                return 1
-                
-        elif args.license_command == 'request':
-            try:
-                if os.path.isfile(args.hardware_id):
-                    with open(args.hardware_id, 'r', encoding='utf-8') as f:
-                        hardware_id = f.read().strip()
-                else:
-                    hardware_id = args.hardware_id
-                
-                print(colorize("Requesting license from server...", 'BLUE'))
-                license_data = request_license_from_server(hardware_id, args.server_url)
-                
-                output_file = args.output or 'license.lic'
-                with open(output_file, 'w') as f:
-                    lic_data = license_data.get('licenseData') or license_data.get('LicenseData')
-                    if not lic_data:
-                        raise Exception("License data not found in response")
-                    f.write(lic_data)
-                
-                if self.output_format == 'json':
-                    result = {
-                        "success": True,
-                        "license_key": license_data.get('licenseKey') or license_data.get('LicenseKey'),
-                        "expiration_date": license_data.get('expirationDate') or license_data.get('ExpirationDate'),
-                        "is_new_license": license_data.get('isNewLicense', license_data.get('IsNewLicense', False)),
-                        "output_file": output_file
-                    }
-                    print(json.dumps(result))
-                else:
-                    print(colorize("License obtained successfully!", 'GREEN'))
-                    lic_key = license_data.get('licenseKey') or license_data.get('LicenseKey')
-                    exp_date = license_data.get('expirationDate') or license_data.get('ExpirationDate')
-                    is_new = license_data.get('isNewLicense', license_data.get('IsNewLicense', False))
-                    print(colorize(f"License Key: {lic_key}", 'GREEN'))
-                    print(colorize(f"Expires: {exp_date}", 'GREEN'))
-                    if is_new:
-                        print(colorize("This is a new license", 'BLUE'))
-                    print(colorize(f"Saved to: {output_file}", 'GREEN'))
-                return 0
-            except Exception as e:
-                error = f"Failed to request license: {str(e)}"
-                if self.output_format == 'json':
-                    print(json.dumps({"success": False, "error": error}))
-                else:
-                    print(colorize(error, 'RED'))
-                return 1
-                
-        elif args.license_command == 'install':
-            try:
-                target_file = install_license_file(args.file, args.target)
-                
-                if self.output_format == 'json':
-                    result = {
-                        "success": True,
-                        "installed_to": target_file
-                    }
-                    print(json.dumps(result))
-                else:
-                    print(colorize(f"License installed successfully to: {target_file}", 'GREEN'))
-                return 0
-            except Exception as e:
-                error = f"Failed to install license: {str(e)}"
-                if self.output_format == 'json':
-                    print(json.dumps({"success": False, "error": error}))
-                else:
-                    print(colorize(error, 'RED'))
-                return 1
-        
-        else:
-            error = f"Unknown license command: {args.license_command}"
-            if self.output_format == 'json':
-                print(json.dumps({"success": False, "error": error}))
-            else:
-                print(colorize(error, 'RED'))
-            return 1
 
-    def handle_protocol_command(self, args):
-        """Handle protocol registration commands"""
-        if not hasattr(args, 'protocol_action') or not args.protocol_action:
-            print(colorize("No protocol action specified. Use 'rediacc protocol --help' to see available actions.", 'RED'))
-            return 1
-
-        try:
-            from cli.core.protocol_handler import register_protocol, unregister_protocol, get_protocol_status, get_install_instructions, get_platform
-
-            system_wide = hasattr(args, 'system_wide') and args.system_wide
-            platform_name = get_platform()
-
-            if args.protocol_action == 'register':
-                print(f"Registering rediacc:// protocol on {platform_name}...")
-                if system_wide:
-                    print("Note: System-wide registration requires elevated privileges")
-
-                success = register_protocol(force=False, system_wide=system_wide)
-                if success:
-                    print(colorize("Successfully registered rediacc:// protocol for browser integration", 'GREEN'))
-                    if platform_name == "windows":
-                        print("You may need to restart your browser for changes to take effect")
-                    elif platform_name == "linux":
-                        print("Desktop entries have been updated. You may need to log out and back in for changes to take effect")
-                    return 0
-                else:
-                    print(colorize("Failed to register rediacc:// protocol", 'RED'))
-                    return 1
-
-            elif args.protocol_action == 'unregister':
-                print(f"Unregistering rediacc:// protocol from {platform_name}...")
-                success = unregister_protocol(system_wide=system_wide)
-                if success:
-                    print(colorize("Successfully unregistered rediacc:// protocol", 'GREEN'))
-                    return 0
-                else:
-                    print(colorize("Failed to unregister rediacc:// protocol", 'RED'))
-                    return 1
-
-            elif args.protocol_action == 'status':
-                status = get_protocol_status(system_wide=system_wide)
-
-                print(f"Protocol Registration Status:")
-                print(f"  Platform: {status.get('platform', 'unknown')}")
-                print(f"  Supported: {status.get('supported', False)}")
-
-                if status.get('user_registered'):
-                    print(f"  User-level: {colorize('Registered', 'GREEN')}")
-                else:
-                    print(f"  User-level: {colorize('Not registered', 'YELLOW')}")
-
-                if status.get('system_registered'):
-                    print(f"  System-wide: {colorize('Registered', 'GREEN')}")
-                else:
-                    print(f"  System-wide: {colorize('Not registered', 'YELLOW')}")
-
-                if status.get('details'):
-                    print(f"  Details: {status['details']}")
-
-                # Show installation instructions if not registered
-                if not status.get('user_registered') and not status.get('system_registered'):
-                    instructions = get_install_instructions()
-                    if instructions:
-                        print(f"\nInstallation Instructions:")
-                        for instruction in instructions:
-                            print(f"  {instruction}")
-
-                return 0
-
-            elif args.protocol_action == 'run':
-                # Handle protocol URL from command line (not browser)
-                from cli.core.protocol_handler import handle_protocol_url
-
-                if not hasattr(args, 'url') or not args.url:
-                    print(colorize("No URL provided. Usage: rediacc protocol run <rediacc://...>", 'RED'))
-                    return 1
-
-                print(f"Handling protocol URL: {args.url}")
-                return handle_protocol_url(args.url, is_protocol_call=False)
-
-            else:
-                print(colorize(f"Unknown protocol action: {args.protocol_action}", 'RED'))
-                return 1
-
-        except Exception as e:
-            print(colorize(f"Error handling protocol command: {e}", 'RED'))
-            return 1
 
     def queue_add(self, args):
         func_def = QUEUE_FUNCTIONS.get(args.function)
@@ -2068,10 +1835,10 @@ class CommandHandler:
 
 def setup_parser():
     parser = argparse.ArgumentParser(
+        prog='rediacc cli',
         description='Rediacc CLI - Complete interface for Rediacc Middleware API with enhanced queue support'
     )
-    parser.add_argument('--version', action='version', 
-                       version=f'Rediacc CLI v{__version__}' if __version__ != 'dev' else 'Rediacc CLI Development')
+    # Note: --version is only available at root level (rediacc --version)
     parser.add_argument('--output', '-o', choices=['text', 'json', 'json-full'], default='text',
                        help='Output format: text, json (concise), or json-full (comprehensive)')
     parser.add_argument('--token', '-t', help='Authentication token (overrides saved token)')
@@ -2148,12 +1915,16 @@ def setup_parser():
     # Add CLI commands from JSON configuration
     if 'CLI_COMMANDS' in cli_config:
         for cmd_name, cmd_def in cli_config['CLI_COMMANDS'].items():
-            # Only process commands with subcommands structure (license, workflow)
+            # Skip license - now has dedicated module
+            if cmd_name == 'license':
+                continue
+
+            # Only process commands with subcommands structure (workflow)
             if isinstance(cmd_def, dict) and 'subcommands' in cmd_def:
                 cmd_parser = subparsers.add_parser(cmd_name, help=cmd_def.get('description', f'{cmd_name} commands'))
-                
+
                 cmd_subparsers = cmd_parser.add_subparsers(
-                    dest=f'{cmd_name}_command' if cmd_name == 'license' else f'{cmd_name}_type',
+                    dest=f'{cmd_name}_type',
                     help=f'{cmd_name.title()} commands'
                 )
                 
@@ -2199,33 +1970,6 @@ def setup_parser():
                             kwargs['dest'] = param_name.replace('-', '_')
                             
                             subcmd_parser.add_argument(*args, **kwargs)
-    
-    # Add protocol-handler command (for internal use by protocol registration)
-    protocol_parser = subparsers.add_parser('protocol-handler', help='Handle rediacc:// protocol URLs (internal use)')
-    protocol_parser.add_argument('url', help='The rediacc:// URL to handle')
-
-    # Add protocol command for browser integration management
-    protocol_cmd_parser = subparsers.add_parser('protocol', help='Manage rediacc:// protocol registration for browser integration')
-    protocol_subparsers = protocol_cmd_parser.add_subparsers(dest='protocol_action', help='Protocol actions')
-
-    # Register subcommand
-    register_parser = protocol_subparsers.add_parser('register', help='Register rediacc:// protocol for browser integration')
-    register_parser.add_argument('--system-wide', action='store_true',
-                                help='Install protocol system-wide (requires sudo on Linux/macOS, admin on Windows)')
-
-    # Unregister subcommand
-    unregister_parser = protocol_subparsers.add_parser('unregister', help='Unregister rediacc:// protocol')
-    unregister_parser.add_argument('--system-wide', action='store_true',
-                                  help='Unregister protocol system-wide (requires sudo on Linux/macOS, admin on Windows)')
-
-    # Status subcommand
-    status_parser = protocol_subparsers.add_parser('status', help='Show rediacc:// protocol registration status')
-    status_parser.add_argument('--system-wide', action='store_true',
-                              help='Check system-wide protocol registration status')
-
-    # Run subcommand
-    run_parser = protocol_subparsers.add_parser('run', help='Handle rediacc:// protocol URL from command line')
-    run_parser.add_argument('url', help='The rediacc:// URL to handle')
 
     return parser
 
@@ -2233,9 +1977,9 @@ def reorder_args(argv):
     """Move global options after the command to handle argparse limitations"""
     if len(argv) < 2:
         return argv
-    
+
     # Global options that should be moved
-    global_opts = {'--output', '-o', '--token', '-t', '--verbose', '-v'}
+    global_opts = {'--output', '-o', '--token', '-t', '--verbose', '-v', '--sandbox'}
     
     # Commands that have subcommands
     subcommand_cmds = {'create', 'list', 'update', 'rm', 'vault', 'permission', 'user', 
@@ -2387,7 +2131,7 @@ def main():
                 break
         
         # Check if it's a known command
-        known_commands = set(API_ENDPOINTS.keys()) | {'login', 'logout', 'license', 'workflow', 'protocol', 'protocol-handler'}
+        known_commands = set(API_ENDPOINTS.keys()) | {'login', 'logout', 'workflow'}
         
         if potential_command and potential_command not in known_commands and potential_command not in CLI_COMMANDS:
             # This might be a dynamic endpoint
@@ -2472,49 +2216,11 @@ def main():
         help_text = handler.generate_dynamic_help(args.command, resource)
         print(help_text)
         return 0
-    
-    if args.command == 'protocol-handler':
-        # Handle protocol URL (used when browser calls rediacc:// URLs)
-        try:
-            try:
-                from ..core.protocol_handler import handle_protocol_url
-            except ImportError:
-                # Fallback for when relative imports don't work
-                sys.path.insert(0, os.path.join(os.path.dirname(__file__), '..', 'core'))
-                from protocol_handler import handle_protocol_url
-            
-            # Set is_protocol_call=True since this is the protocol-handler command
-            return handle_protocol_url(args.url, is_protocol_call=True)
-        except Exception as e:
-            logger.error(f"Protocol handler error: {e}")
 
-            # For protocol handler calls, use the wait mechanism
-            try:
-                try:
-                    from ..core.protocol_handler import display_protocol_error_with_wait
-                except ImportError:
-                    # Fallback for when relative imports don't work
-                    sys.path.insert(0, os.path.join(os.path.dirname(__file__), '..', 'core'))
-                    from protocol_handler import display_protocol_error_with_wait
-                
-                display_protocol_error_with_wait(str(e))
-            except ImportError:
-                # Fallback if we can't import the wait function
-                print(f"Error handling protocol URL: {e}", file=sys.stderr)
-                print("\nThis window will close in 30 seconds...", file=sys.stderr)
-                import time
-                time.sleep(30)
-
-            return 1
-    elif args.command == 'protocol':
-        # Handle protocol registration commands
-        return handler.handle_protocol_command(args)
-    elif args.command == 'login':
+    if args.command == 'login':
         return handler.login(args)
     elif args.command == 'logout':
         return handler.logout(args)
-    elif args.command == 'license':
-        return handler.handle_license_command(args)
     elif args.command == 'workflow':
         # Handle workflow commands
         if not hasattr(args, 'workflow_type') or not args.workflow_type:

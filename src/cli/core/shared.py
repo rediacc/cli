@@ -17,6 +17,17 @@ from .config import (
 
 CLI_TOOL = os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))), 'commands', 'cli_main.py')
 
+def is_pypi_installation() -> bool:
+    """
+    Detect if this is a PyPI installation (site-packages) vs development installation.
+
+    Returns:
+        True if installed via pip (in site-packages), False if running from source
+    """
+    cli_tool_path = Path(CLI_TOOL).resolve()
+    # Check if the path contains 'site-packages' - indicates PyPI installation
+    return 'site-packages' in str(cli_tool_path) or 'dist-packages' in str(cli_tool_path)
+
 def get_company_short(company_id: str) -> str:
     """
     Get shortened company ID for runtime paths to avoid socket path length issues.
@@ -854,9 +865,11 @@ def initialize_cli_command(args, parser, requires_cli_tool=True):
     
     # Validate CLI tool if required
     if requires_cli_tool:
-        if not os.path.exists(CLI_TOOL): 
+        if not os.path.exists(CLI_TOOL):
             error_exit(f"rediacc not found at {CLI_TOOL}")
-        if not is_windows() and not os.access(CLI_TOOL, os.X_OK): 
+        # Only check executable permissions for development installations
+        # PyPI installations don't need cli_main.py to be executable (entry points handle execution)
+        if not is_windows() and not is_pypi_installation() and not os.access(CLI_TOOL, os.X_OK):
             error_exit(f"rediacc is not executable at {CLI_TOOL}")
 
 def add_common_arguments(parser, include_args=None, required_overrides=None):

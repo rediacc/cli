@@ -2071,16 +2071,33 @@ class MainWindow(BaseWindow):
                             else:
                                 i += 1
 
+                    # Get environment variables using shared module (DRY principle)
+                    from cli.core.repository_env import get_repository_environment, get_machine_environment, format_ssh_setenv
+
+                    if repo:
+                        # Repository connection - get repository-specific environment
+                        env_vars = get_repository_environment(team, machine, repo,
+                                                              connection_info=connection.connection_info,
+                                                              repo_paths=connection.repo_paths)
+                    else:
+                        # Machine-only connection
+                        env_vars = get_machine_environment(team, machine,
+                                                           connection_info=connection_info)
+
+                    # Format environment variables as SSH SetEnv directives
+                    setenv_directives = format_ssh_setenv(env_vars)
+
                     # Build SSH config entry with RemoteCommand for universal user
                     remote_command_line = ""
                     if universal_user_id and universal_user_id != ssh_user:
                         # Only add RemoteCommand if we need to switch users
                         remote_command_line = f"    RemoteCommand sudo -H -u {universal_user_id} bash\n"
-                    
+
                     ssh_config_entry = f"""Host {connection_name}
     HostName {ssh_host}
     User {ssh_user}
 {remote_command_line}{chr(10).join(ssh_opts_lines) if ssh_opts_lines else ''}
+{setenv_directives}
     ServerAliveInterval 60
     ServerAliveCountMax 3
 """

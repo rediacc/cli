@@ -346,10 +346,6 @@ class RediaccCLI:
             if test_type == 'desktop':
                 print(f"{Colors.GREEN}Running desktop application tests...{Colors.NC}")
                 self.run_command([self.get_python_command(), '-m', 'pytest', 'tests/gui/', '-v'] + remaining_args)
-            elif test_type == 'gui':
-                print(f"{Colors.YELLOW}Note: 'gui' test type is deprecated, use 'desktop' instead{Colors.NC}")
-                print(f"{Colors.GREEN}Running desktop application tests...{Colors.NC}")
-                self.run_command([self.get_python_command(), '-m', 'pytest', 'tests/gui/', '-v'] + remaining_args)
             elif test_type == 'workflow':
                 print(f"{Colors.GREEN}Running workflow tests...{Colors.NC}")
                 self.run_command([self.get_python_command(), '-m', 'pytest', 'tests/workflow/', '-v'] + remaining_args)
@@ -793,7 +789,6 @@ COMMANDS:
                     native: Run natively (default)
                     docker: Run in Docker (auto-builds)
                     docker-build: Force rebuild Docker image
-    gui         Deprecated: Use 'desktop' command instead
 
   License Management:
     license generate-id   Generate hardware ID for offline licensing
@@ -886,9 +881,7 @@ For detailed documentation, see docs/README.md"""
                 self.cmd_docker_run(args)
             elif command == 'docker-shell':
                 self.cmd_docker_shell(args)
-            elif command in ['desktop', 'gui', '--gui']:
-                if command == 'gui':
-                    print(f"{Colors.YELLOW}Note: 'gui' command is deprecated, use 'desktop' instead{Colors.NC}")
+            elif command in ['desktop', '--gui']:
                 self.cmd_desktop(args)
             elif command == 'desktop-docker':
                 self.cmd_desktop_docker(args)

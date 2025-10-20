@@ -404,6 +404,7 @@ def main():
     initialize_telemetry()
 
     parser = argparse.ArgumentParser(
+        prog='rediacc plugin',
         description='Rediacc CLI Plugin - SSH tunnel management for repository plugins',
         formatter_class=argparse.RawDescriptionHelpFormatter,
         epilog="""
@@ -430,10 +431,12 @@ Plugin Access:
   The local port forwards to the plugin's Unix socket on the remote repository.
 """
     )
-    
-    parser.add_argument('--version', action='version', 
-                       version=f'Rediacc CLI Plugin v{__version__}' if __version__ != 'dev' else 'Rediacc CLI Plugin Development')
-    
+
+    # Note: --version is only available at root level (rediacc --version)
+
+    # Add verbose to main parser (applies to all subcommands)
+    add_common_arguments(parser, include_args=['verbose'])
+
     subparsers = parser.add_subparsers(dest='command', help='Commands')
     
     # List command

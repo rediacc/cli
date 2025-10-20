@@ -280,16 +280,6 @@ function test() {
                 echo "⚠️  No desktop tests found at tests/gui/run_gui_tests.py"
             fi
             ;;
-        gui)
-            echo "⚠️  Warning: 'gui' test type is deprecated. Use 'desktop' instead."
-            # Run desktop application tests
-            if [ -f "tests/gui/run_gui_tests.py" ]; then
-                echo "Running desktop application test suite..."
-                "$PYTHON_CMD" tests/gui/run_gui_tests.py "$@"
-            else
-                echo "⚠️  No desktop tests found at tests/gui/run_gui_tests.py"
-            fi
-            ;;
         api)
             # Run API tests only
             if [ -f "tests/run_tests.py" ]; then

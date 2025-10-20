@@ -278,6 +278,7 @@ def main():
     initialize_telemetry()
 
     parser = argparse.ArgumentParser(
+        prog='rediacc sync',
         description='Rediacc CLI Sync - Rsync-based synchronization utility',
         formatter_class=argparse.RawDescriptionHelpFormatter,
         epilog="""
@@ -301,8 +302,7 @@ Examples:
     %(prog)s download --token=<GUID> --machine=server1 --repo=data --local=/backup --mirror --verify --confirm
 """
     )
-    parser.add_argument('--version', action='version', 
-                       version=f'Rediacc CLI Sync v{__version__}' if __version__ != 'dev' else 'Rediacc CLI Sync Development')
+    # Note: --version is only available at root level (rediacc --version)
     # Add verbose to main parser
     add_common_arguments(parser, include_args=['verbose'])
     

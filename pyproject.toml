@@ -85,6 +85,7 @@ test = [
 rediacc = "cli.commands.cli_main:main"
 rediacc-sync = "cli.commands.sync_main:main"
 rediacc-term = "cli.commands.term_main:main"
+rediacc-vscode = "cli.commands.vscode_main:main"
 rediacc-plugin = "cli.commands.plugin_main:main"
 rediacc-workflow = "cli.commands.workflow_main:main"
 rediacc-desktop = "cli.gui.main:main"
