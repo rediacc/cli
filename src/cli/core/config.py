@@ -40,20 +40,20 @@ def get_cli_root() -> Path:
 def get_config_dir() -> Path:
     """
     Get the configuration directory path (.rediacc)
-    
+
     Checks in order:
     1. REDIACC_CONFIG_DIR environment variable (for Docker containers)
-    2. Local CLI directory (.rediacc in the CLI root)
-    
+    2. User's home directory (~/.rediacc)
+
     The directory is created if it doesn't exist.
-    
+
     Returns:
         Path: The absolute path to the configuration directory
     """
     config_dir = (
         Path(os.environ['REDIACC_CONFIG_DIR']).resolve()
         if 'REDIACC_CONFIG_DIR' in os.environ
-        else get_cli_root() / '.config'
+        else Path.home() / '.rediacc'
     )
     config_dir.mkdir(exist_ok=True)
     return config_dir

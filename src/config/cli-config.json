@@ -1231,6 +1231,10 @@
             }
           }
         }
+      },
+      "list-user-vault": {
+        "endpoint": "GetUserVault",
+        "params": "lambda args: {}"
       }
     },
     "rm": {
@@ -4584,6 +4588,26 @@
             "repo_name": {
               "description": "",
               "required": true,
+              "example": "",
+              "type": "string"
+            }
+          }
+        }
+      },
+      "update-user-vault": {
+        "endpoint": "UpdateUserVault",
+        "params": "lambda args: {'userVault': args.vault, 'vaultVersion': args.vault_version}",
+        "help": {
+          "parameters": {
+            "vault": {
+              "description": "",
+              "required": false,
+              "example": "",
+              "type": "string"
+            },
+            "vault_version": {
+              "description": "",
+              "required": false,
               "example": "",
               "type": "string"
             }
