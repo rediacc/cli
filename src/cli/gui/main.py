@@ -1839,7 +1839,7 @@ class MainWindow(BaseWindow):
         # Ensure it's not empty
         return sanitized if sanitized else 'default'
 
-    def _configure_vscode_platform(self, connection_name: str, universal_user_id: str = None):
+    def _configure_vscode_platform(self, connection_name: str, universal_user: str = None, universal_user_id: str = None):
         """Configure VS Code to recognize the SSH host as Linux platform"""
         try:
             # Detect WSL environment
@@ -1910,14 +1910,16 @@ class MainWindow(BaseWindow):
             settings['remote.SSH.localServerDownload'] = 'always'  # Force local server download
             
             # Configure terminal to use universal user (if provided)
-            if universal_user_id:
+            profile_user = universal_user or universal_user_id
+            if profile_user:
                 if 'terminal.integrated.profiles.linux' not in settings:
                     settings['terminal.integrated.profiles.linux'] = {}
                 
                 # Add a profile for this connection that switches to universal user
-                settings['terminal.integrated.profiles.linux'][f'{connection_name}-{universal_user_id}'] = {
+                profile_suffix = self._sanitize_hostname(profile_user)
+                settings['terminal.integrated.profiles.linux'][f'{connection_name}-{profile_suffix}'] = {
                     'path': '/bin/bash',
-                    'args': ['-c', f'sudo -u {universal_user_id} bash -l']
+                    'args': ['-c', f'sudo -u {profile_user} bash -l']
                 }
             
             # Set it as default for this connection
@@ -1935,6 +1937,56 @@ class MainWindow(BaseWindow):
         except Exception as e:
             # Don't fail the connection if we can't configure the platform
             self.logger.warning(f"Could not configure VS Code platform: {e}")
+
+    def _resolve_universal_user(self, connection_value: str = None, fallback_value: str = None) -> str:
+        """Select the account used for sudo, preferring connection metadata."""
+        for candidate in (connection_value, fallback_value, 'rediacc'):
+            if candidate:
+                return candidate
+        return 'rediacc'
+
+    def _upsert_ssh_config_entry(self, ssh_config_path: str, connection_name: str, ssh_config_entry: str) -> str:
+        """Add or replace the SSH config block for a given connection."""
+        ssh_dir = os.path.dirname(ssh_config_path)
+        os.makedirs(ssh_dir, exist_ok=True)
+
+        block = "# Rediacc VS Code connection\n" + ssh_config_entry.rstrip() + "\n\n"
+        block_lines = block.splitlines(keepends=True)
+
+        lines = []
+        if os.path.exists(ssh_config_path):
+            with open(ssh_config_path, 'r', encoding='utf-8') as f:
+                lines = f.readlines()
+
+        start = end = None
+        for idx, line in enumerate(lines):
+            if line.strip() == f"Host {connection_name}":
+                start = idx
+                if idx > 0 and lines[idx - 1].strip() == "# Rediacc VS Code connection":
+                    start = idx - 1
+                end = len(lines)
+                for j in range(idx + 1, len(lines)):
+                    if lines[j].startswith("Host "):
+                        end = j
+                        break
+                break
+
+        if start is not None:
+            lines[start:end] = block_lines
+            action = "updated"
+        else:
+            if lines:
+                if not lines[-1].endswith('\n'):
+                    lines[-1] += '\n'
+                if lines[-1].strip():
+                    lines.append('\n')
+            lines.extend(block_lines)
+            action = "added"
+
+        with open(ssh_config_path, 'w', encoding='utf-8') as f:
+            f.writelines(lines)
+
+        return action
 
     def _launch_vscode(self, team: str, machine: str, repo: str = None):
         """Launch VS Code with SSH remote connection"""
@@ -1955,11 +2007,16 @@ class MainWindow(BaseWindow):
                 # Get universal user info for both repo and machine connections
                 from cli.core.shared import _get_universal_user_info
                 universal_user_name, universal_user_id, company_id = _get_universal_user_info()
+                universal_user = self._resolve_universal_user(fallback_value=universal_user_name)
                 
                 if repo:
                     # Repository connection - use RepositoryConnection
                     connection = RepositoryConnection(team, machine, repo)
                     connection.connect()
+                    universal_user = self._resolve_universal_user(
+                        connection.connection_info.get('universal_user'),
+                        universal_user
+                    )
 
                     remote_path = connection.repo_paths['mount_path']
                     connection_name = f"rediacc-{self._sanitize_hostname(team)}-{self._sanitize_hostname(machine)}-{self._sanitize_hostname(repo)}"
@@ -1975,6 +2032,10 @@ class MainWindow(BaseWindow):
                     print("Fetching machine information...")
                     machine_info = get_machine_info_with_team(team, machine)
                     connection_info = get_machine_connection_info(machine_info)
+                    universal_user = self._resolve_universal_user(
+                        connection_info.get('universal_user'),
+                        universal_user
+                    )
 
                     print("Retrieving SSH key...")
                     ssh_key = get_ssh_key_from_vault(team)
@@ -2089,9 +2150,13 @@ class MainWindow(BaseWindow):
 
                     # Build SSH config entry with RemoteCommand for universal user
                     remote_command_line = ""
-                    if universal_user_id and universal_user_id != ssh_user:
+                    sudo_user = universal_user or 'rediacc'
+                    if sudo_user and sudo_user != ssh_user:
                         # Only add RemoteCommand if we need to switch users
-                        remote_command_line = f"    RemoteCommand sudo -H -u {universal_user_id} bash\n"
+                        remote_command_line = (
+                            f'    RemoteCommand sudo -H -u {sudo_user} '
+                            'bash -lc "cd ~ && exec bash"\n'
+                        )
 
                     ssh_config_entry = f"""Host {connection_name}
     HostName {ssh_host}
@@ -2107,7 +2172,7 @@ class MainWindow(BaseWindow):
                     print(f"[DEBUG] Connection name: {connection_name}")
                     print(f"[DEBUG] SSH host: {ssh_host}")
                     print(f"[DEBUG] SSH user: {ssh_user}")
-                    print(f"[DEBUG] Universal user: {universal_user_id}")
+                    print(f"[DEBUG] Universal user: {universal_user or 'N/A'} (id: {universal_user_id})")
                     print(f"[DEBUG] Remote path: {remote_path}")
                     print(f"[DEBUG] SSH opts lines: {ssh_opts_lines}")
                     print(f"[DEBUG] Generated SSH config entry:")
@@ -2116,37 +2181,19 @@ class MainWindow(BaseWindow):
                     # Add SSH config to user's SSH config file
                     ssh_config_path = os.path.expanduser('~/.ssh/config')
 
-                    # Ensure .ssh directory exists
                     ssh_dir = os.path.dirname(ssh_config_path)
-                    os.makedirs(ssh_dir, exist_ok=True)
-                    os.chmod(ssh_dir, 0o700)
+                    try:
+                        os.chmod(ssh_dir, 0o700)
+                    except (PermissionError, NotImplementedError, OSError):
+                        pass
 
-                    # Check if this host already exists in SSH config
-                    host_exists = False
-                    existing_config = ""
-                    if os.path.exists(ssh_config_path):
-                        with open(ssh_config_path, 'r') as f:
-                            existing_config = f.read()
-                            if f"Host {connection_name}" in existing_config:
-                                host_exists = True
-
-                    # Add our SSH config entry if it doesn't exist
-                    if not host_exists:
-                        with open(ssh_config_path, 'a') as f:
-                            f.write(f"\n# Rediacc VS Code connection\n")
-                            f.write(ssh_config_entry)
-                            f.write("\n")
-
-                        self.logger.debug(f"Added SSH config entry for {connection_name}")
-                        ssh_config_added = True
-                    else:
-                        self.logger.debug(f"SSH config entry already exists for {connection_name}")
-                        ssh_config_added = False
+                    action = self._upsert_ssh_config_entry(ssh_config_path, connection_name, ssh_config_entry)
+                    self.logger.debug(f"{action.capitalize()} SSH config entry for {connection_name}")
 
                     try:
                         # Configure VS Code to recognize the host as Linux
                         # We'll use a simple approach: add platform info to existing VS Code settings
-                        self._configure_vscode_platform(connection_name, universal_user_id)
+                        self._configure_vscode_platform(connection_name, universal_user, universal_user_id)
 
                         # Launch VS Code with SSH remote
                         vscode_uri = f"vscode-remote://ssh-remote+{connection_name}{remote_path}"

@@ -8,6 +8,7 @@ import subprocess
 import sys
 import os
 import json
+import shlex
 from pathlib import Path
 
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__)))))
@@ -21,6 +22,7 @@ from cli.core.shared import (
 
 from cli.core.config import setup_logging, get_logger
 from cli.core.telemetry import track_command, initialize_telemetry, shutdown_telemetry
+from cli.core.env_bootstrap import compose_sudo_env_command
 
 # Load configuration
 def load_config():
@@ -136,19 +138,30 @@ def connect_to_terminal(args):
         if args.dev and original_host_entry is not None:
             conn.connection_info['host_entry'] = original_host_entry
         # Get environment variables using shared module (DRY principle)
-        from cli.core.repository_env import get_repository_environment, format_bash_exports
+        from cli.core.repository_env import get_repository_environment
 
         env_vars = get_repository_environment(args.team, args.machine, args.repo,
                                               connection_info=conn.connection_info,
                                               repo_paths=conn.repo_paths)
 
-        # Format as bash export statements
-        env_exports = format_bash_exports(env_vars) + '\n'
-        
         cd_logic = get_config_value('cd_logic', 'basic')
         
-        if args.command: ssh_env_setup = env_exports + cd_logic
+        universal_user = conn.connection_info.get('universal_user', 'rediacc')
+        ssh_cmd = ['ssh', '-tt', *ssh_conn.ssh_opts.split(), conn.ssh_destination]
+
+        if args.command:
+            # Simplified approach: execute command in a basic environment without complex setup
+            print_message('executing_command', command=args.command)
+            sudo_command = compose_sudo_env_command(
+                universal_user,
+                env_vars,
+                [cd_logic, args.command],
+                preserve_home=False,
+            )
+            ssh_cmd.append(sudo_command)
         else:
+            # For interactive terminal, use the existing complex setup that works
+            print_message('opening_terminal'); print_message('exit_instruction', 'YELLOW')
             extended_cd_logic = get_config_value('cd_logic', 'extended')
             bash_funcs = CONFIG.get('bash_functions', {})
             format_vars = {
@@ -163,25 +176,25 @@ def connect_to_terminal(args):
             functions = '\n\n'.join(bash_funcs.values())
             exports = 'export -f enter_container\nexport -f logs\nexport -f status'
 
-            ssh_env_setup = f"""{env_exports}{extended_cd_logic}\n\n{functions}\n\n{exports}\n\n{chr(10).join(welcome_lines)}\n\nexport PS1='{ps1_prompt}'\n"""
-        
-        universal_user = conn.connection_info.get('universal_user', 'rediacc')
-        ssh_cmd = ['ssh', '-tt', *ssh_conn.ssh_opts.split(), conn.ssh_destination]
-        import shlex
+            script_sections = [extended_cd_logic]
+            if functions:
+                script_sections.extend(['', functions])
+            if exports:
+                script_sections.extend(['', exports])
+            if welcome_lines:
+                script_sections.append('')
+                script_sections.extend(welcome_lines)
+            script_sections.append('')
+            script_sections.append(f"export PS1='{ps1_prompt}'")
+            script_sections.append('exec bash')
 
-        if args.command:
-            # Simplified approach: execute command in a basic environment without complex setup
-            print_message('executing_command', command=args.command)
-            # Set up minimal environment and execute the command
-            minimal_env = env_exports + get_config_value('cd_logic', 'basic') + '\n'
-            script_content = minimal_env + args.command
-            ssh_cmd.extend(['sudo', '-u', universal_user, 'bash', '-c', script_content])
-        else:
-            # For interactive terminal, use the existing complex setup that works
-            print_message('opening_terminal'); print_message('exit_instruction', 'YELLOW')
-            full_command = ssh_env_setup + "exec bash"
-            escaped_env = full_command.replace("'", "'\"'\"'")
-            ssh_cmd.append(f"sudo -u {universal_user} bash -c '{escaped_env}'")
+            sudo_command = compose_sudo_env_command(
+                universal_user,
+                env_vars,
+                script_sections,
+                preserve_home=False,
+            )
+            ssh_cmd.append(sudo_command)
         result = subprocess.run(ssh_cmd)
         handle_ssh_exit_code(result.returncode, "repository terminal")
 
@@ -209,33 +222,37 @@ def connect_to_container(args):
         if args.dev and original_host_entry is not None:
             conn.connection_info['host_entry'] = original_host_entry
         # Get environment variables using shared module (DRY principle)
-        from cli.core.repository_env import get_repository_environment, format_bash_exports
+        from cli.core.repository_env import get_repository_environment
 
         env_vars = get_repository_environment(args.team, args.machine, args.repo,
                                               connection_info=conn.connection_info,
                                               repo_paths=conn.repo_paths)
 
-        # Format as bash export statements
-        env_exports = format_bash_exports(env_vars) + '\n'
-
         universal_user = conn.connection_info.get('universal_user', 'rediacc')
         ssh_cmd = ['ssh', '-tt', *ssh_conn.ssh_opts.split(), conn.ssh_destination]
 
-        # Set up the environment first (same as repository terminal)
-        ssh_env_setup = env_exports
-
         if args.command:
             # Execute command inside container
-            ssh_env_setup += f"docker exec -it {args.container} bash -c '{args.command}'"
+            container_command = (
+                f"docker exec -it {args.container} bash -c {shlex.quote(args.command)}"
+            )
+            script_sections = [container_command]
             print_message('executing_container_command', container=args.container, command=args.command)
         else:
             # Interactive container access - use the same pattern as existing enter_container function
             print_message('entering_container', container=args.container)
             print_message('exit_instruction', 'YELLOW')
-            ssh_env_setup += f"docker exec -it {args.container} bash || docker exec -it {args.container} sh"
+            script_sections = [
+                f"docker exec -it {args.container} bash || docker exec -it {args.container} sh"
+            ]
 
-        escaped_env = ssh_env_setup.replace("'", "'\"'\"'")
-        ssh_cmd.append(f"sudo -u {universal_user} bash -c '{escaped_env}'")
+        sudo_command = compose_sudo_env_command(
+            universal_user,
+            env_vars,
+            script_sections,
+            preserve_home=False,
+        )
+        ssh_cmd.append(sudo_command)
         result = subprocess.run(ssh_cmd)
         handle_ssh_exit_code(result.returncode, "container terminal")
 
