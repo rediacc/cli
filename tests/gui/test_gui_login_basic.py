@@ -678,6 +678,16 @@ class GUITestSuite:
             main_window_instance[0] = main_window
             main_window_created[0] = True
             print("  ✓ MainWindow created")
+
+            if os.environ.get('CI', 'false').lower() == 'true':
+                def _stub_detect(force_refresh: bool = False) -> str:
+                    return 'ci-stub-terminal'
+
+                def _stub_launch(cli_dir: str, command: str, description: str) -> None:
+                    print(f"    [CI stub] Would launch terminal: {command} ({description})")
+
+                main_window.terminal_detector.detect = _stub_detect  # type: ignore[attr-defined]
+                main_window.terminal_detector.get_launch_function = lambda method: _stub_launch  # type: ignore[attr-defined]
             
             def interact_with_window():
                 """Interact with the main window after it's ready"""
