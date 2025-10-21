@@ -17,7 +17,7 @@ permissions:
   actions: read  # Required for shared-backend to monitor test job status
   packages: read  # Required for pulling Docker images from ghcr.io
 
-jobs:
+  jobs:
   # Shared backend - provides Elite Services + Cloudflare Tunnel for all test platforms
   shared-backend:
     name: Shared Backend (Elite + Tunnel)
@@ -169,10 +169,16 @@ jobs:
           docker ps -a --filter "name=rediacc-" --format "{{.Names}}" | xargs -r docker rm || true
           echo "✓ Cleanup complete"
 
-  # Linux tests - all Python versions sequentially
-  test-linux:
-    name: Linux Tests
-    runs-on: ubuntu-latest
+  # Consolidated matrix-based tests across OS and Python versions
+  tests:
+    name: Tests (${{ matrix.os }}, py${{ matrix.python }})
+    needs: shared-backend
+    runs-on: ${{ matrix.os }}
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-latest, windows-latest, macos-latest]
+        python: ['3.8', '3.9', '3.10', '3.11', '3.13']
 
     steps:
       - name: Checkout repository
@@ -188,29 +194,26 @@ jobs:
       - name: Retry Download Tunnel URL
         if: steps.download-artifact.outcome == 'failure'
         run: |
-          MAX_WAIT=1500  # 25 minutes (Elite Services can take 20+ min to pull images)
+          MAX_WAIT=1500
           ELAPSED=0
-
           while [ $ELAPSED -lt $MAX_WAIT ]; do
             MINUTES=$((ELAPSED / 60))
             SECONDS=$((ELAPSED % 60))
             echo "Waiting for tunnel URL artifact... (${MINUTES}m ${SECONDS}s elapsed)"
-
             if gh run download ${{ github.run_id }} -n tunnel-url 2>/dev/null; then
               echo "✓ Tunnel URL artifact downloaded after ${MINUTES}m ${SECONDS}s"
               break
             fi
-
             sleep 10
             ELAPSED=$((ELAPSED + 10))
           done
-
           if [ $ELAPSED -ge $MAX_WAIT ]; then
             echo "::error::Timeout after ${MAX_WAIT}s waiting for backend to upload tunnel URL"
             exit 1
           fi
         env:
           GH_TOKEN: ${{ github.token }}
+        shell: bash
 
       - name: Load Tunnel URL
         id: tunnel
@@ -222,267 +225,52 @@ jobs:
           TUNNEL_URL=$(cat tunnel-url.txt)
           echo "url=$TUNNEL_URL" >> $GITHUB_OUTPUT
           echo "Tunnel URL loaded: $TUNNEL_URL"
+        shell: bash
 
-      - name: Install system dependencies
+      - name: Install Linux dependencies
+        if: ${{ matrix.os == 'ubuntu-latest' }}
         run: |
           sudo apt-get update
           sudo apt-get install -y xdg-utils rsync openssh-client desktop-file-utils xvfb python3-tk python3-dev
 
-      # Python 3.8 - with integration tests
-      - name: Setup Python 3.8
-        uses: actions/setup-python@v6
-        with:
-          python-version: '3.8'
-
-      - name: Run tests Python 3.8
-        timeout-minutes: 20
-        run: ./scripts/ci-test-runner.sh ubuntu-latest 3.8 true
-        env:
-          SYSTEM_API_URL: ${{ steps.tunnel.outputs.url }}/api
-          SYSTEM_ADMIN_EMAIL: admin@rediacc.io
-          SYSTEM_ADMIN_PASSWORD: admin
-          REDIACC_TEST_ACTIVATION_CODE: "111111"
-          API_TIMEOUT: 60
-
-      # Python 3.9
-      - name: Setup Python 3.9
-        uses: actions/setup-python@v6
-        with:
-          python-version: '3.9'
-
-      - name: Run tests Python 3.9
-        timeout-minutes: 20
-        run: ./scripts/ci-test-runner.sh ubuntu-latest 3.9
-        env:
-          SYSTEM_API_URL: ${{ steps.tunnel.outputs.url }}/api
-          SYSTEM_ADMIN_EMAIL: admin@rediacc.io
-          SYSTEM_ADMIN_PASSWORD: admin
-          REDIACC_TEST_ACTIVATION_CODE: "111111"
-          API_TIMEOUT: 60
-
-      # Python 3.10
-      - name: Setup Python 3.10
-        uses: actions/setup-python@v6
-        with:
-          python-version: '3.10'
-
-      - name: Run tests Python 3.10
-        timeout-minutes: 20
-        run: ./scripts/ci-test-runner.sh ubuntu-latest 3.10
-        env:
-          SYSTEM_API_URL: ${{ steps.tunnel.outputs.url }}/api
-          SYSTEM_ADMIN_EMAIL: admin@rediacc.io
-          SYSTEM_ADMIN_PASSWORD: admin
-          REDIACC_TEST_ACTIVATION_CODE: "111111"
-          API_TIMEOUT: 60
-
-      # Python 3.11
-      - name: Setup Python 3.11
-        uses: actions/setup-python@v6
-        with:
-          python-version: '3.11'
-
-      - name: Run tests Python 3.11
-        timeout-minutes: 20
-        run: ./scripts/ci-test-runner.sh ubuntu-latest 3.11
-        env:
-          SYSTEM_API_URL: ${{ steps.tunnel.outputs.url }}/api
-          SYSTEM_ADMIN_EMAIL: admin@rediacc.io
-          SYSTEM_ADMIN_PASSWORD: admin
-          REDIACC_TEST_ACTIVATION_CODE: "111111"
-          API_TIMEOUT: 60
-
-      
-
-      # Python 3.13
-      - name: Setup Python 3.13
-        uses: actions/setup-python@v6
-        with:
-          python-version: '3.13'
-
-      - name: Run tests Python 3.13
-        timeout-minutes: 20
-        run: ./scripts/ci-test-runner.sh ubuntu-latest 3.13
-        env:
-          SYSTEM_API_URL: ${{ steps.tunnel.outputs.url }}/api
-          SYSTEM_ADMIN_EMAIL: admin@rediacc.io
-          SYSTEM_ADMIN_PASSWORD: admin
-          REDIACC_TEST_ACTIVATION_CODE: "111111"
-          API_TIMEOUT: 60
-
-      - name: Upload CI Outputs
-        if: always()
-        uses: actions/upload-artifact@v4
-        with:
-          name: ci-outputs-linux
-          path: ci-outputs/
-          retention-days: 30
-
-      - name: Upload Screenshots
-        if: always()
-        uses: actions/upload-artifact@v4
-        with:
-          name: screenshots-linux
-          path: test-screenshots/
-          retention-days: 30
-          if-no-files-found: ignore
-
-      - name: Signal Completion
-        if: always()
-        run: echo "done" > test-complete-linux.txt
-
-      - name: Upload Completion Signal
-        if: always()
-        uses: actions/upload-artifact@v4
-        with:
-          name: test-complete-linux
-          path: test-complete-linux.txt
-          retention-days: 1
-
-  # Windows tests - now parallel with Linux
-  test-windows:
-    name: Windows Tests
-    runs-on: windows-latest
-
-    steps:
-      - name: Checkout
-        uses: actions/checkout@v5
-
-      - name: Wait for and Download Tunnel URL
-        id: download-artifact
-        uses: actions/download-artifact@v4
-        with:
-          name: tunnel-url
-        continue-on-error: true
-
-      - name: Retry Download Tunnel URL
-        if: steps.download-artifact.outcome == 'failure'
-        run: |
-          MAX_WAIT=1500  # 25 minutes (Elite Services can take 20+ min to pull images)
-          ELAPSED=0
-
-          while [ $ELAPSED -lt $MAX_WAIT ]; do
-            MINUTES=$((ELAPSED / 60))
-            SECONDS=$((ELAPSED % 60))
-            echo "Waiting for tunnel URL artifact... (${MINUTES}m ${SECONDS}s elapsed)"
-
-            if gh run download ${{ github.run_id }} -n tunnel-url 2>/dev/null; then
-              echo "✓ Tunnel URL artifact downloaded after ${MINUTES}m ${SECONDS}s"
-              break
-            fi
-
-            sleep 10
-            ELAPSED=$((ELAPSED + 10))
-          done
-
-          if [ $ELAPSED -ge $MAX_WAIT ]; then
-            echo "::error::Timeout after ${MAX_WAIT}s waiting for backend to upload tunnel URL"
-            exit 1
-          fi
-        env:
-          GH_TOKEN: ${{ github.token }}
-        shell: bash
-
-      - name: Load Tunnel URL
-        id: tunnel
-        run: |
-          if [ ! -f tunnel-url.txt ]; then
-            echo "::error::Tunnel URL artifact not found after retry attempts"
-            exit 1
-          fi
-          TUNNEL_URL=$(cat tunnel-url.txt)
-          echo "url=$TUNNEL_URL" >> $GITHUB_OUTPUT
-          echo "Tunnel URL loaded: $TUNNEL_URL"
-        shell: bash
-
-      # Setup headless display for GUI testing (tkinter, etc.)
-      # Uses Mesa3D offscreen rendering to enable GUI tests on headless Windows runners
-      - name: Setup Headless Display
+      - name: Setup headless display (Windows)
+        if: ${{ matrix.os == 'windows-latest' }}
         uses: pyvista/setup-headless-display-action@v3
         with:
           mesa3d-release: 24.3.0
           install-mesa3d-offscreen: true
           pyvista: false
 
-      - name: Install system dependencies
+      - name: Install Windows dependencies
+        if: ${{ matrix.os == 'windows-latest' }}
         run: choco install rsync openssh -y
         shell: pwsh
 
-      # Python 3.8 - with integration tests
-      - name: Setup Python 3.8
+      - name: Install macOS dependencies
+        if: ${{ matrix.os == 'macos-latest' }}
+        run: brew install duti || true
+
+      - name: Setup Python ${{ matrix.python }}
         uses: actions/setup-python@v6
         with:
-          python-version: '3.8'
+          python-version: ${{ matrix.python }}
 
-      - name: Run tests Python 3.8
+      - name: Run tests
         timeout-minutes: 20
-        run: ./scripts/ci-test-runner.sh windows-latest 3.8 true
-        shell: bash
+        run: ./scripts/ci-test-runner.sh ${{ matrix.os }} ${{ matrix.python }} ${{ matrix.os == 'ubuntu-latest' && matrix.python == '3.8' && 'true' || 'false' }}
         env:
           SYSTEM_API_URL: ${{ steps.tunnel.outputs.url }}/api
           SYSTEM_ADMIN_EMAIL: admin@rediacc.io
           SYSTEM_ADMIN_PASSWORD: admin
           REDIACC_TEST_ACTIVATION_CODE: "111111"
           API_TIMEOUT: 60
-
-      # Python 3.9
-      - name: Setup Python 3.9
-        uses: actions/setup-python@v6
-        with:
-          python-version: '3.9'
-
-      - name: Run tests Python 3.9
-        timeout-minutes: 20
-        run: ./scripts/ci-test-runner.sh windows-latest 3.9
         shell: bash
-        env:
-          SYSTEM_API_URL: ${{ steps.tunnel.outputs.url }}/api
-          SYSTEM_ADMIN_EMAIL: admin@rediacc.io
-          SYSTEM_ADMIN_PASSWORD: admin
-          REDIACC_TEST_ACTIVATION_CODE: "111111"
-          API_TIMEOUT: 60
-
-      # Python 3.10
-      - name: Setup Python 3.10
-        uses: actions/setup-python@v6
-        with:
-          python-version: '3.10'
-
-      - name: Run tests Python 3.10
-        timeout-minutes: 20
-        run: ./scripts/ci-test-runner.sh windows-latest 3.10
-        shell: bash
-        env:
-          SYSTEM_API_URL: ${{ steps.tunnel.outputs.url }}/api
-          SYSTEM_ADMIN_EMAIL: admin@rediacc.io
-          SYSTEM_ADMIN_PASSWORD: admin
-          REDIACC_TEST_ACTIVATION_CODE: "111111"
-          API_TIMEOUT: 60
-
-      # Python 3.11
-      - name: Setup Python 3.11
-        uses: actions/setup-python@v6
-        with:
-          python-version: '3.11'
-
-      - name: Run tests Python 3.11
-        timeout-minutes: 20
-        run: ./scripts/ci-test-runner.sh windows-latest 3.11
-        shell: bash
-        env:
-          SYSTEM_API_URL: ${{ steps.tunnel.outputs.url }}/api
-          SYSTEM_ADMIN_EMAIL: admin@rediacc.io
-          SYSTEM_ADMIN_PASSWORD: admin
-          REDIACC_TEST_ACTIVATION_CODE: "111111"
-          API_TIMEOUT: 60
-
-      
 
       - name: Upload CI Outputs
         if: always()
         uses: actions/upload-artifact@v4
         with:
-          name: ci-outputs-windows
+          name: ci-outputs-${{ matrix.os }}-py${{ matrix.python }}
           path: ci-outputs/
           retention-days: 30
 
@@ -490,174 +278,38 @@ jobs:
         if: always()
         uses: actions/upload-artifact@v4
         with:
-          name: screenshots-windows
+          name: screenshots-${{ matrix.os }}-py${{ matrix.python }}
           path: test-screenshots/
           retention-days: 30
           if-no-files-found: ignore
 
-      - name: Signal Completion
-        if: always()
-        run: echo "done" > test-complete-windows.txt
+      - name: Signal OS Completion
+        if: ${{ always() && matrix.python == '3.13' }}
+        run: echo "done" > test-complete.txt
         shell: bash
 
-      - name: Upload Completion Signal
-        if: always()
+      - name: Upload Completion Signal (Linux)
+        if: ${{ always() && matrix.python == '3.13' && matrix.os == 'ubuntu-latest' }}
+        uses: actions/upload-artifact@v4
+        with:
+          name: test-complete-linux
+          path: test-complete.txt
+          retention-days: 1
+
+      - name: Upload Completion Signal (Windows)
+        if: ${{ always() && matrix.python == '3.13' && matrix.os == 'windows-latest' }}
         uses: actions/upload-artifact@v4
         with:
           name: test-complete-windows
-          path: test-complete-windows.txt
+          path: test-complete.txt
           retention-days: 1
 
-  # macOS tests - now parallel with Linux and Windows
-  test-macos:
-    name: macOS Tests
-    runs-on: macos-latest
-
-    steps:
-      - name: Checkout
-        uses: actions/checkout@v5
-
-      - name: Wait for and Download Tunnel URL
-        id: download-artifact
-        uses: actions/download-artifact@v4
-        with:
-          name: tunnel-url
-        continue-on-error: true
-
-      - name: Retry Download Tunnel URL
-        if: steps.download-artifact.outcome == 'failure'
-        run: |
-          MAX_WAIT=1500  # 25 minutes (Elite Services can take 20+ min to pull images)
-          ELAPSED=0
-
-          while [ $ELAPSED -lt $MAX_WAIT ]; do
-            MINUTES=$((ELAPSED / 60))
-            SECONDS=$((ELAPSED % 60))
-            echo "Waiting for tunnel URL artifact... (${MINUTES}m ${SECONDS}s elapsed)"
-
-            if gh run download ${{ github.run_id }} -n tunnel-url 2>/dev/null; then
-              echo "✓ Tunnel URL artifact downloaded after ${MINUTES}m ${SECONDS}s"
-              break
-            fi
-
-            sleep 10
-            ELAPSED=$((ELAPSED + 10))
-          done
-
-          if [ $ELAPSED -ge $MAX_WAIT ]; then
-            echo "::error::Timeout after ${MAX_WAIT}s waiting for backend to upload tunnel URL"
-            exit 1
-          fi
-        env:
-          GH_TOKEN: ${{ github.token }}
-
-      - name: Load Tunnel URL
-        id: tunnel
-        run: |
-          if [ ! -f tunnel-url.txt ]; then
-            echo "::error::Tunnel URL artifact not found after retry attempts"
-            exit 1
-          fi
-          TUNNEL_URL=$(cat tunnel-url.txt)
-          echo "url=$TUNNEL_URL" >> $GITHUB_OUTPUT
-          echo "Tunnel URL loaded: $TUNNEL_URL"
-
-      - name: Install system dependencies
-        run: brew install duti || true
-
-      # Python 3.8 - with integration tests
-      - name: Setup Python 3.8
-        uses: actions/setup-python@v6
-        with:
-          python-version: '3.8'
-
-      - name: Run tests Python 3.8
-        timeout-minutes: 20
-        run: ./scripts/ci-test-runner.sh macos-latest 3.8 true
-        env:
-          SYSTEM_API_URL: ${{ steps.tunnel.outputs.url }}/api
-          SYSTEM_ADMIN_EMAIL: admin@rediacc.io
-          SYSTEM_ADMIN_PASSWORD: admin
-          REDIACC_TEST_ACTIVATION_CODE: "111111"
-          API_TIMEOUT: 60
-
-      # Python 3.9
-      - name: Setup Python 3.9
-        uses: actions/setup-python@v6
-        with:
-          python-version: '3.9'
-
-      - name: Run tests Python 3.9
-        timeout-minutes: 20
-        run: ./scripts/ci-test-runner.sh macos-latest 3.9
-        env:
-          SYSTEM_API_URL: ${{ steps.tunnel.outputs.url }}/api
-          SYSTEM_ADMIN_EMAIL: admin@rediacc.io
-          SYSTEM_ADMIN_PASSWORD: admin
-          REDIACC_TEST_ACTIVATION_CODE: "111111"
-          API_TIMEOUT: 60
-
-      # Python 3.10
-      - name: Setup Python 3.10
-        uses: actions/setup-python@v6
-        with:
-          python-version: '3.10'
-
-      - name: Run tests Python 3.10
-        timeout-minutes: 20
-        run: ./scripts/ci-test-runner.sh macos-latest 3.10
-        env:
-          SYSTEM_API_URL: ${{ steps.tunnel.outputs.url }}/api
-          SYSTEM_ADMIN_EMAIL: admin@rediacc.io
-          SYSTEM_ADMIN_PASSWORD: admin
-          REDIACC_TEST_ACTIVATION_CODE: "111111"
-          API_TIMEOUT: 60
-
-      # Python 3.11
-      - name: Setup Python 3.11
-        uses: actions/setup-python@v6
-        with:
-          python-version: '3.11'
-
-      - name: Run tests Python 3.11
-        timeout-minutes: 20
-        run: ./scripts/ci-test-runner.sh macos-latest 3.11
-        env:
-          SYSTEM_API_URL: ${{ steps.tunnel.outputs.url }}/api
-          SYSTEM_ADMIN_EMAIL: admin@rediacc.io
-          SYSTEM_ADMIN_PASSWORD: admin
-          REDIACC_TEST_ACTIVATION_CODE: "111111"
-          API_TIMEOUT: 60
-
-      
-
-      - name: Upload CI Outputs
-        if: always()
-        uses: actions/upload-artifact@v4
-        with:
-          name: ci-outputs-macos
-          path: ci-outputs/
-          retention-days: 30
-
-      - name: Upload Screenshots
-        if: always()
-        uses: actions/upload-artifact@v4
-        with:
-          name: screenshots-macos
-          path: test-screenshots/
-          retention-days: 30
-          if-no-files-found: ignore
-
-      - name: Signal Completion
-        if: always()
-        run: echo "done" > test-complete-macos.txt
-
-      - name: Upload Completion Signal
-        if: always()
+      - name: Upload Completion Signal (macOS)
+        if: ${{ always() && matrix.python == '3.13' && matrix.os == 'macos-latest' }}
         uses: actions/upload-artifact@v4
         with:
           name: test-complete-macos
-          path: test-complete-macos.txt
+          path: test-complete.txt
           retention-days: 1
 
   # Code quality checks
@@ -687,32 +339,23 @@ jobs:
   test-summary:
     name: Test Summary
     runs-on: ubuntu-latest
-    needs: [test-linux, test-windows, test-macos, code-quality]
+    needs: [tests, code-quality]
     if: always()
 
     steps:
       - name: Check results
         run: |
-          echo "Linux: ${{ needs.test-linux.result }}"
-          echo "Windows: ${{ needs.test-windows.result }}"
-          echo "macOS: ${{ needs.test-macos.result }}"
-
-          if [ "${{ needs.test-linux.result }}" != "success" ]; then
-            echo "::error::Linux tests failed"
+          echo "Tests (matrix): ${{ needs.tests.result }}"
+          echo "Code quality: ${{ needs.code-quality.result }}"
+          if [ "${{ needs.tests.result }}" != "success" ]; then
+            echo "::error::One or more matrix test jobs failed"
             exit 1
           fi
-
-          if [ "${{ needs.test-windows.result }}" != "success" ]; then
-            echo "::error::Windows tests failed"
+          if [ "${{ needs.code-quality.result }}" != "success" ]; then
+            echo "::error::Code quality checks failed"
             exit 1
           fi
-
-          if [ "${{ needs.test-macos.result }}" != "success" ]; then
-            echo "::error::macOS tests failed"
-            exit 1
-          fi
-
-          echo "✓ All tests passed!"
+          echo "✓ All checks passed!"
 
   # Build distribution packages after merge to main
   build-packages:
