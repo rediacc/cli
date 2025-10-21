@@ -58,24 +58,37 @@ python -m pip install -e ".[test,dev]" 2>&1 | tee -a "$OUTPUT_DIR/01-install-dep
 # Step 2: Run tests
 echo "Running tests..." | tee "$OUTPUT_DIR/02-run-tests.txt"
 
+# Determine if coverage should be collected (requires Python >= 3.10 for newer syntax)
+PY_MAJOR="${PYTHON_VERSION%%.*}"
+PY_MINOR="${PYTHON_VERSION#*.}"
+ENABLE_COVERAGE=false
+if [ "$PY_MAJOR" -gt 3 ] || { [ "$PY_MAJOR" -eq 3 ] && [ "$PY_MINOR" -ge 10 ]; }; then
+    ENABLE_COVERAGE=true
+fi
+
+# Base pytest arguments
+PYTEST_ARGS=(-v --tb=short --junitxml="test-results-${PYTHON_VERSION}/junit.xml")
+
+if [ "$ENABLE_COVERAGE" = true ]; then
+    PYTEST_ARGS+=(--cov=cli --cov-report=xml)
+else
+    echo "Coverage disabled for Python ${PYTHON_VERSION} (<3.10)" | tee -a "$OUTPUT_DIR/02-run-tests.txt"
+fi
+
+if [ "$PLATFORM_NAME" = "ubuntu-latest" ] && [ "$ENABLE_COVERAGE" = true ]; then
+    PYTEST_ARGS+=(--cov-report=html)
+fi
+
 # Platform-specific test command
 if [ "$PLATFORM_NAME" = "ubuntu-latest" ]; then
     # Linux: Use xvfb for GUI testing
     xvfb-run -a -s "-screen 0 1920x1080x24" python -m pytest tests/ \
-        -v \
-        --cov=cli \
-        --cov-report=xml \
-        --cov-report=html \
-        --junitxml="test-results-${PYTHON_VERSION}/junit.xml" \
-        --tb=short \
+        "${PYTEST_ARGS[@]}" \
         2>&1 | tee -a "$OUTPUT_DIR/02-run-tests.txt"
 else
     # Windows/macOS: Direct pytest
     python -m pytest tests/ \
-        -v \
-        --cov=cli \
-        --cov-report=xml \
-        --tb=short \
+        "${PYTEST_ARGS[@]}" \
         2>&1 | tee -a "$OUTPUT_DIR/02-run-tests.txt"
 fi
 

@@ -3,6 +3,8 @@
 [![CI Test Suite](https://github.com/rediacc/cli/actions/workflows/test-cli.yml/badge.svg)](https://github.com/rediacc/cli/actions/workflows/test-cli.yml)
 [![codecov](https://codecov.io/gh/rediacc/cli/branch/main/graph/badge.svg)](https://codecov.io/gh/rediacc/cli)
 [![PyPI version](https://badge.fury.io/py/rediacc.svg)](https://badge.fury.io/py/rediacc)
+
+<!-- Trigger CI: investigate-ci-issues -->
 [![Python Versions](https://img.shields.io/pypi/pyversions/rediacc.svg)](https://pypi.org/project/rediacc/)
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](https://opensource.org/licenses/MIT)
 

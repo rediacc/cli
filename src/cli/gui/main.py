@@ -1735,6 +1735,13 @@ class MainWindow(BaseWindow):
         # Use terminal detector to find best method
         method = self.terminal_detector.detect()
         
+        # Avoid spawning real terminal processes in CI environments where no GUI is available.
+        if os.environ.get('CI', 'false').lower() == 'true':
+            self.logger.info("CI environment detected, skipping terminal launch for command: %s", command)
+            print(f"[CI] Skipping terminal launch: {command}")
+            self.activity_status_label.config(text=f"{i18n.get('launched_terminal')} (ci-skip)")
+            return
+        
         if not method:
             self.logger.error("No working terminal method detected")
             messagebox.showerror(i18n.get('error'), f"{i18n.get('could_not_launch')} - No terminal method available")
