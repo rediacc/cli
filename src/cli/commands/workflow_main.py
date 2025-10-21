@@ -247,7 +247,7 @@ class WorkflowHandler:
         """Create repository and initialize it on machine"""
         try:
             # Import VaultBuilder here to avoid circular import
-            from rediacc_cli import VaultBuilder
+            from cli.commands.cli_main import VaultBuilder
             
             # Step 1: Create repository record in database
             # Handle vault data - if not provided or empty, create with random credential
@@ -420,7 +420,7 @@ class WorkflowHandler:
         """Push repository with automatic destination creation"""
         try:
             # Import VaultBuilder here to avoid circular import
-            from rediacc_cli import VaultBuilder
+            from cli.commands.cli_main import VaultBuilder
             
             # Get source repository data
             source_repo_response = self.client.token_request("GetTeamRepositories", {'teamName': args.source_team})
@@ -608,7 +608,7 @@ class WorkflowHandler:
         """Test connectivity for multiple machines"""
         try:
             # Import VaultBuilder here to avoid circular import
-            from rediacc_cli import VaultBuilder, format_table
+            from cli.commands.cli_main import VaultBuilder, format_table
             
             # Get machines for the specified team(s)
             team_filter = getattr(args, 'team', None)
@@ -810,7 +810,7 @@ class WorkflowHandler:
         """Simple hello test for machine connectivity"""
         try:
             # Import VaultBuilder here to avoid circular import
-            from rediacc_cli import VaultBuilder
+            from cli.commands.cli_main import VaultBuilder
             
             # Get machine data
             machine_data = self._get_machine_data(args.team, args.machine)
@@ -904,7 +904,7 @@ class WorkflowHandler:
         """Test SSH connectivity for bridge"""
         try:
             # Import VaultBuilder here to avoid circular import
-            from rediacc_cli import VaultBuilder
+            from cli.commands.cli_main import VaultBuilder
             
             # For SSH test, we need bridge information and SSH credentials
             # This is a special case where we might not need a specific machine
@@ -1024,7 +1024,7 @@ class WorkflowHandler:
         """Setup a new machine with datastore and dependencies"""
         try:
             # Import VaultBuilder here to avoid circular import
-            from rediacc_cli import VaultBuilder
+            from cli.commands.cli_main import VaultBuilder
             
             # Get machine data
             machine_data = self._get_machine_data(args.team, args.machine)
@@ -1134,7 +1134,7 @@ class WorkflowHandler:
         """Create machine and test SSH connection"""
         try:
             # Import VaultBuilder here to avoid circular import
-            from rediacc_cli import VaultBuilder
+            from cli.commands.cli_main import VaultBuilder
             
             # Step 1: Create machine record in database using existing create command infrastructure
             vault_data = getattr(args, 'vault', '{}')
