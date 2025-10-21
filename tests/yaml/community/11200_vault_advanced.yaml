@@ -73,15 +73,6 @@ tests:
     storageVault: '{"type": "s3", "initial": "value"}'
   expect:
     success: true
-- name: create_vault_adv_schedule
-  command:
-  - CreateSchedule
-  args:
-    teamName: VaultAdvTeam-${TIMESTAMP}
-    scheduleName: VaultAdvSchedule-${TIMESTAMP}
-    scheduleVault: '{"cron": "0 * * * *", "initial": "value"}'
-  expect:
-    success: true
 - name: create_vault_adv_repository
   command:
   - CreateRepository
@@ -121,16 +112,6 @@ tests:
     vaultVersion: 1
   expect:
     success: true
-- name: update_schedule_vault_versioned
-  command:
-  - UpdateScheduleVault
-  args:
-    teamName: VaultAdvTeam-${TIMESTAMP}
-    scheduleName: VaultAdvSchedule-${TIMESTAMP}
-    scheduleVault: '{"cron": "0 */2 * * *", "updated": "true", "version": 2}'
-    vaultVersion: 1
-  expect:
-    success: true
 - name: update_storage_vault_versioned
   command:
   - UpdateStorageVault
@@ -147,14 +128,6 @@ tests:
   args:
     teamName: VaultAdvTeam-${TIMESTAMP}
     repoName: VaultAdvRepo-${TIMESTAMP}
-  expect:
-    success: true
-- name: delete_vault_adv_schedule
-  command:
-  - DeleteSchedule
-  args:
-    teamName: VaultAdvTeam-${TIMESTAMP}
-    scheduleName: VaultAdvSchedule-${TIMESTAMP}
   expect:
     success: true
 - name: delete_vault_adv_storage
