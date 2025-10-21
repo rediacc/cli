@@ -172,7 +172,6 @@ permissions:
   # Consolidated matrix-based tests across OS and Python versions
   tests:
     name: Tests (${{ matrix.os }}, py${{ matrix.python }})
-    needs: shared-backend
     runs-on: ${{ matrix.os }}
     strategy:
       fail-fast: false
@@ -344,7 +343,7 @@ permissions:
   test-summary:
     name: Test Summary
     runs-on: ubuntu-latest
-    needs: [tests, code-quality]
+    needs: [tests, code-quality, shared-backend]
     if: always()
 
     steps:
