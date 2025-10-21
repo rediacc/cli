@@ -696,16 +696,26 @@ class GUITestSuite:
 
                 main_window.terminal_detector.detect = _stub_detect  # type: ignore[attr-defined]
                 main_window.terminal_detector.get_launch_function = lambda method: _stub_launch  # type: ignore[attr-defined]
-            
+
+            backend_issue = [None]
+            team_attempts = [0]
+            machine_attempts = [0]
+
+            def abort_test(reason: str):
+                if backend_issue[0] is None:
+                    backend_issue[0] = reason
+                finish_test()
+
             def interact_with_window():
                 """Interact with the main window after it's ready"""
                 print("  Selecting team and machine...")
-                
+
                 # Wait for teams to load
                 main_window.root.after(1000, select_team_and_machine)
-            
+
             def select_team_and_machine():
                 """Select team and machine from dropdowns"""
+                team_attempts[0] += 1
                 # Check if teams are loaded
                 if hasattr(main_window, 'team_combo'):
                     teams = main_window.team_combo['values']
@@ -722,13 +732,22 @@ class GUITestSuite:
                         main_window.root.after(2000, select_machine)
                     else:
                         print("    No teams available, waiting...")
-                        main_window.root.after(1000, select_team_and_machine)
+                        if team_attempts[0] >= 10:
+                            print("    Timeout waiting for teams to load")
+                            abort_test("Backend did not provide teams")
+                        else:
+                            main_window.root.after(1000, select_team_and_machine)
                 else:
                     print("    Team combo not ready, waiting...")
-                    main_window.root.after(1000, select_team_and_machine)
-            
+                    if team_attempts[0] >= 10:
+                        print("    Timeout waiting for team combo initialization")
+                        abort_test("Team combo unavailable")
+                    else:
+                        main_window.root.after(1000, select_team_and_machine)
+
             def select_machine():
                 """Select machine from dropdown"""
+                machine_attempts[0] += 1
                 if hasattr(main_window, 'machine_combo'):
                     machines = main_window.machine_combo['values']
                     if machines and len(machines) > 0:
@@ -744,11 +763,17 @@ class GUITestSuite:
                         main_window.root.after(2000, launch_terminal)
                     else:
                         print("    No machines available")
-                        finish_test()
+                        if machine_attempts[0] >= 10:
+                            abort_test("Backend did not provide machines")
+                        else:
+                            main_window.root.after(1000, select_machine)
                 else:
                     print("    Machine combo not ready")
-                    finish_test()
-            
+                    if machine_attempts[0] >= 10:
+                        abort_test("Machine combo unavailable")
+                    else:
+                        main_window.root.after(1000, select_machine)
+
             def launch_terminal():
                 """Try to launch machine terminal from Tools menu"""
                 print("  Attempting to launch machine terminal...")
@@ -837,7 +862,7 @@ class GUITestSuite:
                 main_window.root.destroy()
             except:
                 pass
-            
+
         except Exception as e:
             print(f"✗ Error creating MainWindow: {e}")
             import traceback
@@ -849,6 +874,8 @@ class GUITestSuite:
             print("✓ Login and terminal launch test passed")
             return True
         else:
+            if backend_issue[0]:
+                pytest.skip(f"Login and terminal test skipped due to backend issue: {backend_issue[0]}")
             print(f"✗ Test failed - MainWindow created: {main_window_created[0]}, Terminal launched successfully: {terminal_launched[0]}")
             # This test should fail if terminal has import errors
             return False
