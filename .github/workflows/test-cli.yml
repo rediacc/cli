@@ -173,6 +173,10 @@ jobs:
   test-linux:
     name: Linux Tests
     runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        python: ['3.8', '3.9', '3.10', '3.11', '3.12', '3.13']
 
     steps:
       - name: Checkout repository
@@ -228,95 +232,16 @@ jobs:
           sudo apt-get update
           sudo apt-get install -y xdg-utils rsync openssh-client desktop-file-utils xvfb python3-tk python3-dev
 
-      # Python 3.8 - with integration tests
-      - name: Setup Python 3.8
+      - name: Setup Python ${{ matrix.python }}
         uses: actions/setup-python@v6
         with:
-          python-version: '3.8'
+          python-version: ${{ matrix.python }}
 
-      - name: Run tests Python 3.8
+      - name: Run tests Python ${{ matrix.python }}
         timeout-minutes: 20
-        run: ./scripts/ci-test-runner.sh ubuntu-latest 3.8 true
-        env:
-          SYSTEM_API_URL: ${{ steps.tunnel.outputs.url }}/api
-          SYSTEM_ADMIN_EMAIL: admin@rediacc.io
-          SYSTEM_ADMIN_PASSWORD: admin
-          REDIACC_TEST_ACTIVATION_CODE: "111111"
-          API_TIMEOUT: 60
-
-      # Python 3.9
-      - name: Setup Python 3.9
-        uses: actions/setup-python@v6
-        with:
-          python-version: '3.9'
-
-      - name: Run tests Python 3.9
-        timeout-minutes: 20
-        run: ./scripts/ci-test-runner.sh ubuntu-latest 3.9
-        env:
-          SYSTEM_API_URL: ${{ steps.tunnel.outputs.url }}/api
-          SYSTEM_ADMIN_EMAIL: admin@rediacc.io
-          SYSTEM_ADMIN_PASSWORD: admin
-          REDIACC_TEST_ACTIVATION_CODE: "111111"
-          API_TIMEOUT: 60
-
-      # Python 3.10
-      - name: Setup Python 3.10
-        uses: actions/setup-python@v6
-        with:
-          python-version: '3.10'
-
-      - name: Run tests Python 3.10
-        timeout-minutes: 20
-        run: ./scripts/ci-test-runner.sh ubuntu-latest 3.10
-        env:
-          SYSTEM_API_URL: ${{ steps.tunnel.outputs.url }}/api
-          SYSTEM_ADMIN_EMAIL: admin@rediacc.io
-          SYSTEM_ADMIN_PASSWORD: admin
-          REDIACC_TEST_ACTIVATION_CODE: "111111"
-          API_TIMEOUT: 60
-
-      # Python 3.11
-      - name: Setup Python 3.11
-        uses: actions/setup-python@v6
-        with:
-          python-version: '3.11'
-
-      - name: Run tests Python 3.11
-        timeout-minutes: 20
-        run: ./scripts/ci-test-runner.sh ubuntu-latest 3.11
-        env:
-          SYSTEM_API_URL: ${{ steps.tunnel.outputs.url }}/api
-          SYSTEM_ADMIN_EMAIL: admin@rediacc.io
-          SYSTEM_ADMIN_PASSWORD: admin
-          REDIACC_TEST_ACTIVATION_CODE: "111111"
-          API_TIMEOUT: 60
-
-      # Python 3.12
-      - name: Setup Python 3.12
-        uses: actions/setup-python@v6
-        with:
-          python-version: '3.12'
-
-      - name: Run tests Python 3.12
-        timeout-minutes: 20
-        run: ./scripts/ci-test-runner.sh ubuntu-latest 3.12
-        env:
-          SYSTEM_API_URL: ${{ steps.tunnel.outputs.url }}/api
-          SYSTEM_ADMIN_EMAIL: admin@rediacc.io
-          SYSTEM_ADMIN_PASSWORD: admin
-          REDIACC_TEST_ACTIVATION_CODE: "111111"
-          API_TIMEOUT: 60
-
-      # Python 3.13
-      - name: Setup Python 3.13
-        uses: actions/setup-python@v6
-        with:
-          python-version: '3.13'
-
-      - name: Run tests Python 3.13
-        timeout-minutes: 20
-        run: ./scripts/ci-test-runner.sh ubuntu-latest 3.13
+        run: |
+          INTEGRATION=$([ "${{ matrix.python }}" = "3.8" ] && echo true || echo false)
+          ./scripts/ci-test-runner.sh ubuntu-latest ${{ matrix.python }} "$INTEGRATION"
         env:
           SYSTEM_API_URL: ${{ steps.tunnel.outputs.url }}/api
           SYSTEM_ADMIN_EMAIL: admin@rediacc.io
@@ -328,7 +253,7 @@ jobs:
         if: always()
         uses: actions/upload-artifact@v4
         with:
-          name: ci-outputs-linux
+          name: ci-outputs-linux-py${{ matrix.python }}
           path: ci-outputs/
           retention-days: 30
 
@@ -336,17 +261,17 @@ jobs:
         if: always()
         uses: actions/upload-artifact@v4
         with:
-          name: screenshots-linux
+          name: screenshots-linux-py${{ matrix.python }}
           path: test-screenshots/
           retention-days: 30
           if-no-files-found: ignore
 
-      - name: Signal Completion
-        if: always()
+      - name: Signal Completion (Linux)
+        if: always() && matrix.python == '3.13'
         run: echo "done" > test-complete-linux.txt
 
-      - name: Upload Completion Signal
-        if: always()
+      - name: Upload Completion Signal (Linux)
+        if: always() && matrix.python == '3.13'
         uses: actions/upload-artifact@v4
         with:
           name: test-complete-linux
@@ -357,6 +282,10 @@ jobs:
   test-windows:
     name: Windows Tests
     runs-on: windows-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        python: ['3.8', '3.9', '3.10', '3.11', '3.12']
 
     steps:
       - name: Checkout
@@ -422,83 +351,14 @@ jobs:
         run: choco install rsync openssh -y
         shell: pwsh
 
-      # Python 3.8 - with integration tests
-      - name: Setup Python 3.8
+      - name: Setup Python ${{ matrix.python }}
         uses: actions/setup-python@v6
         with:
-          python-version: '3.8'
+          python-version: ${{ matrix.python }}
 
-      - name: Run tests Python 3.8
+      - name: Run tests Python ${{ matrix.python }}
         timeout-minutes: 20
-        run: ./scripts/ci-test-runner.sh windows-latest 3.8 true
-        shell: bash
-        env:
-          SYSTEM_API_URL: ${{ steps.tunnel.outputs.url }}/api
-          SYSTEM_ADMIN_EMAIL: admin@rediacc.io
-          SYSTEM_ADMIN_PASSWORD: admin
-          REDIACC_TEST_ACTIVATION_CODE: "111111"
-          API_TIMEOUT: 60
-
-      # Python 3.9
-      - name: Setup Python 3.9
-        uses: actions/setup-python@v6
-        with:
-          python-version: '3.9'
-
-      - name: Run tests Python 3.9
-        timeout-minutes: 20
-        run: ./scripts/ci-test-runner.sh windows-latest 3.9
-        shell: bash
-        env:
-          SYSTEM_API_URL: ${{ steps.tunnel.outputs.url }}/api
-          SYSTEM_ADMIN_EMAIL: admin@rediacc.io
-          SYSTEM_ADMIN_PASSWORD: admin
-          REDIACC_TEST_ACTIVATION_CODE: "111111"
-          API_TIMEOUT: 60
-
-      # Python 3.10
-      - name: Setup Python 3.10
-        uses: actions/setup-python@v6
-        with:
-          python-version: '3.10'
-
-      - name: Run tests Python 3.10
-        timeout-minutes: 20
-        run: ./scripts/ci-test-runner.sh windows-latest 3.10
-        shell: bash
-        env:
-          SYSTEM_API_URL: ${{ steps.tunnel.outputs.url }}/api
-          SYSTEM_ADMIN_EMAIL: admin@rediacc.io
-          SYSTEM_ADMIN_PASSWORD: admin
-          REDIACC_TEST_ACTIVATION_CODE: "111111"
-          API_TIMEOUT: 60
-
-      # Python 3.11
-      - name: Setup Python 3.11
-        uses: actions/setup-python@v6
-        with:
-          python-version: '3.11'
-
-      - name: Run tests Python 3.11
-        timeout-minutes: 20
-        run: ./scripts/ci-test-runner.sh windows-latest 3.11
-        shell: bash
-        env:
-          SYSTEM_API_URL: ${{ steps.tunnel.outputs.url }}/api
-          SYSTEM_ADMIN_EMAIL: admin@rediacc.io
-          SYSTEM_ADMIN_PASSWORD: admin
-          REDIACC_TEST_ACTIVATION_CODE: "111111"
-          API_TIMEOUT: 60
-
-      # Python 3.12
-      - name: Setup Python 3.12
-        uses: actions/setup-python@v6
-        with:
-          python-version: '3.12'
-
-      - name: Run tests Python 3.12
-        timeout-minutes: 20
-        run: ./scripts/ci-test-runner.sh windows-latest 3.12
+        run: ./scripts/ci-test-runner.sh windows-latest ${{ matrix.python }} false
         shell: bash
         env:
           SYSTEM_API_URL: ${{ steps.tunnel.outputs.url }}/api
@@ -511,7 +371,7 @@ jobs:
         if: always()
         uses: actions/upload-artifact@v4
         with:
-          name: ci-outputs-windows
+          name: ci-outputs-windows-py${{ matrix.python }}
           path: ci-outputs/
           retention-days: 30
 
@@ -519,18 +379,18 @@ jobs:
         if: always()
         uses: actions/upload-artifact@v4
         with:
-          name: screenshots-windows
+          name: screenshots-windows-py${{ matrix.python }}
           path: test-screenshots/
           retention-days: 30
           if-no-files-found: ignore
 
-      - name: Signal Completion
-        if: always()
+      - name: Signal Completion (Windows)
+        if: always() && matrix.python == '3.11'
         run: echo "done" > test-complete-windows.txt
         shell: bash
 
-      - name: Upload Completion Signal
-        if: always()
+      - name: Upload Completion Signal (Windows)
+        if: always() && matrix.python == '3.11'
         uses: actions/upload-artifact@v4
         with:
           name: test-complete-windows
@@ -541,6 +401,10 @@ jobs:
   test-macos:
     name: macOS Tests
     runs-on: macos-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        python: ['3.8', '3.9', '3.10', '3.11', '3.12']
 
     steps:
       - name: Checkout
@@ -594,91 +458,25 @@ jobs:
       - name: Install system dependencies
         run: brew install duti || true
 
-      # Python 3.8 - with integration tests
-      - name: Setup Python 3.8
+      - name: Setup Python ${{ matrix.python }}
         uses: actions/setup-python@v6
         with:
-          python-version: '3.8'
+          python-version: ${{ matrix.python }}
 
-      - name: Run tests Python 3.8
+      - name: Run tests Python ${{ matrix.python }}
         timeout-minutes: 20
-        run: ./scripts/ci-test-runner.sh macos-latest 3.8 true
+        run: ./scripts/ci-test-runner.sh macos-latest ${{ matrix.python }} false
         env:
           SYSTEM_API_URL: ${{ steps.tunnel.outputs.url }}/api
           SYSTEM_ADMIN_EMAIL: admin@rediacc.io
           SYSTEM_ADMIN_PASSWORD: admin
           REDIACC_TEST_ACTIVATION_CODE: "111111"
           API_TIMEOUT: 60
-
-      # Python 3.9
-      - name: Setup Python 3.9
-        uses: actions/setup-python@v6
-        with:
-          python-version: '3.9'
-
-      - name: Run tests Python 3.9
-        timeout-minutes: 20
-        run: ./scripts/ci-test-runner.sh macos-latest 3.9
-        env:
-          SYSTEM_API_URL: ${{ steps.tunnel.outputs.url }}/api
-          SYSTEM_ADMIN_EMAIL: admin@rediacc.io
-          SYSTEM_ADMIN_PASSWORD: admin
-          REDIACC_TEST_ACTIVATION_CODE: "111111"
-          API_TIMEOUT: 60
-
-      # Python 3.10
-      - name: Setup Python 3.10
-        uses: actions/setup-python@v6
-        with:
-          python-version: '3.10'
-
-      - name: Run tests Python 3.10
-        timeout-minutes: 20
-        run: ./scripts/ci-test-runner.sh macos-latest 3.10
-        env:
-          SYSTEM_API_URL: ${{ steps.tunnel.outputs.url }}/api
-          SYSTEM_ADMIN_EMAIL: admin@rediacc.io
-          SYSTEM_ADMIN_PASSWORD: admin
-          REDIACC_TEST_ACTIVATION_CODE: "111111"
-          API_TIMEOUT: 60
-
-      # Python 3.11
-      - name: Setup Python 3.11
-        uses: actions/setup-python@v6
-        with:
-          python-version: '3.11'
-
-      - name: Run tests Python 3.11
-        timeout-minutes: 20
-        run: ./scripts/ci-test-runner.sh macos-latest 3.11
-        env:
-          SYSTEM_API_URL: ${{ steps.tunnel.outputs.url }}/api
-          SYSTEM_ADMIN_EMAIL: admin@rediacc.io
-          SYSTEM_ADMIN_PASSWORD: admin
-          REDIACC_TEST_ACTIVATION_CODE: "111111"
-          API_TIMEOUT: 60
-
-      # Python 3.12
-      - name: Setup Python 3.12
-        uses: actions/setup-python@v6
-        with:
-          python-version: '3.12'
-
-      - name: Run tests Python 3.12
-        timeout-minutes: 20
-        run: ./scripts/ci-test-runner.sh macos-latest 3.12
-        env:
-          SYSTEM_API_URL: ${{ steps.tunnel.outputs.url }}/api
-          SYSTEM_ADMIN_EMAIL: admin@rediacc.io
-          SYSTEM_ADMIN_PASSWORD: admin
-          REDIACC_TEST_ACTIVATION_CODE: "111111"
-          API_TIMEOUT: 60
-
       - name: Upload CI Outputs
         if: always()
         uses: actions/upload-artifact@v4
         with:
-          name: ci-outputs-macos
+          name: ci-outputs-macos-py${{ matrix.python }}
           path: ci-outputs/
           retention-days: 30
 
@@ -686,17 +484,17 @@ jobs:
         if: always()
         uses: actions/upload-artifact@v4
         with:
-          name: screenshots-macos
+          name: screenshots-macos-py${{ matrix.python }}
           path: test-screenshots/
           retention-days: 30
           if-no-files-found: ignore
 
-      - name: Signal Completion
-        if: always()
+      - name: Signal Completion (macOS)
+        if: always() && matrix.python == '3.11'
         run: echo "done" > test-complete-macos.txt
 
-      - name: Upload Completion Signal
-        if: always()
+      - name: Upload Completion Signal (macOS)
+        if: always() && matrix.python == '3.11'
         uses: actions/upload-artifact@v4
         with:
           name: test-complete-macos
