@@ -232,13 +232,13 @@ permissions:
         shell: bash
 
       - name: Install Linux dependencies
-        if: ${{ matrix.os == 'ubuntu-latest' }}
+        if: ${{ runner.os == 'Linux' }}
         run: |
           sudo apt-get update
           sudo apt-get install -y xdg-utils rsync openssh-client desktop-file-utils xvfb python3-tk python3-dev
 
       - name: Setup headless display (Windows)
-        if: ${{ matrix.os == 'windows-latest' }}
+        if: ${{ runner.os == 'Windows' }}
         uses: pyvista/setup-headless-display-action@v3
         with:
           mesa3d-release: 24.3.0
@@ -246,12 +246,12 @@ permissions:
           pyvista: false
 
       - name: Install Windows dependencies
-        if: ${{ matrix.os == 'windows-latest' }}
+        if: ${{ runner.os == 'Windows' }}
         run: choco install rsync openssh -y
         shell: pwsh
 
       - name: Install macOS dependencies
-        if: ${{ matrix.os == 'macos-latest' }}
+        if: ${{ runner.os == 'macOS' }}
         run: brew install duti || true
 
       - name: Setup Python ${{ matrix.python }}
@@ -293,7 +293,7 @@ permissions:
         shell: bash
 
       - name: Upload Completion Signal (Linux)
-        if: ${{ always() && matrix.python == '3.13' && matrix.os == 'ubuntu-latest' }}
+        if: ${{ always() && matrix.python == '3.13' && runner.os == 'Linux' }}
         uses: actions/upload-artifact@v4
         with:
           name: test-complete-linux
@@ -301,7 +301,7 @@ permissions:
           retention-days: 1
 
       - name: Upload Completion Signal (Windows)
-        if: ${{ always() && matrix.python == '3.13' && matrix.os == 'windows-latest' }}
+        if: ${{ always() && matrix.python == '3.13' && runner.os == 'Windows' }}
         uses: actions/upload-artifact@v4
         with:
           name: test-complete-windows
@@ -309,7 +309,7 @@ permissions:
           retention-days: 1
 
       - name: Upload Completion Signal (macOS)
-        if: ${{ always() && matrix.python == '3.13' && matrix.os == 'macos-latest' }}
+        if: ${{ always() && matrix.python == '3.13' && runner.os == 'macOS' }}
         uses: actions/upload-artifact@v4
         with:
           name: test-complete-macos
