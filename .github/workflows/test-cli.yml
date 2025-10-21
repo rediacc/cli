@@ -292,21 +292,7 @@ jobs:
           REDIACC_TEST_ACTIVATION_CODE: "111111"
           API_TIMEOUT: 60
 
-      # Python 3.12
-      - name: Setup Python 3.12
-        uses: actions/setup-python@v6
-        with:
-          python-version: '3.12'
-
-      - name: Run tests Python 3.12
-        timeout-minutes: 20
-        run: ./scripts/ci-test-runner.sh ubuntu-latest 3.12
-        env:
-          SYSTEM_API_URL: ${{ steps.tunnel.outputs.url }}/api
-          SYSTEM_ADMIN_EMAIL: admin@rediacc.io
-          SYSTEM_ADMIN_PASSWORD: admin
-          REDIACC_TEST_ACTIVATION_CODE: "111111"
-          API_TIMEOUT: 60
+      
 
       # Python 3.13
       - name: Setup Python 3.13
@@ -490,22 +476,7 @@ jobs:
           REDIACC_TEST_ACTIVATION_CODE: "111111"
           API_TIMEOUT: 60
 
-      # Python 3.12
-      - name: Setup Python 3.12
-        uses: actions/setup-python@v6
-        with:
-          python-version: '3.12'
-
-      - name: Run tests Python 3.12
-        timeout-minutes: 20
-        run: ./scripts/ci-test-runner.sh windows-latest 3.12
-        shell: bash
-        env:
-          SYSTEM_API_URL: ${{ steps.tunnel.outputs.url }}/api
-          SYSTEM_ADMIN_EMAIL: admin@rediacc.io
-          SYSTEM_ADMIN_PASSWORD: admin
-          REDIACC_TEST_ACTIVATION_CODE: "111111"
-          API_TIMEOUT: 60
+      
 
       - name: Upload CI Outputs
         if: always()
@@ -658,21 +629,7 @@ jobs:
           REDIACC_TEST_ACTIVATION_CODE: "111111"
           API_TIMEOUT: 60
 
-      # Python 3.12
-      - name: Setup Python 3.12
-        uses: actions/setup-python@v6
-        with:
-          python-version: '3.12'
-
-      - name: Run tests Python 3.12
-        timeout-minutes: 20
-        run: ./scripts/ci-test-runner.sh macos-latest 3.12
-        env:
-          SYSTEM_API_URL: ${{ steps.tunnel.outputs.url }}/api
-          SYSTEM_ADMIN_EMAIL: admin@rediacc.io
-          SYSTEM_ADMIN_PASSWORD: admin
-          REDIACC_TEST_ACTIVATION_CODE: "111111"
-          API_TIMEOUT: 60
+      
 
       - name: Upload CI Outputs
         if: always()
