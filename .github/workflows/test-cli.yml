@@ -179,6 +179,11 @@ permissions:
       matrix:
         os: [ubuntu-latest, windows-latest, macos-latest]
         python: ['3.8', '3.9', '3.10', '3.11', '3.13']
+        include:
+          - os: ubuntu-latest
+            python: '3.8'
+            integration: true
+      
 
     steps:
       - name: Checkout repository
@@ -257,7 +262,7 @@ permissions:
 
       - name: Run tests
         timeout-minutes: 20
-        run: ./scripts/ci-test-runner.sh ${{ matrix.os }} ${{ matrix.python }} ${{ matrix.os == 'ubuntu-latest' && matrix.python == '3.8' && 'true' || 'false' }}
+        run: ./scripts/ci-test-runner.sh ${{ matrix.os }} ${{ matrix.python }} ${{ matrix.integration || 'false' }}
         env:
           SYSTEM_API_URL: ${{ steps.tunnel.outputs.url }}/api
           SYSTEM_ADMIN_EMAIL: admin@rediacc.io
