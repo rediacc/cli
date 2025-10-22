@@ -42,8 +42,14 @@ def format_command_list(commands: list, max_name_len: int = 20) -> str:
 def get_help_data() -> dict:
     """Get help data from help_generator.py"""
     try:
-        cli_root = Path(__file__).parent.parent.parent.parent
-        help_gen = cli_root / "src" / "cli" / "core" / "help_generator.py"
+        # Try to find help_generator.py relative to this file
+        # Works for both development (repo) and installed (PyPI) scenarios
+        help_gen = Path(__file__).parent / "help_generator.py"
+
+        if not help_gen.exists():
+            # Fallback for development structure
+            cli_root = Path(__file__).parent.parent.parent.parent
+            help_gen = cli_root / "src" / "cli" / "core" / "help_generator.py"
 
         result = subprocess.run(
             [sys.executable, str(help_gen)],
