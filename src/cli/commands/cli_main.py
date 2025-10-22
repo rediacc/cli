@@ -2157,6 +2157,30 @@ def main():
     if handle_special_flags():
         return 0
 
+    # Handle local commands that don't require authentication
+    if len(sys.argv) > 1:
+        command = sys.argv[1]
+
+        # Protocol command - delegate to protocol_main
+        if command == 'protocol':
+            try:
+                from cli.commands.protocol_main import main as protocol_main
+                sys.argv = [sys.argv[0]] + sys.argv[2:]
+                return protocol_main()
+            except Exception as e:
+                print(f"Error running protocol: {e}", file=sys.stderr)
+                return 1
+
+        # Setup command - show setup instructions
+        if command == 'setup':
+            print("Rediacc CLI Setup")
+            print("\nThe package is already installed via pip/pipx.")
+            print("\nAvailable commands:")
+            print("  rediacc login          - Authenticate with Rediacc API")
+            print("  rediacc protocol       - Manage protocol handlers")
+            print("  rediacc --help         - Show all available commands")
+            return 0
+
     # Check if this might be a dynamic command
     if len(sys.argv) > 1:
         # Get the first non-option argument (skip option values)
