@@ -771,13 +771,19 @@ def handle_protocol_url(url: str, is_protocol_call: bool = False) -> int:
             elif action == "terminal":
                 # Import and call term_main directly
                 try:
+                    # Disable bytecode writing to avoid permission issues in installed packages
+                    dont_write_bytecode = sys.dont_write_bytecode
+                    sys.dont_write_bytecode = True
+
                     try:
                         from ..commands import term_main
                     except ImportError:
                         # Fallback for when relative imports don't work
                         sys.path.insert(0, os.path.join(os.path.dirname(__file__), '..', 'commands'))
                         import term_main
-                    
+                    finally:
+                        sys.dont_write_bytecode = dont_write_bytecode
+
                     sys.argv = ["rediacc-term"] + cmd_args[1:]
                     exit_code = term_main.main()
                 except ImportError as e:
@@ -790,12 +796,18 @@ def handle_protocol_url(url: str, is_protocol_call: bool = False) -> int:
             elif action == "vscode":
                 # Import and call vscode_main directly
                 try:
+                    # Disable bytecode writing to avoid permission issues in installed packages
+                    dont_write_bytecode = sys.dont_write_bytecode
+                    sys.dont_write_bytecode = True
+
                     try:
                         from ..commands import vscode_main
                     except ImportError:
                         # Fallback for when relative imports don't work
                         sys.path.insert(0, os.path.join(os.path.dirname(__file__), '..', 'commands'))
                         import vscode_main
+                    finally:
+                        sys.dont_write_bytecode = dont_write_bytecode
 
                     sys.argv = ["rediacc-vscode"] + cmd_args[1:]
                     exit_code = vscode_main.main()
@@ -809,12 +821,18 @@ def handle_protocol_url(url: str, is_protocol_call: bool = False) -> int:
             elif action in ["plugin", "browser"]:
                 # Import and call cli_main directly
                 try:
+                    # Disable bytecode writing to avoid permission issues in installed packages
+                    dont_write_bytecode = sys.dont_write_bytecode
+                    sys.dont_write_bytecode = True
+
                     try:
                         from ..commands import cli_main
                     except ImportError:
                         # Fallback for when relative imports don't work
                         sys.path.insert(0, os.path.join(os.path.dirname(__file__), '..', 'commands'))
                         import cli_main
+                    finally:
+                        sys.dont_write_bytecode = dont_write_bytecode
 
                     sys.argv = ["rediacc"] + cmd_args
                     exit_code = cli_main.main()
@@ -828,13 +846,19 @@ def handle_protocol_url(url: str, is_protocol_call: bool = False) -> int:
             elif action == "desktop":
                 # Import and call desktop GUI directly
                 try:
+                    # Disable bytecode writing to avoid permission issues in installed packages
+                    dont_write_bytecode = sys.dont_write_bytecode
+                    sys.dont_write_bytecode = True
+
                     try:
                         from ..gui.main import launch_gui
                     except ImportError:
                         # Fallback for when relative imports don't work
                         sys.path.insert(0, os.path.join(os.path.dirname(__file__), '..', 'gui'))
                         from main import launch_gui
-                    
+                    finally:
+                        sys.dont_write_bytecode = dont_write_bytecode
+
                     # Pass arguments to desktop GUI for preselection
                     sys.argv = ["rediacc-desktop"] + cmd_args[1:]
                     launch_gui()  # This function calls sys.exit() internally
