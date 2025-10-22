@@ -1833,12 +1833,53 @@ class CommandHandler:
         workflow = WorkflowHandler(self)
         return workflow.workflow_add_machine(args)
 
+
+def show_version():
+    """Print version information - single source of truth for version display"""
+    print(f'Rediacc CLI v{__version__}')
+
+
+def show_help():
+    """Print comprehensive help - single source of truth for help display"""
+    from cli.core.format_help import main as format_help_main
+    format_help_main()
+
+
+def handle_special_flags():
+    """
+    Handle special flags that should work consistently in both wrapper and PyPI package.
+    Returns True if a special flag was handled (caller should exit), False otherwise.
+
+    This function provides DRY principle for:
+    - --version: Show version and exit
+    - --help/-h: Show comprehensive help and exit
+    - No arguments: Show comprehensive help and exit
+    """
+    # Handle version
+    if '--version' in sys.argv:
+        show_version()
+        return True
+
+    # Handle help
+    if '--help' in sys.argv or '-h' in sys.argv:
+        show_help()
+        return True
+
+    # Handle no arguments
+    if len(sys.argv) == 1:
+        show_help()
+        return True
+
+    return False
+
+
 def setup_parser():
     parser = argparse.ArgumentParser(
         prog='rediacc cli',
-        description='Rediacc CLI - Complete interface for Rediacc Middleware API with enhanced queue support'
+        description='Rediacc CLI - Complete interface for Rediacc Middleware API with enhanced queue support',
+        add_help=False  # We handle help manually for consistent UX across wrapper and direct Python
     )
-    # Note: --version is only available at root level (rediacc --version)
+    # Note: --version and --help are handled early in main() for consistent behavior
     parser.add_argument('--output', '-o', choices=['text', 'json', 'json-full'], default='text',
                        help='Output format: text, json (concise), or json-full (comprehensive)')
     parser.add_argument('--token', '-t', help='Authentication token (overrides saved token)')
@@ -2111,7 +2152,11 @@ def main():
     # Debug output
     if os.environ.get('REDIACC_DEBUG_ARGS'):
         print(f"DEBUG: sys.argv = {sys.argv}", file=sys.stderr)
-    
+
+    # Handle special flags (--version, --help, no args) using DRY approach
+    if handle_special_flags():
+        return 0
+
     # Check if this might be a dynamic command
     if len(sys.argv) > 1:
         # Get the first non-option argument (skip option values)

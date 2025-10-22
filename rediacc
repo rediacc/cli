@@ -113,8 +113,13 @@ if [ -n "$REDIACC_DEBUG" ] || [ -n "$VERBOSE_MODE" ]; then
 fi
 
 print_help() {
-    # Use dynamic Python help system
+    # Use dynamic Python help system (DRY - delegates to show_help() in cli_main.py)
     "$PYTHON_CMD" "$CLI_ROOT/src/cli/core/format_help.py"
+}
+
+print_version() {
+    # Use Python version system (DRY - delegates to show_version() in cli_main.py)
+    "$PYTHON_CMD" -c "import sys; sys.path.insert(0, '$CLI_ROOT/src'); from cli.commands.cli_main import show_version; show_version()"
 }
 
 # Setup function
@@ -582,8 +587,8 @@ case "$1" in
         ;;
         
     version|--version)
-        # Show version of main CLI (read from _version.py)
-        "$PYTHON_CMD" -c "import sys; sys.path.insert(0, '$CLI_ROOT/src'); from cli._version import __version__; print(f'Rediacc CLI v{__version__}')"
+        # Show version (DRY - uses show_version() function)
+        print_version
         ;;
         
     help|--help|-h)
