@@ -285,9 +285,11 @@ Categories=Network;
             
             # Update MIME database (if needed)
             try:
-                subprocess.run([
-                    "update-mime-database", str(mime_dir / "packages")
-                ], check=True, timeout=30)
+                mime_packages_dir = mime_dir / "packages"
+                if mime_packages_dir.exists():
+                    subprocess.run([
+                        "update-mime-database", str(mime_packages_dir)
+                    ], check=True, timeout=30, capture_output=True)
             except (subprocess.CalledProcessError, FileNotFoundError):
                 # Not critical if this fails
                 pass
@@ -326,13 +328,17 @@ Categories=Network;
             if desktop_file.exists():
                 desktop_file.unlink()
             
-            # Unregister MIME type (set to no default)
+            # Unregister MIME type by removing the association
             try:
-                subprocess.run([
-                    "xdg-mime", "default", "", self.MIME_TYPE
-                ], timeout=30)
-            except subprocess.CalledProcessError:
-                # This might fail if no default was set, which is okay
+                # Remove the mimeapps.list entry
+                mimeapps_file = Path.home() / ".config" / "mimeapps.list"
+                if mimeapps_file.exists():
+                    content = mimeapps_file.read_text()
+                    lines = [line for line in content.split('\n')
+                            if self.MIME_TYPE not in line or self.DESKTOP_ENTRY_ID not in line]
+                    mimeapps_file.write_text('\n'.join(lines))
+            except Exception:
+                # This might fail, which is okay
                 pass
             
             # Update desktop database
