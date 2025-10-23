@@ -466,6 +466,13 @@ logger = get_logger(__name__)
 
 def is_encrypted(value: str) -> bool:
     if not value or len(value) < 20: return False
+    # Check if it's valid JSON first - if so, it's not encrypted
+    try:
+        json.loads(value)
+        return False  # It's JSON, not encrypted
+    except (json.JSONDecodeError, ValueError):
+        pass  # Not JSON, could be encrypted
+    # Now check if it's base64-encoded binary data
     try: return len(base64.b64decode(value)) >= 32
     except Exception: return False
 

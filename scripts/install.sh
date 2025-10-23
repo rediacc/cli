@@ -421,7 +421,7 @@ main() {
         print_success "All requirements satisfied!"
         echo
         print_info "You can now use Rediacc CLI:"
-        echo "  ./rediacc login"
+        echo "  ./rediacc auth login"
         echo "  ./rediacc sync upload --help"
         echo "  ./rediacc sync download --help"
         echo "  ./rediacc term --help"
@@ -450,7 +450,7 @@ main() {
 
                 print_success "Created symlinks in $BIN_DIR"
                 print_info "You can now run commands from anywhere:"
-                echo "  rediacc login"
+                echo "  rediacc auth login"
                 echo "  rediacc sync upload --help"
                 echo "  rediacc term --help"
             fi

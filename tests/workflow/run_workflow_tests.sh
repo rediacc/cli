@@ -22,7 +22,7 @@ echo
 # Check if user is logged in
 if ! "$CLI_DIR/rediacc" cli list teams --output json >/dev/null 2>&1; then
     echo -e "${RED}Error: Not authenticated. Please login first.${NC}"
-    echo -e "${YELLOW}Run: ./rediacc login${NC}"
+    echo -e "${YELLOW}Run: ./rediacc auth login${NC}"
     exit 1
 fi
 
