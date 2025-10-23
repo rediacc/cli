@@ -4,15 +4,20 @@
 Rediacc CLI Workflow Module - High-level workflow commands for common operations
 """
 
+import argparse
 import json
-import time
 import os
 import secrets
 import string
+import sys
+import time
+from pathlib import Path
 from typing import Optional, Dict, Any
 
 from cli.core.shared import colorize
 from cli.core.api_client import client
+from cli.core.config import TokenManager, setup_logging, get_logger
+from cli.config import CLI_CONFIG_FILE
 
 
 def format_output(data, format_type, message=None, error=None):
@@ -35,18 +40,41 @@ def minifyJSON(json_str):
 
 class WorkflowHandler:
     """Handler for workflow commands that combine multiple operations"""
-    
-    def __init__(self, command_handler):
-        """Initialize workflow handler with command handler reference"""
-        self.command_handler = command_handler
-        self.config = command_handler.config
-        self.config_manager = command_handler.config_manager
-        self.client = command_handler.client
-        self.output_format = command_handler.output_format
-    
+
+    def __init__(self, command_handler=None, config_manager=None, client_instance=None, output_format='text'):
+        """
+        Initialize workflow handler
+
+        Can be initialized in two ways:
+        1. Legacy: Pass command_handler (for backward compatibility with cli_main.py)
+        2. Standalone: Pass config_manager, client_instance, output_format directly
+        """
+        if command_handler:
+            # Legacy mode - maintain backward compatibility
+            self.command_handler = command_handler
+            self.config = command_handler.config
+            self.config_manager = command_handler.config_manager
+            self.client = command_handler.client
+            self.output_format = command_handler.output_format
+        else:
+            # Standalone mode - used when called from main()
+            self.command_handler = None
+            self.config = None
+            self.config_manager = config_manager
+            self.client = client_instance
+            self.output_format = output_format
+
     def handle_response(self, response, success_message=None, format_args=None):
-        """Delegate to command handler's handle_response"""
-        return self.command_handler.handle_response(response, success_message, format_args)
+        """Handle API response - delegate to command handler if available, otherwise handle directly"""
+        if self.command_handler:
+            return self.command_handler.handle_response(response, success_message, format_args)
+        else:
+            # Standalone mode - handle response directly
+            if response.get('error'):
+                return format_output(None, self.output_format, None, response['error'])
+            else:
+                message = success_message.format(**format_args) if format_args else success_message
+                return format_output(response.get('data'), self.output_format, message)
     
     def _get_machine_data(self, team_name, machine_name):
         """Helper to get machine data including bridge and vault"""
@@ -1340,3 +1368,150 @@ class WorkflowHandler:
         except Exception as e:
             print(format_output(None, self.output_format, None, f"Workflow error: {str(e)}"))
             return 1
+
+
+def setup_workflow_parser():
+    """Build argparse parser for workflow commands from cli-config.json"""
+    # Load CLI configuration
+    try:
+        with open(CLI_CONFIG_FILE, 'r', encoding='utf-8') as f:
+            cli_config = json.load(f)
+    except Exception as e:
+        print(f"Error loading CLI configuration: {e}", file=sys.stderr)
+        sys.exit(1)
+
+    workflow_config = cli_config.get('CLI_COMMANDS', {}).get('workflow', {})
+    
+    parser = argparse.ArgumentParser(
+        prog='rediacc workflow',
+        description=workflow_config.get('description', 'High-level workflow commands')
+    )
+    
+    # Global options
+    parser.add_argument('--token', '-t', help='Authentication token (overrides saved token)')
+    parser.add_argument('--output', '-o', choices=['text', 'json', 'json-full'], default='text',
+                       help='Output format')
+    parser.add_argument('--verbose', '-v', action='store_true', help='Enable verbose logging')
+    
+    # Subcommands
+    subparsers = parser.add_subparsers(dest='workflow_type', help='Workflow commands')
+    
+    # Build subcommands from config
+    for subcmd_name, subcmd_def in workflow_config.get('subcommands', {}).items():
+        subcmd_parser = subparsers.add_parser(
+            subcmd_name,
+            help=subcmd_def.get('description', f'{subcmd_name} command')
+        )
+        
+        # Add parameters for this subcommand
+        if 'parameters' in subcmd_def:
+            for param_name, param_def in subcmd_def['parameters'].items():
+                cli_param_name = f'--{param_name}'
+                kwargs = {}
+                
+                if 'help' in param_def:
+                    kwargs['help'] = param_def['help']
+                if 'required' in param_def:
+                    kwargs['required'] = param_def['required']
+                if 'default' in param_def:
+                    kwargs['default'] = param_def['default']
+                if 'type' in param_def:
+                    if param_def['type'] == 'int':
+                        kwargs['type'] = int
+                if 'action' in param_def:
+                    kwargs['action'] = param_def['action']
+                if 'choices' in param_def:
+                    kwargs['choices'] = param_def['choices']
+                
+                kwargs['dest'] = param_name.replace('-', '_')
+                subcmd_parser.add_argument(cli_param_name, **kwargs)
+    
+    return parser
+
+
+def main():
+    """Main entry point for workflow command"""
+    parser = setup_workflow_parser()
+    args = parser.parse_args()
+    
+    # Setup logging
+    setup_logging(verbose=args.verbose)
+    logger = get_logger(__name__)
+    
+    # Check if workflow type was specified
+    if not args.workflow_type:
+        parser.print_help()
+        return 1
+    
+    # Initialize token manager
+    config_manager = TokenManager()
+    config_manager.load_vault_info_from_config()
+    
+    # Handle token override
+    if args.token:
+        if not TokenManager.validate_token(args.token):
+            error = f"Invalid token format: {TokenManager.mask_token(args.token)}"
+            print(format_output(None, args.output, None, error))
+            return 1
+        TokenManager.set_token(args.token)
+    
+    # Check authentication
+    if not config_manager.is_authenticated():
+        error = "Not authenticated. Please login first."
+        print(format_output(None, args.output, None, error))
+        return 1
+    
+    # Initialize API client
+    api_client = client
+    
+    # Initialize workflow handler in standalone mode
+    handler = WorkflowHandler(
+        config_manager=config_manager,
+        client_instance=api_client,
+        output_format=args.output
+    )
+    
+    # Route to appropriate workflow method
+    try:
+        if args.workflow_type == 'repo-create':
+            return handler.workflow_repo_create(args)
+        elif args.workflow_type == 'repo-push':
+            # Validate destination type requirements
+            if args.dest_type == 'machine' and not args.dest_machine:
+                error = "--dest-machine is required when --dest-type is 'machine'"
+                print(format_output(None, args.output, None, error))
+                return 1
+            elif args.dest_type == 'storage' and not args.dest_storage:
+                error = "--dest-storage is required when --dest-type is 'storage'"
+                print(format_output(None, args.output, None, error))
+                return 1
+            return handler.workflow_repo_push(args)
+        elif args.workflow_type == 'connectivity-test':
+            return handler.workflow_connectivity_test(args)
+        elif args.workflow_type == 'hello-test':
+            return handler.workflow_hello_test(args)
+        elif args.workflow_type == 'ssh-test':
+            return handler.workflow_ssh_test(args)
+        elif args.workflow_type == 'machine-setup':
+            return handler.workflow_machine_setup(args)
+        elif args.workflow_type == 'add-machine':
+            return handler.workflow_add_machine(args)
+        else:
+            error = f"Unknown workflow type: {args.workflow_type}"
+            print(format_output(None, args.output, None, error))
+            return 1
+    except Exception as e:
+        error = f"Workflow error: {str(e)}"
+        if args.verbose:
+            import traceback
+            traceback.print_exc()
+        print(format_output(None, args.output, None, error))
+        return 1
+
+
+if __name__ == '__main__':
+    try:
+        sys.exit(main())
+    except KeyboardInterrupt:
+        print("\nOperation cancelled by user")
+        sys.exit(130)

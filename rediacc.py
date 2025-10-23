@@ -887,8 +887,8 @@ For detailed documentation, see docs/README.md"""
                 self.cmd_desktop_docker(args)
             elif command == 'desktop-docker-build':
                 self.cmd_desktop_docker_build(args)
-            elif command == 'login':
-                self.cmd_cli_command('cli', ['login'] + args)
+            elif command == 'auth':
+                self.cmd_cli_command('auth', args)
             elif command == 'sync':
                 self.cmd_cli_command('sync', args)
             elif command in ['term', 'terminal']:

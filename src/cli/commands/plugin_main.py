@@ -92,13 +92,8 @@ def list_plugins(args):
     print(colorize(f"Listing plugins for repository '{args.repo}' on machine '{args.machine}'...", 'HEADER'))
     
     conn = RepositoryConnection(args.team, args.machine, args.repo); conn.connect()
-    
-    original_host_entry = conn.connection_info.get('host_entry') if args.dev else None
-    if args.dev: conn.connection_info['host_entry'] = None
-    
+
     with conn.ssh_context() as ssh_conn:
-        if args.dev and original_host_entry is not None: 
-            conn.connection_info['host_entry'] = original_host_entry
         universal_user = conn.connection_info.get('universal_user', 'rediacc')
         
         # Use the new plugin_socket_dir for listing sockets
@@ -179,23 +174,19 @@ def connect_plugin(args):
             error_exit("No available ports in range 7111-9111")
     
     conn = RepositoryConnection(args.team, args.machine, args.repo); conn.connect()
-    
-    original_host_entry = conn.connection_info.get('host_entry') if args.dev else None
-    if args.dev: conn.connection_info['host_entry'] = None
-    
+
     # Get SSH key for tunnel connection
     ssh_key = get_ssh_key_from_vault(args.team)
     if not ssh_key:
         error_exit(f"SSH key not found for team '{args.team}'")
-    
+
     # Use SSHTunnelConnection for persistent tunnels
-    host_entry = None if args.dev else conn.connection_info.get('host_entry')
+    host_entry = conn.connection_info.get('host_entry')
+    if not host_entry:
+        error_exit("Security Error: No host key found in machine vault. Contact your administrator to add the host key.")
     ssh_tunnel_conn = SSHTunnelConnection(ssh_key, host_entry)
     ssh_tunnel_conn.__enter__()  # Setup connection
     ssh_tunnel_conn.disable_auto_cleanup()  # Prevent auto cleanup for persistent tunnel
-    
-    if args.dev and original_host_entry is not None: 
-        conn.connection_info['host_entry'] = original_host_entry
     
     try:
         # Verify plugin socket exists
@@ -442,7 +433,6 @@ Plugin Access:
     # List command
     list_parser = subparsers.add_parser('list', help='List available plugins in a repository')
     add_common_arguments(list_parser, include_args=['token', 'team', 'machine', 'repo'])
-    list_parser.add_argument('--dev', action='store_true', help='Development mode - relaxes SSH host key checking')
     list_parser.set_defaults(func=list_plugins)
     
     # Connect command
@@ -450,7 +440,6 @@ Plugin Access:
     add_common_arguments(connect_parser, include_args=['token', 'team', 'machine', 'repo'])
     connect_parser.add_argument('--plugin', required=True, help='Plugin name (e.g., browser, terminal)')
     connect_parser.add_argument('--port', type=int, help='Local port to use (auto-assigned if not specified)')
-    connect_parser.add_argument('--dev', action='store_true', help='Development mode - relaxes SSH host key checking')
     connect_parser.set_defaults(func=connect_plugin)
     
     # Disconnect command

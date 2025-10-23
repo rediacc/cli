@@ -25,8 +25,8 @@ from cli.core.config import (
 
 from cli.core.shared import colorize, COLORS
 from cli.core.api_client import client
-from cli.commands.workflow_main import WorkflowHandler
 from cli.core.telemetry import track_command, initialize_telemetry, shutdown_telemetry
+# Note: WorkflowHandler import removed - workflow is now a standalone module
 
 try:
     from cryptography.hazmat.primitives import hashes
@@ -45,13 +45,12 @@ except ConfigError as e:
     print(f"Configuration error: {e}", file=sys.stderr)
     sys.exit(1)
 
-from cli.core.config import get_config_dir, get_main_config_file
+from cli.core.config import get_config_dir
 
 HTTP_PORT = get_required('SYSTEM_HTTP_PORT')
 BASE_URL = get_required('SYSTEM_API_URL')
 API_PREFIX = '/StoredProcedure'
 CONFIG_DIR = str(get_config_dir())
-CONFIG_FILE = str(get_main_config_file())
 REQUEST_TIMEOUT = 30
 TEST_ACTIVATION_CODE = get('REDIACC_TEST_ACTIVATION_CODE') or '111111'
 
@@ -62,7 +61,9 @@ if not CRYPTO_AVAILABLE:
     else:
         print(colorize("Install with: pip install cryptography", 'YELLOW'), file=sys.stderr)
 
-CLI_CONFIG_PATH = Path(__file__).parent.parent.parent / 'config' / 'cli-config.json'
+from cli.config import CLI_CONFIG_FILE
+
+CLI_CONFIG_PATH = CLI_CONFIG_FILE
 try:
     with open(CLI_CONFIG_PATH, 'r', encoding='utf-8') as f:
         cli_config = json.load(f)
@@ -475,19 +476,17 @@ class VaultBuilder:
         vault = self._parse_vault(machine_vault)
         result = {}
         
-        # Map fields to expected format
+        # Map fields to expected format (always use lowercase with underscores)
         field_mappings = [
-            ('IP', ['ip', 'IP']),
-            ('USER', ['user', 'USER']),
-            ('DATASTORE', ['datastore', 'DATASTORE']),
-            ('HOST_ENTRY', ['host_entry', 'HOST_ENTRY'])
+            ('IP', 'ip'),
+            ('USER', 'user'),
+            ('DATASTORE', 'datastore'),
+            ('HOST_ENTRY', 'host_entry')
         ]
-        
-        for target_key, source_keys in field_mappings:
-            for source_key in source_keys:
-                if source_key in vault:
-                    result[target_key] = vault[source_key]
-                    break
+
+        for target_key, source_key in field_mappings:
+            if source_key in vault:
+                result[target_key] = vault[source_key]
                     
         return result
     
@@ -713,124 +712,6 @@ class CommandHandler:
             print(colorize(success_message, 'GREEN'))
         return True
     
-    def login(self, args):
-        # Check for environment variables and use them as defaults
-        env_email = os.environ.get('SYSTEM_ADMIN_EMAIL')
-        env_password = os.environ.get('SYSTEM_ADMIN_PASSWORD')
-        
-        email = args.email or env_email or input("Email: ")
-        password = args.password or env_password or getpass.getpass("Password: ")
-        hash_pwd = pwd_hash(password)
-        
-        login_params = {'name': args.session_name or "CLI Session"}
-        
-        for attr, param in [('tfa_code', 'TFACode'), ('permissions', 'requestedPermissions'), ('expiration', 'tokenExpirationHours'), ('target', 'target')]:
-            if hasattr(args, attr):
-                value = getattr(args, attr)
-                if value:
-                    login_params[param] = value
-        
-        response = self.client.auth_request("CreateAuthenticationRequest", email, hash_pwd, login_params)
-        
-        if response.get('error'): print(format_output(None, self.output_format, None, f"Login failed: {response['error']}")); return 1
-        resultSets = response.get('resultSets', [])
-        if not resultSets or not resultSets[0].get('data'): print(format_output(None, self.output_format, None, "Login failed: Could not get authentication token")); return 1
-        auth_data = resultSets[0]['data'][0]
-        token = auth_data.get('nextRequestToken')
-        if not token: print(format_output(None, self.output_format, None, "Login failed: Invalid authentication token")); return 1
-        
-        is_authorized = auth_data.get('isAuthorized', True)
-        authentication_status = auth_data.get('authenticationStatus', '')
-        
-        if authentication_status == 'TFA_REQUIRED' and not is_authorized:
-            if not hasattr(args, 'tfa_code') or not args.tfa_code:
-                if self.output_format not in ['json', 'json-full']:
-                    from cli.core.config import I18n
-                    i18n = I18n()
-                    tfa_code = input(i18n.get('enter_tfa_code'))
-                else:
-                    print(format_output(None, self.output_format, None, "TFA_REQUIRED. Please provide --tfa-code parameter."))
-                    return 1
-                
-                login_params['TFACode'] = tfa_code
-                response = self.client.auth_request("CreateAuthenticationRequest", email, hash_pwd, login_params)
-                
-                if response.get('error'):
-                    print(format_output(None, self.output_format, None, f"TFA verification failed: {response['error']}"))
-                    return 1
-                
-                resultSets = response.get('resultSets', [])
-                if not resultSets or not resultSets[0].get('data'):
-                    print(format_output(None, self.output_format, None, "TFA verification failed: Could not get authentication token"))
-                    return 1
-                
-                auth_data = resultSets[0]['data'][0]
-                token = auth_data.get('nextRequestToken')
-                if not token:
-                    print(format_output(None, self.output_format, None, "TFA verification failed: Invalid authentication token"))
-                    return 1
-        
-        company = auth_data.get('companyName')
-        vault_company = auth_data.get('vaultCompany') or auth_data.get('VaultCompany')
-        
-        self.config_manager.set_token_with_auth(token, email, company, vault_company)
-        
-        # Immediately fetch and update vault_company with COMPANY_ID after login
-        company_info = self.client.get_company_vault()
-        if company_info:
-            updated_vault = company_info.get('vaultCompany')
-            if updated_vault:
-                self.config_manager.set_token_with_auth(token, email, company, updated_vault)
-        
-        # Check if company has vault encryption enabled
-        if vault_company and is_encrypted(vault_company):
-            # Company requires master password
-            master_password = getattr(args, 'master_password', None)
-            if not master_password:
-                print(colorize("Your company requires a master password for vault encryption.", 'YELLOW'))
-                master_password = getpass.getpass("Master Password: ")
-            
-            if self.config_manager.validate_master_password(master_password):
-                self.config_manager.set_master_password(master_password)
-                if self.output_format not in ['json', 'json-full']:
-                    print(colorize("Master password validated successfully", 'GREEN'))
-            else:
-                print(format_output(None, self.output_format, None, 
-                    "Invalid master password. Please check with your administrator for the correct company master password."))
-                if self.output_format not in ['json', 'json-full']:
-                    print(colorize("Warning: Logged in but vault data will not be decrypted", 'YELLOW'))
-        elif hasattr(args, 'master_password') and args.master_password and self.output_format not in ['json', 'json-full']:
-            print(colorize("Note: Your company has not enabled vault encryption. The master password will not be used.", 'YELLOW'))
-        
-        if self.output_format in ['json', 'json-full']:
-            result = {
-                'email': email,
-                'company': company,
-                'vault_encryption_enabled': bool(vault_company and is_encrypted(vault_company)),
-                'master_password_set': bool(self.config_manager.get_master_password())
-            }
-            print(format_output(result, self.output_format, f"Successfully logged in as {email}"))
-        else:
-            print(colorize(f"Successfully logged in as {email}", 'GREEN'))
-            if company:
-                print(f"Company: {company}")
-            if vault_company and is_encrypted(vault_company):
-                print(f"Vault Encryption: Enabled")
-                print(f"Master Password: {'Set' if self.config_manager.get_master_password() else 'Not set (vault data will remain encrypted)'}")
-        
-        return 0
-    
-    def logout(self, args):
-        """Log out from the Rediacc API"""
-        # Delete the user request if we have a token
-        if TokenManager.get_token():
-            self.client.token_request("DeleteUserRequest")
-        
-        # Clear local auth data
-        self.config_manager.clear_auth()
-        
-        print(format_output({}, self.output_format, "Successfully logged out"))
-        return 0
     
 
 
@@ -1796,42 +1677,8 @@ class CommandHandler:
                     output_parts.append("No timeline events recorded")
             
             return '\n'.join(output_parts)
-    
-    # Workflow delegate methods
-    def workflow_repo_create(self, args):
-        """Delegate to workflow handler"""
-        workflow = WorkflowHandler(self)
-        return workflow.workflow_repo_create(args)
-    
-    def workflow_repo_push(self, args):
-        """Delegate to workflow handler"""
-        workflow = WorkflowHandler(self)
-        return workflow.workflow_repo_push(args)
-    
-    def workflow_connectivity_test(self, args):
-        """Delegate to workflow handler"""
-        workflow = WorkflowHandler(self)
-        return workflow.workflow_connectivity_test(args)
-    
-    def workflow_hello_test(self, args):
-        """Delegate to workflow handler"""
-        workflow = WorkflowHandler(self)
-        return workflow.workflow_hello_test(args)
-    
-    def workflow_ssh_test(self, args):
-        """Delegate to workflow handler"""
-        workflow = WorkflowHandler(self)
-        return workflow.workflow_ssh_test(args)
-    
-    def workflow_machine_setup(self, args):
-        """Delegate to workflow handler"""
-        workflow = WorkflowHandler(self)
-        return workflow.workflow_machine_setup(args)
-    
-    def workflow_add_machine(self, args):
-        """Delegate to workflow handler"""
-        workflow = WorkflowHandler(self)
-        return workflow.workflow_add_machine(args)
+
+    # Note: Workflow delegate methods removed - workflow is now a standalone module
 
 
 def show_version():
@@ -1852,18 +1699,31 @@ def handle_special_flags():
 
     This function provides DRY principle for:
     - --version: Show version and exit
-    - --help/-h: Show comprehensive help and exit
+    - --help/-h: Show comprehensive help and exit (only if no command specified)
     - No arguments: Show comprehensive help and exit
     """
-    # Handle version
+    # Handle version (global flag)
     if '--version' in sys.argv:
         show_version()
         return True
 
-    # Handle help
+    # Handle help - only if it appears before any command
+    # This allows subcommands to handle their own --help
     if '--help' in sys.argv or '-h' in sys.argv:
-        show_help()
-        return True
+        # Check if there's a command before the help flag
+        has_command_before_help = False
+        for i, arg in enumerate(sys.argv[1:], 1):
+            if arg in ['--help', '-h']:
+                break
+            # If we find a non-flag argument before --help, it's a command
+            if not arg.startswith('-'):
+                has_command_before_help = True
+                break
+
+        # Only show global help if no command was specified before --help
+        if not has_command_before_help:
+            show_help()
+            return True
 
     # Handle no arguments
     if len(sys.argv) == 1:
@@ -1956,11 +1816,11 @@ def setup_parser():
     # Add CLI commands from JSON configuration
     if 'CLI_COMMANDS' in cli_config:
         for cmd_name, cmd_def in cli_config['CLI_COMMANDS'].items():
-            # Skip license - now has dedicated module
-            if cmd_name == 'license':
+            # Skip license and workflow - now have dedicated modules
+            if cmd_name in ('license', 'workflow'):
                 continue
 
-            # Only process commands with subcommands structure (workflow)
+            # Only process commands with subcommands structure
             if isinstance(cmd_def, dict) and 'subcommands' in cmd_def:
                 cmd_parser = subparsers.add_parser(cmd_name, help=cmd_def.get('description', f'{cmd_name} commands'))
 
@@ -2023,9 +1883,10 @@ def reorder_args(argv):
     global_opts = {'--output', '-o', '--token', '-t', '--verbose', '-v', '--sandbox'}
     
     # Commands that have subcommands
-    subcommand_cmds = {'create', 'list', 'update', 'rm', 'vault', 'permission', 'user', 
-                       'team-member', 'bridge', 'queue', 'company', 'audit', 'inspect', 
-                       'distributed-storage', 'auth', 'workflow'}
+    # Note: workflow removed - now routed via dispatcher
+    subcommand_cmds = {'create', 'list', 'update', 'rm', 'vault', 'permission', 'user',
+                       'team-member', 'bridge', 'queue', 'company', 'audit', 'inspect',
+                       'distributed-storage', 'auth'}
     
     # Separate script name, global options, and command/args
     script_name = argv[0]
@@ -2161,14 +2022,34 @@ def main():
     if len(sys.argv) > 1:
         command = sys.argv[1]
 
-        # Protocol command - delegate to protocol_main
-        if command == 'protocol':
+        # Command dispatcher - route dedicated commands to their modules (Docker-style UX)
+        # This allows both 'rediacc sync' and 'rediacc-sync' to work
+        command_modules = {
+            'auth': ('cli.commands.auth_main', 'Auth'),
+            'sync': ('cli.commands.sync_main', 'Sync'),
+            'term': ('cli.commands.term_main', 'Term'),
+            'plugin': ('cli.commands.plugin_main', 'Plugin'),
+            'vscode': ('cli.commands.vscode_main', 'VSCode'),
+            'compose': ('cli.commands.compose_main', 'Compose'),
+            'license': ('cli.commands.license_main', 'License'),
+            'protocol': ('cli.commands.protocol_main', 'Protocol'),
+            'workflow': ('cli.commands.workflow_main', 'Workflow'),
+            'desktop': ('cli.gui.main', 'Desktop'),
+            'gui': ('cli.gui.main', 'GUI'),  # Alias for desktop
+        }
+
+        if command in command_modules:
             try:
-                from cli.commands.protocol_main import main as protocol_main
+                module_path, cmd_name = command_modules[command]
+                module = __import__(module_path, fromlist=['main'])
+                # Adjust sys.argv to remove the subcommand
                 sys.argv = [sys.argv[0]] + sys.argv[2:]
-                return protocol_main()
+                return module.main()
             except Exception as e:
-                print(f"Error running protocol: {e}", file=sys.stderr)
+                print(f"Error running {cmd_name}: {e}", file=sys.stderr)
+                if os.environ.get('REDIACC_DEBUG'):
+                    import traceback
+                    traceback.print_exc()
                 return 1
 
         # Setup command - show setup instructions
@@ -2200,7 +2081,8 @@ def main():
                 break
         
         # Check if it's a known command
-        known_commands = set(API_ENDPOINTS.keys()) | {'login', 'logout', 'workflow'}
+        # Note: workflow and auth are now routed via dispatcher, not here
+        known_commands = set(API_ENDPOINTS.keys())
         
         if potential_command and potential_command not in known_commands and potential_command not in CLI_COMMANDS:
             # This might be a dynamic endpoint
@@ -2286,58 +2168,9 @@ def main():
         print(help_text)
         return 0
 
-    if args.command == 'login':
-        return handler.login(args)
-    elif args.command == 'logout':
-        return handler.logout(args)
-    elif args.command == 'workflow':
-        # Handle workflow commands
-        if not hasattr(args, 'workflow_type') or not args.workflow_type:
-            error = "No workflow type specified. Use 'rediacc workflow --help' to see available workflows."
-            output = format_output(None, output_format, None, error)
-            print(output)
-            return 1
-        
-        # All workflow commands require authentication
-        if not config_manager.is_authenticated():
-            error = "Not authenticated. Please login first."
-            output = format_output(None, output_format, None, error)
-            print(output)
-            return 1
-        
-        if args.workflow_type == 'repo-create':
-            return handler.workflow_repo_create(args)
-        elif args.workflow_type == 'repo-push':
-            # Validate destination type requirements
-            if args.dest_type == 'machine' and not args.dest_machine:
-                error = "--dest-machine is required when --dest-type is 'machine'"
-                output = format_output(None, output_format, None, error)
-                print(output)
-                return 1
-            elif args.dest_type == 'storage' and not args.dest_storage:
-                error = "--dest-storage is required when --dest-type is 'storage'"
-                output = format_output(None, output_format, None, error)
-                print(output)
-                return 1
-            return handler.workflow_repo_push(args)
-        elif args.workflow_type == 'connectivity-test':
-            return handler.workflow_connectivity_test(args)
-        elif args.workflow_type == 'hello-test':
-            return handler.workflow_hello_test(args)
-        elif args.workflow_type == 'ssh-test':
-            return handler.workflow_ssh_test(args)
-        elif args.workflow_type == 'machine-setup':
-            return handler.workflow_machine_setup(args)
-        elif args.workflow_type == 'add-machine':
-            return handler.workflow_add_machine(args)
-        else:
-            error = f"Unknown workflow type: {args.workflow_type}"
-            output = format_output(None, output_format, None, error)
-            print(output)
-            return 1
-    
+    # Note: workflow and auth are now handled via dispatcher, not here
+
     auth_not_required_commands = {
-        ('login', None),  # Login doesn't require authentication
         ('user', 'activate'),
         ('create', 'company'),
         ('queue', 'list-functions')

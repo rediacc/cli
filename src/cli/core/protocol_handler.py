@@ -769,29 +769,67 @@ def handle_protocol_url(url: str, is_protocol_call: bool = False) -> int:
                     exit_code = e.code if e.code is not None else 1
 
             elif action == "terminal":
-                # Import and call term_main directly
-                try:
-                    # Disable bytecode writing to avoid permission issues in installed packages
-                    dont_write_bytecode = sys.dont_write_bytecode
-                    sys.dont_write_bytecode = True
+                # Check if we're running in a terminal (command line) or not (browser protocol call)
+                has_terminal = sys.stdin.isatty() and sys.stdout.isatty()
 
+                if not has_terminal and is_protocol_call:
+                    # Called from browser without terminal - launch in new terminal window
                     try:
-                        from ..commands import term_main
-                    except ImportError:
-                        # Fallback for when relative imports don't work
-                        sys.path.insert(0, os.path.join(os.path.dirname(__file__), '..', 'commands'))
-                        import term_main
-                    finally:
-                        sys.dont_write_bytecode = dont_write_bytecode
+                        from .config import TerminalDetector, get_cli_root
 
-                    sys.argv = ["rediacc-term"] + cmd_args[1:]
-                    exit_code = term_main.main()
-                except ImportError as e:
-                    logger.error(f"Failed to import term module: {e}")
-                    command_error = f"Failed to import term module: {e}"
-                    exit_code = 1
-                except SystemExit as e:
-                    exit_code = e.code if e.code is not None else 1
+                        # Build the rediacc command
+                        rediacc_cmd = ' '.join(cmd_args)
+                        logger.info(f"Launching terminal for command: {rediacc_cmd}")
+
+                        # Detect best terminal
+                        detector = TerminalDetector()
+                        method = detector.detect()
+
+                        if not method:
+                            logger.error("No working terminal emulator found")
+                            command_error = "No working terminal emulator found on your system"
+                            exit_code = 1
+                        else:
+                            # Get launch function
+                            launch_func = detector.get_launch_function(method)
+                            if launch_func:
+                                cli_dir = str(get_cli_root())
+                                logger.info(f"Launching terminal with method '{method}': {rediacc_cmd}")
+                                launch_func(cli_dir, rediacc_cmd, "Rediacc Terminal")
+                                exit_code = 0
+                                logger.info("Terminal launched successfully")
+                            else:
+                                logger.error(f"Launch function not found for method: {method}")
+                                command_error = f"Failed to get launch function for terminal method: {method}"
+                                exit_code = 1
+                    except Exception as e:
+                        logger.error(f"Failed to launch terminal: {e}", exc_info=True)
+                        command_error = f"Failed to launch terminal: {e}"
+                        exit_code = 1
+                else:
+                    # Running in terminal (command line call) - execute directly
+                    try:
+                        # Disable bytecode writing to avoid permission issues in installed packages
+                        dont_write_bytecode = sys.dont_write_bytecode
+                        sys.dont_write_bytecode = True
+
+                        try:
+                            from ..commands import term_main
+                        except ImportError:
+                            # Fallback for when relative imports don't work
+                            sys.path.insert(0, os.path.join(os.path.dirname(__file__), '..', 'commands'))
+                            import term_main
+                        finally:
+                            sys.dont_write_bytecode = dont_write_bytecode
+
+                        sys.argv = ["rediacc-term"] + cmd_args[1:]
+                        exit_code = term_main.main()
+                    except ImportError as e:
+                        logger.error(f"Failed to import term module: {e}")
+                        command_error = f"Failed to import term module: {e}"
+                        exit_code = 1
+                    except SystemExit as e:
+                        exit_code = e.code if e.code is not None else 1
 
             elif action == "vscode":
                 # Import and call vscode_main directly

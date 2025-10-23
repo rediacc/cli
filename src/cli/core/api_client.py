@@ -164,23 +164,30 @@ class SuperClient:
     
     @property
     def base_url(self):
-        # Check for sandbox mode first
+        # Check for saved endpoint from last login first
+        from cli.core.config import TokenManager
+        auth_info = TokenManager.get_auth_info()
+        saved_endpoint = auth_info.get('endpoint')
+        if saved_endpoint:
+            return saved_endpoint
+
+        # Check for sandbox mode
         sandbox_mode = getattr(self, 'sandbox_mode', False)
-        
+
         # Check environment variable for sandbox mode
         if not sandbox_mode and 'REDIACC_SANDBOX_MODE' in os.environ:
             sandbox_mode = os.environ.get('REDIACC_SANDBOX_MODE').lower() == 'true'
-        
+
         if sandbox_mode:
             # Get sandbox URL from environment or use from env_config
             return os.environ.get('SANDBOX_API_URL') or EnvironmentConfig.get_env('SANDBOX_API_URL')
-        
+
         # Check build type (must be set in environment)
         build_type = os.environ.get('REDIACC_BUILD_TYPE')
         if not build_type:
             # Fall back to env_config
             build_type = EnvironmentConfig.get_env('REDIACC_BUILD_TYPE')
-        
+
         if build_type and build_type.upper() == 'RELEASE':
             return os.environ.get('PUBLIC_API_URL') or EnvironmentConfig.get_env('PUBLIC_API_URL')
         else:

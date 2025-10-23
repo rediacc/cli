@@ -10,10 +10,12 @@ import sys
 from pathlib import Path
 from typing import Dict, List, Any
 
-# Get paths
-CLI_ROOT = Path(__file__).parent.parent.parent.parent
-COMMANDS_DIR = CLI_ROOT / "src" / "cli" / "commands"
-CONFIG_FILE = CLI_ROOT / "src" / "config" / "cli-config.json"
+from cli.config import CLI_CONFIG_FILE
+
+# Get paths - simple and consistent in both dev and installed
+CLI_PACKAGE_DIR = Path(__file__).parent.parent  # .../cli/core -> .../cli
+COMMANDS_DIR = CLI_PACKAGE_DIR / "commands"
+CONFIG_FILE = CLI_CONFIG_FILE
 
 
 def get_module_description(module_path: Path) -> str:
@@ -158,17 +160,12 @@ def get_cli_commands() -> List[Dict[str, str]]:
 
 
 def get_wrapper_commands() -> List[Dict[str, str]]:
-    """Return bash wrapper utility commands"""
+    """Return utility commands that actually work in the Python CLI"""
     return [
         {'name': 'setup', 'description': 'Install dependencies and configure environment'},
-        {'name': 'test', 'description': 'Run test suite'},
-        {'name': 'release', 'description': 'Create release build'},
         {'name': 'version', 'description': 'Show version information'},
         {'name': 'help', 'description': 'Show this help message'},
         {'name': 'desktop', 'description': 'Launch Rediacc Desktop application'},
-        {'name': 'docker-build', 'description': 'Build CLI Docker image'},
-        {'name': 'docker-run', 'description': 'Run CLI in Docker container'},
-        {'name': 'docker-shell', 'description': 'Interactive shell in Docker container'},
     ]
 
 

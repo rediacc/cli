@@ -1,184 +1,243 @@
-# Rediacc CLI - Infrastructure Protection and Disaster Recovery
+# Rediacc CLI - Command-Line Tools for Rediacc Platform
 
-**Build resilient infrastructure with 60-second recovery capabilities.** Instant cloning, time-travel recovery, and 90% storage reduction.
+Command-line interface for managing your Rediacc infrastructure automation platform.
 
-## 🚨 The Risks We Address
+## What This Is
 
-- **AI Agent Risks**: As seen in recent incidents where AI deleted production databases
-- **Regional Disasters**: Power outages and natural disasters that can take down entire data centers
-- **Data Loss**: Hardware failures (1.71% annual rate), ransomware attacks, and human errors
+This package provides CLI tools to interact with the Rediacc platform via API. The CLI lets you manage teams, machines, repositories, storage, and distributed task queues from your terminal.
 
-## ⚡ Your Protection Solution
+**Note:** This is a client tool. Infrastructure features (cloning, snapshots, disaster recovery) are provided by the Rediacc platform service, which requires an account and backend infrastructure.
 
-Rediacc CLI provides enterprise-grade infrastructure protection with instant cloning, time-travel recovery, and AI safety features designed to prevent and recover from disasters in seconds.
+## Installation
 
-## 🎯 Key Features
+```bash
+pip install rediacc
+```
 
-### AI Disaster Prevention
-- **Instant Cloning**: Clone 100TB databases in seconds - AI works on copies, never production
-- **MCP Protocol**: Native integration with Claude, GPT, and other AI systems
-- **Audit Trail**: Complete forensics of all AI operations
+## Prerequisites
 
-### Zero-Cost Backup (90% Storage Reduction)
-- **From 300TB to 3TB**: Store only changed data with Copy-on-Write technology
-- **7 Days → 10 Seconds**: Backup time for 100TB databases
-- **Universal Support**: Works with MySQL, PostgreSQL, MongoDB, Oracle - any database
+- Python 3.8 or higher
+- Rediacc account (sign up at https://rediacc.com)
+- Access to a Rediacc backend service
 
-### Time Travel Recovery
-- **1-Minute Recovery**: Restore from any disaster instantly
-- **Hourly Snapshots**: Automatic protection with 3-week retention
-- **Zero Data Loss**: Even recover 3-week old deletions when traditional backups fail
-
-### Cross-Continental Protection
-- **Regional Disaster Protection**: Maintain uptime during outages with geographic redundancy
-- **Instant Failover**: Sub-minute switchover to backup regions
-- **Bandwidth Efficient**: Only 2% of bandwidth for full protection
-
-## 🚀 Quick Start
-
-**Note:** Some examples demonstrate platform capabilities that may be conceptual or in development. See documentation for current CLI commands.
+## Quick Start
 
 ```bash
 # Install
 pip install rediacc
 
-# Authenticate
+# Initial setup (registers protocol handler)
+rediacc setup
+
+# Authenticate with your Rediacc account
 rediacc login
 
-# Protect Your Infrastructure (Examples)
-rediacc list teams                                          # View your teams
-rediacc create repository --name webapp --team Default      # Create protected repository
-rediacc queue add --function backup --repo webapp           # Schedule backup task
-rediacc-sync upload --local ./app --machine server --repo webapp  # Deploy safely
+# View available teams
+rediacc cli list teams
+
+# List machines in a team
+rediacc cli list team-machines --team YourTeam
+
+# Create a repository
+rediacc cli create repository --name myrepo --team YourTeam
+
+# Add a task to the queue
+rediacc cli queue add --function backup --team YourTeam --machine mymachine
+
+# View queue status
+rediacc cli queue list --team YourTeam
 ```
 
-## 💼 Enterprise-Ready
+## Available Commands
 
-- **Production-Grade**: Built for mission-critical infrastructure
-- **Proven Technology**: Copy-on-Write, snapshot-based recovery, cross-region replication
-- **Cost-Effective**: 90% storage reduction compared to traditional backup solutions
-- **24/7 Support**: Available for Premium and Elite tiers
+### Authentication
+- `rediacc login` - Authenticate with Rediacc API
+- `rediacc logout` - End current session
 
-## 🛠️ Components
+### Resource Management
+- `rediacc cli list` - List resources (teams, machines, repositories, regions, bridges, etc.)
+- `rediacc cli create` - Create resources (company, team, machine, repository, storage, etc.)
+- `rediacc cli update` - Update resource configurations
+- `rediacc cli delete` - Remove resources
 
-### Core CLI Tools
-- `rediacc` - Main CLI for infrastructure management and API operations
-- `rediacc-sync` - Efficient file synchronization with rsync
-- `rediacc-term` - SSH terminal access to repositories and machines
-- `rediacc-desktop` - Desktop application (if available)
+### Queue Operations
+- `rediacc cli queue add` - Add tasks to distributed queue
+- `rediacc cli queue list` - View queued tasks
+- `rediacc cli queue list-functions` - Show available queue functions
 
-### Platform Support
-- ✅ Linux (Ubuntu, RHEL, Debian, etc.)
-- ✅ macOS (Intel & Apple Silicon)
-- ✅ Windows (Native PowerShell + MSYS2 for rsync)
-- ✅ Docker containers
-- ✅ CI/CD pipelines (Jenkins, GitHub Actions, GitLab CI)
+### Configuration
+- `rediacc cli vault` - Manage encrypted credentials
+- `rediacc cli permission` - Manage user permissions
+- `rediacc cli user` - User management operations
 
-## 📊 Real-World Impact
+### Workflows
+- `rediacc cli workflow repo-create` - Automated repository creation
+- `rediacc cli workflow repo-push` - Push repository to storage/machine
+- `rediacc cli workflow machine-setup` - Set up new machines
 
-### Use Cases
-1. **E-commerce**: Reduce backup storage by 90% while maintaining instant recovery
-2. **Financial Services**: Ensure business continuity with cross-continental failover
-3. **AI Development**: Safely test AI agents on production clones
-4. **Legacy Systems**: Scale performance without code modifications
+### Utilities
+- `rediacc setup` - Initial setup and configuration
+- `rediacc protocol` - Manage rediacc:// URL handler
+- `rediacc license` - License management (offline/online)
+- `rediacc version` - Show version information
+- `rediacc help` - Display help
 
-### Protection Metrics
-- **Recovery Time**: 60 seconds vs. days/weeks
-- **Storage Reduction**: 90% (10TB data = 3TB storage)
-- **Uptime During Disasters**: 98% vs. 0%
-- **AI Incident Prevention**: 100% success rate
+## CLI Tools
 
-## 🔧 Advanced Features
+This package installs several command-line tools:
 
-### Infrastructure as Code
-```python
-# Note: Python SDK examples show platform capabilities
-# Some features may be in development
+- **rediacc** - Main CLI for API operations and resource management
+- **rediacc-sync** - File synchronization (requires rsync)
+- **rediacc-term** - SSH terminal access to repositories
+- **rediacc-plugin** - SSH tunnel management
+- **rediacc-desktop** - GUI application (if available)
 
-from rediacc import Client
+## Platform Support
 
-# Initialize client
-client = Client()
+- Linux (Ubuntu, RHEL, Debian, etc.)
+- macOS (Intel & Apple Silicon)
+- Windows (via PowerShell, MSYS2 recommended for sync features)
+- Docker containers
+- CI/CD pipelines (Jenkins, GitHub Actions, GitLab CI)
 
-# Create protected environment
-client.repos.create("test-env", team="Default")
+## Configuration
 
-# Deploy safely to repository
-client.repos.sync("test-env", local_path="./app")
+The CLI stores configuration in `~/.config/rediacc/`:
+- Authentication tokens
+- API endpoints
+- Encrypted vault credentials (if company has vault encryption enabled)
 
-# Execute commands in isolated environment
-client.repos.execute("test-env", "python ai_agent.py")
-```
+Environment variables can override configuration:
+- `SYSTEM_API_URL` - API endpoint URL
+- `SYSTEM_HTTP_PORT` - API port
+- `REDIACC_SANDBOX_MODE` - Use sandbox environment
 
-### Queue Management
+## Docker Support
+
+Run the CLI in Docker for isolated environments:
+
 ```bash
-# Add job to distributed queue
-rediacc queue add --function backup --team Default --machine server --priority 1
+# Build image
+docker build -f docker/Dockerfile -t rediacc/cli:latest .
 
-# Check task status
-rediacc queue status --task-id <task-id>
+# Run CLI
+docker run --rm -v ./cli/.config:/home/rediacc/.config rediacc/cli:latest rediacc login
 
-# List active bridges (workers)
-rediacc list bridges --team Default
+# Interactive shell
+docker run -it --rm -v ./cli/.config:/home/rediacc/.config rediacc/cli:latest /bin/bash
 ```
 
-### Multi-Cloud Support
+## Output Formats
+
+All commands support multiple output formats:
+
 ```bash
-# Sync to cloud machines
-rediacc-sync upload --local ./webapp --machine aws-cluster --repo webapp --team Default
+# Human-readable (default)
+rediacc cli list teams
 
-# Download from remote repository
-rediacc-sync download --machine aws-cluster --repo webapp --local ./backup --team Default
+# JSON output
+rediacc cli list teams --output json
 
-# Terminal access to cloud machine
-rediacc-term --machine aws-cluster --team Default --repo webapp
+# Detailed JSON (includes metadata)
+rediacc cli list teams --output json-full
 ```
 
-## 🏆 Why Choose Rediacc?
+## About the Rediacc Platform
 
-### Traditional Backup Limitations
-- ❌ Days to restore from incremental backups
-- ❌ 10-30x storage multiplication
-- ❌ Complex recovery procedures
-- ❌ No protection against AI operations
-- ❌ Limited retention windows
+The Rediacc platform (accessed via this CLI) provides:
 
-### Rediacc Advantages
-- ✅ Sub-minute recovery times
-- ✅ 90% storage reduction with CoW
-- ✅ Simple point-in-time recovery
-- ✅ Complete AI isolation
-- ✅ 3-week retention with hourly snapshots
+- **Infrastructure Automation**: Distributed task execution and resource management
+- **Snapshot Technology**: Copy-on-Write based repository cloning and versioning
+- **Disaster Recovery**: Point-in-time recovery capabilities
+- **Distributed Storage**: Multi-region storage orchestration
+- **Queue System**: Distributed task queue with priority scheduling
 
-## 📚 Documentation
+These features require a Rediacc platform subscription. The CLI is the management interface.
 
-- **Quick Start**: https://rediacc.com/docs/cli/quick-start
+## Use Cases
+
+- Automate infrastructure provisioning and deployment
+- Manage distributed teams and machines
+- Schedule backup and sync operations via queues
+- Integrate Rediacc operations into CI/CD pipelines
+- Manage repositories and storage across multiple regions
+
+## Documentation
+
+- **CLI Documentation**: See `docs/README.md` in the repository
+- **Platform Documentation**: https://rediacc.com/docs
 - **API Reference**: https://rediacc.com/docs/cli/api-reference
-- **Disaster Recovery Guide**: https://rediacc.com/docs/guides/disaster-recovery
-- **AI Safety Guide**: https://rediacc.com/docs/guides/ai-safety
 
-## 🤝 Support
-
-- **Emergency Hotline**: For active disasters, contact emergency@rediacc.com
-- **Enterprise Support**: 24/7 support for Premium/Elite customers
-- **Community**: https://community.rediacc.com
-- **GitHub Issues**: https://github.com/rediacc/cli/issues
-
-## 📜 License
-
-Proprietary - See LICENSE file for details. Free tier available for personal use.
-
-## 🎯 Your Next Step
-
-**Every hour without protection costs $843,360 in potential losses.**
-
-Don't wait for disaster to strike. Install Rediacc CLI now and get protected in 60 seconds.
+## Common Commands Reference
 
 ```bash
-pip install rediacc
-rediacc login  # Start your protection journey
+# Authentication
+rediacc login                                    # Login to your account
+rediacc logout                                   # Logout
+
+# List resources
+rediacc cli list teams                           # Show all teams
+rediacc cli list team-machines --team MyTeam     # Show machines in team
+rediacc cli list repositories --team MyTeam      # Show repositories
+
+# Create resources
+rediacc cli create repository --name myrepo --team MyTeam
+rediacc cli create machine --name mymachine --team MyTeam --region us-west
+
+# Queue operations
+rediacc cli queue add --function backup --team MyTeam --machine mymachine
+rediacc cli queue list --team MyTeam
+rediacc cli queue list-functions                 # No auth required
+
+# License management
+rediacc license generate-id                      # Generate machine ID
+rediacc license request                          # Request license file
+rediacc license install                          # Install license
 ```
+
+## Troubleshooting
+
+### Authentication Issues
+```bash
+# Check if authenticated
+rediacc cli auth status
+
+# Re-login if token expired
+rediacc logout
+rediacc login
+```
+
+### Configuration Issues
+```bash
+# Check configuration directory
+ls ~/.config/rediacc/
+
+# Run setup to reconfigure
+rediacc setup
+```
+
+### rsync/sync Issues
+On Windows, install MSYS2 for full sync functionality:
+```bash
+# Install MSYS2, then:
+pacman -S rsync openssh
+```
+
+## Support
+
+- **GitHub Issues**: https://github.com/rediacc/cli/issues
+- **Documentation**: https://docs.rediacc.com
+- **Website**: https://www.rediacc.com
+
+## License
+
+Proprietary - Part of the Rediacc infrastructure automation platform.
 
 ---
 
-*"With Rediacc, production damage from AI becomes preventable."* - Built for enterprises that demand reliable disaster recovery.
+**Getting Started**
+
+1. Install: `pip install rediacc`
+2. Setup: `rediacc setup`
+3. Login: `rediacc login`
+4. Explore: `rediacc help`
