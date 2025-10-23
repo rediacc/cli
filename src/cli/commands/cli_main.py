@@ -28,14 +28,6 @@ from cli.core.api_client import client
 from cli.core.telemetry import track_command, initialize_telemetry, shutdown_telemetry
 # Note: WorkflowHandler import removed - workflow is now a standalone module
 
-try:
-    from cryptography.hazmat.primitives import hashes
-    from cryptography.hazmat.primitives.kdf.pbkdf2 import PBKDF2HMAC
-    from cryptography.hazmat.primitives.ciphers.aead import AESGCM
-    CRYPTO_AVAILABLE = True
-except ImportError:
-    CRYPTO_AVAILABLE = False
-
 import time
 import datetime
 
@@ -54,13 +46,6 @@ CONFIG_DIR = str(get_config_dir())
 REQUEST_TIMEOUT = 30
 TEST_ACTIVATION_CODE = get('REDIACC_TEST_ACTIVATION_CODE') or '111111'
 
-if not CRYPTO_AVAILABLE:
-    print(colorize("Warning: cryptography library not installed. Vault encryption will not be available.", 'YELLOW'), file=sys.stderr)
-    if os.environ.get('MSYSTEM') or (sys.platform == 'win32' and ('/msys' in sys.executable.lower() or '/mingw' in sys.executable.lower())):
-        print(colorize("For MSYS2: Run 'pacman -S mingw-w64-x86_64-python-cryptography' or './scripts/install_msys2_packages.sh'", 'YELLOW'), file=sys.stderr)
-    else:
-        print(colorize("Install with: pip install cryptography", 'YELLOW'), file=sys.stderr)
-
 from cli.config import CLI_CONFIG_FILE
 
 CLI_CONFIG_PATH = CLI_CONFIG_FILE
@@ -73,87 +58,6 @@ try:
 except Exception as e:
     print(colorize(f"Error loading CLI configuration from {CLI_CONFIG_PATH}: {e}", 'RED'))
     sys.exit(1)
-
-ITERATIONS = 100000
-SALT_SIZE = 16
-IV_SIZE = 12
-TAG_SIZE = 16
-KEY_SIZE = 32
-
-def derive_key(password: str, salt: bytes) -> bytes:
-    if not CRYPTO_AVAILABLE:
-        raise RuntimeError("Cryptography library not available")
-    kdf = PBKDF2HMAC(
-        algorithm=hashes.SHA256(),
-        length=KEY_SIZE,
-        salt=salt,
-        iterations=ITERATIONS,
-    )
-    return kdf.derive(password.encode('utf-8'))
-
-def encrypt_string(plaintext: str, password: str) -> str:
-    if not CRYPTO_AVAILABLE:
-        raise RuntimeError("Cryptography library not available")
-    salt = os.urandom(SALT_SIZE)
-    iv = os.urandom(IV_SIZE)
-    key = derive_key(password, salt)
-    aesgcm = AESGCM(key)
-    ciphertext = aesgcm.encrypt(iv, plaintext.encode('utf-8'), None)
-    combined = salt + iv + ciphertext
-    return base64.b64encode(combined).decode('ascii')
-
-def decrypt_string(encrypted: str, password: str) -> str:
-    if not CRYPTO_AVAILABLE:
-        raise RuntimeError("Cryptography library not available")
-    combined = base64.b64decode(encrypted)
-    salt = combined[:SALT_SIZE]
-    iv = combined[SALT_SIZE:SALT_SIZE + IV_SIZE]
-    ciphertext = combined[SALT_SIZE + IV_SIZE:]
-    key = derive_key(password, salt)
-    aesgcm = AESGCM(key)
-    plaintext = aesgcm.decrypt(iv, ciphertext, None)
-    return plaintext.decode('utf-8')
-
-def is_encrypted(value: str) -> bool:
-    if not value or len(value) < 20: return False
-    try: json.loads(value); return False
-    except:
-        import re
-        return bool(re.match(r'^[A-Za-z0-9+/]+=*$', value) and len(value) >= 40)
-
-def encrypt_vault_fields(obj: dict, password: str) -> dict:
-    if not password or not obj: return obj
-    
-    def encrypt_field(key: str, value: Any) -> Any:
-        if 'vault' in key.lower() and isinstance(value, str) and value and not is_encrypted(value):
-            try: return encrypt_string(value, password)
-            except Exception as e: print(colorize(f"Warning: Failed to encrypt field {key}: {e}", 'YELLOW'))
-        return value
-    
-    return {
-        key: encrypt_field(key, value) if isinstance(value, str)
-        else encrypt_vault_fields(value, password) if isinstance(value, dict)
-        else [encrypt_vault_fields(item, password) if isinstance(item, dict) else item for item in value] if isinstance(value, list)
-        else value
-        for key, value in obj.items()
-    }
-
-def decrypt_vault_fields(obj: dict, password: str) -> dict:
-    if not password or not obj: return obj
-    
-    def decrypt_field(key: str, value: Any) -> Any:
-        if 'vault' in key.lower() and isinstance(value, str) and value and is_encrypted(value):
-            try: return decrypt_string(value, password)
-            except Exception as e: print(colorize(f"Warning: Failed to decrypt field {key}: {e}", 'YELLOW'))
-        return value
-    
-    return {
-        key: decrypt_field(key, value) if isinstance(value, str)
-        else decrypt_vault_fields(value, password) if isinstance(value, dict)
-        else [decrypt_vault_fields(item, password) if isinstance(item, dict) else item for item in value] if isinstance(value, list)
-        else value
-        for key, value in obj.items()
-    }
 
 def reconstruct_cmd_config():
     def process_value(value):
@@ -202,49 +106,6 @@ def pwd_hash(pwd):
 def extract_table_data(response, table_index=0):
     return response.get('resultSets', [])[table_index].get('data', []) if response and len(response.get('resultSets', [])) > table_index else []
 
-def get_vault_data(args):
-    if not (hasattr(args, 'vault_file') and args.vault_file): return getattr(args, 'vault', '{}') or '{}'
-    try: 
-        if args.vault_file == '-':
-            return json.dumps(json.loads(sys.stdin.read()))
-        else:
-            with open(args.vault_file, 'r', encoding='utf-8') as f:
-                return json.dumps(json.load(f))
-    except (IOError, json.JSONDecodeError) as e: print(colorize(f"Warning: Could not load vault data: {e}", 'YELLOW')); return '{}'
-
-def get_vault_set_params(args, config_manager=None):
-    if args.file and args.file != '-':
-        try: 
-            with open(args.file, 'r', encoding='utf-8') as f:
-                vault_data = f.read()
-        except IOError: print(colorize(f"Error: Could not read file: {args.file}", 'RED')); return None
-    else:
-        print("Enter JSON vault data (press Ctrl+D when finished):")
-        vault_data = sys.stdin.read()
-    
-    try: json.loads(vault_data)
-    except json.JSONDecodeError as e: print(colorize(f"Error: Invalid JSON: {str(e)}", 'RED')); return None
-    
-    params = {'vaultVersion': args.vault_version or 1}
-    
-    resource_mappings = {
-        'team': {'teamName': args.name, 'teamVault': vault_data},
-        'machine': {'teamName': args.team, 'machineName': args.name, 'machineVault': vault_data},
-        'region': {'regionName': args.name, 'regionVault': vault_data},
-        'bridge': {'regionName': args.region, 'bridgeName': args.name, 'bridgeVault': vault_data},
-        'repository': {'teamName': args.team, 'repoName': args.name, 'repoVault': vault_data},
-        'storage': {'teamName': args.team, 'storageName': args.name, 'storageVault': vault_data},
-        'schedule': {'teamName': args.team, 'scheduleName': args.name, 'scheduleVault': vault_data}
-    }
-    
-    if args.resource_type == 'company':
-        if args.name and args.name.strip():
-            print(colorize(f"Note: Company name '{args.name}' is ignored. You can only update your own company's vault.", 'YELLOW'))
-        params['companyVault'] = vault_data
-    else:
-        params.update(resource_mappings.get(args.resource_type, {}))
-    
-    return params
 
 def camel_to_title(name):
     special_cases = {
@@ -343,331 +204,7 @@ def format_dynamic_tables(response, output_format='text', skip_fields=None):
     
     return format_output('\n\n'.join(output_parts) if output_parts else "No records found", output_format)
 
-def build_queue_vault_data(function_name, args):
-    func_def = QUEUE_FUNCTIONS.get(function_name)
-    if not func_def:
-        return None
-    
-    params = {}
-    for param_name, param_info in func_def.get('params', {}).items():
-        value = getattr(args, param_name, param_info.get('default'))
-        if value is not None or param_info.get('required', False):
-            params[param_name] = value
-    
-    vault_data = {
-        'type': 'bash_function',
-        'function': function_name,
-        'params': params,
-        'description': args.description or func_def.get('description', ''),
-        'priority': args.priority,
-        'bridge': args.bridge
-    }
-    
-    return json.dumps(vault_data)
 
-
-class VaultBuilder:
-    """Build queue vault data similar to console's queueDataService"""
-    
-    def __init__(self, client):
-        self.client = client
-        self.company_vault = None
-        self._vault_fetched = False
-        
-    def _fetch_company_vault(self):
-        """Fetch company vault data from API"""
-        if self._vault_fetched:
-            return self.company_vault
-            
-        try:
-            response = self.client.token_request("GetCompanyVault", {})
-            if response.get('error'):
-                return None
-                
-            # Company vault data might be in first or second table
-            resultSets = response.get('resultSets', [])
-            for i, table in enumerate(resultSets):
-                if table.get('data') and len(table['data']) > 0:
-                    vault_data = table['data'][0]
-                    if 'vaultContent' in vault_data or 'VaultContent' in vault_data:
-                        vault_content = vault_data.get('vaultContent') or vault_data.get('VaultContent', '{}')
-                        company_credential = vault_data.get('companyCredential') or vault_data.get('CompanyCredential')
-                        try:
-                            parsed_vault = json.loads(vault_content) if vault_content and vault_content != '-' else {}
-                            # Add the CompanyCredential as COMPANY_ID to the vault data
-                            if company_credential:
-                                parsed_vault['COMPANY_ID'] = company_credential
-                            self.company_vault = parsed_vault
-                            break
-                        except json.JSONDecodeError:
-                            self.company_vault = {}
-            self._vault_fetched = True
-            return self.company_vault
-        except Exception:
-            return None
-    
-    def _parse_vault(self, vault_content):
-        """Parse vault content from string to dict"""
-        if not vault_content or vault_content == '-':
-            return {}
-        try:
-            return json.loads(vault_content) if isinstance(vault_content, str) else vault_content
-        except json.JSONDecodeError:
-            return {}
-    
-    def _build_general_settings(self, context):
-        """Build GENERAL_SETTINGS object from context"""
-        general_settings = {}
-        
-        # Add company vault data
-        company_vault = context.get('companyVault', {})
-        if company_vault:
-            for field in ['UNIVERSAL_USER_ID', 'UNIVERSAL_USER_NAME', 'DOCKER_JSON_CONF', 'PLUGINS']:
-                if field in company_vault:
-                    general_settings[field] = company_vault[field]
-            
-            # Handle SSH keys
-            for ssh_field in ['SSH_PRIVATE_KEY', 'SSH_PUBLIC_KEY']:
-                if ssh_field in company_vault:
-                    general_settings[ssh_field] = self._ensure_base64(company_vault[ssh_field])
-        
-        # Add team vault data (overrides company data)
-        team_vault = context.get('teamVault', {})
-        if team_vault:
-            # Debug: print team vault keys
-            if os.environ.get('REDIACC_VERBOSE'):
-                print(f"DEBUG: Team vault keys: {list(team_vault.keys())}")
-            
-            for ssh_field in ['SSH_PRIVATE_KEY', 'SSH_PUBLIC_KEY']:
-                if ssh_field in team_vault:
-                    general_settings[ssh_field] = self._ensure_base64(team_vault[ssh_field])
-                    if os.environ.get('REDIACC_VERBOSE'):
-                        print(f"DEBUG: Added {ssh_field} to GENERAL_SETTINGS")
-                else:
-                    if os.environ.get('REDIACC_VERBOSE'):
-                        print(f"DEBUG: {ssh_field} not found in team vault")
-        
-        return general_settings
-    
-    def _ensure_base64(self, value):
-        """Ensure a string is in base64 format"""
-        if not value:
-            return value
-            
-        # Check if already base64
-        import re
-        base64_pattern = r'^[A-Za-z0-9+/]*={0,2}$'
-        value_clean = re.sub(r'\s', '', value)  # Remove all whitespace
-        
-        if re.match(base64_pattern, value_clean) and len(value_clean) % 4 == 0:
-            return value
-        
-        # Encode to base64
-        try:
-            return base64.b64encode(value.encode('utf-8')).decode('ascii')
-        except Exception:
-            return value
-    
-    def _extract_machine_data(self, machine_vault):
-        """Extract machine data for general settings"""
-        if not machine_vault:
-            return {}
-            
-        vault = self._parse_vault(machine_vault)
-        result = {}
-        
-        # Map fields to expected format (always use lowercase with underscores)
-        field_mappings = [
-            ('IP', 'ip'),
-            ('USER', 'user'),
-            ('DATASTORE', 'datastore'),
-            ('HOST_ENTRY', 'host_entry')
-        ]
-
-        for target_key, source_key in field_mappings:
-            if source_key in vault:
-                result[target_key] = vault[source_key]
-                    
-        return result
-    
-    def build_for_function(self, function_name, context):
-        """Build queue vault for a specific function"""
-        # Get function requirements from QUEUE_FUNCTIONS
-        func_def = QUEUE_FUNCTIONS.get(function_name, {})
-        requirements = func_def.get('requirements', {})
-        
-        
-        # Fetch company vault if not already fetched
-        if not self._vault_fetched:
-            self._fetch_company_vault()
-        
-        # Parse all vault data
-        vaults = {
-            'companyVault': self.company_vault or {},
-            'teamVault': self._parse_vault(context.get('teamVault', '{}')),
-            'machineVault': self._parse_vault(context.get('machineVault', '{}')),
-            'repositoryVault': self._parse_vault(context.get('repositoryVault', '{}')),
-            'bridgeVault': self._parse_vault(context.get('bridgeVault', '{}')),
-            'storageVault': self._parse_vault(context.get('storageVault', '{}'))
-        }
-        
-        # Build base vault structure
-        vault_data = {
-            'function': function_name,
-            'machine': context.get('machineName', ''),
-            'team': context.get('teamName', ''),
-            'params': context.get('params', {}),
-            'contextData': {
-                'GENERAL_SETTINGS': self._build_general_settings(vaults)
-            }
-        }
-        
-        # Add machine data if required
-        if requirements.get('machine') and context.get('machineName') and vaults['machineVault']:
-            if 'MACHINES' not in vault_data['contextData']:
-                vault_data['contextData']['MACHINES'] = {}
-            vault_data['contextData']['MACHINES'][context['machineName']] = self._extract_machine_data(vaults['machineVault'])
-        
-        # Add repository credentials if required
-        if requirements.get('repository') and context.get('repositoryGuid') and vaults['repositoryVault']:
-            repo_vault = vaults['repositoryVault']
-            if repo_vault.get('credential'):
-                vault_data['contextData']['REPO_CREDENTIALS'] = {
-                    context['repositoryGuid']: repo_vault['credential']
-                }
-        
-        # Add plugins for specific functions
-        if function_name in ['mount', 'unmount', 'new', 'up'] and self.company_vault and self.company_vault.get('PLUGINS'):
-            vault_data['contextData']['PLUGINS'] = self.company_vault['PLUGINS']
-        
-        # Add company data if required
-        if requirements.get('company') and self.company_vault:
-            vault_data['contextData']['company'] = {
-                'UNIVERSAL_USER_ID': self.company_vault.get('UNIVERSAL_USER_ID'),
-                'UNIVERSAL_USER_NAME': self.company_vault.get('UNIVERSAL_USER_NAME'),
-                'DOCKER_JSON_CONF': self.company_vault.get('DOCKER_JSON_CONF'),
-                'LOG_FILE': self.company_vault.get('LOG_FILE'),
-                'REPO_CREDENTIALS': self.company_vault.get('REPO_CREDENTIALS'),
-                'PLUGINS': self.company_vault.get('PLUGINS')
-            }
-        
-        # Add bridge data if required
-        if requirements.get('bridge') and context.get('bridgeName') and vaults['bridgeVault']:
-            vault_data['contextData']['bridge'] = {
-                'name': context['bridgeName'],
-                **vaults['bridgeVault']
-            }
-        
-        return minifyJSON(json.dumps(vault_data))
-    
-    def build_for_repo_create(self, team_name, machine_name, repo_name, repo_guid, size='1G', team_vault=None, machine_vault=None):
-        """Build vault specifically for repository creation"""
-        context = {
-            'teamName': team_name,
-            'machineName': machine_name,
-            'repositoryGuid': repo_guid,
-            'teamVault': team_vault or '{}',
-            'machineVault': machine_vault or '{}',
-            'params': {
-                'name': repo_name,
-                'size': size,
-                'repo': repo_guid
-            }
-        }
-        return self.build_for_function('new', context)
-    
-    def build_for_repo_push(self, context):
-        """Build vault specifically for repository push operation"""
-        # Similar to console's push pattern
-        params = context['params'].copy()
-        
-        # Ensure proper GUID handling
-        if 'dest' in params and context.get('destinationGuid'):
-            params['dest'] = context['destinationGuid']
-        if 'repo' in params and context.get('sourceGuid'):
-            params['repo'] = context['sourceGuid']
-        if context.get('grandGuid'):
-            params['grand'] = context['grandGuid']
-            
-        context['params'] = params
-        return self.build_for_function('push', context)
-    
-    def build_for_ping(self, team_name, machine_name, bridge_name, team_vault=None, machine_vault=None):
-        """Build vault specifically for ping connectivity test"""
-        context = {
-            'teamName': team_name,
-            'machineName': machine_name,
-            'bridgeName': bridge_name,
-            'teamVault': team_vault or '{}',
-            'machineVault': machine_vault or '{}',
-            'params': {}
-        }
-        return self.build_for_function('ping', context)
-    
-    def build_for_hello(self, team_name, machine_name, bridge_name, team_vault=None, machine_vault=None):
-        """Build vault specifically for hello test"""
-        context = {
-            'teamName': team_name,
-            'machineName': machine_name,
-            'bridgeName': bridge_name,
-            'teamVault': team_vault or '{}',
-            'machineVault': machine_vault or '{}',
-            'params': {}
-        }
-        return self.build_for_function('hello', context)
-    
-    def build_for_ssh_test(self, bridge_name, machine_vault, team_name=None, team_vault=None, bridge_vault=None):
-        """Build vault specifically for SSH test (bridge-only task)"""
-        # Debug: print what team vault we receive
-        if os.environ.get('REDIACC_VERBOSE'):
-            print(f"DEBUG: build_for_ssh_test received team_vault type: {type(team_vault)}")
-            if team_vault:
-                print(f"DEBUG: team_vault length: {len(str(team_vault))}")
-        
-        # Special handling for ssh_test - it can work without a machine name
-        context = {
-            'teamName': team_name or '',  # Team name for context
-            'machineName': '',  # Empty for bridge-only tasks
-            'bridgeName': bridge_name,
-            'teamVault': team_vault or '{}',  # Team vault for SSH keys
-            'machineVault': machine_vault,  # Contains SSH connection details
-            'bridgeVault': bridge_vault or '{}',
-            'params': {}
-        }
-        
-        # For ssh_test, we need to handle the special case where SSH details
-        # are included directly in the vault data
-        vault_data = json.loads(self.build_for_function('ssh_test', context))
-        
-        # The console adds SSH details directly to root for bridge-only tasks
-        machine_data = self._extract_machine_data(machine_vault)
-        vault = self._parse_vault(machine_vault)
-        if vault.get('ssh_password'):
-            machine_data['ssh_password'] = vault['ssh_password']
-        
-        # Merge machine data into root of vault_data
-        vault_data.update(machine_data)
-        
-        return minifyJSON(json.dumps(vault_data))
-    
-    def build_for_setup(self, team_name, machine_name, bridge_name, params, team_vault=None, machine_vault=None):
-        """Build vault for machine setup"""
-        context = {
-            'teamName': team_name,
-            'machineName': machine_name,
-            'bridgeName': bridge_name,
-            'teamVault': team_vault or '{}',
-            'machineVault': machine_vault or '{}',
-            'params': params  # datastore_size, source, etc.
-        }
-        return self.build_for_function('setup', context)
-
-def minifyJSON(json_str):
-    """Minify JSON string by removing unnecessary whitespace"""
-    try:
-        return json.dumps(json.loads(json_str), separators=(',', ':'))
-    except:
-        return json_str
 
 class CommandHandler:
     def __init__(self, config_manager, output_format='text'):
@@ -715,112 +252,6 @@ class CommandHandler:
     
 
 
-    def queue_add(self, args):
-        func_def = QUEUE_FUNCTIONS.get(args.function)
-        if not func_def:
-            print(format_output(None, self.output_format, None, f"Unknown function: {args.function}"))
-            return 1
-        
-        if not self._collect_function_params(args, func_def):
-            return 1
-        
-        vault_data = build_queue_vault_data(args.function, args)
-        if not vault_data:
-            print(format_output(None, self.output_format, None, "Failed to build queue item data"))
-            return 1
-        
-        response = self.client.token_request(
-            "CreateQueueItem",
-            {
-                'teamName': args.team,
-                'machineName': args.machine,
-                'bridgeName': args.bridge,
-                'queueVault': vault_data
-            }
-        )
-        
-        if response.get('error'):
-            output = format_output(None, self.output_format, None, response['error'])
-            print(output)
-            return 1
-        
-        resultSets = response.get('resultSets', [])
-        task_id = None
-        if len(resultSets) > 1 and resultSets[1].get('data'):
-            task_id = resultSets[1]['data'][0].get('taskId', resultSets[1]['data'][0].get('TaskId'))
-        
-        if self.output_format in ['json', 'json-full']:
-            result = {
-                'task_id': task_id,
-                'function': args.function,
-                'team': args.team,
-                'machine': args.machine,
-                'bridge': args.bridge
-            }
-            output = format_output(result, self.output_format, f"Successfully queued {args.function}")
-            print(output)
-        else:
-            print(colorize(f"Successfully queued {args.function} for machine {args.machine}", 'GREEN'))
-            if task_id:
-                print(f"Task ID: {task_id}")
-        
-        return 0
-    
-    def _collect_function_params(self, args, func_def):
-        for param_name, param_info in func_def.get('params', {}).items():
-            if not hasattr(args, param_name):
-                setattr(args, param_name, None)
-            
-            if param_info.get('required', False) and getattr(args, param_name) is None:
-                if self.output_format in ['json', 'json-full']:
-                    print(format_output(None, self.output_format, None, f"Missing required parameter: {param_name}"))
-                    return False
-                
-                value = input(f"{param_info.get('help', param_name)}: ")
-                setattr(args, param_name, value)
-        return True
-    
-    def queue_list_functions(self, args):
-        if self.output_format in ['json', 'json-full']:
-            result = {
-                func_name: {
-                    'description': func_def.get('description', ''),
-                    'params': {
-                        param_name: {
-                            'type': param_info.get('type', 'string'),
-                            'required': param_info.get('required', False),
-                            'default': param_info.get('default', None),
-                            'help': param_info.get('help', '')
-                        }
-                        for param_name, param_info in func_def.get('params', {}).items()
-                    }
-                }
-                for func_name, func_def in QUEUE_FUNCTIONS.items()
-            }
-            print(format_output(result, self.output_format))
-        else:
-            print(colorize("Available Queue Functions", 'HEADER'))
-            print("=" * 80)
-            
-            for func_name, func_def in sorted(QUEUE_FUNCTIONS.items()):
-                print(f"\n{colorize(func_name, 'BLUE')}")
-                print(f"  {func_def.get('description', 'No description available')}")
-                
-                params = func_def.get('params', {})
-                if not params:
-                    print("  No parameters required")
-                    continue
-                    
-                print("  Parameters:")
-                for param_name, param_info in params.items():
-                    required = "[required]" if param_info.get('required', False) else "[optional]"
-                    default = f" (default: {param_info.get('default')})" if 'default' in param_info else ""
-                    print(f"    - {param_name} {colorize(required, 'YELLOW')}{default}")
-                    help_text = param_info.get('help', '')
-                    if help_text:
-                        print(f"      {help_text}")
-        
-        return 0
     
     def generate_dynamic_help(self, cmd_type, resource_type=None):
         """Generate help text dynamically from configuration"""
@@ -895,14 +326,7 @@ class CommandHandler:
         return help_text
     
     def generic_command(self, cmd_type, resource_type, args):
-        special_handlers = {
-            ('queue', 'add'): self.queue_add,
-            ('queue', 'list-functions'): self.queue_list_functions,
-            ('vault', 'set'): self.vault_set,
-            ('vault', 'set-password'): self.vault_set_password,
-            ('vault', 'clear-password'): self.vault_clear_password,
-            ('vault', 'status'): self.vault_status,
-        }
+        special_handlers = {}
         
         handler = special_handlers.get((cmd_type, resource_type))
         if handler:
@@ -916,12 +340,8 @@ class CommandHandler:
         auth_required = cmd_config.get('auth_required', True)
         
         password_prompts = [
-            (cmd_type == 'create' and resource_type == 'user' and not hasattr(args, 'password'), 
-             lambda: setattr(args, 'password', getpass.getpass("Password for new user: "))),
-            (cmd_type == 'user' and resource_type == 'update-password' and not args.new_password,
-             lambda: setattr(args, 'new_password', getpass.getpass("New password: "))),
-            (cmd_type == 'user' and resource_type == 'update-tfa' and not hasattr(args, 'password'),
-             lambda: setattr(args, 'password', getpass.getpass("Current password: ")))
+            (cmd_type == 'create' and resource_type == 'user' and not hasattr(args, 'password'),
+             lambda: setattr(args, 'password', getpass.getpass("Password for new user: ")))
         ]
         
         for condition, action in password_prompts:
@@ -976,17 +396,14 @@ class CommandHandler:
         # For list commands or permission list commands, format the output
         if cmd_type == 'list' or cmd_type == 'inspect' or (cmd_type == 'permission' and resource_type in ['list-groups', 'list-group']) or \
            (cmd_type == 'team-member' and resource_type == 'list') or \
-           (cmd_type == 'queue' and resource_type in ['get-next', 'list', 'trace']) or \
            (cmd_type == 'company' and resource_type == 'get-vaults'):
             if response.get('error'):
                 output = format_output(None, self.output_format, None, response['error'])
                 print(output)
                 return 1
-            
-            # Special handling for queue trace command
-            if cmd_type == 'queue' and resource_type == 'trace':
-                result = self.format_queue_trace(response, self.output_format)
-            elif cmd_type == 'inspect':
+
+            # Special handling for inspect commands
+            if cmd_type == 'inspect':
                 # Apply filter for inspect commands
                 if 'filter' in cmd_config:
                     # Extract data from response
@@ -1334,114 +751,6 @@ class CommandHandler:
         
         return 0 if success else 1
     
-    def vault_set(self, args):
-        """Set vault data for a resource"""
-        resource_type = args.resource_type
-        endpoints = API_ENDPOINTS['vault']['set']['endpoints']
-        
-        if resource_type not in endpoints:
-            print(format_output(None, self.output_format, None, f"Unsupported resource type: {resource_type}"))
-            return 1
-        
-        params = get_vault_set_params(args, self.config_manager)
-        if not params:
-            return 1
-        
-        response = self.client.token_request(endpoints[resource_type], params)
-        
-        success_msg = f"Successfully updated {resource_type} vault"
-        if self.handle_response(response, success_msg):
-            if self.output_format == 'json':
-                result = {
-                    'resource_type': resource_type,
-                    'vault_version': params.get('vaultVersion', 1)
-                }
-                if resource_type != 'company':
-                    result['name'] = args.name
-                if resource_type in ['machine', 'repository', 'storage', 'schedule']:
-                    result['team'] = args.team
-                if resource_type == 'bridge':
-                    result['region'] = args.region
-                
-                print(format_output(result, self.output_format, success_msg))
-            return 0
-        return 1
-    
-    def vault_set_password(self, args):
-        """Set master password for vault encryption"""
-        if not CRYPTO_AVAILABLE:
-            print(format_output(None, self.output_format, None, 
-                "Cryptography library not available. Install with: pip install cryptography"))
-            return 1
-        
-        self.client._ensure_vault_info()
-        
-        if not self.config_manager.has_vault_encryption():
-            print(format_output(None, self.output_format, None,
-                "Your company has not enabled vault encryption. Contact your administrator to enable it."))
-            return 1
-        
-        master_password = getpass.getpass("Enter master password: ")
-        confirm_password = getpass.getpass("Confirm master password: ")
-        
-        if master_password != confirm_password:
-            print(format_output(None, self.output_format, None, "Passwords do not match"))
-            return 1
-        
-        if self.config_manager.validate_master_password(master_password):
-            self.config_manager.set_master_password(master_password)
-            success_msg = "Master password set successfully"
-            print(format_output({'success': True}, self.output_format, success_msg) if self.output_format == 'json' 
-                  else colorize(success_msg, 'GREEN'))
-            return 0
-        else:
-            print(format_output(None, self.output_format, None, 
-                "Invalid master password. Please check with your administrator for the correct company master password."))
-            return 1
-    
-    def vault_clear_password(self, args):
-        """Clear master password from memory"""
-        self.config_manager.clear_master_password()
-        success_msg = "Master password cleared from memory"
-        print(format_output({'success': True}, self.output_format, success_msg) if self.output_format == 'json' 
-              else colorize(success_msg, 'GREEN'))
-        return 0
-    
-    def vault_status(self, args):
-        """Show vault encryption status"""
-        self.client._ensure_vault_info()
-        vault_company = self.config_manager.get_vault_company()
-        
-        status_data = {
-            'crypto_available': CRYPTO_AVAILABLE,
-            'company': self.config_manager.config.get('company'),
-            'vault_encryption_enabled': self.config_manager.has_vault_encryption(),
-            'master_password_set': bool(self.config_manager.get_master_password()),
-            'vault_company_present': bool(vault_company),
-            'vault_company_encrypted': is_encrypted(vault_company) if vault_company else False
-        }
-        
-        if self.output_format == 'json':
-            print(format_output(status_data, self.output_format))
-        else:
-            print(colorize("VAULT ENCRYPTION STATUS", 'HEADER'))
-            print("=" * 40)
-            print(f"Cryptography Library: {'Available' if status_data['crypto_available'] else 'Not Available'}")
-            print(f"Company: {status_data['company'] or 'Not set'}")
-            print(f"Vault Company Data: {'Present' if status_data['vault_company_present'] else 'Not fetched'}")
-            print(f"Vault Encryption: {'Required' if status_data['vault_encryption_enabled'] else 'Not Required'}")
-            print(f"Master Password: {'Set' if status_data['master_password_set'] else 'Not Set'}")
-            
-            if not status_data['crypto_available']:
-                print("\n" + colorize("To enable vault encryption, install the cryptography library:", 'YELLOW'))
-                print("  pip install cryptography")
-            elif status_data['vault_encryption_enabled'] and not status_data['master_password_set']:
-                print("\n" + colorize("Your company requires a master password for vault encryption.", 'YELLOW'))
-                print("Use 'rediacc vault set-password' to set it.")
-            elif not status_data['vault_company_present']:
-                print("\n" + colorize("Note: Vault company information will be fetched on next command.", 'BLUE'))
-        
-        return 0
     
     def handle_dynamic_endpoint(self, endpoint_name, args):
         """Handle direct endpoint calls without predefined configuration"""
@@ -1540,143 +849,6 @@ class CommandHandler:
             print(colorize(success_msg, 'GREEN'))
         
         return 0
-    
-    
-    def format_queue_trace(self, response, output_format):
-        """Format queue trace response with multiple result sets"""
-        if not response or 'resultSets' not in response:
-            return format_output("No trace data available", output_format)
-        
-        resultSets = response.get('resultSets', [])
-        if len(resultSets) < 2:
-            return format_output("No trace data found", output_format)
-        
-        if output_format == 'json':
-            # For JSON output, organize data into meaningful sections
-            result = {
-                'queue_item': {},
-                'request_vault': {},
-                'response_vault': {},
-                'timeline': []
-            }
-            
-            # Table 1 (index 1): Queue Item Details
-            if len(resultSets) > 1 and resultSets[1].get('data'):
-                item_data = resultSets[1]['data'][0] if resultSets[1]['data'] else {}
-                result['queue_item'] = item_data
-            
-            # Table 2 (index 2): Request Vault
-            if len(resultSets) > 2 and resultSets[2].get('data'):
-                vault_data = resultSets[2]['data'][0] if resultSets[2]['data'] else {}
-                result['request_vault'] = {
-                    'type': vault_data.get('VaultType', 'Request'),
-                    'version': vault_data.get('VaultVersion'),
-                    'content': vault_data.get('VaultContent'),
-                    'has_content': vault_data.get('HasContent', False)
-                }
-            
-            # Table 3 (index 3): Response Vault
-            if len(resultSets) > 3 and resultSets[3].get('data'):
-                vault_data = resultSets[3]['data'][0] if resultSets[3]['data'] else {}
-                result['response_vault'] = {
-                    'type': vault_data.get('VaultType', 'Response'),
-                    'version': vault_data.get('VaultVersion'),
-                    'content': vault_data.get('VaultContent'),
-                    'has_content': vault_data.get('HasContent', False)
-                }
-            
-            # Table 4 (index 4): Timeline
-            if len(resultSets) > 4 and resultSets[4].get('data'):
-                result['timeline'] = resultSets[4]['data']
-            
-            return format_output(result, output_format)
-        else:
-            output_parts = []
-            
-            if len(resultSets) > 1 and resultSets[1].get('data') and resultSets[1]['data']:
-                item_data = resultSets[1]['data'][0]
-                output_parts.append(colorize("QUEUE ITEM DETAILS", 'HEADER'))
-                output_parts.append("=" * 80)
-                
-                details = [
-                    ('Task ID', item_data.get('TaskId')),
-                    ('Status', item_data.get('Status')),
-                    ('Health Status', item_data.get('HealthStatus')),
-                    ('Created Time', item_data.get('CreatedTime')),
-                    ('Assigned Time', item_data.get('AssignedTime')),
-                    ('Last Heartbeat', item_data.get('LastHeartbeat')),
-                ]
-                
-                if item_data.get('Priority') is not None:
-                    details.append(('Priority', f"{item_data.get('Priority')} ({item_data.get('PriorityLabel')})"))
-                
-                details.extend([
-                    ('Seconds to Assignment', item_data.get('SecondsToAssignment')),
-                    ('Processing Duration (seconds)', item_data.get('ProcessingDurationSeconds')),
-                    ('Total Duration (seconds)', item_data.get('TotalDurationSeconds')),
-                ])
-                
-                details.extend([
-                    ('Company', f"{item_data.get('CompanyName')} (ID: {item_data.get('CompanyId')})"),
-                    ('Team', f"{item_data.get('TeamName')} (ID: {item_data.get('TeamId')})"),
-                    ('Region', f"{item_data.get('RegionName')} (ID: {item_data.get('RegionId')})"),
-                    ('Bridge', f"{item_data.get('BridgeName')} (ID: {item_data.get('BridgeId')})"),
-                    ('Machine', f"{item_data.get('MachineName')} (ID: {item_data.get('MachineId')})"),
-                ])
-                
-                if item_data.get('IsStale'):
-                    details.append(('Warning', colorize('This queue item is STALE', 'YELLOW')))
-                
-                max_label_width = max(len(label) for label, _ in details)
-                output_parts.extend(f"{label.ljust(max_label_width)} : {value}" for label, value in details if value is not None)
-                
-            if len(resultSets) > 2 and resultSets[2].get('data') and resultSets[2]['data']:
-                vault_data = resultSets[2]['data'][0]
-                if vault_data.get('HasContent'):
-                    output_parts.append("")
-                    output_parts.append(colorize("REQUEST VAULT", 'HEADER'))
-                    output_parts.append("=" * 80)
-                    output_parts.append(f"Version: {vault_data.get('VaultVersion', 'N/A')}")
-                    try:
-                        vault_content = json.loads(vault_data.get('VaultContent', '{}'))
-                        output_parts.append(json.dumps(vault_content, indent=2))
-                    except:
-                        output_parts.append(vault_data.get('VaultContent', 'No content'))
-            
-            if len(resultSets) > 3 and resultSets[3].get('data') and resultSets[3]['data']:
-                vault_data = resultSets[3]['data'][0]
-                if vault_data.get('HasContent'):
-                    output_parts.append("")
-                    output_parts.append(colorize("RESPONSE VAULT", 'HEADER'))
-                    output_parts.append("=" * 80)
-                    output_parts.append(f"Version: {vault_data.get('VaultVersion', 'N/A')}")
-                    try:
-                        vault_content = json.loads(vault_data.get('VaultContent', '{}'))
-                        output_parts.append(json.dumps(vault_content, indent=2))
-                    except:
-                        output_parts.append(vault_data.get('VaultContent', 'No content'))
-            
-            if len(resultSets) > 4 and resultSets[4].get('data') and resultSets[4]['data']:
-                output_parts.append("")
-                output_parts.append(colorize("PROCESSING TIMELINE", 'HEADER'))
-                output_parts.append("=" * 80)
-                
-                timeline_data = resultSets[4]['data']
-                if timeline_data:
-                    headers = ['Time', 'Status', 'Description']
-                    rows = [
-                        [event.get('Timestamp', 'N/A'),
-                         event.get('NewValue', event.get('Status', 'N/A')),
-                         event.get('ChangeDetails', event.get('Action', 'Status change'))]
-                        for event in timeline_data
-                    ]
-                    
-                    if rows:
-                        output_parts.append(format_table(headers, rows))
-                else:
-                    output_parts.append("No timeline events recorded")
-            
-            return '\n'.join(output_parts)
 
     # Note: Workflow delegate methods removed - workflow is now a standalone module
 
@@ -1771,53 +943,36 @@ def setup_parser():
             
             for subcmd_name, subcmd_def in cmd_def.items():
                 subcmd_parser = subcmd_parsers.add_parser(subcmd_name, help=f"{subcmd_name} resource")
-                
-                if cmd_name == 'queue' and subcmd_name == 'add':
+
+                if isinstance(subcmd_def, list):
                     for arg in subcmd_def:
-                        kwargs = {k: v for k, v in arg.items() if k != 'name'}
-                        subcmd_parser.add_argument(arg['name'], **kwargs)
-                    
-                    all_params = {}
-                    for func_def in QUEUE_FUNCTIONS.values():
-                        for param_name, param_info in func_def.get('params', {}).items():
-                            if param_name not in all_params or len(param_info.get('help', '')) > len(all_params[param_name]):
-                                all_params[param_name] = param_info.get('help', f'Parameter for function')
-                    
-                    for param_name, help_text in sorted(all_params.items()):
-                        if param_name.replace('-', '_').replace('_', '').isidentifier():
-                            subcmd_parser.add_argument(f'--{param_name.replace("_", "-")}', 
-                                                     dest=param_name,
-                                                     help=help_text)
-                else:
-                    if isinstance(subcmd_def, list):
-                        for arg in subcmd_def:
-                            if isinstance(arg, dict):
-                                kwargs = {k: v for k, v in arg.items() if k != 'name'}
-                                subcmd_parser.add_argument(arg['name'], **kwargs)
-                            else:
-                                # Handle string arguments
-                                subcmd_parser.add_argument(arg)
-                    elif isinstance(subcmd_def, dict):
-                        for arg_name, arg_def in subcmd_def.items():
-                            if isinstance(arg_def, dict):
-                                kwargs = {k: v for k, v in arg_def.items() if k != 'name'}
-                                subcmd_parser.add_argument(arg_name, **kwargs)
-                            else:
-                                subcmd_parser.add_argument(arg_name, help=str(arg_def))
-                    
-                    if cmd_name == 'update' and subcmd_name in ['team', 'region', 'bridge', 'machine', 'repository', 'storage', 'schedule']:
-                        subcmd_parser.add_argument('--vault', help='JSON vault data')
-                        subcmd_parser.add_argument('--vault-file', help='File containing JSON vault data')
-                        subcmd_parser.add_argument('--vault-version', type=int, help='Vault version')
-                        
-                        if subcmd_name == 'machine':
-                            subcmd_parser.add_argument('--new-bridge', help='New bridge name for machine')
+                        if isinstance(arg, dict):
+                            kwargs = {k: v for k, v in arg.items() if k != 'name'}
+                            subcmd_parser.add_argument(arg['name'], **kwargs)
+                        else:
+                            # Handle string arguments
+                            subcmd_parser.add_argument(arg)
+                elif isinstance(subcmd_def, dict):
+                    for arg_name, arg_def in subcmd_def.items():
+                        if isinstance(arg_def, dict):
+                            kwargs = {k: v for k, v in arg_def.items() if k != 'name'}
+                            subcmd_parser.add_argument(arg_name, **kwargs)
+                        else:
+                            subcmd_parser.add_argument(arg_name, help=str(arg_def))
+
+                if cmd_name == 'update' and subcmd_name in ['team', 'region', 'bridge', 'machine', 'repository', 'storage', 'schedule']:
+                    subcmd_parser.add_argument('--vault', help='JSON vault data')
+                    subcmd_parser.add_argument('--vault-file', help='File containing JSON vault data')
+                    subcmd_parser.add_argument('--vault-version', type=int, help='Vault version')
+
+                    if subcmd_name == 'machine':
+                        subcmd_parser.add_argument('--new-bridge', help='New bridge name for machine')
     
     # Add CLI commands from JSON configuration
     if 'CLI_COMMANDS' in cli_config:
         for cmd_name, cmd_def in cli_config['CLI_COMMANDS'].items():
-            # Skip license and workflow - now have dedicated modules
-            if cmd_name in ('license', 'workflow'):
+            # Skip license, workflow, queue, vault, and user - now have dedicated modules
+            if cmd_name in ('license', 'workflow', 'queue', 'vault', 'user'):
                 continue
 
             # Only process commands with subcommands structure
@@ -1884,8 +1039,8 @@ def reorder_args(argv):
     
     # Commands that have subcommands
     # Note: workflow removed - now routed via dispatcher
-    subcommand_cmds = {'create', 'list', 'update', 'rm', 'vault', 'permission', 'user',
-                       'team-member', 'bridge', 'queue', 'company', 'audit', 'inspect',
+    subcommand_cmds = {'create', 'list', 'update', 'rm', 'permission',
+                       'team-member', 'bridge', 'company', 'audit', 'inspect',
                        'distributed-storage', 'auth'}
     
     # Separate script name, global options, and command/args
@@ -2034,6 +1189,9 @@ def main():
             'license': ('cli.commands.license_main', 'License'),
             'protocol': ('cli.commands.protocol_main', 'Protocol'),
             'workflow': ('cli.commands.workflow_main', 'Workflow'),
+            'queue': ('cli.commands.queue_main', 'Queue'),
+            'vault': ('cli.commands.vault_main', 'Vault'),
+            'user': ('cli.commands.user_main', 'User'),
             'desktop': ('cli.gui.main', 'Desktop'),
             'gui': ('cli.gui.main', 'GUI'),  # Alias for desktop
         }
