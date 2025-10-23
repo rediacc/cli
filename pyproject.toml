@@ -113,7 +113,7 @@ rediacc_setup = "cli.setup_hooks:post_install"
 
 [tool.setuptools]
 package-dir = {"" = "src"}
-packages = ["cli", "cli.commands", "cli.core", "cli.gui", "cli.assets"]
+packages = ["cli", "cli.commands", "cli.core", "cli.gui", "cli.assets", "cli.config"]
 include-package-data = true
 zip-safe = false
 
@@ -129,8 +129,8 @@ version = {attr = "cli._version.__version__"}
 
 [tool.setuptools.package-data]
 cli = [
-    "../config/*.json",
     "assets/*",
+    "config/*.json",
 ]
 
 [tool.pytest.ini_options]

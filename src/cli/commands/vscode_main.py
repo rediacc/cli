@@ -93,26 +93,90 @@ def ensure_persistent_identity_file(team: str, machine: str, repo: str, ssh_key:
 
     return key_path.replace('\\', '/')
 
+def ensure_persistent_known_hosts_file(team: str, machine: str, repo: str, host_entry: str) -> str:
+    """Persist the host key for VS Code connections and return config-safe path."""
+    from cli.core.shared import _decode_host_entry
+
+    ssh_dir = os.path.expanduser('~/.ssh')
+    os.makedirs(ssh_dir, exist_ok=True)
+    try:
+        os.chmod(ssh_dir, 0o700)
+    except (PermissionError, NotImplementedError, OSError):
+        pass
+
+    parts = [sanitize_hostname(p) for p in (team, machine) if p]
+    if repo:
+        parts.append(sanitize_hostname(repo))
+    known_hosts_filename = f"rediacc_{'_'.join(parts)}_known_hosts"
+    known_hosts_path = os.path.join(ssh_dir, known_hosts_filename)
+
+    decoded_host_entry = _decode_host_entry(host_entry)
+
+    existing_content = None
+    try:
+        with open(known_hosts_path, 'r', encoding='utf-8') as existing_file:
+            existing_content = existing_file.read().strip()
+    except FileNotFoundError:
+        existing_content = None
+
+    if existing_content != decoded_host_entry:
+        with open(known_hosts_path, 'w', newline='\n', encoding='utf-8') as kh_file:
+            kh_file.write(decoded_host_entry + '\n')
+
+    try:
+        os.chmod(known_hosts_path, 0o644)
+    except (PermissionError, NotImplementedError, OSError):
+        pass
+
+    return known_hosts_path.replace('\\', '/')
+
+def build_vscode_terminal_command(target_user: str, env_vars: dict) -> str:
+    """Build terminal command for VSCode using shared env bootstrap logic (DRY)."""
+    from cli.core.env_bootstrap import compose_sudo_env_command
+    # Generate the sudo command with environment setup (reuses term command logic)
+    # This creates: sudo -H -u {user} bash -lc 'export VAR=val\nexec bash'
+    return compose_sudo_env_command(
+        target_user,
+        env_vars,
+        additional_lines=['exec bash'],  # exec bash to replace the shell
+        login_shell=True,  # Use bash -l to source .bashrc and .bashrc-rediacc
+        preserve_home=True  # Use -H to set HOME properly
+    )
+
 def ensure_vscode_env_setup(
     ssh_conn,
     destination: str,
     env_vars,
     target_user: str,
+    ssh_user: str,
     logger
 ) -> None:
     """
-    Install/update the VS Code server environment bootstrap script for the target user.
+    Install/update the VS Code server environment bootstrap script and terminal settings.
+    Configures VSCode terminal to run as target_user if different from ssh_user.
     """
     env_content = compose_env_block(env_vars)
     # Always end with a newline so Python write_text doesn't omit final line
     env_content_with_newline = env_content + '\n' if not env_content.endswith('\n') else env_content
 
+    # Determine if we need to sudo to target user for terminals
+    need_sudo = bool(target_user and target_user.strip() and target_user != ssh_user)
+
+    # Build the terminal command using shared logic (DRY - same as term command)
+    terminal_command = build_vscode_terminal_command(target_user, env_vars) if need_sudo else ""
+
     python_script = textwrap.dedent(f"""
         import os
         import pathlib
         import stat
+        import json
 
         env_content = {env_content_with_newline!r}
+        target_user = {target_user!r}
+        need_sudo = {need_sudo}
+        terminal_command = {terminal_command!r}
+
+        # Setup environment file
         setup_dir = pathlib.Path.home() / ".vscode-server"
         setup_dir.mkdir(parents=True, exist_ok=True)
 
@@ -151,20 +215,44 @@ def ensure_vscode_env_setup(
             setup_file.chmod(stat.S_IRUSR | stat.S_IWUSR)
         except (PermissionError, NotImplementedError, OSError):
             pass
+
+        # Configure VSCode terminal to run as target user with environment
+        if need_sudo and target_user and terminal_command:
+            data_dir = setup_dir / "data"
+            data_dir.mkdir(parents=True, exist_ok=True)
+
+            machine_dir = data_dir / "Machine"
+            machine_dir.mkdir(parents=True, exist_ok=True)
+
+            settings_file = machine_dir / "settings.json"
+
+            # Load existing settings or create new
+            settings = {{}}
+            if settings_file.exists():
+                try:
+                    settings = json.loads(settings_file.read_text(encoding="utf-8"))
+                except:
+                    settings = {{}}
+
+            # Use the pre-built terminal command (reuses term command logic via compose_sudo_env_command)
+            profile_name = f"{{target_user}}"
+            settings["terminal.integrated.profiles.linux"] = {{
+                profile_name: {{
+                    "path": "/bin/bash",
+                    "args": ["-c", terminal_command],
+                    "icon": "terminal"
+                }}
+            }}
+            settings["terminal.integrated.defaultProfile.linux"] = profile_name
+
+            # Write settings
+            settings_file.write_text(json.dumps(settings, indent=2), encoding="utf-8")
     """).strip()
 
     ssh_parts = ssh_conn.ssh_opts.split() if ssh_conn.ssh_opts else []
-    command = ['ssh', *ssh_parts, destination]
+    command = ['ssh', *ssh_parts, destination, 'python3', '-']
 
-    remote_user = destination.split('@', 1)[0] if '@' in destination else ''
-    use_sudo = bool(target_user and target_user.strip() and target_user != remote_user)
-
-    if use_sudo:
-        command.extend(['sudo', '-H', '-u', target_user, 'python3', '-'])
-    else:
-        command.extend(['python3', '-'])
-
-    logger.debug(f"[ensure_vscode_env_setup] Installing environment script via: {' '.join(command)}")
+    logger.debug(f"[ensure_vscode_env_setup] Installing VSCode terminal config via: {' '.join(command)}")
 
     try:
         subprocess.run(
@@ -173,14 +261,40 @@ def ensure_vscode_env_setup(
             check=True
         )
     except FileNotFoundError as exc:
-        logger.warning(f"Unable to launch SSH command for environment setup: {exc}")
+        logger.warning(f"Unable to launch SSH command for VSCode setup: {exc}")
     except subprocess.CalledProcessError as exc:
         logger.warning(
-            "Failed to install VS Code environment bootstrap script (exit code %s). "
-            "VS Code terminals may miss repository variables.",
+            "Failed to install VS Code terminal configuration (exit code %s). "
+            "VS Code terminals may not switch to target user.",
             exc.returncode
         )
 
+
+def build_ssh_config_options(ssh_conn, identity_file_path: str, known_hosts_file_path: str) -> list:
+    """Build SSH config options list (DRY helper)."""
+    ssh_opts_lines = [
+        f"    IdentityFile {identity_file_path}",
+        "    IdentitiesOnly yes",
+        f"    UserKnownHostsFile {known_hosts_file_path}"
+    ]
+    if ssh_conn.ssh_opts:
+        opts = ssh_conn.ssh_opts.split()
+        i = 0
+        while i < len(opts):
+            if opts[i] == '-o' and i + 1 < len(opts):
+                option = opts[i + 1]
+                if '=' in option:
+                    key, value = option.split('=', 1)
+                    if key not in ['IdentityFile', 'UserKnownHostsFile']:
+                        line = f"    {key} {value}"
+                        if line not in ssh_opts_lines:
+                            ssh_opts_lines.append(line)
+                i += 2
+            elif opts[i] == '-i':
+                i += 2
+            else:
+                i += 1
+    return ssh_opts_lines
 
 def upsert_ssh_config_entry(ssh_config_path: str, connection_name: str, ssh_config_entry: str):
     """Add or replace the SSH config block for a given connection."""
@@ -272,7 +386,11 @@ def launch_vscode_repo(args):
 
     identity_file_path = ensure_persistent_identity_file(args.team, args.machine, args.repo, ssh_key)
 
-    host_entry = None if args.dev else conn.connection_info.get('host_entry')
+    host_entry = conn.connection_info.get('host_entry')
+    if not host_entry:
+        error_exit("Security Error: No host key found in machine vault. Contact your administrator to add the host key.")
+
+    known_hosts_file_path = ensure_persistent_known_hosts_file(args.team, args.machine, args.repo, host_entry)
 
     with SSHConnection(ssh_key, host_entry, prefer_agent=True) as ssh_conn:
         # Create SSH config entry
@@ -286,48 +404,22 @@ def launch_vscode_repo(args):
             conn.ssh_destination,
             env_vars,
             universal_user,
+            ssh_user,
             logger
         )
 
         # Format environment variables as SetEnv directives
         setenv_directives = format_ssh_setenv(env_vars)
 
-        # Build SSH config entry
-        remote_command_line = ""
-        sudo_user = universal_user
-        if sudo_user and sudo_user != ssh_user:
-            remote_command_line = (
-                f'    RemoteCommand sudo -H -u {sudo_user} '
-                'bash -lc "cd ~ && exec bash"\n'
-            )
+        # Parse SSH options using DRY helper
+        ssh_opts_lines = build_ssh_config_options(ssh_conn, identity_file_path, known_hosts_file_path)
 
-        # Parse SSH options
-        ssh_opts_lines = [
-            f"    IdentityFile {identity_file_path}",
-            "    IdentitiesOnly yes"
-        ]
-        if ssh_conn.ssh_opts:
-            opts = ssh_conn.ssh_opts.split()
-            i = 0
-            while i < len(opts):
-                if opts[i] == '-o' and i + 1 < len(opts):
-                    option = opts[i + 1]
-                    if '=' in option:
-                        key, value = option.split('=', 1)
-                        if key not in ['IdentityFile', 'UserKnownHostsFile']:
-                            line = f"    {key} {value}"
-                            if line not in ssh_opts_lines:
-                                ssh_opts_lines.append(line)
-                    i += 2
-                elif opts[i] == '-i':
-                    i += 2
-                else:
-                    i += 1
-
+        # NOTE: We don't use RemoteCommand for VSCode because it interferes with VSCode server installation
+        # Instead, we configure VSCode's terminal settings to sudo to the target user
         ssh_config_entry = f"""Host {connection_name}
     HostName {ssh_host}
     User {ssh_user}
-{remote_command_line}{chr(10).join(ssh_opts_lines) if ssh_opts_lines else ''}
+{chr(10).join(ssh_opts_lines) if ssh_opts_lines else ''}
 {setenv_directives}
     ServerAliveInterval 60
     ServerAliveCountMax 3
@@ -399,7 +491,11 @@ def launch_vscode_machine(args):
 
     identity_file_path = ensure_persistent_identity_file(args.team, args.machine, None, ssh_key)
 
-    host_entry = None if args.dev else connection_info.get('host_entry')
+    host_entry = connection_info.get('host_entry')
+    if not host_entry:
+        error_exit("Security Error: No host key found in machine vault. Contact your administrator to add the host key.")
+
+    known_hosts_file_path = ensure_persistent_known_hosts_file(args.team, args.machine, None, host_entry)
 
     with SSHConnection(ssh_key, host_entry, prefer_agent=True) as ssh_conn:
         # Create SSH config entry
@@ -412,48 +508,22 @@ def launch_vscode_machine(args):
             f"{ssh_user}@{ssh_host}",
             env_vars,
             universal_user,
+            ssh_user,
             logger
         )
 
         # Format environment variables as SetEnv directives
         setenv_directives = format_ssh_setenv(env_vars)
 
-        # Build SSH config entry
-        remote_command_line = ""
-        sudo_user = universal_user
-        if sudo_user and sudo_user != ssh_user:
-            remote_command_line = (
-                f'    RemoteCommand sudo -H -u {sudo_user} '
-                'bash -lc "cd ~ && exec bash"\n'
-            )
+        # Parse SSH options using DRY helper
+        ssh_opts_lines = build_ssh_config_options(ssh_conn, identity_file_path, known_hosts_file_path)
 
-        # Parse SSH options
-        ssh_opts_lines = [
-            f"    IdentityFile {identity_file_path}",
-            "    IdentitiesOnly yes"
-        ]
-        if ssh_conn.ssh_opts:
-            opts = ssh_conn.ssh_opts.split()
-            i = 0
-            while i < len(opts):
-                if opts[i] == '-o' and i + 1 < len(opts):
-                    option = opts[i + 1]
-                    if '=' in option:
-                        key, value = option.split('=', 1)
-                        if key not in ['IdentityFile', 'UserKnownHostsFile']:
-                            line = f"    {key} {value}"
-                            if line not in ssh_opts_lines:
-                                ssh_opts_lines.append(line)
-                    i += 2
-                elif opts[i] == '-i':
-                    i += 2
-                else:
-                    i += 1
-
+        # NOTE: We don't use RemoteCommand for VSCode because it interferes with VSCode server installation
+        # Instead, we configure VSCode's terminal settings to sudo to the target user
         ssh_config_entry = f"""Host {connection_name}
     HostName {ssh_host}
     User {ssh_user}
-{remote_command_line}{chr(10).join(ssh_opts_lines) if ssh_opts_lines else ''}
+{chr(10).join(ssh_opts_lines) if ssh_opts_lines else ''}
 {setenv_directives}
     ServerAliveInterval 60
     ServerAliveCountMax 3
@@ -520,7 +590,6 @@ Environment Variables:
 
     # Add repo separately since it's optional
     parser.add_argument('--repo', help='Target repository name (optional - if not specified, connects to machine only)')
-    parser.add_argument('--dev', action='store_true', help='Development mode - relaxes SSH host key checking')
 
     args = parser.parse_args()
 

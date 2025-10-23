@@ -23,13 +23,13 @@ from cli.core.shared import (
 from cli.core.config import setup_logging, get_logger
 from cli.core.telemetry import track_command, initialize_telemetry, shutdown_telemetry
 from cli.core.env_bootstrap import compose_sudo_env_command
+from cli.config import TERM_CONFIG_FILE
 
 # Load configuration
 def load_config():
     """Load configuration from JSON file"""
-    config_path = Path(__file__).parent.parent.parent / 'config' / 'rediacc-term-config.json'
-    try: 
-        with open(config_path, 'r', encoding='utf-8') as f:
+    try:
+        with open(TERM_CONFIG_FILE, 'r', encoding='utf-8') as f:
             return json.load(f)
     except (FileNotFoundError, json.JSONDecodeError) as e:
         print(f"Warning: Could not load config file: {e}")
@@ -65,9 +65,9 @@ def get_config_value(*keys, default=''):
 
 def connect_to_machine(args):
     print_message('connecting_machine', 'HEADER', machine=args.machine)
-    
+
     from cli.core.shared import get_machine_info_with_team, get_machine_connection_info, validate_machine_accessibility, handle_ssh_exit_code
-    
+
     print(MESSAGES.get('fetching_info', 'Fetching machine information...'))
     machine_info = get_machine_info_with_team(args.team, args.machine)
     connection_info = get_machine_connection_info(machine_info)
@@ -78,8 +78,11 @@ def connect_to_machine(args):
     if not ssh_key: 
         error_exit(MESSAGES.get('ssh_key_not_found', 'SSH key not found').format(team=args.team))
     
-    host_entry = None if args.dev else connection_info.get('host_entry')
-    
+    host_entry = connection_info.get('host_entry')
+
+    if not host_entry:
+        error_exit("Security Error: No host key found in machine vault. Contact your administrator to add the host key.")
+
     with SSHConnection(ssh_key, host_entry) as ssh_conn:
         if ssh_conn.is_using_agent:
             print_message('ssh_agent_setup', pid=ssh_conn.agent_pid)
@@ -100,7 +103,7 @@ def connect_to_machine(args):
             welcome_lines = [cmd.format(**format_vars) for cmd in commands]
             ssh_cmd.append(f"sudo -u {universal_user} bash -c '{' && '.join(welcome_lines)}'")
             print_message('opening_terminal'); print_message('exit_instruction', 'YELLOW')
-        
+
         result = subprocess.run(ssh_cmd)
         handle_ssh_exit_code(result.returncode, "machine")
 
@@ -123,20 +126,18 @@ def connect_to_terminal(args):
     logger.debug(f"  - repo_guid: {conn.repo_guid}")
     logger.debug(f"  - mount_path: {conn.repo_paths['mount_path']}")
 
-    original_host_entry = conn.connection_info.get('host_entry') if args.dev else None
-    if args.dev: conn.connection_info['host_entry'] = None
     ssh_key = get_ssh_key_from_vault(args.team)
     if not ssh_key:
         error_exit(MESSAGES.get('ssh_key_not_found', 'SSH key not found').format(team=args.team))
 
-    host_entry = None if args.dev else conn.connection_info.get('host_entry')
+    host_entry = conn.connection_info.get('host_entry')
+
+    if not host_entry:
+        error_exit("Security Error: No host key found in repository machine vault. Contact your administrator to add the host key.")
 
     with SSHConnection(ssh_key, host_entry) as ssh_conn:
         if ssh_conn.is_using_agent:
             print_message('ssh_agent_setup', pid=ssh_conn.agent_pid)
-
-        if args.dev and original_host_entry is not None:
-            conn.connection_info['host_entry'] = original_host_entry
         # Get environment variables using shared module (DRY principle)
         from cli.core.repository_env import get_repository_environment
 
@@ -207,20 +208,18 @@ def connect_to_container(args):
     conn = RepositoryConnection(args.team, args.machine, args.repo); conn.connect()
     validate_machine_accessibility(args.machine, args.team, conn.connection_info['ip'], args.repo)
 
-    original_host_entry = conn.connection_info.get('host_entry') if args.dev else None
-    if args.dev: conn.connection_info['host_entry'] = None
     ssh_key = get_ssh_key_from_vault(args.team)
     if not ssh_key:
         error_exit(MESSAGES.get('ssh_key_not_found', 'SSH key not found').format(team=args.team))
 
-    host_entry = None if args.dev else conn.connection_info.get('host_entry')
+    host_entry = conn.connection_info.get('host_entry')
+
+    if not host_entry:
+        error_exit("Security Error: No host key found in repository machine vault. Contact your administrator to add the host key.")
 
     with SSHConnection(ssh_key, host_entry) as ssh_conn:
         if ssh_conn.is_using_agent:
             print_message('ssh_agent_setup', pid=ssh_conn.agent_pid)
-
-        if args.dev and original_host_entry is not None:
-            conn.connection_info['host_entry'] = original_host_entry
         # Get environment variables using shared module (DRY principle)
         from cli.core.repository_env import get_repository_environment
 
@@ -297,8 +296,7 @@ def main():
     parser.add_argument('--repo', help='Target repository name (optional - if not specified, connects to machine only)')
     parser.add_argument('--container', help='Container name to connect to directly (requires --repo)')
     parser.add_argument('--command', help='Command to execute (interactive shell if not specified)')
-    parser.add_argument('--dev', action='store_true', help='Development mode - relaxes SSH host key checking')
-    
+
     args = parser.parse_args()
     
     setup_logging(verbose=args.verbose)

@@ -17,6 +17,8 @@ import urllib.request
 import urllib.parse
 import urllib.error
 
+from cli.config import GUI_CONFIG_FILE
+
 # Add parent directory to path for imports if running directly
 if __name__ == "__main__":
     sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
@@ -185,10 +187,8 @@ class GUIConfig:
     
     def load_config(self):
         """Load configuration from JSON file"""
-        config_path = Path(__file__).parent.parent.parent / 'config' / 'rediacc-gui-config.json'
-        
         try:
-            with open(config_path, 'r') as f: self._config = json.load(f)
+            with open(GUI_CONFIG_FILE, 'r') as f: self._config = json.load(f)
         except FileNotFoundError: self._config = self._get_default_config()
         except json.JSONDecodeError as e:
             print(f"Error parsing config file: {e}")

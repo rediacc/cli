@@ -22,6 +22,8 @@ from typing import Dict, Optional, Any, List, Tuple
 from datetime import datetime, timedelta, timezone
 from contextlib import contextmanager
 
+from cli.config import GUI_TRANSLATIONS_FILE
+
 # ============================================================================
 # CONFIG PATH MODULE (from config_path.py)
 # ============================================================================
@@ -659,22 +661,24 @@ class TokenManager:
         return None
     
     @classmethod
-    def set_token(cls, token: str, email: Optional[str] = None, company: Optional[str] = None, vault_company: Optional[str] = None):
+    def set_token(cls, token: str, email: Optional[str] = None, company: Optional[str] = None, vault_company: Optional[str] = None, endpoint: Optional[str] = None):
         if not cls._initialized: TokenManager()
         if not cls.validate_token(token): raise ValueError("Invalid token format")
-        
+
         config = cls._load_from_config()
-        
+
         config['token'] = token
         config['token_updated_at'] = datetime.now(timezone.utc).isoformat()
-        
+
         if email:
             config['email'] = email
         if company:
             config['company'] = company
         if vault_company is not None:
             config['vault_company'] = vault_company
-        
+        if endpoint:
+            config['endpoint'] = endpoint
+
         cls._save_config(config)
     
     @classmethod
@@ -685,12 +689,12 @@ class TokenManager:
             TokenManager()
             
         config = cls._load_from_config()
-        
+
         # Remove auth-related fields
-        auth_fields = ['token', 'token_updated_at', 'email', 'company', 'vault_company']
+        auth_fields = ['token', 'token_updated_at', 'email', 'company', 'vault_company', 'endpoint']
         for field in auth_fields:
             config.pop(field, None)
-        
+
         cls._save_config(config)
     
     @classmethod
@@ -699,13 +703,15 @@ class TokenManager:
         # Ensure initialization
         if not cls._initialized:
             TokenManager()
-            
+
         config = cls._load_from_config()
         return {
             'token': cls.mask_token(config.get('token')),
             'email': config.get('email'),
             'company': config.get('company'),
+            'vault_company': config.get('vault_company'),
             'has_vault': bool(config.get('vault_company')),
+            'endpoint': config.get('endpoint'),
             'token_updated_at': config.get('token_updated_at')
         }
     
@@ -836,12 +842,12 @@ class TokenManager:
     
     # Enhanced set_token to update internal state
     @classmethod
-    def set_token_with_auth(cls, token: str, email: Optional[str] = None, 
-                           company: Optional[str] = None, vault_company: Optional[str] = None):
+    def set_token_with_auth(cls, token: str, email: Optional[str] = None,
+                           company: Optional[str] = None, vault_company: Optional[str] = None, endpoint: Optional[str] = None):
         """Set token and authentication information (ConfigManager compatibility)"""
         instance = cls()
-        cls.set_token(token, email, company, vault_company)
-        
+        cls.set_token(token, email, company, vault_company, endpoint)
+
         # Update instance state
         if company:
             instance._company_name = company
@@ -895,13 +901,11 @@ class I18n:
     
     def _load_config(self):
         """Load languages and translations from JSON configuration file"""
-        config_path = Path(__file__).parent.parent.parent / 'config' / 'rediacc-gui-translations.json'
-        
-        if not config_path.exists():
-            raise FileNotFoundError(f"Translation configuration file not found: {config_path}")
-        
+        if not GUI_TRANSLATIONS_FILE.exists():
+            raise FileNotFoundError(f"Translation configuration file not found: {GUI_TRANSLATIONS_FILE}")
+
         try:
-            with open(config_path, 'r', encoding='utf-8') as f:
+            with open(GUI_TRANSLATIONS_FILE, 'r', encoding='utf-8') as f:
                 config = json.load(f)
             
             self.LANGUAGES = config.get('languages', {})
@@ -1692,32 +1696,38 @@ class TerminalDetector:
     def _test_gnome_terminal(self) -> Tuple[bool, str]:
         """Test GNOME Terminal"""
         cmd = ['gnome-terminal', '--', 'bash', 'TEST_SCRIPT']
-        return self._test_command(cmd, expect_running=True)
-    
+        # Linux terminals spawn window and exit immediately - this is normal
+        return self._test_command(cmd, expect_running=False)
+
     def _test_konsole(self) -> Tuple[bool, str]:
         """Test KDE Konsole"""
         cmd = ['konsole', '-e', 'bash', 'TEST_SCRIPT']
-        return self._test_command(cmd, expect_running=True)
-    
+        # Linux terminals spawn window and exit immediately - this is normal
+        return self._test_command(cmd, expect_running=False)
+
     def _test_xfce4_terminal(self) -> Tuple[bool, str]:
         """Test XFCE4 Terminal"""
         cmd = ['xfce4-terminal', '-e', 'bash TEST_SCRIPT']
-        return self._test_command(cmd, expect_running=True)
-    
+        # Linux terminals spawn window and exit immediately - this is normal
+        return self._test_command(cmd, expect_running=False)
+
     def _test_mate_terminal(self) -> Tuple[bool, str]:
         """Test MATE Terminal"""
         cmd = ['mate-terminal', '-e', 'bash TEST_SCRIPT']
-        return self._test_command(cmd, expect_running=True)
-    
+        # Linux terminals spawn window and exit immediately - this is normal
+        return self._test_command(cmd, expect_running=False)
+
     def _test_terminator(self) -> Tuple[bool, str]:
         """Test Terminator"""
         cmd = ['terminator', '-e', 'bash TEST_SCRIPT']
-        return self._test_command(cmd, expect_running=True)
-    
+        # Linux terminals spawn window and exit immediately - this is normal
+        return self._test_command(cmd, expect_running=False)
+
     def _test_xterm(self) -> Tuple[bool, str]:
         """Test XTerm"""
         cmd = ['xterm', '-e', 'bash', 'TEST_SCRIPT']
-        return self._test_command(cmd, expect_running=True)
+        # Linux terminals spawn window and exit immediately - this is normal
+        return self._test_command(cmd, expect_running=False)
     
     def detect(self, force_refresh: bool = False) -> Optional[str]:
         """Detect the best working terminal method

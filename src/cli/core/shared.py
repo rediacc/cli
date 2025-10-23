@@ -442,6 +442,31 @@ def _decode_ssh_key(ssh_key: str) -> str:
 
     return ssh_key
 
+def _decode_host_entry(host_entry: str) -> str:
+    """Decode and normalize host entry for known_hosts file"""
+    import base64
+
+    if not host_entry:
+        return host_entry
+
+    # Decode base64 if needed
+    # Known_hosts entries typically contain spaces (e.g., "hostname ssh-rsa AAAA...")
+    # If there are no spaces and no newlines, it's likely base64 encoded
+    if ' ' not in host_entry and '\n' not in host_entry:
+        try:
+            host_entry = base64.b64decode(host_entry).decode('utf-8')
+        except Exception:
+            # If decoding fails, use as-is (might already be decoded)
+            pass
+
+    # Normalize line endings to Unix format
+    host_entry = host_entry.replace('\r\n', '\n').replace('\r', '\n')
+
+    # Remove trailing newlines (we'll add one when writing to file)
+    host_entry = host_entry.rstrip('\n')
+
+    return host_entry
+
 def _convert_path_for_ssh(path: str, ssh_executable: str = None) -> str:
     """Convert Windows paths for SSH compatibility based on SSH implementation"""
     if not path or not is_windows():
@@ -474,28 +499,34 @@ def _convert_path_for_ssh(path: str, ssh_executable: str = None) -> str:
     return path
 
 def _setup_ssh_options(host_entry: str, known_hosts_path: str, key_path: str = None, ssh_executable: str = None) -> str:
-    """Setup SSH options with proper path handling for cross-platform compatibility"""
+    """Setup SSH options with strict host key verification
+
+    Args:
+        host_entry: Expected host key entry from vault (REQUIRED)
+        known_hosts_path: Path to known_hosts file
+        key_path: Optional path to SSH private key file
+        ssh_executable: Optional SSH executable path for Windows compatibility
+
+    Raises:
+        ValueError: If host_entry is None or empty (no insecure connections allowed)
+    """
+    # Security: ALWAYS require host key from service - no exceptions
+    if not host_entry:
+        raise ValueError(
+            "Security Error: No host key found in vault. "
+            "The service MUST provide a host key for all SSH connections. "
+            "Contact your administrator to add the host key to the machine vault."
+        )
+
     # Convert paths based on SSH implementation (MSYS2 vs Windows OpenSSH)
     if known_hosts_path:
         known_hosts_path = _convert_path_for_ssh(known_hosts_path, ssh_executable)
     if key_path:
         key_path = _convert_path_for_ssh(key_path, ssh_executable)
 
-    # Security: Use different strategies based on host_entry availability
-    if host_entry:
-        # Host entry exists in vault - use strict checking to prevent MITM attacks
-        # This is the secure path for machines with known host keys
-        base_opts = f"-o StrictHostKeyChecking=yes -o UserKnownHostsFile={known_hosts_path}"
-        _track_ssh_operation("host_key_verification", "known_host", True)
-    else:
-        # No host entry - this is a first-time connection or dev mode
-        # For security, we still want to save the host key for future verification
-        # but we need to accept it initially to establish the connection
-
-        # Use a temporary known_hosts file to capture the host key
-        # Always use the provided known_hosts path (never null device)
-        base_opts = f"-o StrictHostKeyChecking=accept-new -o UserKnownHostsFile={known_hosts_path}"
-        _track_ssh_operation("host_key_verification", "new_host", True)
+    # STRICT host key checking - we trust ONLY what the service provides
+    base_opts = f"-o StrictHostKeyChecking=yes -o UserKnownHostsFile={known_hosts_path}"
+    _track_ssh_operation("host_key_verification", "known_host", True)
 
     # Add additional security options
     security_opts = "-o PasswordAuthentication=no -o PubkeyAuthentication=yes -o PreferredAuthentications=publickey"
@@ -505,9 +536,18 @@ def _setup_ssh_options(host_entry: str, known_hosts_path: str, key_path: str = N
 
     return f"{all_opts} -i {key_path}" if key_path else all_opts
 
-def setup_ssh_agent_connection(ssh_key: str, host_entry: str = None) -> Tuple[str, str, str]:
+def setup_ssh_agent_connection(ssh_key: str, host_entry: str) -> Tuple[str, str, str]:
+    """Setup SSH connection using ssh-agent with strict host key verification
+
+    Args:
+        ssh_key: SSH private key content
+        host_entry: Expected host key from vault (REQUIRED)
+
+    Raises:
+        ValueError: If host_entry is None or empty
+    """
     import subprocess
-    
+
     ssh_key = _decode_ssh_key(ssh_key)
     
     try:
@@ -536,17 +576,31 @@ def setup_ssh_agent_connection(ssh_key: str, host_entry: str = None) -> Tuple[st
     except Exception as e:
         raise RuntimeError(f"SSH agent setup failed: {e}")
     
-    known_hosts_file_path = None
+    # Always create a known_hosts file, even for first-time connections
+    # This allows SSH to save the host key for future verification
+    known_hosts_file_path = create_temp_file(suffix='_known_hosts', prefix='known_hosts_')
+
     if host_entry:
-        known_hosts_file_path = create_temp_file(suffix='_known_hosts', prefix='known_hosts_')
+        # Decode and write the existing host entry from the vault
+        host_entry = _decode_host_entry(host_entry)
         with open(known_hosts_file_path, 'w') as f: f.write(host_entry + '\n')
-    
+    # If no host_entry, the file is empty but will be used to store the new host key
+
     ssh_opts = _setup_ssh_options(host_entry, known_hosts_file_path)
-    
+
     return ssh_opts, agent_pid, known_hosts_file_path
 
-def setup_ssh_for_connection(ssh_key: str, host_entry: str = None, ssh_executable: str = None) -> Tuple[str, str, str]:
-    """Setup SSH connection with enhanced error handling and cross-platform compatibility"""
+def setup_ssh_for_connection(ssh_key: str, host_entry: str, ssh_executable: str = None) -> Tuple[str, str, str]:
+    """Setup SSH connection with strict host key verification
+
+    Args:
+        ssh_key: SSH private key content
+        host_entry: Expected host key from vault (REQUIRED)
+        ssh_executable: Optional SSH executable path for Windows compatibility
+
+    Raises:
+        ValueError: If host_entry is None or empty
+    """
     try:
         ssh_key = _decode_ssh_key(ssh_key)
     except ValueError as e:
@@ -591,13 +645,14 @@ def setup_ssh_for_connection(ssh_key: str, host_entry: str = None, ssh_executabl
     # This allows SSH to save the host key for future verification
     known_hosts_file_path = create_temp_file(suffix='_known_hosts', prefix='known_hosts_')
     if host_entry:
-        # Write the existing host entry from the vault
-        with open(known_hosts_file_path, 'w') as f: 
+        # Decode and write the existing host entry from the vault
+        host_entry = _decode_host_entry(host_entry)
+        with open(known_hosts_file_path, 'w') as f:
             f.write(host_entry + '\n')
     # If no host_entry, the file is empty but will be used to store the new host key
-    
+
     ssh_opts = _setup_ssh_options(host_entry, known_hosts_file_path, ssh_key_file_path, ssh_executable)
-    
+
     return ssh_opts, ssh_key_file_path, known_hosts_file_path
 
 def cleanup_ssh_agent(agent_pid: str, known_hosts_file: str = None):
@@ -612,20 +667,29 @@ def cleanup_ssh_key(ssh_key_file: str, known_hosts_file: str = None):
         if file_path and os.path.exists(file_path): os.unlink(file_path)
 
 class SSHConnection:
-    """Context manager for SSH connections with automatic cleanup.
-    
+    """Context manager for SSH connections with strict security and automatic cleanup.
+
+    Requires host key from service for all connections - no insecure connections allowed.
     Tries SSH agent first, falls back to file-based keys if agent fails.
     Automatically cleans up resources on exit.
     """
-    
-    def __init__(self, ssh_key: str, host_entry: str = None, prefer_agent: bool = True):
+
+    def __init__(self, ssh_key: str, host_entry: str, prefer_agent: bool = True):
         """Initialize SSH connection context.
-        
+
         Args:
             ssh_key: SSH private key content
-            host_entry: Optional known_hosts entry
+            host_entry: Host key from vault (REQUIRED for security)
             prefer_agent: Whether to try SSH agent first (default: True)
+
+        Raises:
+            ValueError: If host_entry is None or empty
         """
+        if not host_entry:
+            raise ValueError(
+                "Security Error: host_entry is required for SSH connections. "
+                "The service must provide a host key from the vault."
+            )
         self.ssh_key = ssh_key
         self.host_entry = host_entry
         self.prefer_agent = prefer_agent
@@ -700,13 +764,19 @@ class SSHConnection:
 
 class SSHTunnelConnection(SSHConnection):
     """Context manager for SSH connections that need to maintain tunnels.
-    
+
     This is a special variant that doesn't automatically cleanup SSH resources
     on exit, allowing tunnels to persist. Cleanup must be done manually.
     """
-    
-    def __init__(self, ssh_key: str, host_entry: str = None, prefer_agent: bool = True):
-        """Initialize SSH tunnel connection context."""
+
+    def __init__(self, ssh_key: str, host_entry: str, prefer_agent: bool = True):
+        """Initialize SSH tunnel connection context.
+
+        Args:
+            ssh_key: SSH private key content
+            host_entry: Host key from vault (REQUIRED for security)
+            prefer_agent: Whether to try SSH agent first (default: True)
+        """
         super().__init__(ssh_key, host_entry, prefer_agent)
         self._cleanup_on_exit = True
     
@@ -742,10 +812,10 @@ def get_machine_connection_info(machine_info: Dict[str, Any]) -> Dict[str, Any]:
                 except json.JSONDecodeError as e:
                     print(colorize(f"Failed to parse vaultContent: {e}", 'RED'))
 
-    ip = vault.get('ip') or vault.get('IP')
-    ssh_user = vault.get('user') or vault.get('USER')
-    datastore = vault.get('datastore') or vault.get('DATASTORE')
-    host_entry = vault.get('hostEntry') or vault.get('HOST_ENTRY')
+    ip = vault.get('ip')
+    ssh_user = vault.get('user')
+    datastore = vault.get('datastore')
+    host_entry = vault.get('host_entry')
 
     # DEBUG: Log machine vault info
     logger.debug(f"[get_machine_connection_info] Machine '{machine_name}' vault:")
