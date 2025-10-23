@@ -42,14 +42,15 @@ fi
 # Get the CLI root directory (parent of scripts)
 CLI_ROOT="$(cd "$(dirname "$0")/.." && pwd)"
 
+# Strip 'v' prefix from version for both Python package and Docker tags
+clean_version="${version#v}"
+
 # Optionally update _version.py file (for local testing)
 if [ "$update_version_file" = true ] && [ "$version" != "dev" ]; then
     VERSION_FILE="$CLI_ROOT/src/cli/_version.py"
     if [ -f "$VERSION_FILE" ]; then
-        # Strip "v" prefix if present for PyPI compatibility
-        pypi_version="${version#v}"
-        echo "Updating $VERSION_FILE to version: $pypi_version"
-        sed -i.bak "s/__version__ = \"[^\"]*\"/__version__ = \"$pypi_version\"/g" "$VERSION_FILE"
+        echo "Updating $VERSION_FILE to version: $clean_version"
+        sed -i.bak "s/__version__ = \"[^\"]*\"/__version__ = \"$clean_version\"/g" "$VERSION_FILE"
         rm -f "${VERSION_FILE}.bak"
     fi
 fi
@@ -57,11 +58,11 @@ fi
 # Build CLI image (includes GUI support)
 echo "Building CLI image with GUI support..."
 if [ "$version" != "dev" ]; then
-    # Build with version tag
+    # Build with version tag (both VERSION build arg and Docker tag use clean version without 'v')
     docker build $no_cache \
-        --build-arg VERSION="$version" \
+        --build-arg VERSION="$clean_version" \
         -t rediacc/cli:latest \
-        -t rediacc/cli:$version \
+        -t rediacc/cli:$clean_version \
         -f "$CLI_ROOT/docker/Dockerfile" \
         "$CLI_ROOT"
 else
