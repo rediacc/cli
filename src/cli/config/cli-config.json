@@ -4466,6 +4466,48 @@
             }
           }
         }
+      },
+      "delete-user-request": {
+        "endpoint": "DeleteUserRequest",
+        "params": "lambda args: {}"
+      },
+      "create-authentication-request": {
+        "endpoint": "CreateAuthenticationRequest",
+        "params": "lambda args: {'name': args.name, 'tFACode': args.t_f_a_code, 'requestedPermissions': args.requested_permissions, 'tokenExpirationHours': args.token_expiration_hours, 'target': args.target}",
+        "help": {
+          "parameters": {
+            "name": {
+              "description": "",
+              "required": true,
+              "example": "",
+              "type": "string"
+            },
+            "t_f_a_code": {
+              "description": "",
+              "required": true,
+              "example": "",
+              "type": "string"
+            },
+            "requested_permissions": {
+              "description": "",
+              "required": true,
+              "example": "",
+              "type": "string"
+            },
+            "token_expiration_hours": {
+              "description": "",
+              "required": true,
+              "example": "",
+              "type": "integer"
+            },
+            "target": {
+              "description": "",
+              "required": true,
+              "example": "",
+              "type": "string"
+            }
+          }
+        }
       }
     },
     "team": {
