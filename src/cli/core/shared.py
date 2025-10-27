@@ -50,15 +50,15 @@ def _track_ssh_operation(operation: str, host: str = "unknown", success: bool = 
         pass
 
 def get_cli_command() -> list:
-    if not is_windows(): return [CLI_TOOL]
-    # On Windows, try 'python' first since 'python3' usually doesn't exist
-    for cmd in ['python', 'python3', 'py']:
-        try:
-            result = subprocess.run([cmd, '--version'], capture_output=True, text=True, timeout=5)
-            if result.returncode == 0 and 'Python 3' in result.stdout: 
-                return [cmd, CLI_TOOL]
-        except: continue
-    return ['python', CLI_TOOL]
+    """Get the command to run CLI operations as subprocess.
+
+    Always uses the current Python interpreter (sys.executable) for maximum compatibility
+    across all installation methods (PyPI, development, venvs, etc.) and platforms.
+
+    PyPI-installed Python files don't have execute permissions, so we must use the
+    Python interpreter explicitly rather than trying to execute the .py file directly.
+    """
+    return [sys.executable, CLI_TOOL]
 
 def is_windows() -> bool:
     return platform.system().lower() == 'windows'
