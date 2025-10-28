@@ -392,11 +392,14 @@ def launch_vscode_repo(args):
 
     known_hosts_file_path = ensure_persistent_known_hosts_file(args.team, args.machine, args.repo, host_entry)
 
-    with SSHConnection(ssh_key, host_entry, prefer_agent=True) as ssh_conn:
+    port = conn.connection_info.get('port', 22)
+
+    with SSHConnection(ssh_key, host_entry, port, prefer_agent=True) as ssh_conn:
         # Create SSH config entry
         connection_name = f"rediacc-{sanitize_hostname(args.team)}-{sanitize_hostname(args.machine)}-{sanitize_hostname(args.repo)}"
         ssh_host = conn.connection_info['ip']
         ssh_user = conn.connection_info['user']
+        ssh_port = port
         remote_path = conn.repo_paths['mount_path']
 
         ensure_vscode_env_setup(
@@ -419,6 +422,7 @@ def launch_vscode_repo(args):
         ssh_config_entry = f"""Host {connection_name}
     HostName {ssh_host}
     User {ssh_user}
+    Port {ssh_port}
 {chr(10).join(ssh_opts_lines) if ssh_opts_lines else ''}
 {setenv_directives}
     ServerAliveInterval 60
@@ -497,11 +501,14 @@ def launch_vscode_machine(args):
 
     known_hosts_file_path = ensure_persistent_known_hosts_file(args.team, args.machine, None, host_entry)
 
-    with SSHConnection(ssh_key, host_entry, prefer_agent=True) as ssh_conn:
+    port = connection_info.get('port', 22)
+
+    with SSHConnection(ssh_key, host_entry, port, prefer_agent=True) as ssh_conn:
         # Create SSH config entry
         connection_name = f"rediacc-{sanitize_hostname(args.team)}-{sanitize_hostname(args.machine)}"
         ssh_host = connection_info['ip']
         ssh_user = connection_info['user']
+        ssh_port = port
 
         ensure_vscode_env_setup(
             ssh_conn,
@@ -523,6 +530,7 @@ def launch_vscode_machine(args):
         ssh_config_entry = f"""Host {connection_name}
     HostName {ssh_host}
     User {ssh_user}
+    Port {ssh_port}
 {chr(10).join(ssh_opts_lines) if ssh_opts_lines else ''}
 {setenv_directives}
     ServerAliveInterval 60

@@ -71,19 +71,20 @@ def connect_to_machine(args):
     print(MESSAGES.get('fetching_info', 'Fetching machine information...'))
     machine_info = get_machine_info_with_team(args.team, args.machine)
     connection_info = get_machine_connection_info(machine_info)
-    validate_machine_accessibility(args.machine, args.team, connection_info['ip'])
-    
+    port = connection_info.get('port', 22)
+    validate_machine_accessibility(args.machine, args.team, connection_info['ip'], port)
+
     print(MESSAGES.get('retrieving_ssh_key', 'Retrieving SSH key...'))
     ssh_key = get_ssh_key_from_vault(args.team)
-    if not ssh_key: 
+    if not ssh_key:
         error_exit(MESSAGES.get('ssh_key_not_found', 'SSH key not found').format(team=args.team))
-    
+
     host_entry = connection_info.get('host_entry')
 
     if not host_entry:
         error_exit("Security Error: No host key found in machine vault. Contact your administrator to add the host key.")
 
-    with SSHConnection(ssh_key, host_entry) as ssh_conn:
+    with SSHConnection(ssh_key, host_entry, port) as ssh_conn:
         if ssh_conn.is_using_agent:
             print_message('ssh_agent_setup', pid=ssh_conn.agent_pid)
         
@@ -116,7 +117,8 @@ def connect_to_terminal(args):
     logger = get_logger(__name__)
 
     conn = RepositoryConnection(args.team, args.machine, args.repo); conn.connect()
-    validate_machine_accessibility(args.machine, args.team, conn.connection_info['ip'], args.repo)
+    port = conn.connection_info.get('port', 22)
+    validate_machine_accessibility(args.machine, args.team, conn.connection_info['ip'], port, args.repo)
 
     # DEBUG: Log terminal connection details
     logger.debug(f"[connect_to_terminal] Terminal connection details:")
@@ -135,7 +137,7 @@ def connect_to_terminal(args):
     if not host_entry:
         error_exit("Security Error: No host key found in repository machine vault. Contact your administrator to add the host key.")
 
-    with SSHConnection(ssh_key, host_entry) as ssh_conn:
+    with SSHConnection(ssh_key, host_entry, port) as ssh_conn:
         if ssh_conn.is_using_agent:
             print_message('ssh_agent_setup', pid=ssh_conn.agent_pid)
         # Get environment variables using shared module (DRY principle)
@@ -206,7 +208,8 @@ def connect_to_container(args):
     from cli.core.shared import validate_machine_accessibility, handle_ssh_exit_code
 
     conn = RepositoryConnection(args.team, args.machine, args.repo); conn.connect()
-    validate_machine_accessibility(args.machine, args.team, conn.connection_info['ip'], args.repo)
+    port = conn.connection_info.get('port', 22)
+    validate_machine_accessibility(args.machine, args.team, conn.connection_info['ip'], port, args.repo)
 
     ssh_key = get_ssh_key_from_vault(args.team)
     if not ssh_key:
@@ -217,7 +220,7 @@ def connect_to_container(args):
     if not host_entry:
         error_exit("Security Error: No host key found in repository machine vault. Contact your administrator to add the host key.")
 
-    with SSHConnection(ssh_key, host_entry) as ssh_conn:
+    with SSHConnection(ssh_key, host_entry, port) as ssh_conn:
         if ssh_conn.is_using_agent:
             print_message('ssh_agent_setup', pid=ssh_conn.agent_pid)
         # Get environment variables using shared module (DRY principle)

@@ -498,7 +498,7 @@ def _convert_path_for_ssh(path: str, ssh_executable: str = None) -> str:
 
     return path
 
-def _setup_ssh_options(host_entry: str, known_hosts_path: str, key_path: str = None, ssh_executable: str = None) -> str:
+def _setup_ssh_options(host_entry: str, known_hosts_path: str, key_path: str = None, ssh_executable: str = None, port: int = 22) -> str:
     """Setup SSH options with strict host key verification
 
     Args:
@@ -506,6 +506,7 @@ def _setup_ssh_options(host_entry: str, known_hosts_path: str, key_path: str = N
         known_hosts_path: Path to known_hosts file
         key_path: Optional path to SSH private key file
         ssh_executable: Optional SSH executable path for Windows compatibility
+        port: SSH port number (default: 22)
 
     Raises:
         ValueError: If host_entry is None or empty (no insecure connections allowed)
@@ -525,7 +526,7 @@ def _setup_ssh_options(host_entry: str, known_hosts_path: str, key_path: str = N
         key_path = _convert_path_for_ssh(key_path, ssh_executable)
 
     # STRICT host key checking - we trust ONLY what the service provides
-    base_opts = f"-o StrictHostKeyChecking=yes -o UserKnownHostsFile={known_hosts_path}"
+    base_opts = f"-o StrictHostKeyChecking=yes -o UserKnownHostsFile={known_hosts_path} -p {port}"
     _track_ssh_operation("host_key_verification", "known_host", True)
 
     # Add additional security options
@@ -536,12 +537,13 @@ def _setup_ssh_options(host_entry: str, known_hosts_path: str, key_path: str = N
 
     return f"{all_opts} -i {key_path}" if key_path else all_opts
 
-def setup_ssh_agent_connection(ssh_key: str, host_entry: str) -> Tuple[str, str, str]:
+def setup_ssh_agent_connection(ssh_key: str, host_entry: str, port: int = 22) -> Tuple[str, str, str]:
     """Setup SSH connection using ssh-agent with strict host key verification
 
     Args:
         ssh_key: SSH private key content
         host_entry: Expected host key from vault (REQUIRED)
+        port: SSH port number (default: 22)
 
     Raises:
         ValueError: If host_entry is None or empty
@@ -586,17 +588,18 @@ def setup_ssh_agent_connection(ssh_key: str, host_entry: str) -> Tuple[str, str,
         with open(known_hosts_file_path, 'w') as f: f.write(host_entry + '\n')
     # If no host_entry, the file is empty but will be used to store the new host key
 
-    ssh_opts = _setup_ssh_options(host_entry, known_hosts_file_path)
+    ssh_opts = _setup_ssh_options(host_entry, known_hosts_file_path, port=port)
 
     return ssh_opts, agent_pid, known_hosts_file_path
 
-def setup_ssh_for_connection(ssh_key: str, host_entry: str, ssh_executable: str = None) -> Tuple[str, str, str]:
+def setup_ssh_for_connection(ssh_key: str, host_entry: str, ssh_executable: str = None, port: int = 22) -> Tuple[str, str, str]:
     """Setup SSH connection with strict host key verification
 
     Args:
         ssh_key: SSH private key content
         host_entry: Expected host key from vault (REQUIRED)
         ssh_executable: Optional SSH executable path for Windows compatibility
+        port: SSH port number (default: 22)
 
     Raises:
         ValueError: If host_entry is None or empty
@@ -651,7 +654,7 @@ def setup_ssh_for_connection(ssh_key: str, host_entry: str, ssh_executable: str 
             f.write(host_entry + '\n')
     # If no host_entry, the file is empty but will be used to store the new host key
 
-    ssh_opts = _setup_ssh_options(host_entry, known_hosts_file_path, ssh_key_file_path, ssh_executable)
+    ssh_opts = _setup_ssh_options(host_entry, known_hosts_file_path, ssh_key_file_path, ssh_executable, port)
 
     return ssh_opts, ssh_key_file_path, known_hosts_file_path
 
@@ -674,12 +677,13 @@ class SSHConnection:
     Automatically cleans up resources on exit.
     """
 
-    def __init__(self, ssh_key: str, host_entry: str, prefer_agent: bool = True):
+    def __init__(self, ssh_key: str, host_entry: str, port: int = 22, prefer_agent: bool = True):
         """Initialize SSH connection context.
 
         Args:
             ssh_key: SSH private key content
             host_entry: Host key from vault (REQUIRED for security)
+            port: SSH port number (default: 22)
             prefer_agent: Whether to try SSH agent first (default: True)
 
         Raises:
@@ -692,6 +696,7 @@ class SSHConnection:
             )
         self.ssh_key = ssh_key
         self.host_entry = host_entry
+        self.port = port
         self.prefer_agent = prefer_agent
         self.ssh_opts = None
         self.agent_pid = None
@@ -709,7 +714,7 @@ class SSHConnection:
             if self.prefer_agent:
                 try:
                     self.ssh_opts, self.agent_pid, self.known_hosts_file = setup_ssh_agent_connection(
-                        self.ssh_key, self.host_entry
+                        self.ssh_key, self.host_entry, self.port
                     )
                     self._using_agent = True
                     success = True
@@ -724,7 +729,7 @@ class SSHConnection:
 
             # File-based fallback
             self.ssh_opts, self.ssh_key_file, self.known_hosts_file = setup_ssh_for_connection(
-                self.ssh_key, self.host_entry
+                self.ssh_key, self.host_entry, port=self.port
             )
             success = True
             _track_ssh_operation("connection_setup", "file-based", True,
@@ -816,12 +821,14 @@ def get_machine_connection_info(machine_info: Dict[str, Any]) -> Dict[str, Any]:
     ssh_user = vault.get('user')
     datastore = vault.get('datastore')
     host_entry = vault.get('host_entry')
+    port = vault.get('port', 22)  # Default to port 22 if not specified
 
     # DEBUG: Log machine vault info
     logger.debug(f"[get_machine_connection_info] Machine '{machine_name}' vault:")
     logger.debug(f"  - ip: {ip}")
     logger.debug(f"  - user: {ssh_user}")
     logger.debug(f"  - datastore: {datastore}")
+    logger.debug(f"  - port: {port}")
 
     # Validate required fields
     if not datastore:
@@ -855,6 +862,7 @@ def get_machine_connection_info(machine_info: Dict[str, Any]) -> Dict[str, Any]:
     return {
         'ip': ip,
         'user': ssh_user,
+        'port': port,
         'universal_user': universal_user,
         'universal_user_id': universal_user_id,
         'datastore': datastore,
@@ -1050,18 +1058,19 @@ def test_ssh_connectivity(ip: str, port: int = 22, timeout: int = 5) -> Tuple[bo
 
     return result
 
-def validate_machine_accessibility(machine_name: str, team_name: str, ip: str, repo_name: str = None):
-    print(f"Testing connectivity to {ip}...")
-    is_accessible, error_msg = test_ssh_connectivity(ip)
+def validate_machine_accessibility(machine_name: str, team_name: str, ip: str, port: int = 22, repo_name: str = None):
+    print(f"Testing connectivity to {ip}:{port}...")
+    is_accessible, error_msg = test_ssh_connectivity(ip, port)
     if is_accessible: print(colorize("✓ Machine is accessible", 'GREEN')); return
-    
+
     print(colorize(f"\n✗ Machine '{machine_name}' is not accessible", 'RED'))
     print(colorize(f"  Error: {error_msg}", 'RED'))
     print(colorize("\nPossible reasons:", 'YELLOW'))
-    for reason in ["The machine is offline or powered down", "Network connectivity issues between client and machine", "Firewall blocking SSH port (22)", "Incorrect IP address in machine configuration"]:
+    for reason in ["The machine is offline or powered down", "Network connectivity issues between client and machine", f"Firewall blocking SSH port ({port})", "Incorrect IP address in machine configuration"]:
         print(colorize(f"  • {reason}", 'YELLOW'))
-    
+
     print(colorize(f"\nMachine IP: {ip}", 'BLUE'))
+    print(colorize(f"Port: {port}", 'BLUE'))
     print(colorize(f"Team: {team_name}", 'BLUE'))
     if repo_name:
         print(colorize(f"Repository: {repo_name}", 'BLUE'))
@@ -1177,15 +1186,16 @@ class RepositoryConnection:
     
     def ssh_context(self, prefer_agent: bool = True):
         """Get SSH connection context manager.
-        
+
         Args:
             prefer_agent: Whether to try SSH agent first (default: True)
-            
+
         Returns:
             SSHConnection context manager
         """
         host_entry = self._connection_info.get('host_entry')
-        return SSHConnection(self._ssh_key, host_entry, prefer_agent)
+        port = self._connection_info.get('port', 22)
+        return SSHConnection(self._ssh_key, host_entry, port, prefer_agent)
     
     @property
     def ssh_destination(self) -> str:
