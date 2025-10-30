@@ -1,4 +1,4 @@
-name: VAULT_ADVANCED_TEST
+name: VAULT_PRO_TEST
 description: Test advanced vault operations for all entity types
 executor: "commands/cli_main.py"
 setup:

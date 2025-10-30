@@ -1,4 +1,4 @@
-name: ADVANCED_OPERATIONS_TEST
+name: PRO_OPERATIONS_TEST
 description: Test advanced operations - exports and vaults
 executor: "commands/cli_main.py"
 setup:
@@ -9,7 +9,7 @@ setup:
     companyName: AdvOpsCompany-${TIMESTAMP}
     email: advops-${TIMESTAMP}@test.com
     password: Test@Pass123!
-    subscriptionPlan: PREMIUM
+    subscriptionPlan: BUSINESS
   expect:
     success: true
 - name: activate_account

@@ -1,4 +1,4 @@
-name: QUEUE_ADVANCED_TEST
+name: QUEUE_PRO_TEST
 description: Test advanced queue operations - create and list queue items
 executor: "commands/cli_main.py"
 setup:

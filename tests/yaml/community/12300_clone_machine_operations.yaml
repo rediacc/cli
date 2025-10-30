@@ -9,7 +9,7 @@ setup:
     companyName: CloneMachineCompany-${TIMESTAMP}
     email: clonemachine-admin-${TIMESTAMP}@test.com
     password: Test@Pass123!
-    subscriptionPlan: ELITE
+    subscriptionPlan: ENTERPRISE
   expect:
     success: true
 - name: activate_admin_account

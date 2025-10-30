@@ -39,7 +39,7 @@
             "Activation code must be exactly 6 characters",
             "User email must not already exist in the system",
             "Email format must be valid (contains @ and .)",
-            "Subscription plan must exist and be active (COMMUNITY, ADVANCED, PREMIUM, or ELITE)",
+            "Subscription plan must exist and be active (COMMUNITY, PRO, BUSINESS, or ENTERPRISE)",
             "Company name is required and cannot be empty",
             "Default company vault configuration will be applied automatically",
             "COMMUNITY plan gets 10 years subscription, other plans get 30-day trial",
@@ -451,11 +451,11 @@
               "description": "Create high priority item with task config"
             }
           ],
-          "notes": "Priority 1-2 requires Premium/Elite subscription. Community/Advanced limited to priority 3-5. You must be a team member.",
+          "notes": "Priority 1-2 requires Business/Enterprise subscription. Community/Pro limited to priority 3-5. You must be a team member.",
           "rules": [
             "Priority must be between 1 and 5 (1=highest, 5=lowest)",
-            "Priority levels 1-2 require Premium or Elite subscription",
-            "Community/Advanced plans automatically reset priority to 4 (default)",
+            "Priority levels 1-2 require Business or Enterprise subscription",
+            "Community/Pro plans automatically reset priority to 4 (default)",
             "User must be a member of the team that owns the machine",
             "Machine must exist and belong to the specified team",
             "Bridge must exist and be accessible",
@@ -651,8 +651,8 @@
             "Shows current usage count vs total allowed limit",
             "Usage percentage calculated for each resource type",
             "Default to Community tier if no active subscription",
-            "Queue priority feature only for Premium/Elite tiers",
-            "Resource limits by tier: Community (2), Advanced (3-10), Premium (5-50), Elite (10-200)",
+            "Queue priority feature only for Business/Enterprise tiers",
+            "Resource limits by tier: Community (2), Pro (3-10), Business (5-50), Enterprise (10-200)",
             "Resources at 80% or more flagged as near limit",
             "Upgrade recommended if 3+ resources at 80% capacity"
           ]
@@ -675,18 +675,18 @@
               "description": "Extract subscription data for monitoring"
             }
           ],
-          "notes": "Plans: COMMUNITY (free), ADVANCED, PREMIUM, ELITE. Higher tiers offer more resources, priority levels, and features like schedules and distributed storage.",
+          "notes": "Plans: COMMUNITY (free), PRO, BUSINESS, ENTERPRISE. Higher tiers offer more resources, priority levels, and features like schedules and distributed storage.",
           "rules": [
             "User must be authenticated with valid session",
             "Can only view subscription information for your own company",
             "Shows highest tier subscription when multiple are active",
-            "Subscription priority: Elite > Premium > Advanced > Community",
+            "Subscription priority: Enterprise > Business > Pro > Community",
             "Active subscriptions must have ACTIVE status and future end date",
             "Resource limits are cumulative across all active subscriptions",
             "Trial subscriptions identified if 45 days or less (non-Community)",
             "Expiration warnings shown for subscriptions ending within 30 days",
-            "Feature access varies by tier (Analytics for Premium/Elite, etc.)",
-            "Queue priority features only visible to Premium/Elite subscribers"
+            "Feature access varies by tier (Analytics for Business/Enterprise, etc.)",
+            "Queue priority features only visible to Business/Enterprise subscribers"
           ]
         }
       },
@@ -2691,7 +2691,7 @@
           "notes": "Requires admin permissions. Group names must be unique within the company. Add permissions after creation.",
           "rules": [
             "User must be authenticated with valid credentials",
-            "Custom groups require paid subscription (Advanced, Premium, or Elite)",
+            "Custom groups require paid subscription (Pro, Business, or Enterprise)",
             "Community plan users cannot create custom permission groups",
             "Group name must be unique within your company",
             "Cannot use reserved names: Administrators, Users, or Bridges",
@@ -4935,9 +4935,9 @@
           "help": "Subscription plan",
           "choices": [
             "COMMUNITY",
-            "ADVANCED",
-            "PREMIUM",
-            "ELITE"
+            "PRO",
+            "BUSINESS",
+            "ENTERPRISE"
           ]
         }
       ],
@@ -5101,7 +5101,7 @@
             4,
             5
           ],
-          "help": "Priority level (1=highest, 5=lowest, default=3). Premium/Elite subscriptions only."
+          "help": "Priority level (1=highest, 5=lowest, default=3). Business/Enterprise subscriptions only."
         },
         {
           "name": "--vault",

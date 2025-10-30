@@ -9,7 +9,7 @@ setup:
     companyName: MCTestCompany-${TIMESTAMP}
     email: mctest-${TIMESTAMP}@test.com
     password: Test@Pass123!
-    subscriptionPlan: ELITE
+    subscriptionPlan: ENTERPRISE
   expect:
     success: true
 - name: activate_account

@@ -86,7 +86,7 @@ After thorough analysis of the codebase, I've identified the infrastructure avai
 3. **Connect/Disconnect** - Wire menu to existing connection logic
 4. **Rename Selected** - Add rename dialog + SSH command
 
-### **Phase 3 - Advanced Features (Future)**
+### **Phase 3 - Pro Features (Future)**
 5. **Paste Files** - Complete clipboard system
 6. **Plugin Logs** - Docker logs integration
 

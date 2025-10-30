@@ -191,9 +191,9 @@ sed -i '1a\  - name: "create_permission_group"\n    command: ["permission", "cre
   - 08000s: Queue operations
   - 09000s: Audit and authentication
 
-### Advanced/Premium/Elite (Overrides only)
+### Pro/Business/Enterprise (Overrides only)
 - Only override specific test parameters
-- Example: `01000_company.yaml` with `plan: "ADVANCED"`
+- Example: `01000_company.yaml` with `plan: "PRO"`
 
 ## Complete Database Table Coverage
 

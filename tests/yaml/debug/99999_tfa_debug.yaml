@@ -9,7 +9,7 @@ setup:
       companyName: "TFADebug-${TIMESTAMP}"
       email: "tfa-debug-${TIMESTAMP}@test.com"
       password: "Test@Pass123!"
-      subscriptionPlan: "PREMIUM"
+      subscriptionPlan: "BUSINESS"
     expect:
       success: true
   

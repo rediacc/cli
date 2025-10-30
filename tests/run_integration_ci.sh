@@ -1,6 +1,6 @@
 #!/bin/bash
 # CI Integration Test Runner
-# Runs integration tests against Elite backend services in CI environment
+# Runs integration tests against Enterprise backend services in CI environment
 
 set -e
 
@@ -27,12 +27,12 @@ echo "  Activation Code: $ACTIVATION_CODE"
 echo "  Timeout: ${TIMEOUT}s"
 echo ""
 
-# Wait for Elite API to be ready
-echo "Waiting for Elite API to be ready..."
+# Wait for Enterprise API to be ready
+echo "Waiting for Enterprise API to be ready..."
 if timeout "$TIMEOUT" bash -c "until curl -f $API_URL/health 2>/dev/null; do echo '  Waiting...'; sleep 2; done"; then
-    echo "✓ Elite API is ready!"
+    echo "✓ Enterprise API is ready!"
 else
-    echo "✗ Elite API failed to start within ${TIMEOUT}s"
+    echo "✗ Enterprise API failed to start within ${TIMEOUT}s"
     exit 1
 fi
 

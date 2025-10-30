@@ -1,4 +1,4 @@
-name: QUEUE_OPERATIONS_ADVANCED_TEST
+name: QUEUE_OPERATIONS_PRO_TEST
 description: Test advanced queue operations including cancel, retry, trace, and completion
 executor: "commands/cli_main.py"
 setup:

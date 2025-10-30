@@ -55,12 +55,12 @@ test_data:
     name_pattern: "TestRepo-${TIMESTAMP}_${TEST_ID}"
     description: "Test repository created by automated tests"
   
-  # Storage test data (Advanced+ plans)
+  # Storage test data (Pro+ plans)
   storage:
     name_pattern: "TestStorage-${TIMESTAMP}_${TEST_ID}"
     description: "Test storage resource for backups"
   
-  # Schedule test data (Premium+ plans)
+  # Schedule test data (Business+ plans)
   schedule:
     name_pattern: "TestSchedule-${TIMESTAMP}_${TEST_ID}"
     description: "Test schedule for automated tasks"

@@ -1,4 +1,4 @@
-name: AUDIT_ADVANCED_TEST
+name: AUDIT_PRO_TEST
 description: Test advanced audit operations including entity trace and history
 executor: "commands/cli_main.py"
 setup:

@@ -1,4 +1,4 @@
-name: MACHINE_ADVANCED_TEST
+name: MACHINE_PRO_TEST
 description: Test advanced machine operations including bridge assignment
 executor: "commands/cli_main.py"
 setup:

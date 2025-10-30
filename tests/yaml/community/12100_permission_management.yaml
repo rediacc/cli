@@ -9,7 +9,7 @@ setup:
     companyName: PermMgmtCompany-${TIMESTAMP}
     email: permmgmt-admin-${TIMESTAMP}@test.com
     password: Test@Pass123!
-    subscriptionPlan: PREMIUM
+    subscriptionPlan: BUSINESS
   expect:
     success: true
 - name: activate_admin_account

@@ -1,10 +1,10 @@
-# Integration Testing with Elite Backend
+# Integration Testing with Enterprise Backend
 
-This document explains how the CLI integration tests work with the Elite backend services in CI/CD.
+This document explains how the CLI integration tests work with the Enterprise backend services in CI/CD.
 
 ## Overview
 
-The CLI integration tests now run against **real Rediacc Elite services** in GitHub Actions:
+The CLI integration tests now run against **real Rediacc Enterprise services** in GitHub Actions:
 
 - **nginx** - Reverse proxy
 - **api** - .NET Middleware
@@ -20,16 +20,16 @@ GitHub Actions Workflow
 │   └── Tests CLI logic in isolation
 │
 └── Integration Tests (YAML tests)         # Comprehensive, real backend
-    ├── Elite Action spins up services
+    ├── Enterprise Action spins up services
     ├── CLI connects to http://localhost/api
     └── Tests execute real API calls
 ```
 
 ## How It Works
 
-### 1. Elite Action Starts Services
+### 1. Enterprise Action Starts Services
 
-The workflow uses the [Elite GitHub Action](../../cloud/elite/action/):
+The workflow uses the [Enterprise GitHub Action](../../cloud/elite/action/):
 
 ```yaml
 - uses: ./monorepo/cloud/elite/action
@@ -39,7 +39,7 @@ The workflow uses the [Elite GitHub Action](../../cloud/elite/action/):
 ```
 
 This automatically:
-- Pulls Elite Docker images
+- Pulls Enterprise Docker images
 - Starts nginx, API, and SQL Server
 - Waits for services to be healthy
 - Exposes API at `http://localhost`
@@ -86,7 +86,7 @@ Integration tests run automatically on every push/PR to the CLI repo:
 #### Option 1: With Docker Compose
 
 ```bash
-# Start Elite services
+# Start Enterprise services
 cd ../../cloud/elite
 ./go up
 
@@ -148,7 +148,7 @@ Required for integration tests:
 
 | Variable | Default | Description |
 |----------|---------|-------------|
-| `SYSTEM_API_URL` | `http://localhost/api` | Elite API endpoint |
+| `SYSTEM_API_URL` | `http://localhost/api` | Enterprise API endpoint |
 | `SYSTEM_ADMIN_EMAIL` | `admin@rediacc.io` | Admin account email |
 | `SYSTEM_ADMIN_PASSWORD` | `admin` | Admin account password |
 | `REDIACC_TEST_ACTIVATION_CODE` | `111111` | Account activation code |
@@ -207,7 +207,7 @@ cd ../../cloud/elite
 
 **Authentication failures:**
 - Check `SYSTEM_ADMIN_EMAIL` and `SYSTEM_ADMIN_PASSWORD`
-- Verify Elite initialized with correct admin credentials
+- Verify Enterprise initialized with correct admin credentials
 
 **Test timeouts:**
 - Increase `API_TIMEOUT` environment variable
@@ -224,7 +224,7 @@ integration-test:
 
   steps:
     - Checkout monorepo
-    - Start Elite services (via action)
+    - Start Enterprise services (via action)
     - Install CLI
     - Run integration tests
     - Upload results
@@ -257,7 +257,7 @@ Potential improvements:
 2. **Bridge Testing** - Include bridge queue processing tests
 3. **Performance Tests** - Add load/stress testing
 4. **Contract Testing** - Validate API schema changes
-5. **Matrix Testing** - Test against multiple Elite versions
+5. **Matrix Testing** - Test against multiple Enterprise versions
 
 ## Contributing
 
@@ -272,6 +272,6 @@ Integration tests should focus on **API interaction**, not implementation detail
 
 ## Resources
 
-- [Elite GitHub Action](../../cloud/elite/action/README.md)
+- [Enterprise GitHub Action](../../cloud/elite/action/README.md)
 - [YAML Test Guide](README.md)
 - [CLI Development Guide](../docs/guides/DEVELOPMENT.md)

@@ -1,4 +1,4 @@
-name: USER_MANAGEMENT_ADVANCED_TEST
+name: USER_MANAGEMENT_PRO_TEST
 description: Test advanced user management operations
 executor: "commands/cli_main.py"
 setup:

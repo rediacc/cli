@@ -6,25 +6,25 @@ This directory contains YAML-based tests for the Rediacc CLI, organized by subsc
 
 ```
 yaml/
-├── config.yaml           # Test configuration with variables
-├── basic/               # Tests for Community/Basic features
-├── advanced/            # Tests for Advanced plan features  
-├── premium/             # Tests for Premium plan features (TBD)
-└── elite/               # Tests for Elite plan features (TBD)
+├── config.yaml    # Test configuration with variables
+├── basic/         # Tests for Community/Basic features
+├── pro/           # Tests for Pro plan features
+├── business/      # Tests for Business plan features (TBD)
+└── enterprise/    # Tests for Enterprise plan features (TBD)
 ```
 
 ## Hierarchical Test Execution
 
 Tests are organized hierarchically based on subscription plans:
 - **basic**: Community edition features (free tier)
-- **advanced**: Requires ADVANCED subscription or higher
-- **premium**: Requires PREMIUM subscription or higher
-- **elite**: Requires ELITE subscription
+- **Pro**: Requires PRO subscription or higher
+- **Business**: Requires BUSINESS subscription or higher
+- **Enterprise**: Requires ENTERPRISE subscription
 
 When running tests for a higher tier, all lower tier tests are automatically included:
-- Running `advanced/*.yaml` executes basic tests first, then advanced
-- Running `premium/*.yaml` executes basic, advanced, then premium tests
-- Running `elite/*.yaml` executes all tiers in order
+- Running `pro/*.yaml` executes basic tests first, then Pro
+- Running `business/*.yaml` executes basic, Pro, then Business tests
+- Running `enterprise/*.yaml` executes all tiers in order
 
 ## Running Tests
 
@@ -35,8 +35,8 @@ When running tests for a higher tier, all lower tier tests are automatically inc
 # Run specific test file
 ./run_tests.py "basic/00010_company_setup.yaml"
 
-# Run advanced tests (includes basic)
-./run_tests.py "advanced/*.yaml"
+# Run Pro tests (includes basic)
+./run_tests.py "pro/*.yaml"
 
 # Run all tests in all tiers
 ./run_tests.py
@@ -64,11 +64,11 @@ Sub-tests use decimal notation:
 5. **00040_permission_management.yaml** - Basic permission operations
 6. **09999_logout.yaml** - Cleanup and logout
 
-## Advanced Tests
+## Pro Tests
 
-1. **00010.1_company_setup_advanced.yaml** - Create company with ADVANCED plan
+1. **00010.1_company_setup_pro.yaml** - Create company with PRO plan
 2. **00031.2_user_tfa_management.yaml** - TFA documentation (manual testing)
-3. **00040.1_permission_management_advanced.yaml** - Custom permission groups
+3. **00040.1_permission_management_pro.yaml** - Custom permission groups
 
 ## Test Features
 

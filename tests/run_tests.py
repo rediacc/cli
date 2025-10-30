@@ -927,13 +927,13 @@ class TestRunner:
         return result
     
     def _get_test_hierarchy(self, test_pattern: str) -> Dict[str, List[Path]]:
-        """Organize test files by hierarchy (community, advanced, premium, elite)"""
+        """Organize test files by hierarchy (community, pro, business, enterprise)"""
         yaml_dir = Path(__file__).parent / 'yaml'
         hierarchy = {
             'community': [],
-            'advanced': [],
-            'premium': [],
-            'elite': []
+            'pro': [],
+            'business': [],
+            'enterprise': []
         }
         
         # Find all test files based on pattern
@@ -972,21 +972,21 @@ class TestRunner:
         # Map of tier dependencies
         tier_dependencies = {
             'community': ['community'],
-            'advanced': ['community', 'advanced'],
-            'premium': ['community', 'advanced', 'premium'],
-            'elite': ['community', 'advanced', 'premium', 'elite']
+            'pro': ['community', 'pro'],
+            'business': ['community', 'pro', 'business'],
+            'enterprise': ['community', 'pro', 'business', 'enterprise']
         }
         
         if not test_pattern:
             return ['community']  # Default to community only
             
         # Check if pattern specifies a tier
-        for tier in ['elite', 'premium', 'advanced', 'community']:
+        for tier in ['enterprise', 'business', 'pro', 'community']:
             if tier in test_pattern:
-                return tier_dependencies[tier]
-                
+                return tier_dependencies.get(tier, ['community'])
+
         # If no tier specified, run only the files matching the pattern
-        return ['community', 'advanced', 'premium', 'elite']
+        return ['community', 'pro', 'business', 'enterprise']
     
     def run_all_tests(self, test_pattern: str = None) -> bool:
         """Run all test files matching pattern with hierarchical support"""
@@ -1016,7 +1016,7 @@ class TestRunner:
         # Collect all test files to run with override logic
         # Higher tiers override lower tiers based on filename
         test_files_by_name = {}  # filename -> [(tier, filepath), ...]
-        tier_priority = {'community': 0, 'advanced': 1, 'premium': 2, 'elite': 3}
+        tier_priority = {'community': 0, 'pro': 1, 'business': 2, 'enterprise': 3}
         
         # Collect all files by name, keeping track of all tiers
         for tier in tiers_to_run:

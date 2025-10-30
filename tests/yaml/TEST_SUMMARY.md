@@ -25,12 +25,12 @@
 - ✅ **00080_queue_operations.yaml** - Queue item creation and listing
 - ✅ **09999_logout.yaml** - Cleanup and logout
 
-### 3. Advanced Tests (Paid Plans)
-- ✅ **00010.1_company_setup_advanced.yaml** - Company with ADVANCED plan
+### 3. Pro Tests (Paid Plans)
+- ✅ **00010.1_company_setup_pro.yaml** - Company with PRO plan
 - ✅ **00031.2_user_tfa_management.yaml** - TFA documentation
-- ✅ **00040.1_permission_management_advanced.yaml** - Custom permission groups
-- ✅ **00050.1_storage_management.yaml** - Storage resources (Advanced+)
-- ✅ **00060.1_schedule_management.yaml** - Scheduled tasks (Premium+)
+- ✅ **00040.1_permission_management_pro.yaml** - Custom permission groups
+- ✅ **00050.1_storage_management.yaml** - Storage resources (Pro+)
+- ✅ **00060.1_schedule_management.yaml** - Scheduled tasks (Business+)
 
 ### 4. Configuration and Documentation
 - ✅ Updated `config.yaml` with all test data patterns
@@ -46,8 +46,8 @@
 
 ### 2. Community Edition Limitations
 - Permission group creation fails (requires paid plan)
-- Storage creation fails (requires Advanced+)
-- Schedule creation fails (requires Premium+)
+- Storage creation fails (requires Pro+)
+- Schedule creation fails (requires Business+)
 
 ### 3. Backend Issues
 - `UpdateUserPassword` stored procedure missing
@@ -63,9 +63,9 @@
    - Ensure all tests can run independently or document dependencies
    - Consider adding setup sections to tests that need prerequisites
 
-2. **Create Premium/Elite Tests**
-   - Premium: Advanced features + schedules
-   - Elite: All features + enterprise capabilities
+2. **Create Business/Enterprise Tests**
+   - Business: Pro features + schedules
+   - Enterprise: All features + enterprise capabilities
 
 3. **Add More Test Cases**
    - Audit operations
@@ -85,8 +85,8 @@
 # Run all basic tests
 ./run_tests.py "basic/*.yaml"
 
-# Run advanced tests (includes basic)
-./run_tests.py "advanced/*.yaml"
+# Run pro/* tests (includes basic)
+./run_tests.py "pro/*.yaml"
 
 # Run specific test
 ./run_tests.py "basic/00010_company_setup.yaml"
