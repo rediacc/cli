@@ -57,21 +57,52 @@ fi
 
 # Build CLI image (includes GUI support)
 echo "Building CLI image with GUI support..."
-if [ "$version" != "dev" ]; then
-    # Build with version tag (both VERSION build arg and Docker tag use clean version without 'v')
-    docker build $no_cache \
-        --build-arg VERSION="$clean_version" \
-        -t rediacc/cli:latest \
-        -t rediacc/cli:$clean_version \
-        -f "$CLI_ROOT/docker/Dockerfile" \
-        "$CLI_ROOT"
+
+# Check if multi-platform build is requested
+if [ "${DOCKER_BUILDX}" = "1" ] && [ -n "${REDIACC_BUILD_PLATFORMS}" ]; then
+    echo "Using buildx for multi-platform CLI build: ${REDIACC_BUILD_PLATFORMS}"
+
+    if [ "$version" != "dev" ]; then
+        # Build with version tag (both VERSION build arg and Docker tag use clean version without 'v')
+        docker buildx build \
+            --platform "${REDIACC_BUILD_PLATFORMS}" \
+            $no_cache \
+            --build-arg VERSION="$clean_version" \
+            -t rediacc/cli:latest \
+            -t rediacc/cli:$clean_version \
+            -f "$CLI_ROOT/docker/Dockerfile" \
+            --pull \
+            --push \
+            "$CLI_ROOT"
+    else
+        # Build with only latest tag when no version specified
+        docker buildx build \
+            --platform "${REDIACC_BUILD_PLATFORMS}" \
+            $no_cache \
+            --build-arg VERSION="latest" \
+            -t rediacc/cli:latest \
+            -f "$CLI_ROOT/docker/Dockerfile" \
+            --pull \
+            --push \
+            "$CLI_ROOT"
+    fi
 else
-    # Build with only latest tag when no version specified
-    docker build $no_cache \
-        --build-arg VERSION="latest" \
-        -t rediacc/cli:latest \
-        -f "$CLI_ROOT/docker/Dockerfile" \
-        "$CLI_ROOT"
+    if [ "$version" != "dev" ]; then
+        # Build with version tag (both VERSION build arg and Docker tag use clean version without 'v')
+        docker build $no_cache \
+            --build-arg VERSION="$clean_version" \
+            -t rediacc/cli:latest \
+            -t rediacc/cli:$clean_version \
+            -f "$CLI_ROOT/docker/Dockerfile" \
+            "$CLI_ROOT"
+    else
+        # Build with only latest tag when no version specified
+        docker build $no_cache \
+            --build-arg VERSION="latest" \
+            -t rediacc/cli:latest \
+            -f "$CLI_ROOT/docker/Dockerfile" \
+            "$CLI_ROOT"
+    fi
 fi
 
 echo "Build complete!"
