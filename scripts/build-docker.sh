@@ -62,29 +62,74 @@ echo "Building CLI image with GUI support..."
 if [ "${DOCKER_BUILDX}" = "1" ] && [ -n "${REDIACC_BUILD_PLATFORMS}" ]; then
     echo "Using buildx for multi-platform CLI build: ${REDIACC_BUILD_PLATFORMS}"
 
+    # Calculate registry-prefixed image name (consistent with build.sh)
+    REGISTRY_PREFIX="${PUBLISH_DOCKER_REGISTRY:-}"
+    if [ -n "$REGISTRY_PREFIX" ]; then
+        SLASH_COUNT=$(echo "$REGISTRY_PREFIX" | tr -cd '/' | wc -c)
+        if [ $SLASH_COUNT -ge 2 ]; then
+            # Multi-level registry: strip rediacc/ prefix
+            IMAGE_NAME="$REGISTRY_PREFIX/cli"
+        else
+            # Simple registry: keep full path
+            IMAGE_NAME="$REGISTRY_PREFIX/rediacc/cli"
+        fi
+    else
+        # No registry set - local build only
+        IMAGE_NAME="rediacc/cli"
+    fi
+
     if [ "$version" != "dev" ]; then
         # Build with version tag (both VERSION build arg and Docker tag use clean version without 'v')
-        docker buildx build \
-            --platform "${REDIACC_BUILD_PLATFORMS}" \
-            $no_cache \
-            --build-arg VERSION="$clean_version" \
-            -t rediacc/cli:latest \
-            -t rediacc/cli:$clean_version \
-            -f "$CLI_ROOT/docker/Dockerfile" \
-            --pull \
-            --push \
-            "$CLI_ROOT"
+        if [ -n "$REGISTRY_PREFIX" ]; then
+            echo "  Pushing to: $IMAGE_NAME"
+            docker buildx build \
+                --platform "${REDIACC_BUILD_PLATFORMS}" \
+                $no_cache \
+                --build-arg VERSION="$clean_version" \
+                -t "$IMAGE_NAME:latest" \
+                -t "$IMAGE_NAME:$clean_version" \
+                -f "$CLI_ROOT/docker/Dockerfile" \
+                --pull \
+                --push \
+                "$CLI_ROOT"
+        else
+            echo "  Building locally (no PUBLISH_DOCKER_REGISTRY set)"
+            docker buildx build \
+                --platform "${REDIACC_BUILD_PLATFORMS}" \
+                $no_cache \
+                --build-arg VERSION="$clean_version" \
+                -t "$IMAGE_NAME:latest" \
+                -t "$IMAGE_NAME:$clean_version" \
+                -f "$CLI_ROOT/docker/Dockerfile" \
+                --pull \
+                --output type=image,push=false \
+                "$CLI_ROOT"
+        fi
     else
         # Build with only latest tag when no version specified
-        docker buildx build \
-            --platform "${REDIACC_BUILD_PLATFORMS}" \
-            $no_cache \
-            --build-arg VERSION="latest" \
-            -t rediacc/cli:latest \
-            -f "$CLI_ROOT/docker/Dockerfile" \
-            --pull \
-            --push \
-            "$CLI_ROOT"
+        if [ -n "$REGISTRY_PREFIX" ]; then
+            echo "  Pushing to: $IMAGE_NAME"
+            docker buildx build \
+                --platform "${REDIACC_BUILD_PLATFORMS}" \
+                $no_cache \
+                --build-arg VERSION="latest" \
+                -t "$IMAGE_NAME:latest" \
+                -f "$CLI_ROOT/docker/Dockerfile" \
+                --pull \
+                --push \
+                "$CLI_ROOT"
+        else
+            echo "  Building locally (no PUBLISH_DOCKER_REGISTRY set)"
+            docker buildx build \
+                --platform "${REDIACC_BUILD_PLATFORMS}" \
+                $no_cache \
+                --build-arg VERSION="latest" \
+                -t "$IMAGE_NAME:latest" \
+                -f "$CLI_ROOT/docker/Dockerfile" \
+                --pull \
+                --output type=image,push=false \
+                "$CLI_ROOT"
+        fi
     fi
 else
     if [ "$version" != "dev" ]; then
