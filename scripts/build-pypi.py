@@ -241,21 +241,43 @@ def validate_package(base_dir):
 def upload_package(base_dir, repository="testpypi", token=None):
     """Upload the package to PyPI or TestPyPI."""
     print(f"\n🚀 Uploading to {repository}...")
-    
+
     # Get all files in dist directory
     import glob
     dist_files = glob.glob(str(base_dir / "dist" / "*"))
     if not dist_files:
         print("✗ No distribution files found in dist/")
         return False
-    
+
+    # Try to use the virtual environment if it exists
+    venv_dir = base_dir / ".build_venv"
+    venv_python = venv_dir / "bin" / "python" if os.name != 'nt' else venv_dir / "Scripts" / "python.exe"
+
+    # Check if venv exists and has pip
+    use_venv = False
+    python_cmd = [sys.executable]
+
+    if venv_python.exists():
+        # Check if pip works in the venv
+        pip_check = subprocess.run([str(venv_python), "-m", "pip", "--version"], capture_output=True)
+        if pip_check.returncode == 0:
+            use_venv = True
+            # Ensure twine is installed in the virtual environment
+            subprocess.run([str(venv_python), "-m", "pip", "install", "--quiet", "twine==6.0.1"], check=True)
+            python_cmd = [str(venv_python)]
+
+    if not use_venv:
+        # Fall back to system Python with --break-system-packages
+        subprocess.run([sys.executable, "-m", "pip", "install", "--quiet", "--upgrade", "--break-system-packages", "twine==6.0.1"], check=False)
+        python_cmd = [sys.executable]
+
     # Set up environment for twine
     env = os.environ.copy()
     if token:
         env['TWINE_USERNAME'] = '__token__'
         env['TWINE_PASSWORD'] = token
-    
-    cmd = [sys.executable, "-m", "twine", "upload"]
+
+    cmd = python_cmd + ["-m", "twine", "upload"]
     
     if repository == "testpypi":
         cmd.extend(["--repository", "testpypi"])
