@@ -153,7 +153,7 @@ fi
 echo "Build complete!"
 echo ""
 echo "Available images:"
-docker images | grep rediacc/cli
+docker images | grep rediacc/cli || echo "(Images pushed to registry, not stored locally)"
 
 echo ""
 echo "Usage examples:"
