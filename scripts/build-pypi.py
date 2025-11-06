@@ -156,7 +156,7 @@ def build_package(base_dir):
     
     # Build the package using the build module directly
     result = subprocess.run(
-        [sys.executable, "-m", "build"],
+        python_cmd + ["-m", "build"],
         cwd=base_dir,
         capture_output=True,
         text=True
