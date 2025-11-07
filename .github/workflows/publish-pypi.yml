@@ -115,7 +115,7 @@ jobs:
         if: ${{ inputs.skip-testpypi != true }}
         env:
           TWINE_USERNAME: __token__
-          TWINE_PASSWORD: ${{ secrets.TESTPYPI_API_TOKEN }}
+          TWINE_PASSWORD: ${{ secrets.PYPI_TEST_PAT }}
         run: |
           python3 -m twine upload --repository testpypi dist/*
 
