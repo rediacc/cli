@@ -123,29 +123,9 @@ jobs:
         if: ${{ inputs.skip-pypi != true }}
         env:
           TWINE_USERNAME: __token__
-          TWINE_PASSWORD: ${{ secrets.PYPI_API_TOKEN }}
+          TWINE_PASSWORD: ${{ secrets.PYPI_PAT }}
         run: |
           python3 -m twine upload dist/*
-
-      - name: Clean up old PyPI versions
-        if: ${{ inputs.skip-pypi != true }}
-        continue-on-error: true
-        env:
-          PYPI_PAT: ${{ secrets.PYPI_PAT }}
-        run: |
-          set -e
-          echo "🧹 Cleaning up old PyPI package versions..."
-          echo ""
-
-          # Install dependencies (handle PEP 668 restrictions)
-          python3 -m pip install --quiet requests packaging pypi-cleanup 2>/dev/null || \
-            python3 -m pip install --quiet --break-system-packages requests packaging pypi-cleanup
-
-          # Run cleanup via root deploy script (skip confirmation for CI)
-          cd .. && ./go deploy cleanup-pypi --no-dry-run --keep 11 --force && cd cli
-
-          echo ""
-          echo "✅ PyPI cleanup completed!"
 
       - name: Generate release notes
         run: |
