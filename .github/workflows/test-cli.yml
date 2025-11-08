@@ -1,13 +1,12 @@
 name: CLI Test Suite
 
 on:
-  # Only run full test suite on pull requests to avoid duplicate runs
-  # (tests run once on PR, not again after merge to main)
-  pull_request:
-    branches: [ main, develop ]
-  push:
-    branches: [ main ]  # Build packages when merging to main
-  workflow_dispatch:  # Allow manual triggers for emergency testing
+  # Automatic triggers disabled - manual workflow_dispatch only
+  # pull_request:
+  #   branches: [ main, develop ]
+  # push:
+  #   branches: [ main ]
+  workflow_dispatch:  # Manual triggers only
 
 # Set permissions for GITHUB_TOKEN
 permissions:
