@@ -645,12 +645,13 @@ class CommandHandler:
             if (args.vault or args.vault_file) and success:
                 vault_data = get_vault_data(args)
                 repo_name = args.new_name if args.new_name else args.name
-                
+
                 response = self.client.token_request(
-                    "UpdateRepositoryVault", 
+                    "UpdateRepositoryVault",
                     {
                         "teamName": args.team,
                         "repoName": repo_name,
+                        "repoTag": args.tag,
                         "repoVault": vault_data,
                         "vaultVersion": args.vault_version or 1
                     }

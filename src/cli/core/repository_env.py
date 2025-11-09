@@ -16,7 +16,8 @@ def get_repository_environment(
     machine: str,
     repo: str,
     connection_info: Optional[Dict] = None,
-    repo_paths: Optional[Dict] = None
+    repo_paths: Optional[Dict] = None,
+    repo_info: Optional[Dict] = None
 ) -> Dict[str, str]:
     """
     Calculate all repository-specific environment variables.
@@ -30,6 +31,7 @@ def get_repository_environment(
         repo: Repository name
         connection_info: Optional connection info dict (to avoid re-fetching)
         repo_paths: Optional repository paths dict (to avoid re-calculation)
+        repo_info: Optional repository info dict (to avoid re-fetching)
 
     Returns:
         Dictionary of environment variable names and values
@@ -37,15 +39,27 @@ def get_repository_environment(
     from .shared import RepositoryConnection
 
     # Use existing connection info or create new connection
-    if connection_info is None or repo_paths is None:
+    if connection_info is None or repo_paths is None or repo_info is None:
         conn = RepositoryConnection(team, machine, repo)
         conn.connect()
         repo_paths = conn.repo_paths
+        repo_info = conn.repo_info
 
     # Calculate Docker socket path and host
     docker_socket = repo_paths['docker_socket']
     docker_host = f"unix://{docker_socket}"
     repo_mount_path = repo_paths['mount_path']
+
+    # Get repository loopback IP (defaults to 0.0.0.0 if not present)
+    # Note: API returns 'repoLoopbackIP' (with uppercase IP)
+    repo_loopback_ip = repo_info.get('repoLoopbackIP', '0.0.0.0') if repo_info else '0.0.0.0'
+
+    # Get repository network mode (defaults to bridge if not present)
+    # Valid modes: bridge, host, none, overlay, ipvlan, macvlan
+    repo_network_mode = repo_info.get('repoNetworkMode', 'bridge') if repo_info else 'bridge'
+
+    # Get repository tag (defaults to latest if not present)
+    repo_tag = repo_info.get('repoTag', 'latest') if repo_info else 'latest'
 
     # Build environment variables dictionary
     env_vars = {
@@ -55,6 +69,9 @@ def get_repository_environment(
         'DOCKER_SOCKET': docker_socket,
         'DOCKER_DATA': repo_paths['docker_data'],
         'DOCKER_EXEC': repo_paths['docker_exec'],
+        'REPO_LOOPBACK_IP': repo_loopback_ip,
+        'REPO_NETWORK_MODE': repo_network_mode,
+        'REPO_TAG': repo_tag,
         'REDIACC_REPO': repo,
         'REDIACC_TEAM': team,
         'REDIACC_MACHINE': machine,

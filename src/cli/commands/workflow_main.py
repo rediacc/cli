@@ -134,12 +134,13 @@ class WorkflowHandler:
                 return storage.get('vaultContent') or storage.get('storageVault', '{}')
         return None
     
-    def _cleanup_repository(self, team_name, repo_name):
+    def _cleanup_repository(self, team_name, repo_name, repo_tag='latest'):
         """Helper to cleanup created repository on error"""
         try:
             self.client.token_request("DeleteRepository", {
                 'teamName': team_name,
-                'repoName': repo_name
+                'repoName': repo_name,
+                'repoTag': repo_tag
             })
         except:
             pass
@@ -289,6 +290,7 @@ class WorkflowHandler:
             create_params = {
                 'teamName': args.team,
                 'repoName': args.name,
+                'repoTag': args.tag,
                 'repoVault': vault_data
             }
             # Only add parentRepoName if provided
@@ -308,7 +310,7 @@ class WorkflowHandler:
             
             if repos_response.get('error'):
                 # Rollback repository creation
-                self._cleanup_repository(args.team, args.name)
+                self._cleanup_repository(args.team, args.name, args.tag)
                 print(format_output(None, self.output_format, None, f"Failed to get repository list: {repos_response['error']}"))
                 return 1
             
@@ -323,7 +325,7 @@ class WorkflowHandler:
             
             if not repo_guid:
                 # Rollback repository creation
-                self._cleanup_repository(args.team, args.name)
+                self._cleanup_repository(args.team, args.name, args.tag)
                 print(format_output(None, self.output_format, None, "Failed to get repository GUID"))
                 return 1
             
@@ -331,7 +333,7 @@ class WorkflowHandler:
             machine_data = self._get_machine_data(args.team, args.machine)
             if not machine_data:
                 # Rollback repository creation
-                self._cleanup_repository(args.team, args.name)
+                self._cleanup_repository(args.team, args.name, args.tag)
                 return 1
             
             bridge_name = machine_data.get('bridgeName')
@@ -472,6 +474,7 @@ class WorkflowHandler:
             dest_type = getattr(args, 'dest_type', 'machine')
             dest_guid = None
             created_repo_name = None
+            created_repo_tag = None
             
             if dest_type == 'machine':
                 # Check if destination repository exists
@@ -482,19 +485,24 @@ class WorkflowHandler:
                     dest_repo = next((r for r in repos if r.get('repoName') == args.dest_repo), None)
                 
                 if not dest_repo:
-                    # Create destination repository
+                    # Create destination repository as fork
+                    timestamp = time.strftime('%Y-%m-%d-%H-%M-%S')
+                    fork_tag = f'fork-{timestamp}'
+
                     create_response = self.client.token_request("CreateRepository", {
                         'teamName': args.dest_team,
                         'repoName': args.dest_repo,
+                        'repoTag': fork_tag,
                         'repoVault': '{}',
                         'parentRepoName': args.source_repo
                     })
-                    
+
                     if create_response.get('error'):
                         print(format_output(None, self.output_format, None, f"Failed to create destination repository: {create_response['error']}"))
                         return 1
-                    
+
                     created_repo_name = args.dest_repo
+                    created_repo_tag = fork_tag
                     
                     # Refetch to get the new repository GUID
                     dest_repo_response = self.client.token_request("GetTeamRepositories", {'teamName': args.dest_team})
@@ -509,7 +517,7 @@ class WorkflowHandler:
             source_machine_data = self._get_machine_data(args.source_team, args.source_machine)
             if not source_machine_data:
                 if created_repo_name:
-                    self._cleanup_repository(args.dest_team, created_repo_name)
+                    self._cleanup_repository(args.dest_team, created_repo_name, created_repo_tag or 'latest')
                 return 1
             
             # Build push parameters
@@ -566,7 +574,7 @@ class WorkflowHandler:
             
             if queue_response.get('error'):
                 if created_repo_name:
-                    self._cleanup_repository(args.dest_team, created_repo_name)
+                    self._cleanup_repository(args.dest_team, created_repo_name, created_repo_tag or 'latest')
                 print(format_output(None, self.output_format, None, f"Failed to create queue item: {queue_response['error']}"))
                 return 1
             
@@ -592,7 +600,8 @@ class WorkflowHandler:
                 print(f"Source: {args.source_team}/{args.source_machine}/{args.source_repo}")
                 print(f"Destination: {args.dest_team}/{args.dest_machine if dest_type == 'machine' else args.dest_storage}/{args.dest_repo}")
                 if created_repo_name:
-                    print(colorize(f"Created destination repository: {created_repo_name}", 'BLUE'))
+                    display_name = f"{created_repo_name}:{created_repo_tag}" if created_repo_tag else created_repo_name
+                    print(colorize(f"Created destination repository: {display_name}", 'BLUE'))
                 if task_id:
                     print(f"Push Task ID: {task_id}")
                     if getattr(args, 'trace', False):

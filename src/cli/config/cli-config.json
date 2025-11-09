@@ -305,7 +305,7 @@
       },
       "repository": {
         "endpoint": "CreateRepository",
-        "params": "lambda args: {'teamName': args.team, 'repoName': args.repository, 'repoVault': get_vault_data(args) or '{}', 'parentRepoName': args.parent_repo, 'repoGuid': args.repo_guid}",
+        "params": "lambda args: {'teamName': args.team, 'repoName': args.repository, 'repoVault': get_vault_data(args) or '{}', 'parentRepoName': args.parent_repo, 'repoGuid': args.repo_guid, 'networkMode': args.network_mode, 'repoTag': args.repo_tag}",
         "success_msg": "Successfully created repository: {name} for team {team}",
         "help": {
           "description": "Create a new repository for code and data storage",
@@ -333,6 +333,18 @@
               "type": "string"
             },
             "repo_guid": {
+              "description": "",
+              "required": true,
+              "example": "",
+              "type": "string"
+            },
+            "network_mode": {
+              "description": "",
+              "required": true,
+              "example": "",
+              "type": "string"
+            },
+            "repo_tag": {
               "description": "",
               "required": true,
               "example": "",
@@ -1287,7 +1299,7 @@
       },
       "repository": {
         "endpoint": "DeleteRepository",
-        "params": "lambda args: {'teamName': args.team, 'repoName': args.repository}",
+        "params": "lambda args: {'teamName': args.team, 'repoName': args.repository, 'repoTag': args.repo_tag}",
         "confirm_msg": "Are you sure you want to delete repository '{name}' from team '{team}'?",
         "success_msg": "Successfully deleted repository: {name}",
         "help": {
@@ -1303,19 +1315,14 @@
               "required": true,
               "example": "",
               "type": "string"
+            },
+            "repo_tag": {
+              "description": "",
+              "required": true,
+              "example": "",
+              "type": "string"
             }
           },
-          "examples": [
-            {
-              "command": "rediacc rm repository old-app --team dev",
-              "description": "Delete repository with confirmation"
-            },
-            {
-              "command": "rediacc rm repository temp-test --team qa --force",
-              "description": "Force delete without confirmation"
-            }
-          ],
-          "notes": "Ensure all data is backed up before deletion. Running containers will be stopped. Consider using repo_down first.",
           "rules": [
             "User must be authenticated to perform this operation",
             "User must be a member of the specified team",
@@ -1748,7 +1755,7 @@
       },
       "repository-vault": {
         "endpoint": "UpdateRepositoryVault",
-        "params": "lambda args: {'teamName': args.team, 'repoName': args.repository, 'repoVault': get_vault_data(args) or '{}', 'vaultVersion': args.vault_version}",
+        "params": "lambda args: {'teamName': args.team, 'repoName': args.repository, 'repoTag': args.repo_tag, 'repoVault': get_vault_data(args) or '{}', 'vaultVersion': args.vault_version}",
         "success_msg": "Successfully updated repository vault: {name}",
         "help": {
           "description": "Update repository configuration vault",
@@ -1775,19 +1782,14 @@
               "required": false,
               "example": "",
               "type": "string"
+            },
+            "repo_tag": {
+              "description": "",
+              "required": true,
+              "example": "",
+              "type": "string"
             }
           },
-          "examples": [
-            {
-              "command": "rediacc update repository-vault dev web-app --vault '{\"size\":\"30G\"}'",
-              "description": "Update repository size"
-            },
-            {
-              "command": "rediacc update repository-vault prod api --vault-file new-config.json",
-              "description": "Update repository config from file"
-            }
-          ],
-          "notes": "Vault data is encrypted. Changes may require repository restart. Use 'inspect repository' to see current vault.",
           "rules": [
             "User must be authenticated to perform this operation",
             "User must be a member of the specified team",
