@@ -4471,7 +4471,7 @@
       },
       "delete-user-request": {
         "endpoint": "DeleteUserRequest",
-        "params": "lambda args: {}"
+        "params": "lambda args: {'targetRequestId': args.target_request_id}"
       },
       "create-authentication-request": {
         "endpoint": "CreateAuthenticationRequest",
