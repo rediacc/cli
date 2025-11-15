@@ -1187,7 +1187,6 @@ def main():
             'plugin': ('cli.commands.plugin_main', 'Plugin'),
             'vscode': ('cli.commands.vscode_main', 'VSCode'),
             'compose': ('cli.commands.compose_main', 'Compose'),
-            'license': ('cli.commands.license_main', 'License'),
             'protocol': ('cli.commands.protocol_main', 'Protocol'),
             'workflow': ('cli.commands.workflow_main', 'Workflow'),
             'queue': ('cli.commands.queue_main', 'Queue'),

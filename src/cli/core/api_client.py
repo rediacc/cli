@@ -518,30 +518,6 @@ class SuperClient:
                 error_msg = f"Failed to generate hardware ID: {error_msg}"
                 error_msg += SuperClient.MIDDLEWARE_ERROR_HELP
                 raise Exception(error_msg)
-    
-    def get_hardware_id(self):
-        """Get hardware ID from middleware health endpoint"""
-        # Remove suffixes manually for Python 3.7 compatibility
-        base_url = self.base_url
-        if base_url.endswith('/api/StoredProcedure'):
-            base_url = base_url[:-len('/api/StoredProcedure')]
-        if base_url.endswith('/api'):
-            base_url = base_url[:-len('/api')]
-        hardware_id_url = f"{base_url}/api/health/hardware-id"
-        data = self._make_direct_request(hardware_id_url, method='GET')
-        return data['hardwareId']
-    
-    def request_license(self, hardware_id, base_url=None):
-        """Request license from license server"""
-        # Remove suffixes manually for Python 3.7 compatibility
-        request_base_url = base_url or self.base_url
-        if request_base_url.endswith('/api/StoredProcedure'):
-            request_base_url = request_base_url[:-len('/api/StoredProcedure')]
-        if request_base_url.endswith('/api'):
-            request_base_url = request_base_url[:-len('/api')]
-        license_url = f"https://lic.rediacc.com/api/license/request"
-        return self._make_direct_request(license_url, {"HardwareId": hardware_id}, method='POST')
-    
     def hash_password(self, password: str) -> str:
         """Hash password with static salt"""
         salted = password + SuperClient.PASSWORD_SALT
