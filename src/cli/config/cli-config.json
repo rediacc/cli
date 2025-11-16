@@ -5,7 +5,7 @@
         "endpoint": "CreateNewCompany",
         "auth_required": false,
         "auth_type": "credentials",
-        "params": "lambda args: {'companyName': args.company_name, 'activationCode': args.activation_code, 'subscriptionPlan': args.subscription_plan, 'companyVaultDefaults': args.vault_defaults, 'languagePreference': args.language_preference}",
+        "params": "lambda args: {'companyName': args.company_name, 'activationCode': args.activation_code, 'subscriptionPlan': args.subscription_plan, 'companyVaultDefaults': args.vault_defaults, 'languagePreference': args.language_preference, 'sshPrivateKeyB64': args.ssh_private_key_b64, 'sshPublicKeyB64': args.ssh_public_key_b64}",
         "success_msg": "Successfully created company: {name}",
         "help": {
           "description": "Create a new company account with admin user",
@@ -34,6 +34,18 @@
               "type": "string"
             },
             "language_preference": {
+              "description": "",
+              "required": true,
+              "example": "",
+              "type": "string"
+            },
+            "ssh_private_key_b64": {
+              "description": "",
+              "required": true,
+              "example": "",
+              "type": "string"
+            },
+            "ssh_public_key_b64": {
               "description": "",
               "required": true,
               "example": "",
