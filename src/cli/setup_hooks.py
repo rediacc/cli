@@ -296,20 +296,22 @@ def add_to_user_path_windows(directory: Path, verbose: bool = True) -> bool:
                 import ctypes
                 from ctypes import wintypes
 
-                # Broadcast WM_SETTINGCHANGE to notify system
+                # Broadcast WM_SETTINGCHANGE to notify system (Windows only)
                 HWND_BROADCAST = 0xFFFF
                 WM_SETTINGCHANGE = 0x1A
                 SMTO_ABORTIFHUNG = 0x0002
 
-                result = ctypes.windll.user32.SendMessageTimeoutW(
-                    HWND_BROADCAST,
-                    WM_SETTINGCHANGE,
-                    0,
-                    "Environment",
-                    SMTO_ABORTIFHUNG,
-                    5000,  # 5 second timeout
-                    ctypes.byref(wintypes.DWORD()),
-                )
+                windll = getattr(ctypes, "windll", None)
+                if windll is not None:
+                    windll.user32.SendMessageTimeoutW(
+                        HWND_BROADCAST,
+                        WM_SETTINGCHANGE,
+                        0,
+                        "Environment",
+                        SMTO_ABORTIFHUNG,
+                        5000,  # 5 second timeout
+                        ctypes.byref(wintypes.DWORD()),
+                    )
 
                 if verbose:
                     print(f"Successfully added {directory} to user PATH", file=sys.stderr)
