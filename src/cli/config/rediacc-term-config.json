@@ -134,7 +134,8 @@
         "DOCKER_FOLDER": "Docker configuration and data folder",
         "DOCKER_SOCKET": "Docker runtime socket path (hashed for short paths)",
         "DOCKER_DATA": "Docker data directory",
-        "DOCKER_EXEC": "Docker exec directory"
+        "DOCKER_EXEC": "Docker exec directory",
+        "REDIACC_DESKTOP": "Path to the Python executable on the desktop client"
       }
     },
     "machine_only_info": {

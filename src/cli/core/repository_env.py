@@ -5,6 +5,7 @@ Provides centralized logic for calculating repository-specific environment varia
 Used by: rediacc-term, rediacc vscode, GUI integrations.
 """
 
+import sys
 from typing import Dict, Optional
 from .config import get_logger
 
@@ -78,6 +79,7 @@ def get_repository_environment(
         'REDIACC_REPO': repo,
         'REDIACC_TEAM': team,
         'REDIACC_MACHINE': machine,
+        'REDIACC_DESKTOP': sys.executable,
         'UNIVERSAL_USER_NAME': universal_user_name or '',
         'UNIVERSAL_USER_ID': universal_user_id or '',
     }
@@ -125,6 +127,7 @@ def get_machine_environment(
     env_vars = {
         'REDIACC_TEAM': team,
         'REDIACC_MACHINE': machine,
+        'REDIACC_DESKTOP': sys.executable,
         'REDIACC_DATASTORE': datastore_path,
     }
 

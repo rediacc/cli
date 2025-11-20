@@ -7,8 +7,6 @@ import argparse
 import subprocess
 import sys
 import os
-import shutil
-import stat
 import textwrap
 
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__)))))
@@ -18,8 +16,7 @@ from cli.core.shared import (
     colorize, add_common_arguments,
     error_exit, initialize_cli_command, RepositoryConnection,
     get_ssh_key_from_vault, SSHConnection, get_machine_info_with_team,
-    get_machine_connection_info, _get_universal_user_info,
-    _decode_ssh_key, is_windows
+    get_machine_connection_info, _get_universal_user_info
 )
 
 from cli.core.config import setup_logging, get_logger
@@ -29,106 +26,19 @@ from cli.core.repository_env import (
 )
 from cli.core.env_bootstrap import compose_env_block
 
+# Import shared VS Code utilities
+from cli.core.vscode_shared import (
+    get_rediacc_ssh_config_path,
+    find_vscode_executable,
+    sanitize_hostname,
+    resolve_universal_user,
+    upsert_ssh_config_entry,
+    build_ssh_config_options,
+    ensure_persistent_identity_file,
+    ensure_persistent_known_hosts_file,
+    ensure_vscode_settings_configured
+)
 
-def find_vscode_executable():
-    """Find VS Code executable on the system"""
-    # Check environment variable first
-    vscode_path = os.environ.get('REDIACC_VSCODE_PATH')
-    if vscode_path and os.path.exists(vscode_path):
-        return vscode_path
-
-    # Try common VS Code command names
-    vscode_commands = ['code', 'code-insiders', 'code-oss', 'codium']
-
-    for cmd in vscode_commands:
-        vscode_path = shutil.which(cmd)
-        if vscode_path:
-            return vscode_path
-
-    return None
-
-
-def sanitize_hostname(name: str) -> str:
-    """Sanitize hostname for SSH config"""
-    return name.replace(' ', '-').replace('/', '-').replace('\\', '-')
-
-
-def ensure_persistent_identity_file(team: str, machine: str, repo: str, ssh_key: str) -> str:
-    """Persist the SSH private key for VS Code connections and return config-safe path."""
-    ssh_dir = os.path.expanduser('~/.ssh')
-    os.makedirs(ssh_dir, exist_ok=True)
-    try:
-        os.chmod(ssh_dir, 0o700)
-    except (PermissionError, NotImplementedError, OSError):
-        # Ignore permission errors on platforms where chmod is limited
-        pass
-
-    parts = [sanitize_hostname(p) for p in (team, machine) if p]
-    if repo:
-        parts.append(sanitize_hostname(repo))
-    key_filename = f"rediacc_{'_'.join(parts)}_key"
-    key_path = os.path.join(ssh_dir, key_filename)
-
-    decoded_key = _decode_ssh_key(ssh_key)
-
-    existing_content = None
-    try:
-        with open(key_path, 'r', encoding='utf-8') as existing_file:
-            existing_content = existing_file.read()
-    except FileNotFoundError:
-        existing_content = None
-
-    if existing_content != decoded_key:
-        with open(key_path, 'w', newline='\n', encoding='utf-8') as key_file:
-            key_file.write(decoded_key)
-
-    try:
-        if is_windows():
-            os.chmod(key_path, stat.S_IREAD | stat.S_IWRITE)
-        else:
-            os.chmod(key_path, 0o600)
-    except (PermissionError, NotImplementedError, OSError):
-        # Best-effort permissions; continue if unsupported
-        pass
-
-    return key_path.replace('\\', '/')
-
-def ensure_persistent_known_hosts_file(team: str, machine: str, repo: str, host_entry: str) -> str:
-    """Persist the host key for VS Code connections and return config-safe path."""
-    from cli.core.shared import _decode_host_entry
-
-    ssh_dir = os.path.expanduser('~/.ssh')
-    os.makedirs(ssh_dir, exist_ok=True)
-    try:
-        os.chmod(ssh_dir, 0o700)
-    except (PermissionError, NotImplementedError, OSError):
-        pass
-
-    parts = [sanitize_hostname(p) for p in (team, machine) if p]
-    if repo:
-        parts.append(sanitize_hostname(repo))
-    known_hosts_filename = f"rediacc_{'_'.join(parts)}_known_hosts"
-    known_hosts_path = os.path.join(ssh_dir, known_hosts_filename)
-
-    decoded_host_entry = _decode_host_entry(host_entry)
-
-    existing_content = None
-    try:
-        with open(known_hosts_path, 'r', encoding='utf-8') as existing_file:
-            existing_content = existing_file.read().strip()
-    except FileNotFoundError:
-        existing_content = None
-
-    if existing_content != decoded_host_entry:
-        with open(known_hosts_path, 'w', newline='\n', encoding='utf-8') as kh_file:
-            kh_file.write(decoded_host_entry + '\n')
-
-    try:
-        os.chmod(known_hosts_path, 0o644)
-    except (PermissionError, NotImplementedError, OSError):
-        pass
-
-    return known_hosts_path.replace('\\', '/')
 
 def build_vscode_terminal_command(target_user: str, env_vars: dict) -> str:
     """Build terminal command for VSCode using shared env bootstrap logic (DRY)."""
@@ -270,84 +180,6 @@ def ensure_vscode_env_setup(
         )
 
 
-def build_ssh_config_options(ssh_conn, identity_file_path: str, known_hosts_file_path: str) -> list:
-    """Build SSH config options list (DRY helper)."""
-    ssh_opts_lines = [
-        f"    IdentityFile {identity_file_path}",
-        "    IdentitiesOnly yes",
-        f"    UserKnownHostsFile {known_hosts_file_path}"
-    ]
-    if ssh_conn.ssh_opts:
-        opts = ssh_conn.ssh_opts.split()
-        i = 0
-        while i < len(opts):
-            if opts[i] == '-o' and i + 1 < len(opts):
-                option = opts[i + 1]
-                if '=' in option:
-                    key, value = option.split('=', 1)
-                    if key not in ['IdentityFile', 'UserKnownHostsFile']:
-                        line = f"    {key} {value}"
-                        if line not in ssh_opts_lines:
-                            ssh_opts_lines.append(line)
-                i += 2
-            elif opts[i] == '-i':
-                i += 2
-            else:
-                i += 1
-    return ssh_opts_lines
-
-def upsert_ssh_config_entry(ssh_config_path: str, connection_name: str, ssh_config_entry: str):
-    """Add or replace the SSH config block for a given connection."""
-    os.makedirs(os.path.dirname(ssh_config_path), exist_ok=True)
-
-    block = "# Rediacc VS Code connection\n" + ssh_config_entry.rstrip() + "\n\n"
-    block_lines = block.splitlines(keepends=True)
-
-    lines = []
-    if os.path.exists(ssh_config_path):
-        with open(ssh_config_path, 'r', encoding='utf-8') as f:
-            lines = f.readlines()
-
-    start = end = None
-    for idx, line in enumerate(lines):
-        if line.strip() == f"Host {connection_name}":
-            start = idx
-            if idx > 0 and lines[idx - 1].strip() == "# Rediacc VS Code connection":
-                start = idx - 1
-            end = len(lines)
-            for j in range(idx + 1, len(lines)):
-                if lines[j].startswith("Host "):
-                    end = j
-                    break
-            break
-
-    if start is not None:
-        lines[start:end] = block_lines
-        action = "updated"
-    else:
-        if lines:
-            if not lines[-1].endswith('\n'):
-                lines[-1] += '\n'
-            if lines[-1].strip():
-                lines.append('\n')
-        lines.extend(block_lines)
-        action = "added"
-
-    with open(ssh_config_path, 'w', encoding='utf-8') as f:
-        f.writelines(lines)
-
-    return action
-
-
-def resolve_universal_user(connection_value: str, universal_user_name: str) -> str:
-    """Choose the sudo target user, preferring explicit connection metadata."""
-    candidates = [connection_value, universal_user_name, 'rediacc']
-    for value in candidates:
-        if value:
-            return value
-    return 'rediacc'
-
-
 def launch_vscode_repo(args):
     """Launch VSCode with repository connection"""
     logger = get_logger(__name__)
@@ -417,20 +249,30 @@ def launch_vscode_repo(args):
         # Parse SSH options using DRY helper
         ssh_opts_lines = build_ssh_config_options(ssh_conn, identity_file_path, known_hosts_file_path)
 
-        # NOTE: We don't use RemoteCommand for VSCode because it interferes with VSCode server installation
-        # Instead, we configure VSCode's terminal settings to sudo to the target user
+        # Use RemoteCommand to switch to universal user for the entire VS Code session
+        # This ensures file operations and terminals all run as the same user
+        # The VS Code server is installed in a shared datastore location accessible by both users
+        need_user_switch = bool(universal_user and universal_user.strip() and universal_user != ssh_user)
+
+        if need_user_switch:
+            remote_command_lines = f"""    RequestTTY yes
+    RemoteCommand sudo -i -u {universal_user}"""
+        else:
+            remote_command_lines = ""
+
         ssh_config_entry = f"""Host {connection_name}
     HostName {ssh_host}
     User {ssh_user}
     Port {ssh_port}
 {chr(10).join(ssh_opts_lines) if ssh_opts_lines else ''}
 {setenv_directives}
+{remote_command_lines}
     ServerAliveInterval 60
     ServerAliveCountMax 3
 """
 
-        # Add SSH config to user's SSH config file
-        ssh_config_path = os.path.expanduser('~/.ssh/config')
+        # Add SSH config to rediacc-specific SSH config file
+        ssh_config_path = get_rediacc_ssh_config_path()
         ssh_dir = os.path.dirname(ssh_config_path)
         os.makedirs(ssh_dir, exist_ok=True)
         try:
@@ -439,7 +281,14 @@ def launch_vscode_repo(args):
             pass
 
         action = upsert_ssh_config_entry(ssh_config_path, connection_name, ssh_config_entry)
-        logger.info(f"{action.capitalize()} SSH config entry for {connection_name}")
+        logger.info(f"{action.capitalize()} SSH config entry for {connection_name} in {ssh_config_path}")
+
+        # Get datastore path for shared VS Code server location
+        # TODO: In future, this will come from REDIACC_DATASTORE_USER env variable
+        datastore_path = conn.connection_info.get('datastore')
+
+        # Ensure VS Code settings are configured (enableRemoteCommand + configFile + serverInstallPath)
+        ensure_vscode_settings_configured(logger, connection_name, universal_user, universal_user_id, datastore_path)
 
         # Launch VS Code
         vscode_uri = f"vscode-remote://ssh-remote+{connection_name}{remote_path}"
@@ -525,20 +374,30 @@ def launch_vscode_machine(args):
         # Parse SSH options using DRY helper
         ssh_opts_lines = build_ssh_config_options(ssh_conn, identity_file_path, known_hosts_file_path)
 
-        # NOTE: We don't use RemoteCommand for VSCode because it interferes with VSCode server installation
-        # Instead, we configure VSCode's terminal settings to sudo to the target user
+        # Use RemoteCommand to switch to universal user for the entire VS Code session
+        # This ensures file operations and terminals all run as the same user
+        # The VS Code server is installed in a shared datastore location accessible by both users
+        need_user_switch = bool(universal_user and universal_user.strip() and universal_user != ssh_user)
+
+        if need_user_switch:
+            remote_command_lines = f"""    RequestTTY yes
+    RemoteCommand sudo -i -u {universal_user}"""
+        else:
+            remote_command_lines = ""
+
         ssh_config_entry = f"""Host {connection_name}
     HostName {ssh_host}
     User {ssh_user}
     Port {ssh_port}
 {chr(10).join(ssh_opts_lines) if ssh_opts_lines else ''}
 {setenv_directives}
+{remote_command_lines}
     ServerAliveInterval 60
     ServerAliveCountMax 3
 """
 
-        # Add SSH config to user's SSH config file
-        ssh_config_path = os.path.expanduser('~/.ssh/config')
+        # Add SSH config to rediacc-specific SSH config file
+        ssh_config_path = get_rediacc_ssh_config_path()
         ssh_dir = os.path.dirname(ssh_config_path)
         os.makedirs(ssh_dir, exist_ok=True)
         try:
@@ -547,7 +406,14 @@ def launch_vscode_machine(args):
             pass
 
         action = upsert_ssh_config_entry(ssh_config_path, connection_name, ssh_config_entry)
-        logger.info(f"{action.capitalize()} SSH config entry for {connection_name}")
+        logger.info(f"{action.capitalize()} SSH config entry for {connection_name} in {ssh_config_path}")
+
+        # Get datastore path for shared VS Code server location
+        # TODO: In future, this will come from REDIACC_DATASTORE_USER env variable
+        datastore_path = connection_info.get('datastore')
+
+        # Ensure VS Code settings are configured (enableRemoteCommand + configFile + serverInstallPath)
+        ensure_vscode_settings_configured(logger, connection_name, universal_user, universal_user_id, datastore_path)
 
         # Launch VS Code
         vscode_uri = f"vscode-remote://ssh-remote+{connection_name}{remote_path}"
@@ -588,6 +454,7 @@ Environment Variables:
     REDIACC_REPO     - Repository name
     REDIACC_TEAM     - Team name
     REDIACC_MACHINE  - Machine name
+    REDIACC_DESKTOP  - Python executable path on the desktop client
 """
     )
 

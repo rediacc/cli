@@ -8,11 +8,13 @@ auto-detection of configuration options.
 """
 
 import hashlib
+import ipaddress
 import json
 import os
 import sys
 import time
 from typing import Dict, Any, Optional, Tuple
+from urllib.parse import urlparse
 
 # Import from core module
 from .config import TokenManager, get_required, api_mutex
@@ -71,7 +73,22 @@ class SuperClient:
             return any(indicator in self.base_url for indicator in ['localhost', '127.0.0.1', ':7322'])
         except ImportError:
             return False
-    
+
+    def _is_lan_ip_address(self, url):
+        """Check if URL points to a private/LAN IP address
+
+        Returns True if the URL hostname is a private IP address (LAN),
+        False if it's a public IP or domain name.
+        """
+        try:
+            parsed = urlparse(url)
+            hostname = parsed.hostname or parsed.netloc.split(':')[0]
+            ip = ipaddress.ip_address(hostname)
+            return ip.is_private or ip.is_loopback or ip.is_link_local
+        except (ValueError, AttributeError):
+            # Not an IP address (likely a domain name) or parse error
+            return False
+
     def _execute_http_request(self, url, method='POST', data=None, headers=None, timeout=None):
         timeout = timeout or self.request_timeout
         merged_headers = {**self.base_headers, **(headers or {})}
@@ -89,21 +106,33 @@ class SuperClient:
     
     def _execute_with_requests(self, url, method, data, headers, timeout):
         try:
-            response = getattr(self.session, method.lower())(url, json=data, headers=headers, timeout=timeout)
+            # Disable SSL verification for LAN/private IP addresses
+            verify_ssl = not self._is_lan_ip_address(url)
+            response = getattr(self.session, method.lower())(
+                url, json=data, headers=headers, timeout=timeout, verify=verify_ssl
+            )
             return response.text, response.status_code, dict(response.headers)
         except self.requests.exceptions.RequestException as e:
             raise Exception(f"Request error: {str(e)}")
     
     def _execute_with_urllib(self, url, method, data, headers, timeout):
         import urllib.request, urllib.error
-        
+        import ssl
+
         try:
             req_data = json.dumps(data).encode('utf-8') if data else None
             req = urllib.request.Request(url, data=req_data, headers=headers, method=method.upper())
-            
-            with urllib.request.urlopen(req, timeout=timeout) as response:
+
+            # Create SSL context for LAN IPs to allow self-signed certificates
+            context = None
+            if self._is_lan_ip_address(url):
+                context = ssl.create_default_context()
+                context.check_hostname = False
+                context.verify_mode = ssl.CERT_NONE
+
+            with urllib.request.urlopen(req, timeout=timeout, context=context) as response:
                 return response.read().decode('utf-8'), response.getcode(), dict(response.info())
-                
+
         except urllib.error.HTTPError as e:
             raise Exception(f"HTTP {e.code}: {e.read().decode('utf-8') if e.fp else str(e)}")
         except urllib.error.URLError as e:
