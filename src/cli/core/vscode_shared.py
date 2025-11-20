@@ -2,6 +2,17 @@
 """
 Shared utilities for VS Code integration.
 Used by both CLI (vscode_main.py) and GUI (main.py).
+
+Platform Requirements:
+- Windows: Windows 10+ with OpenSSH client
+- macOS: macOS 10.14+ (Mojave) with OpenSSH 7.6+ for RemoteCommand support
+- Linux: glibc-based distribution (not Alpine), kernel >= 3.10,
+         bash, tar, curl/wget required on remote host
+
+VS Code Installation Support:
+- Windows: Standard installer, portable
+- macOS: Standard .app, Homebrew (Intel/Apple Silicon)
+- Linux: .deb/.rpm packages, Snap, code-oss, codium
 """
 
 import os
@@ -66,8 +77,9 @@ def get_vscode_settings_path():
         return os.path.join(appdata, 'Code', 'User', 'settings.json')
     elif system == "Darwin":  # macOS
         return os.path.expanduser('~/Library/Application Support/Code/User/settings.json')
-    else:  # Linux
-        return os.path.expanduser('~/.config/Code/User/settings.json')
+    else:  # Linux - respect XDG Base Directory specification
+        xdg_config = os.environ.get('XDG_CONFIG_HOME', os.path.expanduser('~/.config'))
+        return os.path.join(xdg_config, 'Code', 'User', 'settings.json')
 
 
 def get_rediacc_ssh_config_path():
@@ -105,13 +117,15 @@ def find_vscode_executable():
             # In WSL, prefer Windows VS Code for better integration
             candidates = ['code.exe', 'code', 'code-insiders', 'code-oss', 'codium']
         else:
-            # Native Linux
-            candidates = ['code', 'code-insiders', 'code-oss', 'codium']
+            # Native Linux (includes Snap installation path)
+            candidates = ['code', 'code-insiders', 'code-oss', 'codium', '/snap/bin/code']
     elif system == 'darwin':  # macOS
         candidates = [
             'code',
             'code-insiders',
-            '/Applications/Visual Studio Code.app/Contents/Resources/app/bin/code'
+            '/Applications/Visual Studio Code.app/Contents/Resources/app/bin/code',
+            '/usr/local/bin/code',       # Homebrew Intel Mac
+            '/opt/homebrew/bin/code',    # Homebrew Apple Silicon Mac
         ]
     elif system == 'windows':
         candidates = ['code.cmd', 'code.exe', 'code', 'code-insiders']
@@ -334,6 +348,10 @@ def ensure_vscode_settings_configured(logger, connection_name: str = None, unive
 
     Uses REDIACC_DATASTORE_USER env variable if available, otherwise falls back to
     datastore_path/universal_user_id.
+
+    Requirements:
+    - OpenSSH 7.6+ on client for RemoteCommand support
+    - Passwordless sudo on remote host for user switching
     """
     settings_path = get_vscode_settings_path()
     rediacc_config_path = get_rediacc_ssh_config_path()
