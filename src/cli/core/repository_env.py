@@ -36,7 +36,7 @@ def get_repository_environment(
     Returns:
         Dictionary of environment variable names and values
     """
-    from .shared import RepositoryConnection
+    from .shared import RepositoryConnection, _get_universal_user_info
 
     # Use existing connection info or create new connection
     if connection_info is None or repo_paths is None or repo_info is None:
@@ -44,6 +44,9 @@ def get_repository_environment(
         conn.connect()
         repo_paths = conn.repo_paths
         repo_info = conn.repo_info
+
+    # Get universal user info
+    universal_user_name, universal_user_id, company_id = _get_universal_user_info()
 
     # Calculate Docker socket path and host
     docker_socket = repo_paths['docker_socket']
@@ -75,6 +78,8 @@ def get_repository_environment(
         'REDIACC_REPO': repo,
         'REDIACC_TEAM': team,
         'REDIACC_MACHINE': machine,
+        'UNIVERSAL_USER_NAME': universal_user_name or '',
+        'UNIVERSAL_USER_ID': universal_user_id or '',
     }
 
     logger.debug(f"[get_repository_environment] Generated environment for {team}/{machine}/{repo}:")
