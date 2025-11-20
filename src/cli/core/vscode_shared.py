@@ -332,7 +332,8 @@ def ensure_vscode_settings_configured(logger, connection_name: str = None, unive
     Note: We do NOT set remotePlatform when using RemoteCommand, as VS Code
     disables RemoteCommand for hosts in remotePlatform.
 
-    TODO: In future, datastore_path will come from REDIACC_DATASTORE_USER env variable
+    Uses REDIACC_DATASTORE_USER env variable if available, otherwise falls back to
+    datastore_path/universal_user_id.
     """
     settings_path = get_vscode_settings_path()
     rediacc_config_path = get_rediacc_ssh_config_path()
@@ -378,13 +379,14 @@ def ensure_vscode_settings_configured(logger, connection_name: str = None, unive
     # Configure serverInstallPath to use shared datastore location
     # This allows SCP (running as SSH user) to write to a location accessible by both users
     # The path is: {datastore}/{universal_user_id} (VS Code automatically appends .vscode-server)
-    # TODO: In future, this path will come from REDIACC_DATASTORE_USER env variable
-    if connection_name and datastore_path and universal_user_id:
+    # Use REDIACC_DATASTORE_USER env variable if available, otherwise construct from datastore_path
+    if connection_name and (datastore_path or os.environ.get('REDIACC_DATASTORE_USER')) and universal_user_id:
         if 'remote.SSH.serverInstallPath' not in settings:
             settings['remote.SSH.serverInstallPath'] = {}
 
         # Note: Do NOT include .vscode-server - VS Code appends it automatically
-        vscode_server_path = f"{datastore_path}/{universal_user_id}"
+        # Prefer REDIACC_DATASTORE_USER env var, fall back to constructing path
+        vscode_server_path = os.environ.get('REDIACC_DATASTORE_USER') or f"{datastore_path}/{universal_user_id}"
         if settings['remote.SSH.serverInstallPath'].get(connection_name) != vscode_server_path:
             settings['remote.SSH.serverInstallPath'][connection_name] = vscode_server_path
             needs_update = True

@@ -284,7 +284,7 @@ def launch_vscode_repo(args):
         logger.info(f"{action.capitalize()} SSH config entry for {connection_name} in {ssh_config_path}")
 
         # Get datastore path for shared VS Code server location
-        # TODO: In future, this will come from REDIACC_DATASTORE_USER env variable
+        # Note: ensure_vscode_settings_configured will prefer REDIACC_DATASTORE_USER env var if set
         datastore_path = conn.connection_info.get('datastore')
 
         # Ensure VS Code settings are configured (enableRemoteCommand + configFile + serverInstallPath)
@@ -409,7 +409,7 @@ def launch_vscode_machine(args):
         logger.info(f"{action.capitalize()} SSH config entry for {connection_name} in {ssh_config_path}")
 
         # Get datastore path for shared VS Code server location
-        # TODO: In future, this will come from REDIACC_DATASTORE_USER env variable
+        # Note: ensure_vscode_settings_configured will prefer REDIACC_DATASTORE_USER env var if set
         datastore_path = connection_info.get('datastore')
 
         # Ensure VS Code settings are configured (enableRemoteCommand + configFile + serverInstallPath)

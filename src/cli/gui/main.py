@@ -1943,7 +1943,7 @@ class MainWindow(BaseWindow):
                     self.logger.debug(f"{action.capitalize()} SSH config entry for {connection_name} in {ssh_config_path}")
 
                     # Get datastore path for shared VS Code server location
-                    # TODO: In future, this will come from REDIACC_DATASTORE_USER env variable
+                    # Note: ensure_vscode_settings_configured will prefer REDIACC_DATASTORE_USER env var if set
                     if repo:
                         datastore_path = connection.connection_info.get('datastore')
                     else:
