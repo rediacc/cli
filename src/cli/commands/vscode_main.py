@@ -59,11 +59,18 @@ def ensure_vscode_env_setup(
     env_vars,
     target_user: str,
     ssh_user: str,
-    logger
+    logger,
+    server_install_path: str = None
 ) -> None:
     """
     Install/update the VS Code server environment bootstrap script and terminal settings.
     Configures VSCode terminal to run as target_user if different from ssh_user.
+
+    Args:
+        server_install_path: The path where VS Code server is installed (from serverInstallPath setting).
+                            If provided, writes env files there instead of ~/.vscode-server.
+                            This is critical when using RemoteCommand with user switching, as the
+                            VS Code server runs as the target user and looks for files in this location.
     """
     env_content = compose_env_block(env_vars)
     # Always end with a newline so Python write_text doesn't omit final line
@@ -81,22 +88,47 @@ def ensure_vscode_env_setup(
         import stat
         import json
 
+        import pwd
+
         env_content = {env_content_with_newline!r}
         target_user = {target_user!r}
         need_sudo = {need_sudo}
         terminal_command = {terminal_command!r}
+        server_install_path = {server_install_path!r}
 
-        # Setup environment file
-        setup_dir = pathlib.Path.home() / ".vscode-server"
+        # Determine the VS Code server directory
+        # Always use server_install_path - VS Code appends .vscode-server to it
+        # This must match the serverInstallPath configured in VS Code settings
+        if not server_install_path:
+            raise ValueError("server_install_path is required for VS Code environment setup")
+
+        setup_dir = pathlib.Path(server_install_path) / ".vscode-server"
         setup_dir.mkdir(parents=True, exist_ok=True)
 
+        # Get target user's uid/gid for chown
+        target_uid = None
+        target_gid = None
+        if target_user:
+            try:
+                pw = pwd.getpwnam(target_user)
+                target_uid = pw.pw_uid
+                target_gid = pw.pw_gid
+            except KeyError:
+                pass
+
+        # Permission: owner rw, group/other read
+        FILE_PERMS = stat.S_IRUSR | stat.S_IWUSR | stat.S_IRGRP | stat.S_IROTH
+
+        # Track paths for ownership fix at end
+        paths_to_chown = [setup_dir]
+
+        # Write environment file
         env_file = setup_dir / "rediacc-env.sh"
         env_file.write_text(env_content, encoding="utf-8")
-        try:
-            env_file.chmod(stat.S_IRUSR | stat.S_IWUSR)
-        except (PermissionError, NotImplementedError, OSError):
-            pass
+        env_file.chmod(FILE_PERMS)
+        paths_to_chown.append(env_file)
 
+        # Write server-env-setup file
         setup_file = setup_dir / "server-env-setup"
         marker_start = "# >>> REDIACC ENV START\\n"
         marker_end = "# <<< REDIACC ENV END\\n"
@@ -121,18 +153,18 @@ def ensure_vscode_env_setup(
 
         lines.extend([marker_start, env_line, marker_end])
         setup_file.write_text("".join(lines), encoding="utf-8")
-        try:
-            setup_file.chmod(stat.S_IRUSR | stat.S_IWUSR)
-        except (PermissionError, NotImplementedError, OSError):
-            pass
+        setup_file.chmod(FILE_PERMS)
+        paths_to_chown.append(setup_file)
 
         # Configure VSCode terminal to run as target user with environment
         if need_sudo and target_user and terminal_command:
             data_dir = setup_dir / "data"
             data_dir.mkdir(parents=True, exist_ok=True)
+            paths_to_chown.append(data_dir)
 
             machine_dir = data_dir / "Machine"
             machine_dir.mkdir(parents=True, exist_ok=True)
+            paths_to_chown.append(machine_dir)
 
             settings_file = machine_dir / "settings.json"
 
@@ -157,10 +189,26 @@ def ensure_vscode_env_setup(
 
             # Write settings
             settings_file.write_text(json.dumps(settings, indent=2), encoding="utf-8")
+            paths_to_chown.append(settings_file)
+
+        # Set ownership of all created paths to target user
+        if target_uid is not None:
+            for path in paths_to_chown:
+                try:
+                    os.chown(path, target_uid, target_gid)
+                except (PermissionError, NotImplementedError, OSError):
+                    pass
     """).strip()
 
     ssh_parts = ssh_conn.ssh_opts.split() if ssh_conn.ssh_opts else []
-    command = ['ssh', *ssh_parts, destination, 'python3', '-']
+
+    # If we need to switch users, run the script as root via sudo
+    # This ensures we can overwrite files that may have been created by different users
+    # The script will chown files to the target user after creation
+    if need_sudo and target_user:
+        command = ['ssh', *ssh_parts, destination, 'sudo', 'python3', '-']
+    else:
+        command = ['ssh', *ssh_parts, destination, 'python3', '-']
 
     logger.debug(f"[ensure_vscode_env_setup] Installing VSCode terminal config via: {' '.join(command)}")
 
@@ -234,13 +282,24 @@ def launch_vscode_repo(args):
         ssh_port = port
         remote_path = conn.repo_paths['mount_path']
 
+        # Get datastore path for shared VS Code server location
+        # Note: This must be calculated before ensure_vscode_env_setup so env files go to correct location
+        datastore_path = conn.connection_info.get('datastore')
+
+        # Calculate server_install_path - same logic as ensure_vscode_settings_configured
+        # Prefer REDIACC_DATASTORE_USER env var, fall back to constructing path
+        server_install_path = None
+        if (datastore_path or os.environ.get('REDIACC_DATASTORE_USER')) and universal_user_id:
+            server_install_path = os.environ.get('REDIACC_DATASTORE_USER') or f"{datastore_path}/{universal_user_id}"
+
         ensure_vscode_env_setup(
             ssh_conn,
             conn.ssh_destination,
             env_vars,
             universal_user,
             ssh_user,
-            logger
+            logger,
+            server_install_path
         )
 
         # Format environment variables as SetEnv directives
@@ -282,10 +341,6 @@ def launch_vscode_repo(args):
 
         action = upsert_ssh_config_entry(ssh_config_path, connection_name, ssh_config_entry)
         logger.info(f"{action.capitalize()} SSH config entry for {connection_name} in {ssh_config_path}")
-
-        # Get datastore path for shared VS Code server location
-        # Note: ensure_vscode_settings_configured will prefer REDIACC_DATASTORE_USER env var if set
-        datastore_path = conn.connection_info.get('datastore')
 
         # Ensure VS Code settings are configured (enableRemoteCommand + configFile + serverInstallPath)
         ensure_vscode_settings_configured(logger, connection_name, universal_user, universal_user_id, datastore_path)
@@ -359,13 +414,24 @@ def launch_vscode_machine(args):
         ssh_user = connection_info['user']
         ssh_port = port
 
+        # Get datastore path for shared VS Code server location
+        # Note: This must be calculated before ensure_vscode_env_setup so env files go to correct location
+        datastore_path = connection_info.get('datastore')
+
+        # Calculate server_install_path - same logic as ensure_vscode_settings_configured
+        # Prefer REDIACC_DATASTORE_USER env var, fall back to constructing path
+        server_install_path = None
+        if (datastore_path or os.environ.get('REDIACC_DATASTORE_USER')) and universal_user_id:
+            server_install_path = os.environ.get('REDIACC_DATASTORE_USER') or f"{datastore_path}/{universal_user_id}"
+
         ensure_vscode_env_setup(
             ssh_conn,
             f"{ssh_user}@{ssh_host}",
             env_vars,
             universal_user,
             ssh_user,
-            logger
+            logger,
+            server_install_path
         )
 
         # Format environment variables as SetEnv directives
@@ -407,10 +473,6 @@ def launch_vscode_machine(args):
 
         action = upsert_ssh_config_entry(ssh_config_path, connection_name, ssh_config_entry)
         logger.info(f"{action.capitalize()} SSH config entry for {connection_name} in {ssh_config_path}")
-
-        # Get datastore path for shared VS Code server location
-        # Note: ensure_vscode_settings_configured will prefer REDIACC_DATASTORE_USER env var if set
-        datastore_path = connection_info.get('datastore')
 
         # Ensure VS Code settings are configured (enableRemoteCommand + configFile + serverInstallPath)
         ensure_vscode_settings_configured(logger, connection_name, universal_user, universal_user_id, datastore_path)

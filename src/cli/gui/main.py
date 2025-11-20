@@ -72,6 +72,9 @@ from cli.core.vscode_shared import (
     ensure_vscode_settings_configured
 )
 
+# Import VS Code env setup from CLI
+from cli.commands.vscode_main import ensure_vscode_env_setup
+
 # Import GUI components
 from cli.gui.base import BaseWindow, create_tooltip
 from cli.gui.login import LoginWindow
@@ -1907,6 +1910,32 @@ class MainWindow(BaseWindow):
                         env_vars = get_machine_environment(team, machine,
                                                            connection_info=connection_info)
 
+                    # Get datastore path for shared VS Code server location
+                    # Note: This must be calculated before ensure_vscode_env_setup so env files go to correct location
+                    if repo:
+                        datastore_path = connection.connection_info.get('datastore')
+                    else:
+                        datastore_path = connection_info.get('datastore')
+
+                    # Calculate server_install_path - same logic as ensure_vscode_settings_configured
+                    # Prefer REDIACC_DATASTORE_USER env var, fall back to constructing path
+                    server_install_path = None
+                    if (datastore_path or os.environ.get('REDIACC_DATASTORE_USER')) and universal_user_id:
+                        server_install_path = os.environ.get('REDIACC_DATASTORE_USER') or f"{datastore_path}/{universal_user_id}"
+
+                    # Set up VS Code environment files on the remote server
+                    # This creates rediacc-env.sh and server-env-setup in the serverInstallPath
+                    ssh_destination = f"{ssh_user}@{ssh_host}"
+                    ensure_vscode_env_setup(
+                        ssh_conn,
+                        ssh_destination,
+                        env_vars,
+                        universal_user,
+                        ssh_user,
+                        self.logger,
+                        server_install_path
+                    )
+
                     # Format environment variables as SSH SetEnv directives
                     setenv_directives = format_ssh_setenv(env_vars)
 
@@ -1941,13 +1970,6 @@ class MainWindow(BaseWindow):
 
                     action = upsert_ssh_config_entry(ssh_config_path, connection_name, ssh_config_entry)
                     self.logger.debug(f"{action.capitalize()} SSH config entry for {connection_name} in {ssh_config_path}")
-
-                    # Get datastore path for shared VS Code server location
-                    # Note: ensure_vscode_settings_configured will prefer REDIACC_DATASTORE_USER env var if set
-                    if repo:
-                        datastore_path = connection.connection_info.get('datastore')
-                    else:
-                        datastore_path = connection_info.get('datastore')
 
                     try:
                         # Configure VS Code settings (enableRemoteCommand + configFile + serverInstallPath)
